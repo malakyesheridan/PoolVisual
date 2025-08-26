@@ -61,7 +61,7 @@ export function CanvasStage({ width, height, className }: CanvasStageProps) {
       // Fit image to stage
       fitImageToStage(img);
     };
-    img.src = photo.url;
+    img.src = photo.originalUrl;
   }, [photo]);
 
   // Fit image to stage while maintaining aspect ratio

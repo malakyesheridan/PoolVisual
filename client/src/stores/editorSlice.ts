@@ -83,6 +83,7 @@ export interface EditorSliceActions {
   // Photo management
   loadPhoto: (photoId: string, jobId: string) => Promise<void>;
   setPhoto: (photo: Photo) => void;
+  loadImageFile: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
   
   // Calibration
   setCalibration: (calibration: CalibrationData) => void;
@@ -242,6 +243,36 @@ export const useEditorStore = create<EditorSlice>()(
 
     setPhoto: (photo: Photo) => {
       set({ photo });
+    },
+
+    loadImageFile: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
+      // Create a temporary photo object for the uploaded image
+      const tempPhoto: Photo = {
+        id: 'temp-' + Date.now(),
+        originalUrl: imageUrl,
+        width: dimensions.width,
+        height: dimensions.height,
+        exifJson: null,
+        calibrationPixelsPerMeter: null,
+        calibrationMetaJson: null,
+        createdAt: new Date()
+      };
+      
+      set({ 
+        photo: tempPhoto,
+        photoId: tempPhoto.id,
+        jobId: 'temp-job',
+        masks: [],
+        selectedMaskId: null,
+        currentDrawing: null,
+        isDirty: false,
+        lastSaved: null,
+        error: null,
+        editorState: {
+          ...get().editorState,
+          calibration: undefined
+        }
+      });
     },
 
     // Calibration

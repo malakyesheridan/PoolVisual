@@ -11,6 +11,7 @@ import { CanvasStage } from '@/components/editor/CanvasStage';
 import { Toolbar } from '@/components/editor/Toolbar';
 import { Sidebar } from '@/components/editor/Sidebar';
 import { MetricsBar } from '@/components/editor/MetricsBar';
+import { ImageUpload } from '@/components/editor/ImageUpload';
 import { useEditorStore } from '@/stores/editorSlice';
 import { Material } from '@shared/schema';
 
@@ -24,6 +25,7 @@ export default function CanvasEditor() {
   const { jobId, photoId } = params || {};
   const {
     loadPhoto,
+    loadImageFile,
     error,
     isLoading,
     photo,
@@ -37,7 +39,7 @@ export default function CanvasEditor() {
     enabled: !!jobId
   });
 
-  // Load photo when component mounts
+  // Load photo when component mounts (if photoId provided)
   useEffect(() => {
     if (photoId && jobId) {
       loadPhoto(photoId, jobId).catch((err) => {
@@ -50,6 +52,21 @@ export default function CanvasEditor() {
       });
     }
   }, [photoId, jobId, loadPhoto]);
+
+  // Handle image upload
+  const handleImageUpload = (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
+    loadImageFile(file, imageUrl, dimensions);
+    toast({
+      title: "Image Loaded",
+      description: "Your image has been loaded successfully. You can now use the drawing tools.",
+    });
+  };
+
+  // Clear uploaded image
+  const handleClearImage = () => {
+    // Reset editor state
+    loadImageFile(new File([], ''), '', { width: 0, height: 0 });
+  };
 
   // Update canvas dimensions when container resizes
   useEffect(() => {
@@ -116,7 +133,7 @@ export default function CanvasEditor() {
   }, [saveProgress]);
 
   // Loading state
-  if (isLoading || !photo) {
+  if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
@@ -165,11 +182,23 @@ export default function CanvasEditor() {
           className="flex-1 relative bg-slate-100 overflow-hidden"
           data-testid="canvas-container"
         >
-          <CanvasStage
-            width={dimensions.width}
-            height={dimensions.height}
-            className="w-full h-full"
-          />
+          {photo ? (
+            <CanvasStage
+              width={dimensions.width}
+              height={dimensions.height}
+              className="w-full h-full"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center p-8">
+              <div className="max-w-md w-full">
+                <ImageUpload
+                  onImageLoad={handleImageUpload}
+                  onClear={handleClearImage}
+                  currentImage={photo?.originalUrl}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right Sidebar */}
