@@ -1,5 +1,6 @@
 /**
  * Production-ready Undo/Redo system for Canvas Editor
+ * Implements efficient state management with structured cloning
  */
 
 import { EditorMask, CalibrationData } from '@shared/schema';
@@ -18,170 +19,168 @@ export interface EditorHistory {
   future: EditorSnapshot[];
 }
 
+/**
+ * Push new state to history with automatic cloning
+ */
+export function push(
+  past: EditorSnapshot[], 
+  present: EditorSnapshot, 
+  next: EditorSnapshot, 
+  limit: number = 50
+): EditorHistory {
+  const newPast = [...past, structuredClone(present)];
+  if (newPast.length > limit) newPast.shift();
+  
+  return { 
+    past: newPast, 
+    present: structuredClone(next), 
+    future: [] 
+  };
+}
+
+/**
+ * Step backward in history (undo)
+ */
+export function stepUndo(history: EditorHistory): EditorHistory {
+  if (!history.past.length) return history;
+  
+  const prev = history.past[history.past.length - 1];
+  const past = history.past.slice(0, -1);
+  const future = [structuredClone(history.present), ...history.future];
+  
+  return { 
+    past, 
+    present: structuredClone(prev), 
+    future 
+  };
+}
+
+/**
+ * Step forward in history (redo)
+ */
+export function stepRedo(history: EditorHistory): EditorHistory {
+  if (!history.future.length) return history;
+  
+  const next = history.future[0];
+  const future = history.future.slice(1);
+  const past = [...history.past, structuredClone(history.present)];
+  
+  return { 
+    past, 
+    present: structuredClone(next), 
+    future 
+  };
+}
+
+/**
+ * Create initial history state
+ */
+export function createInitialHistory(
+  masks: EditorMask[] = [],
+  calibration?: CalibrationData,
+  selectedMaskId?: string
+): EditorHistory {
+  return {
+    past: [],
+    present: {
+      masks: structuredClone(masks),
+      selectedMaskId,
+      calibration: calibration ? structuredClone(calibration) : undefined,
+      timestamp: Date.now(),
+      action: 'Initialize'
+    },
+    future: []
+  };
+}
+
+/**
+ * Create snapshot from current state
+ */
+export function createSnapshot(
+  masks: EditorMask[],
+  calibration?: CalibrationData,
+  selectedMaskId?: string,
+  action: string = 'Edit'
+): EditorSnapshot {
+  return {
+    masks: structuredClone(masks),
+    selectedMaskId,
+    calibration: calibration ? structuredClone(calibration) : undefined,
+    timestamp: Date.now(),
+    action
+  };
+}
+
+/**
+ * Check if undo is available
+ */
+export function canUndo(history: EditorHistory): boolean {
+  return history.past.length > 0;
+}
+
+/**
+ * Check if redo is available
+ */
+export function canRedo(history: EditorHistory): boolean {
+  return history.future.length > 0;
+}
+
+/**
+ * Get the action that would be undone
+ */
+export function getUndoAction(history: EditorHistory): string | null {
+  if (!history.past.length) return null;
+  return history.past[history.past.length - 1].action;
+}
+
+/**
+ * Get the action that would be redone
+ */
+export function getRedoAction(history: EditorHistory): string | null {
+  if (!history.future.length) return null;
+  return history.future[0].action;
+}
+
+/**
+ * Legacy UndoRedoManager class for compatibility
+ */
 export class UndoRedoManager {
   private history: EditorHistory;
-  private readonly maxHistorySize: number = 50;
-
-  constructor(initialSnapshot?: EditorSnapshot) {
-    this.history = {
-      past: [],
-      present: initialSnapshot || {
-        masks: [],
-        selectedMaskId: undefined,
-        calibration: undefined,
-        timestamp: Date.now(),
-        action: 'Initial state'
-      },
-      future: []
-    };
+  
+  constructor() {
+    this.history = createInitialHistory();
   }
-
-  /**
-   * Initialize with a state
-   */
-  initialize(masks: EditorMask[], calibration?: CalibrationData, selectedMaskId?: string): void {
-    this.history = {
-      past: [],
-      present: {
-        masks: this.deepClone(masks),
-        selectedMaskId,
-        calibration: calibration ? this.deepClone(calibration) : undefined,
-        timestamp: Date.now(),
-        action: 'Initialize'
-      },
-      future: []
-    };
+  
+  pushState(masks: EditorMask[], calibration?: CalibrationData, selectedMaskId?: string, action: string = 'Edit') {
+    const snapshot = createSnapshot(masks, calibration, selectedMaskId, action);
+    this.history = push(this.history.past, this.history.present, snapshot);
   }
-
-  /**
-   * Push a new state to history
-   */
-  pushState(
-    masks: EditorMask[], 
-    calibration?: CalibrationData, 
-    selectedMaskId?: string,
-    action: string = 'Unknown action'
-  ): void {
-    // Don't push identical states
-    if (this.isStateIdentical(masks, calibration, selectedMaskId)) {
-      return;
-    }
-
-    const newSnapshot: EditorSnapshot = {
-      masks: this.deepClone(masks),
-      selectedMaskId,
-      calibration: calibration ? this.deepClone(calibration) : undefined,
-      timestamp: Date.now(),
-      action
-    };
-
-    this.history = {
-      past: [...this.history.past, this.history.present].slice(-this.maxHistorySize),
-      present: newSnapshot,
-      future: [] // Clear future when new action is performed
-    };
-  }
-
-  /**
-   * Undo to previous state
-   */
+  
   undo(): EditorSnapshot | null {
-    if (this.history.past.length === 0) return null;
-
-    const previous = this.history.past[this.history.past.length - 1];
-    const newPast = this.history.past.slice(0, -1);
-
-    this.history = {
-      past: newPast,
-      present: previous,
-      future: [this.history.present, ...this.history.future]
-    };
-
-    return this.deepClone(previous);
+    if (!canUndo(this.history)) return null;
+    this.history = stepUndo(this.history);
+    return this.history.present;
   }
-
-  /**
-   * Redo to next state
-   */
+  
   redo(): EditorSnapshot | null {
-    if (this.history.future.length === 0) return null;
-
-    const next = this.history.future[0];
-    const newFuture = this.history.future.slice(1);
-
-    this.history = {
-      past: [...this.history.past, this.history.present],
-      present: next,
-      future: newFuture
-    };
-
-    return this.deepClone(next);
+    if (!canRedo(this.history)) return null;
+    this.history = stepRedo(this.history);
+    return this.history.present;
   }
-
-  /**
-   * Check if undo is possible
-   */
+  
   canUndo(): boolean {
-    return this.history.past.length > 0;
+    return canUndo(this.history);
   }
-
-  /**
-   * Check if redo is possible
-   */
+  
   canRedo(): boolean {
-    return this.history.future.length > 0;
+    return canRedo(this.history);
   }
-
-  /**
-   * Get the action that would be undone
-   */
+  
   getUndoAction(): string | null {
-    if (this.history.past.length === 0) return null;
-    return this.history.past[this.history.past.length - 1].action;
+    return getUndoAction(this.history);
   }
-
-  /**
-   * Get the action that would be redone
-   */
+  
   getRedoAction(): string | null {
-    if (this.history.future.length === 0) return null;
-    return this.history.future[0].action;
-  }
-
-  /**
-   * Get current state
-   */
-  getCurrentSnapshot(): EditorSnapshot {
-    return this.deepClone(this.history.present);
-  }
-
-  /**
-   * Deep clone an object
-   */
-  private deepClone<T>(obj: T): T {
-    return JSON.parse(JSON.stringify(obj));
-  }
-
-  /**
-   * Check if state is identical to current
-   */
-  private isStateIdentical(
-    masks: EditorMask[], 
-    calibration?: CalibrationData, 
-    selectedMaskId?: string
-  ): boolean {
-    const current = this.history.present;
-    
-    // Compare basic properties
-    if (current.selectedMaskId !== selectedMaskId) return false;
-    if (masks.length !== current.masks.length) return false;
-    
-    // Compare calibration
-    if (JSON.stringify(calibration) !== JSON.stringify(current.calibration)) return false;
-    
-    // Compare masks (simplified comparison - in production you might want more sophisticated diffing)
-    if (JSON.stringify(masks) !== JSON.stringify(current.masks)) return false;
-    
-    return true;
+    return getRedoAction(this.history);
   }
 }

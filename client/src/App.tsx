@@ -10,7 +10,7 @@ import Dashboard from "@/pages/dashboard";
 import Materials from "@/pages/materials";
 import Jobs from "@/pages/jobs";
 import JobDetail from "@/pages/job-detail";
-import CanvasEditor from "@/pages/canvas-editor";
+import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
@@ -71,13 +71,13 @@ function Router() {
       
       <Route path="/jobs/:jobId/photo/:photoId">
         <ProtectedRoute>
-          <CanvasEditor />
+          <CanvasEditorPage />
         </ProtectedRoute>
       </Route>
       
       <Route path="/canvas-editor">
         <ProtectedRoute>
-          <CanvasEditor />
+          <CanvasEditorPage />
         </ProtectedRoute>
       </Route>
       

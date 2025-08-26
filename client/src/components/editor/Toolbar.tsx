@@ -34,7 +34,7 @@ import {
   Undo,
   Redo
 } from 'lucide-react';
-import { useEditorStore } from '@/stores/editorSlice';
+import { useEditorStore } from '@/stores/useEditorStore';
 import { cn } from '@/lib/utils';
 
 interface ToolbarProps {

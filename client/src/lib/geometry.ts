@@ -3,6 +3,7 @@
  * Includes shoelace area calculations, polyline length, smoothing, and conversions
  */
 
+import * as polygonClipping from 'polygon-clipping';
 import { Vec2, Polygon, Polyline } from '@shared/schema';
 
 /**
@@ -288,4 +289,178 @@ export function pointInPolygon(point: Vec2, polygon: Vec2[]): boolean {
 export function roundToPrecision(value: number, precision: number = 2): number {
   const factor = Math.pow(10, precision);
   return Math.round((value + Number.EPSILON) * factor) / factor;
+}
+
+// Enhanced polygon operations for eraser functionality
+
+/**
+ * Find nearest point on line segment
+ */
+export function nearestPointOnSegment(p: Vec2, a: Vec2, b: Vec2): { point: Vec2; dist: number } {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length === 0) {
+    return { point: a, dist: distance(p, a) };
+  }
+  
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (length * length)));
+  const nearest = {
+    x: a.x + t * dx,
+    y: a.y + t * dy
+  };
+  
+  return { point: nearest, dist: distance(p, nearest) };
+}
+
+/**
+ * Create a buffered polygon around a polyline (capsule shape)
+ */
+export function bufferPolyline(points: Vec2[], radius: number): Vec2[] {
+  if (points.length < 2) return [];
+  
+  const bufferedPoints: Vec2[] = [];
+  const segments = 8; // Circle approximation segments
+  
+  // Create a simplified capsule around the stroke
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    
+    if (len === 0) continue;
+    
+    const nx = -dy / len * radius; // Normal vector
+    const ny = dx / len * radius;
+    
+    // Add perpendicular points
+    bufferedPoints.push({ x: a.x + nx, y: a.y + ny });
+    bufferedPoints.push({ x: b.x + nx, y: b.y + ny });
+  }
+  
+  // Add end caps and close the shape
+  if (points.length >= 2) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    
+    // Simple circular caps
+    for (let i = 0; i <= segments; i++) {
+      const angle = (i / segments) * Math.PI;
+      bufferedPoints.push({
+        x: last.x + Math.cos(angle) * radius,
+        y: last.y + Math.sin(angle) * radius
+      });
+    }
+    
+    // Other side
+    for (let i = points.length - 1; i >= 0; i--) {
+      const a = points[i];
+      const b = i > 0 ? points[i - 1] : points[i];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      
+      if (len > 0) {
+        const nx = dy / len * radius;
+        const ny = -dx / len * radius;
+        bufferedPoints.push({ x: a.x + nx, y: a.y + ny });
+      }
+    }
+    
+    // Close with start cap
+    for (let i = 0; i <= segments; i++) {
+      const angle = Math.PI + (i / segments) * Math.PI;
+      bufferedPoints.push({
+        x: first.x + Math.cos(angle) * radius,
+        y: first.y + Math.sin(angle) * radius
+      });
+    }
+  }
+  
+  return bufferedPoints;
+}
+
+/**
+ * Convert polygon to polygon-clipping library format
+ */
+export function toRings(polygon: Vec2[]): number[][][] {
+  if (polygon.length < 3) return [];
+  return [[polygon.map(p => [p.x, p.y])]];
+}
+
+/**
+ * Convert from polygon-clipping library format
+ */
+export function fromRings(rings: number[][][]): Vec2[] {
+  if (!rings.length || !rings[0].length) {
+    return [];
+  }
+  
+  const mainRing = rings[0][0];
+  return mainRing.map(([x, y]) => ({ x, y }));
+}
+
+/**
+ * Polygon difference operation for eraser
+ */
+export function subtractPolygon(target: Vec2[], eraser: Vec2[]): Vec2[][] {
+  try {
+    const targetRings = toRings(target);
+    const eraserRings = toRings(eraser);
+    
+    if (!targetRings.length || !eraserRings.length) {
+      return [target];
+    }
+    
+    const result = polygonClipping.difference(targetRings[0], eraserRings[0]);
+    
+    if (!result.length) {
+      return []; // Complete erasure
+    }
+    
+    return result.map(fromRings);
+  } catch (error) {
+    console.warn('Polygon subtraction failed:', error);
+    return [target]; // Return original on error
+  }
+}
+
+/**
+ * Remove vertices from polyline within eraser distance
+ */
+export function eraseFromPolyline(polyline: Vec2[], eraserStroke: Vec2[], brushRadius: number): Vec2[] | null {
+  const filteredPoints = polyline.filter(point => {
+    // Check if point is within brush radius of any eraser stroke segment
+    for (let i = 0; i < eraserStroke.length - 1; i++) {
+      const { dist } = nearestPointOnSegment(point, eraserStroke[i], eraserStroke[i + 1]);
+      if (dist <= brushRadius) {
+        return false; // Remove this point
+      }
+    }
+    return true; // Keep this point
+  });
+  
+  // Need at least 2 points for a valid polyline
+  if (filteredPoints.length < 2) {
+    return null; // Delete the mask
+  }
+  
+  return filteredPoints;
+}
+
+/**
+ * Convert pixels to meters using calibration
+ */
+export function pixelsToMeters(pixels: number, pixelsPerMeter: number): number {
+  return pixels / pixelsPerMeter;
+}
+
+/**
+ * Convert square pixels to square meters using calibration
+ */
+export function pixelsToSquareMeters(pixelsSquared: number, pixelsPerMeter: number): number {
+  return pixelsSquared / (pixelsPerMeter * pixelsPerMeter);
 }
