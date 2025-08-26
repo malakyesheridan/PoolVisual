@@ -5,14 +5,16 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Stage, Layer, Image as KonvaImage, Group, Rect } from 'react-konva';
-import { Stage as StageType, KonvaEventObject } from 'konva/lib/Stage';
+import { Stage as StageType } from 'konva/lib/Stage';
+import { KonvaEventObject } from 'konva/lib/Node';
 import useImage from 'use-image';
 import { Vec2 } from '@shared/schema';
 import { useEditorStore } from '@/stores/editorSlice';
-import { MaskRenderer } from './MaskRenderer';
-import { DrawingLayer } from './DrawingLayer';
-import { CalibrationLayer } from './CalibrationLayer';
-import { SelectionLayer } from './SelectionLayer';
+// Import components - will create these components
+// import { MaskRenderer } from './MaskRenderer';
+// import { DrawingLayer } from './DrawingLayer';
+// import { CalibrationLayer } from './CalibrationLayer';
+// import { SelectionLayer } from './SelectionLayer';
 
 interface CanvasStageProps {
   className?: string;
@@ -36,7 +38,8 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     startDrawing,
     addPoint,
     finishDrawing,
-    selectMask
+    selectMask,
+    eraseFromSelected
   } = useEditorStore();
 
   const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
@@ -107,10 +110,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
         // Eraser interaction is handled in mouse move
         break;
         
-      case 'calibrate':
-        if (clickedOnEmpty) {
-          startDrawing(pos);
-        }
+      default:
         break;
     }
   }, [
@@ -137,7 +137,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     }
 
     // Handle drawing
-    if (currentDrawing && ['area', 'linear', 'waterline', 'calibrate'].includes(editorState.activeTool)) {
+    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
       addPoint(pos);
     }
 
@@ -169,7 +169,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     setLastPointerPosition(null);
 
     // Handle drawing completion
-    if (currentDrawing && ['area', 'linear', 'waterline', 'calibrate'].includes(editorState.activeTool)) {
+    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
       finishDrawing();
     }
 
@@ -292,16 +292,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              {masks.map((mask) => (
-                <MaskRenderer
-                  key={mask.id}
-                  mask={mask}
-                  isSelected={selectedMaskId === mask.id}
-                  onSelect={() => selectMask(mask.id)}
-                  imageWidth={backgroundImage?.width || 1}
-                  imageHeight={backgroundImage?.height || 1}
-                />
-              ))}
+              {/* Masks will be rendered here - temporarily disabled */}
             </Group>
           )}
         </Layer>
@@ -317,11 +308,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              <DrawingLayer
-                currentDrawing={currentDrawing}
-                tool={editorState.activeTool}
-                brushSize={editorState.brushSize}
-              />
+              {/* Drawing layer temporarily disabled */}
             </Group>
           )}
         </Layer>
@@ -337,7 +324,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              <CalibrationLayer calibration={editorState.calibration} />
+              {/* Calibration layer temporarily disabled */}
             </Group>
           )}
         </Layer>
@@ -353,11 +340,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              <SelectionLayer
-                mask={masks.find(m => m.id === selectedMaskId)}
-                imageWidth={backgroundImage?.width || 1}
-                imageHeight={backgroundImage?.height || 1}
-              />
+              {/* Selection layer temporarily disabled */}
             </Group>
           )}
         </Layer>

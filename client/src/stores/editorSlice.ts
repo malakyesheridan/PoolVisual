@@ -99,6 +99,7 @@ export interface EditorSliceActions {
   updateMask: (maskId: string, updates: Partial<EditorMask>) => void;
   attachMaterial: (maskId: string, materialId: string) => void;
   detachMaterial: (maskId: string) => void;
+  eraseFromSelected: (points: Vec2[], brushSize: number) => void;
   
   // Waterline specific
   setBandHeight: (maskId: string, heightM: number) => void;
@@ -230,8 +231,10 @@ export const useEditorStore = create<EditorSlice>()(
           isLoading: false
         });
         
-        // Initialize undo/redo manager
-        get().undoRedoManager.initialize(editorMasks, calibration);
+        // Initialize undo/redo manager with current state
+        const undoRedoManager = new UndoRedoManager();
+        undoRedoManager.pushState(editorMasks, calibration, undefined, 'Initialize');
+        set({ undoRedoManager });
         
       } catch (error) {
         set({ 
@@ -504,6 +507,34 @@ export const useEditorStore = create<EditorSlice>()(
 
     setBandHeight: (maskId: string, heightM: number) => {
       get().updateMask(maskId, { band_height_m: heightM });
+    },
+
+    eraseFromSelected: (points: Vec2[], brushSize: number) => {
+      const state = get();
+      if (!state.selectedMaskId || points.length === 0) return;
+      
+      const mask = state.masks.find(m => m.id === state.selectedMaskId);
+      if (!mask || mask.type !== 'area') return;
+      
+      // Simple implementation: remove points that are close to eraser stroke
+      // In a production app, you'd implement proper polygon subtraction
+      const threshold = brushSize / 2;
+      const updatedPolygon = mask.polygon.points.filter(point => {
+        return !points.some(erasePoint => {
+          const dx = point.x - erasePoint.x;
+          const dy = point.y - erasePoint.y;
+          return Math.sqrt(dx * dx + dy * dy) < threshold;
+        });
+      });
+      
+      if (updatedPolygon.length >= 3) {
+        get().updateMask(state.selectedMaskId, { 
+          polygon: { points: updatedPolygon } 
+        });
+      } else {
+        // If too few points remain, delete the mask
+        get().deleteMask(state.selectedMaskId);
+      }
     },
 
     // View and navigation
