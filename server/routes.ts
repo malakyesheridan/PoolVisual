@@ -1,5 +1,6 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
+import healthRoutes from "./routes/health.js";
 import { storage } from "./storage";
 import { 
   insertUserSchema, 
@@ -87,7 +88,10 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
-  // Health check
+  // Add health routes
+  app.use("/api", healthRoutes);
+  
+  // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
     try {
       // Test database connection
