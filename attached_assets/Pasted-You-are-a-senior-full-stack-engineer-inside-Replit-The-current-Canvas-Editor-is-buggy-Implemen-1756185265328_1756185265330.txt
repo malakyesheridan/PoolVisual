@@ -1,0 +1,49 @@
+You are a senior full-stack engineer inside Replit. The current **Canvas Editor** is buggy. Implement a focused overhaul that **(1) fixes Undo/Redo**, **(2) adds a clickable Upload Image button in addition to drag-and-drop**, **(3) makes the Eraser tool actually erase**, and **(4) adds a working Materials tab in the sidebar that attaches a material to the selected mask**. Use TypeScript everywhere. No TODOs, no stubs. Ship production-quality code.
+
+==============================================================================
+SCOPE (DO THIS NOW)
+==============================================================================
+1) Undo/Redo must work for all editing actions.
+2) Add a visible **Upload Image** button (keeps drag & drop).
+3) Eraser must remove geometry for the active mask (area & linear).
+4) Materials tab in sidebar: selectable materials, attach to selected mask, persist.
+
+==============================================================================
+FILES TO CREATE/UPDATE (FRONTEND)
+==============================================================================
+- `apps/frontend/src/state/editorSlice.ts`           // history, tools, masks, selection
+- `apps/frontend/src/components/uploader/UploadImageButton.tsx`
+- `apps/frontend/src/components/editor/Toolbar.tsx` // wire Undo/Redo buttons + shortcuts
+- `apps/frontend/src/components/editor/Sidebar.tsx` // tabs: Tools | Materials
+- `apps/frontend/src/components/editor/MaterialsTab.tsx`
+- `apps/frontend/src/components/editor/CanvasStage.tsx`
+- `apps/frontend/src/lib/geometry.ts`               // polygon ops, lengths, areas
+- `apps/frontend/src/lib/undoRedo.ts`
+- `apps/frontend/src/api/editor.ts`                 // typed API calls
+
+==============================================================================
+DEPENDENCIES
+==============================================================================
+Add polygon boolean ops for eraser:
+- `npm i polygon-clipping`  // Martinez polygon clipping
+Types:
+- If needed: `npm i -D @types/polygon-clipping`
+
+==============================================================================
+STATE MODEL (ZUSTAND) – EDITORSlice (PATCH/ADD)
+==============================================================================
+- Interfaces:
+  ```ts
+  type MaskType = 'area' | 'linear' | 'waterline_band';
+  type Vec2 = { x:number; y:number };
+  type Polygon = { points: Vec2[]; holes?: Vec2[][] };
+  type Polyline = { points: Vec2[] };
+
+  type BaseMask = { id: string; photoId: string; type: MaskType; materialId?: string; meta?: any };
+  type AreaMask   = BaseMask & { type:'area';   polygon: Polygon };
+  type LinearMask = BaseMask & { type:'linear'; polyline: Polyline };
+  type WaterMask  = BaseMask & { type:'waterline_band'; polyline: Polyline; bandHeightM:number };
+  type Mask = AreaMask | LinearMask | WaterMask;
+
+  type EditorHistory = { past: EditorSnapshot[]; present: EditorSnapshot; future: EditorSnapshot[] };
+  type EditorSnapshot = { masks: Mask[]; selectedMaskId?: string; calibration?: { pixelsPerMeter:number; a:Vec2; b:Vec2 } };

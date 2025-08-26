@@ -1,0 +1,291 @@
+You are a senior full-stack engineer inside Replit. The current **Canvas Editor** is buggy. Implement a focused overhaul that **(1) fixes Undo/Redo**, **(2) adds a clickable Upload Image button in addition to drag-and-drop**, **(3) makes the Eraser tool actually erase**, and **(4) adds a working Materials tab in the sidebar that attaches a material to the selected mask**. Use TypeScript everywhere. No TODOs, no stubs. Ship production-quality code.
+
+==============================================================================
+SCOPE (DO THIS NOW)
+==============================================================================
+1) Undo/Redo must work for all editing actions.
+2) Add a visible **Upload Image** button (keeps drag & drop).
+3) Eraser must remove geometry for the active mask (area & linear).
+4) Materials tab in sidebar: selectable materials, attach to selected mask, persist.
+
+==============================================================================
+FILES TO CREATE/UPDATE (FRONTEND)
+==============================================================================
+- `apps/frontend/src/state/editorSlice.ts`           // history, tools, masks, selection
+- `apps/frontend/src/components/uploader/UploadImageButton.tsx`
+- `apps/frontend/src/components/editor/Toolbar.tsx` // wire Undo/Redo buttons + shortcuts
+- `apps/frontend/src/components/editor/Sidebar.tsx` // tabs: Tools | Materials
+- `apps/frontend/src/components/editor/MaterialsTab.tsx`
+- `apps/frontend/src/components/editor/CanvasStage.tsx`
+- `apps/frontend/src/lib/geometry.ts`               // polygon ops, lengths, areas
+- `apps/frontend/src/lib/undoRedo.ts`
+- `apps/frontend/src/api/editor.ts`                 // typed API calls
+
+==============================================================================
+DEPENDENCIES
+==============================================================================
+Add polygon boolean ops for eraser:
+- `npm i polygon-clipping`  // Martinez polygon clipping
+Types:
+- If needed: `npm i -D @types/polygon-clipping`
+
+==============================================================================
+STATE MODEL (ZUSTAND) – EDITORSlice (PATCH/ADD)
+==============================================================================
+- Interfaces:
+  ```ts
+  type MaskType = 'area' | 'linear' | 'waterline_band';
+  type Vec2 = { x:number; y:number };
+  type Polygon = { points: Vec2[]; holes?: Vec2[][] };
+  type Polyline = { points: Vec2[] };
+
+  type BaseMask = { id: string; photoId: string; type: MaskType; materialId?: string; meta?: any };
+  type AreaMask   = BaseMask & { type:'area';   polygon: Polygon };
+  type LinearMask = BaseMask & { type:'linear'; polyline: Polyline };
+  type WaterMask  = BaseMask & { type:'waterline_band'; polyline: Polyline; bandHeightM:number };
+  type Mask = AreaMask | LinearMask | WaterMask;
+
+  type EditorHistory = { past: EditorSnapshot[]; present: EditorSnapshot; future: EditorSnapshot[] };
+  type EditorSnapshot = { masks: Mask[]; selectedMaskId?: string; calibration?: { pixelsPerMeter:number; a:Vec2; b:Vec2 } };
+Slice must expose:
+
+ts
+Copy
+Edit
+loadPhoto(photoId: string): Promise<void>;
+setCalibration(a:Vec2,b:Vec2,lengthM:number): void;
+
+// Mutations push to history
+addMask(mask: Mask): void;
+updateMask(mask: Mask): void;
+deleteMask(maskId: string): void;
+selectMask(maskId?: string): void;
+
+// Materials
+attachMaterialToSelected(materialId: string): void;
+
+// Eraser
+eraseFromSelected(eraserWorldPath: Vec2[], brushPx: number): void; // see ERASER IMPLEMENTATION
+
+// History
+undo(): void;
+redo(): void;
+commitHistory(label?: string): void; // push a deep-cloned snapshot after meaningful actions
+
+// Upload
+uploadImages(files: FileList | File[]): Promise<void>;
+History rules:
+
+Call commitHistory() after: add/update/delete mask, attach material, calibration commit.
+
+Cap history to 50 snapshots.
+
+Undo/Redo must restore exact masks and selection. No partial state.
+
+undoRedo.ts
+
+ts
+Copy
+Edit
+export function push(past: EditorSnapshot[], present: EditorSnapshot, next: EditorSnapshot, limit=50) {
+  const newPast = [...past, structuredClone(present)];
+  if (newPast.length > limit) newPast.shift();
+  return { past: newPast, present: structuredClone(next), future: [] };
+}
+export function stepUndo(h: EditorHistory) {
+  if (!h.past.length) return h;
+  const prev = h.past[h.past.length-1];
+  const past = h.past.slice(0,-1);
+  const future = [structuredClone(h.present), ...h.future];
+  return { past, present: structuredClone(prev), future };
+}
+export function stepRedo(h: EditorHistory) {
+  if (!h.future.length) return h;
+  const next = h.future[0];
+  const future = h.future.slice(1);
+  const past = [...h.past, structuredClone(h.present)];
+  return { past, present: structuredClone(next), future };
+}
+Wire keyboard shortcuts:
+
+Ctrl/Cmd+Z → undo()
+
+Shift+Ctrl/Cmd+Z → redo()
+
+Toolbar buttons Undo/Redo call the same actions and reflect disabled state when not available.
+
+==============================================================================
+UPLOAD IMAGE BUTTON (NEW COMPONENT)
+UploadImageButton.tsx
+
+tsx
+Copy
+Edit
+export default function UploadImageButton({ jobId }: { jobId: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const onPick = () => inputRef.current?.click();
+  const onChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.length) return;
+    await editorApi.uploadAndCreatePhotos(jobId, e.target.files); // implement in api/editor.ts
+    e.target.value = '';
+  };
+  return (
+    <div className="flex items-center gap-2">
+      <button className="btn btn-primary" onClick={onPick}>Upload Image</button>
+      <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={onChange}/>
+    </div>
+  );
+}
+Keep drag & drop as-is; place this button near the canvas toolbar or photo gallery.
+
+In api/editor.ts implement uploadAndCreatePhotos(jobId, files):
+
+For each file: client-side compress (≤3000px), normalize EXIF, request signed URL (POST /api/photos), PUT upload, finalize, navigate to new editor route for first uploaded photo.
+
+==============================================================================
+ERASER IMPLEMENTATION (WORKING)
+Goal: When Eraser is active and a mask is selected, cursor draws an eraser stroke (polyline) that removes geometry from that mask.
+
+For Area masks: compute polygon difference using polygon-clipping.
+Steps:
+
+Convert eraser stroke to a buffered polygon in pixel space. Buffer radius = brushPx/2. Use a simple circular sweep to approximate a capsule around the polyline (implement helper bufferPolyline(points, r): Polygon).
+
+Convert current area polygon (with holes) into the library’s format (array of rings).
+
+const result = polygonClipping.difference(areaPoly, eraserPoly)
+
+If result empty → delete mask. Otherwise replace polygon with first result (support multiple rings → outer ring + holes).
+
+commitHistory('erase-area').
+
+For Linear & Waterline masks: treat eraser as vertex deletion along the path.
+
+Find vertices within distance < brushPx from the eraser stroke segments (nearest point on segment).
+
+Remove those points; collapse duplicates; keep minimum of 2 points for a polyline.
+
+If <2 points remain → delete mask.
+
+commitHistory('erase-linear').
+
+Guardrails:
+
+If no mask selected, show toast: “Select a mask to erase.”
+
+If calibration missing, eraser still works (it’s pixel-space); metrics will update when calibration is set.
+
+geometry.ts helpers to add:
+
+ts
+Copy
+Edit
+export function nearestPointOnSegment(p:Vec2, a:Vec2, b:Vec2): {point:Vec2, dist:number};
+export function bufferPolyline(points:Vec2[], r:number): Polygon; // capsule around the stroke
+export function toRings(p:Polygon): number[][][]; // [[ [x,y]... ]] format for polygon-clipping
+export function fromRings(rings:number[][][]): Polygon; // take first polygon with holes
+==============================================================================
+MATERIALS TAB (SIDEBAR)
+Add tab switcher: Tools | Materials
+
+MaterialsTab.tsx:
+
+Fetch materials by category tabs (coping, waterline_tile, interior, paving, fencing).
+
+Grid of cards: thumbnail, name, unit price, select button.
+
+Button behavior:
+
+If selectedMaskId exists → attach immediately: attachMaterialToSelected(materialId)
+
+Else → show hint “Select a mask first”
+
+After attach: visually tag the mask (stroke highlight); MetricsBar shows Material: Name and Est. Cost (qty × price × (1+wastage%)).
+
+Persist on backend:
+
+POST /api/masks with material_id when updated.
+
+When generating quote, masks that have a materialId become material line items; use mask type to compute qty (area m², perimeter lm, or band area m²).
+
+==============================================================================
+TOOLBAR & SHORTCUTS (FIX)
+Top toolbar:
+
+Zoom − / 100% / + (fit to screen on double-click)
+
+Buttons: Undo, Redo, Export Image
+
+Mode toggle: Before | After | Side by Side
+
+Wire Undo/Redo to slice; disable when no history.
+
+Keyboard:
+
+Ctrl/Cmd+Z → undo
+
+Shift+Ctrl/Cmd+Z → redo
+
+M focuses Materials tab
+
+A/L/W/E/H switch tools
+
+==============================================================================
+CANVAS WIRES (CanvasStage.tsx)
+Pointer events:
+
+When tool = Eraser and a mask is selected: collect stroke points (world coords), throttle by rAF, show live capsule preview.
+
+On mouseup: call eraseFromSelected(strokePoints, brushPx).
+
+On every mask mutation: recompute cached metrics (area m², perimeter m) from polygons/polylines; if calibration present, update derived values; show in MetricsBar.
+
+Selection: clicking a mask selects it; selected mask renders handles; non-selected masks dim.
+
+==============================================================================
+API (BACKEND CONTRACT – CONFIRM OR ADD)
+POST /api/photos → { uploadUrl, publicUrl, photoId }
+
+POST /api/masks → create or update (id optional)
+
+DELETE /api/masks/:id
+
+GET /api/materials?org_id=&category=&q=
+
+POST /api/quotes and POST /api/quotes/:id/items unchanged
+
+All endpoints must validate via Zod and return typed payloads. Multi-write ops use DB transactions.
+
+==============================================================================
+ERROR HANDLING & UX
+If undo stack empty → disable button and shortcut has no effect.
+
+On attach material with no selection → non-blocking toast: “Select a mask first.”
+
+On upload failure → retry with backoff and show toast.
+
+Prevent self-intersecting polygons on commit; if detected, show banner and reject commit.
+
+==============================================================================
+ACCEPTANCE TESTS (PLAYWRIGHT)
+Undo/Redo: draw area polygon, attach material, erase a chunk, undo → polygon restored; redo → erased again.
+
+Upload Button: click Upload Image, choose a local file; image appears on canvas and persists (refresh restores).
+
+Eraser: with area mask selected, erase stroke removes geometry; with linear mask, vertices along stroke are removed; deleting to <2 vertices deletes mask.
+
+Materials Tab: selecting a material attaches to selected mask; MetricsBar shows material + est. cost; saving/reload preserves attachment.
+
+==============================================================================
+QUALITY BAR
+Zero console errors in editor interactions.
+
+60fps pointer interactions on 3000px images.
+
+Strict TypeScript (no any); ESLint clean.
+
+Undo/Redo works across ALL actions listed.
+
+Materials tab fully functional and persisted.
+
+Implement exactly as specified. Replace any stubbed logic with working code and wire all buttons, shortcuts, API calls, and state transitions so the editor feels buttery smooth and reliable.

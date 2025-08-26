@@ -1,28 +1,60 @@
 /**
- * Undo/Redo system for Canvas Editor state management
+ * Production-ready Undo/Redo system for Canvas Editor
  */
 
 import { EditorMask, CalibrationData } from '@shared/schema';
 
-export interface HistoryState {
+export interface EditorSnapshot {
   masks: EditorMask[];
-  calibration?: CalibrationData;
   selectedMaskId?: string;
+  calibration?: CalibrationData;
   timestamp: number;
   action: string;
 }
 
-export class UndoRedoManager {
-  private history: HistoryState[] = [];
-  private currentIndex: number = -1;
-  private maxHistorySize: number = 50;
+export interface EditorHistory {
+  past: EditorSnapshot[];
+  present: EditorSnapshot;
+  future: EditorSnapshot[];
+}
 
-  constructor(maxSize: number = 50) {
-    this.maxHistorySize = maxSize;
+export class UndoRedoManager {
+  private history: EditorHistory;
+  private readonly maxHistorySize: number = 50;
+
+  constructor(initialSnapshot?: EditorSnapshot) {
+    this.history = {
+      past: [],
+      present: initialSnapshot || {
+        masks: [],
+        selectedMaskId: undefined,
+        calibration: undefined,
+        timestamp: Date.now(),
+        action: 'Initial state'
+      },
+      future: []
+    };
   }
 
   /**
-   * Push a new state to the history stack
+   * Initialize with a state
+   */
+  initialize(masks: EditorMask[], calibration?: CalibrationData, selectedMaskId?: string): void {
+    this.history = {
+      past: [],
+      present: {
+        masks: this.deepClone(masks),
+        selectedMaskId,
+        calibration: calibration ? this.deepClone(calibration) : undefined,
+        timestamp: Date.now(),
+        action: 'Initialize'
+      },
+      future: []
+    };
+  }
+
+  /**
+   * Push a new state to history
    */
   pushState(
     masks: EditorMask[], 
@@ -30,159 +62,126 @@ export class UndoRedoManager {
     selectedMaskId?: string,
     action: string = 'Unknown action'
   ): void {
-    // Remove any states after current index (when undoing then making new changes)
-    this.history = this.history.slice(0, this.currentIndex + 1);
-    
-    // Create deep copy of the state to prevent mutations
-    const state: HistoryState = {
-      masks: JSON.parse(JSON.stringify(masks)),
-      calibration: calibration ? JSON.parse(JSON.stringify(calibration)) : undefined,
+    // Don't push identical states
+    if (this.isStateIdentical(masks, calibration, selectedMaskId)) {
+      return;
+    }
+
+    const newSnapshot: EditorSnapshot = {
+      masks: this.deepClone(masks),
       selectedMaskId,
+      calibration: calibration ? this.deepClone(calibration) : undefined,
       timestamp: Date.now(),
       action
     };
-    
-    this.history.push(state);
-    this.currentIndex = this.history.length - 1;
-    
-    // Trim history if it exceeds max size
-    if (this.history.length > this.maxHistorySize) {
-      this.history.shift();
-      this.currentIndex--;
-    }
+
+    this.history = {
+      past: [...this.history.past, this.history.present].slice(-this.maxHistorySize),
+      present: newSnapshot,
+      future: [] // Clear future when new action is performed
+    };
   }
 
   /**
    * Undo to previous state
    */
-  undo(): HistoryState | null {
-    if (!this.canUndo()) return null;
-    
-    this.currentIndex--;
-    return this.getCurrentState();
+  undo(): EditorSnapshot | null {
+    if (this.history.past.length === 0) return null;
+
+    const previous = this.history.past[this.history.past.length - 1];
+    const newPast = this.history.past.slice(0, -1);
+
+    this.history = {
+      past: newPast,
+      present: previous,
+      future: [this.history.present, ...this.history.future]
+    };
+
+    return this.deepClone(previous);
   }
 
   /**
    * Redo to next state
    */
-  redo(): HistoryState | null {
-    if (!this.canRedo()) return null;
-    
-    this.currentIndex++;
-    return this.getCurrentState();
+  redo(): EditorSnapshot | null {
+    if (this.history.future.length === 0) return null;
+
+    const next = this.history.future[0];
+    const newFuture = this.history.future.slice(1);
+
+    this.history = {
+      past: [...this.history.past, this.history.present],
+      present: next,
+      future: newFuture
+    };
+
+    return this.deepClone(next);
   }
 
   /**
    * Check if undo is possible
    */
   canUndo(): boolean {
-    return this.currentIndex > 0;
+    return this.history.past.length > 0;
   }
 
   /**
    * Check if redo is possible
    */
   canRedo(): boolean {
-    return this.currentIndex < this.history.length - 1;
-  }
-
-  /**
-   * Get current state
-   */
-  getCurrentState(): HistoryState | null {
-    if (this.currentIndex >= 0 && this.currentIndex < this.history.length) {
-      return this.history[this.currentIndex];
-    }
-    return null;
+    return this.history.future.length > 0;
   }
 
   /**
    * Get the action that would be undone
    */
   getUndoAction(): string | null {
-    if (!this.canUndo()) return null;
-    return this.history[this.currentIndex]?.action || null;
+    if (this.history.past.length === 0) return null;
+    return this.history.past[this.history.past.length - 1].action;
   }
 
   /**
    * Get the action that would be redone
    */
   getRedoAction(): string | null {
-    if (!this.canRedo()) return null;
-    return this.history[this.currentIndex + 1]?.action || null;
+    if (this.history.future.length === 0) return null;
+    return this.history.future[0].action;
   }
 
   /**
-   * Clear all history
+   * Get current state
    */
-  clear(): void {
-    this.history = [];
-    this.currentIndex = -1;
+  getCurrentSnapshot(): EditorSnapshot {
+    return this.deepClone(this.history.present);
   }
 
   /**
-   * Get history info for debugging
+   * Deep clone an object
    */
-  getHistoryInfo(): {
-    length: number;
-    currentIndex: number;
-    canUndo: boolean;
-    canRedo: boolean;
-    recentActions: string[];
-  } {
-    return {
-      length: this.history.length,
-      currentIndex: this.currentIndex,
-      canUndo: this.canUndo(),
-      canRedo: this.canRedo(),
-      recentActions: this.history.slice(-5).map(state => state.action)
-    };
+  private deepClone<T>(obj: T): T {
+    return JSON.parse(JSON.stringify(obj));
   }
 
   /**
-   * Initialize with an initial state
+   * Check if state is identical to current
    */
-  initialize(
+  private isStateIdentical(
     masks: EditorMask[], 
     calibration?: CalibrationData, 
     selectedMaskId?: string
-  ): void {
-    this.clear();
-    this.pushState(masks, calibration, selectedMaskId, 'Initial state');
-  }
-
-  /**
-   * Check if the state has changed significantly enough to warrant a new history entry
-   */
-  shouldPushState(
-    newMasks: EditorMask[],
-    newCalibration?: CalibrationData,
-    newSelectedMaskId?: string,
-    threshold: number = 5000 // 5 seconds
   ): boolean {
-    const currentState = this.getCurrentState();
-    if (!currentState) return true;
+    const current = this.history.present;
     
-    // Always push if it's been more than threshold milliseconds
-    if (Date.now() - currentState.timestamp > threshold) {
-      return true;
-    }
+    // Compare basic properties
+    if (current.selectedMaskId !== selectedMaskId) return false;
+    if (masks.length !== current.masks.length) return false;
     
-    // Push if masks count changed
-    if (newMasks.length !== currentState.masks.length) {
-      return true;
-    }
+    // Compare calibration
+    if (JSON.stringify(calibration) !== JSON.stringify(current.calibration)) return false;
     
-    // Push if calibration changed
-    if (!!newCalibration !== !!currentState.calibration) {
-      return true;
-    }
+    // Compare masks (simplified comparison - in production you might want more sophisticated diffing)
+    if (JSON.stringify(masks) !== JSON.stringify(current.masks)) return false;
     
-    // Push if selection changed
-    if (newSelectedMaskId !== currentState.selectedMaskId) {
-      return true;
-    }
-    
-    return false;
+    return true;
   }
 }
