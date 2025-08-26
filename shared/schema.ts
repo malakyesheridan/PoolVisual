@@ -238,6 +238,168 @@ export const insertQuoteItemSchema = createInsertSchema(quoteItems).omit({
   createdAt: true 
 });
 
+// Enhanced Canvas Editor Types
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+export interface Polygon {
+  points: Vec2[];
+  holes?: Vec2[][];
+}
+
+export interface Polyline {
+  points: Vec2[];
+}
+
+export type MaskType = 'area' | 'linear' | 'waterline_band';
+export type ToolType = 'hand' | 'area' | 'linear' | 'waterline' | 'eraser' | 'calibration';
+export type ViewMode = 'before' | 'after' | 'sideBySide';
+
+export interface MaskBase {
+  id: string;
+  photoId: string;
+  type: MaskType;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AreaMask extends MaskBase {
+  type: 'area';
+  polygon: Polygon;
+  area_m2?: number;
+  materialId?: string;
+  materialSettings?: {
+    scale: number;
+    rotation: number;
+    brightness: number;
+    contrast: number;
+  };
+}
+
+export interface LinearMask extends MaskBase {
+  type: 'linear';
+  polyline: Polyline;
+  perimeter_m?: number;
+  materialId?: string;
+}
+
+export interface WaterlineMask extends MaskBase {
+  type: 'waterline_band';
+  polyline: Polyline;
+  band_height_m: number;
+  perimeter_m?: number;
+  area_m2?: number;
+  materialId?: string;
+}
+
+export type EditorMask = AreaMask | LinearMask | WaterlineMask;
+
+export interface CalibrationData {
+  pixelsPerMeter: number;
+  a: Vec2;
+  b: Vec2;
+  lengthMeters: number;
+}
+
+export interface EditorState {
+  zoom: number;
+  pan: Vec2;
+  activeTool: ToolType;
+  brushSize: number;
+  selectedMaskId?: string;
+  calibration?: CalibrationData;
+  mode: ViewMode;
+  isDirty: boolean;
+  lastSaved?: string;
+}
+
+// Zod schemas for API validation
+export const Vec2Schema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+
+export const PolygonSchema = z.object({
+  points: z.array(Vec2Schema),
+  holes: z.array(z.array(Vec2Schema)).optional(),
+});
+
+export const PolylineSchema = z.object({
+  points: z.array(Vec2Schema),
+});
+
+export const CalibrationSchema = z.object({
+  pixelsPerMeter: z.number().positive(),
+  a: Vec2Schema,
+  b: Vec2Schema,
+  lengthMeters: z.number().positive(),
+});
+
+export const AreaMaskSchema = z.object({
+  id: z.string(),
+  photoId: z.string(),
+  type: z.literal('area'),
+  polygon: PolygonSchema,
+  area_m2: z.number().optional(),
+  materialId: z.string().optional(),
+  materialSettings: z.object({
+    scale: z.number(),
+    rotation: z.number(),
+    brightness: z.number(),
+    contrast: z.number(),
+  }).optional(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const LinearMaskSchema = z.object({
+  id: z.string(),
+  photoId: z.string(),
+  type: z.literal('linear'),
+  polyline: PolylineSchema,
+  perimeter_m: z.number().optional(),
+  materialId: z.string().optional(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const WaterlineMaskSchema = z.object({
+  id: z.string(),
+  photoId: z.string(),
+  type: z.literal('waterline_band'),
+  polyline: PolylineSchema,
+  band_height_m: z.number().positive(),
+  perimeter_m: z.number().optional(),
+  area_m2: z.number().optional(),
+  materialId: z.string().optional(),
+  createdBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export const EditorMaskSchema = z.discriminatedUnion('type', [
+  AreaMaskSchema,
+  LinearMaskSchema,
+  WaterlineMaskSchema,
+]);
+
+export const EditorStateSchema = z.object({
+  zoom: z.number().min(0.1).max(10),
+  pan: Vec2Schema,
+  activeTool: z.enum(['hand', 'area', 'linear', 'waterline', 'eraser', 'calibration']),
+  brushSize: z.number().min(1).max(100),
+  selectedMaskId: z.string().optional(),
+  calibration: CalibrationSchema.optional(),
+  mode: z.enum(['before', 'after', 'sideBySide']),
+  isDirty: z.boolean(),
+  lastSaved: z.string().optional(),
+});
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;

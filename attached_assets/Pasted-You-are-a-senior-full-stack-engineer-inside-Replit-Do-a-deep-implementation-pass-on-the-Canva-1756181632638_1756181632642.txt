@@ -1,0 +1,168 @@
+You are a senior full-stack engineer inside Replit. Do a **deep implementation pass** on the **Canvas Editor** for **PoolVisual Quotes** so it works flawlessly end-to-end (world-class polish, no regressions). The current UI is scaffolded (Calibration, Mask Tools, Before/After toggle, Export, Save Progress, Generate Quote). Implement all features, state sync, math, uploads, undo/redo, and reliability. Use TypeScript everywhere.
+
+==============================================================================
+OBJECTIVE
+==============================================================================
+Deliver a production-ready Canvas Editor that lets a user:
+1) Upload one or more pool photos → appear on the canvas immediately (client preview), then persist to Supabase Storage + `photos` row via backend.
+2) Calibrate scale by drawing a reference line in the image and entering a real-world length (m) → compute & persist `pixels_per_meter`.
+3) Create/edit **masks**:
+   - **Area Mask** (polygon with optional holes)
+   - **Linear Mask** (polyline for perimeters/edges)
+   - **Waterline Band** (uses perimeter × band_height_m; shows overlay band for visual feedback)
+   - **Eraser** (remove last segment/point or delete a selected mask)
+   - Adjustable **Brush Size** (affects freehand sampling distance & the visual cursor)
+   - Supports **Undo/Redo** for all mask operations
+4) Display live, accurate **metrics** for current or selected mask: area (m²), perimeter (lm), band area (m²), material attached, estimated cost (if material has price).
+5) Zoom/pan (inertia), hand tool, keyboard shortcuts, 60fps interactions.
+6) “Save Progress” persists editor state (masks, calibration, selected material) to backend.
+7) “Generate Quote” creates/updates a `quotes` draft, adding line items from all masks with chosen materials (quantity derived from mask type + calibration).
+8) “Before/After/Side-by-Side” toggles show server-rendered composites once generated; while pending, show local preview state.
+
+==============================================================================
+STACK & LIBRARIES
+==============================================================================
+- Frontend: React + Vite + TypeScript + Tailwind, **Konva.js** for canvas layers.
+- State: **Zustand** slices (`editorSlice`, `materialsSlice`, `jobsSlice`, `quotesSlice`).
+- Backend: Fastify + Zod (already scaffolded).
+- Storage: Supabase Storage for images & composite exports.
+- Queue/Worker: use existing composite queue endpoints; if missing, create stubs.
+- Tests: Vitest (math), Playwright (critical flows).
+
+==============================================================================
+FILE/TREE CHANGES (FRONTEND)
+==============================================================================
+Create/extend:
+- `apps/frontend/src/pages/EditorPage.tsx`  (route: `/jobs/:jobId/photo/:photoId`)
+- `apps/frontend/src/components/editor/CanvasStage.tsx`
+- `apps/frontend/src/components/editor/Toolbar.tsx`
+- `apps/frontend/src/components/editor/Sidebar.tsx`
+- `apps/frontend/src/components/editor/MaterialPicker.tsx`
+- `apps/frontend/src/components/editor/MetricsBar.tsx`
+- `apps/frontend/src/components/uploader/ImageUploader.tsx`
+- `apps/frontend/src/state/editorSlice.ts`
+- `apps/frontend/src/lib/geometry.ts` (shoelace area, polyline length, smoothing)
+- `apps/frontend/src/lib/calibration.ts`
+- `apps/frontend/src/lib/undoRedo.ts`
+- `apps/frontend/src/lib/image.ts` (client compression, EXIF normalize)
+- `apps/frontend/src/api/editor.ts` (typed API client)
+
+==============================================================================
+TYPES & ZOD SCHEMAS (SHARED)
+==============================================================================
+In `/packages/types` add/ensure:
+- `MaskType = 'area' | 'linear' | 'waterline_band'`
+- `Vec2 = { x: number; y: number }`
+- `Polygon = { points: Vec2[]; holes?: Vec2[][] }`  // winding order documented
+- `Polyline = { points: Vec2[] }`
+- `MaskBase = { id: string; photoId: string; type: MaskType; createdBy: string; createdAt: string; updatedAt: string }`
+- `AreaMask = MaskBase & { type: 'area'; polygon: Polygon; area_m2?: number }`
+- `LinearMask = MaskBase & { type: 'linear'; polyline: Polyline; perimeter_m?: number }`
+- `WaterlineMask = MaskBase & { type: 'waterline_band'; polyline: Polyline; band_height_m: number; perimeter_m?: number; area_m2?: number }`
+- `EditorState = { zoom: number; pan: Vec2; activeTool: 'hand'|'area'|'linear'|'waterline'|'eraser'; brushSize: number; selectedMaskId?: string; calibration?: { pixelsPerMeter: number; a: Vec2; b: Vec2 }; mode: 'before'|'after'|'sideBySide' }`
+
+Zod parsers mirror these interfaces for API I/O.
+
+==============================================================================
+STATE MANAGEMENT (ZUSTAND)
+==============================================================================
+`editorSlice` responsibilities:
+- loadPhoto(photoId) → fetch photo metadata + URLs
+- setCalibration({a,b,lengthMeters}) → compute & store `pixelsPerMeter`
+- tools: startPath(point), addPoint(point), closePolygon(), addHole(), setBandHeight(m), selectMask(id), deleteMask(id)
+- attachMaterial(maskId, materialId)
+- computeMetrics(maskId) → uses geometry helpers + calibration; memoize results
+- undo(), redo() via a history stack (push on meaningful commits)
+- setZoom(delta), setPan(vec), setActiveTool(tool), setBrushSize(px)
+- saveProgress() → POST masks, calibration; debounced autosave (1.2s)
+- generateQuote() → POST /quotes, /quotes/:id/items; local optimistic state; then trigger server composite render
+- pollComposite() → GET latest composite URLs → update UI when ready
+
+==============================================================================
+CANVAS IMPLEMENTATION (KONVA)
+==============================================================================
+`CanvasStage.tsx`:
+- Stage props: width=container, height=container, pixelRatio=window.devicePixelRatio
+- Layers:
+  1) **BackgroundImageLayer**: base photo (cached), grid overlay (the faint grid in screenshot), optional dim when editing
+  2) **MaskDrawingLayer**: dynamic shape while drawing (freehand sampling step derived from `brushSize`, Douglas-Peucker smoothing)
+  3) **MasksLayer**: committed masks (Area: polygon with fill + alpha + edge feather; Linear & Waterline: stroked paths + band overlay)
+  4) **HandlesLayer**: vertex handles for selected mask (drag to edit), reference line handles for calibration, rotate icons where appropriate
+  5) **HUDLayer**: cursor, tooltips, temporary guides
+- Performance: enable `layer.cache()` for static layers; throttle pointermove handlers with `requestAnimationFrame`
+- Zoom/Pan:
+  - Wheel to zoom around cursor (`e.evt.deltaY`), clamp [0.2, 4]
+  - Spacebar → Hand tool, pointer drag pans stage with inertia (keep velocity & decay)
+  - Double-click resets to fit image
+- Selection:
+  - Click selects nearest mask by hit-test
+  - `Delete` key deletes selected mask (confirm)
+- Undo/Redo:
+  - `Ctrl/Cmd+Z` undo, `Shift+Ctrl/Cmd+Z` redo
+- Shortcuts:
+  - `A` Area tool, `L` Linear, `W` Waterline, `E` Eraser, `H` Hand, `Esc` cancel drawing
+
+Edge rendering:
+- Area polygon fill: use pattern fill for material preview if attached, otherwise semi-transparent color. Feather via drawing a slightly expanded outline with gradient alpha.
+- Waterline band visual: render offset band (visual only) using `band_height_m` mapped to pixels via calibration; if calibration missing, show dashed warning & disable band area calculation.
+
+==============================================================================
+CALIBRATION FLOW
+==============================================================================
+- Sidebar “Draw Reference Line” toggles calibration mode: place point A then B on the image.
+- Input “Reference Length (meters)” (validate > 0).
+- Compute `pixelsPerMeter = distancePx(A,B) / lengthMeters`.
+- Persist via `POST /api/photos/:id/calibration` with { pixels_per_meter, meta:{ax,ay,bx,by,length} }.
+- Show calibration chip in UI with length + “edit” icon; editing reflows mask metrics.
+
+==============================================================================
+IMAGE UPLOAD & PREVIEW
+==============================================================================
+`ImageUploader.tsx`:
+- Accepts JPEG/PNG; drag-and-drop or file picker.
+- Client-side preprocess:
+  - Decode, rotate per EXIF, resize longest edge to ≤ 3000px, quality ≈ 0.85, strip EXIF.
+  - Keep an in-memory preview URL for immediate canvas display.
+- Request signed URL: `POST /api/photos` (jobId) → { uploadUrl, publicUrl, photoId }
+- Upload via PUT; then PATCH finalize if necessary.
+- On success: navigate to editor route for that `photoId`.
+
+==============================================================================
+SIDE BAR & TOOLBAR
+==============================================================================
+`Sidebar.tsx`:
+- **Calibration** panel (status pill: Not Set / Set; reference meters input)
+- **Mask Tools**: Area, Linear, Waterline Band, Eraser, Brush Size slider; Undo/Redo controls
+- **Material Picker** (tabs by category; search; thumbnails). On pick → `attachMaterial(selectedMaskId, materialId)`. If no mask selected, future masks default to chosen material until changed.
+- **Material Controls** (for attached materials): repeat scale, rotation (°), brightness/contrast sliders. Store per-mask material settings in `calc_meta_json` on save.
+- Persist changes via debounced `saveProgress()`.
+
+`Toolbar.tsx`:
+- Zoom controls (fit, 100%, +/−), Mode toggles: Before / After / Side by Side
+- “Export Image” → if composite available, download; else disabled with tooltip.
+- Fullscreen toggle.
+
+`MetricsBar.tsx` (bottom):
+- Current Selection summary: mask type, **Area (m²), Perimeter (lm), Band area (m²)**, Material name, Est. Cost ($) if price present (qty × unit price × (1+wastage%)).
+- Live recompute on edits. If calibration missing, show calibrated metrics as “—” and a warning icon.
+
+==============================================================================
+GEOMETRY & MATH (WITH TESTS)
+==============================================================================
+`geometry.ts`:
+- `polygonAreaPx(points: Vec2[], holes?: Vec2[][]): number` → signed area via shoelace; return absolute (px²).
+- `polylineLengthPx(points: Vec2[]): number`
+- `toMetersPx(pixels: number, ppm: number): number` & `toSquareMeters(px2: number, ppm: number): number`
+- `smoothFreehand(points: Vec2[], tolerancePx: number): Vec2[]` // Douglas-Peucker
+- Unit tests (Vitest) with edge cases: holes, self-intersection rejection (validate & warn), degenerate polylines, missing calibration.
+
+`calibration.ts`:
+- `computePixelsPerMeter(a: Vec2, b: Vec2, meters: number): number`
+- Guard: meters > 0; distancePx > minimal threshold.
+
+==============================================================================
+UNDO/REDO
+==============================================================================
+`undoRedo.ts`:
+- Push states on: mask create/commit, vertex edit commit, delete, attach/detach material, set band height, calibration commit.
+- Use
