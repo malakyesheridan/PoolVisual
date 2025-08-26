@@ -36,28 +36,25 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     startDrawing,
     addPoint,
     finishDrawing,
-    selectMask,
-    eraseFromSelected,
-    setStageSize
+    selectMask
   } = useEditorStore();
 
   const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
 
-  // Update stage dimensions and notify store
+  // Update stage dimensions
   useEffect(() => {
     const updateStageDimensions = () => {
       const container = stageRef.current?.container();
       if (container) {
         const { clientWidth, clientHeight } = container;
         setStageDimensions({ width: clientWidth, height: clientHeight });
-        setStageSize({ width: clientWidth, height: clientHeight });
       }
     };
 
     updateStageDimensions();
     window.addEventListener('resize', updateStageDimensions);
     return () => window.removeEventListener('resize', updateStageDimensions);
-  }, [setStageSize]);
+  }, []);
 
   // Pass stage ref to parent
   useEffect(() => {
