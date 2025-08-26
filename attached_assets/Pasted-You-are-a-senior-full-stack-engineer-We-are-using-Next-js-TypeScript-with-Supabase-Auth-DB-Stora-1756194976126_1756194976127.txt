@@ -1,0 +1,98 @@
+You are a senior full-stack engineer. We are using Next.js + TypeScript with Supabase (Auth/DB/Storage) and deploying to Vercel later. Implement a production-ready fail-fast developer experience with strict typing, validation, centralized error handling, and pre-commit checks. Do everything below end-to-end, editing files and adding new ones as needed. Do not create placeholders—write working code.
+
+GOALS:
+- Hard stop broken code before commit or deploy.
+- Runtime schema validation on every API boundary.
+- Centralized error handling with structured logs.
+- UI never “hard dies” → error boundaries with friendly messages.
+- Uploads & async tasks use retries / timeouts and surface errors to users.
+- Minimal Sentry + feature-flagged analytics.
+- Clean DX: one command to run checks locally.
+
+TASKS:
+
+1) TypeScript & ESLint hardening
+- Turn on TS strict mode (`"strict": true`) and noImplicitAny, exactOptionalPropertyTypes.
+- Add an ESLint config with Next.js + Typescript rules; ensure `"eslintConfig"` enforces no unused vars and no floating promises.
+- Add `"lint": "eslint . --ext .ts,.tsx --max-warnings=0"` and `"typecheck": "tsc -p tsconfig.json --noEmit"` to package.json.
+- Create `.npmrc` with `fund=false audit=false` to reduce noise.
+
+2) Zod validation at all boundaries
+- Install `zod`.
+- Create `src/lib/schemas.ts` exporting Zod schemas for: Client, Job, Quote, QuoteItem, Material, UploadInit (you decide fields thoughtfully), and common `IdParamSchema = z.object({ id: z.string().uuid() })`.
+- Add helper `validate(schema, data)` that returns typed result or throws `AppError("VALIDATION_ERROR", details)`.
+
+3) Centralized error type + logger
+- Create `src/lib/errors.ts` with:
+  - `class AppError extends Error { code: string; cause?: unknown; meta?: Record<string,any> }`
+  - `isAppError(e): e is AppError`
+  - error factory helpers: `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `internal`
+- Create `src/lib/logger.ts`:
+  - `log.info|warn|error({ msg, code, meta, err })` format to `console` with ISO timestamp.
+  - In production also send to Sentry if DSN exists.
+
+4) API route wrapper (Next.js)
+- Create `src/lib/routeWrapper.ts` exporting `withHandler(handler, { authRequired?: boolean, schema?: ZodSchema })`.
+- It should:
+  - Parse JSON body safely with size limit.
+  - Validate `schema` if provided.
+  - Attach `requestId` (uuid) to `req` and `res`.
+  - Catch errors, map `AppError.code` → HTTP status, log structured error, and return standardized JSON:
+    `{ ok: false, code, message, requestId, details?: any }`.
+  - On success, return `{ ok: true, data }`.
+
+5) Example API routes (end-to-end)
+- Implement `/api/clients/create`, `/api/jobs/create`, `/api/quotes/create` using:
+  - `withHandler()`
+  - appropriate Zod schemas
+  - Supabase server client (service role ONLY in server code)
+  - RLS respected fields (org_id injected from auth/session)
+- Include unit tests for these handlers using `vitest` (install/configure) with happy path + validation fail + DB error (mock Supabase).
+
+6) Global fetch wrapper (client)
+- Create `src/lib/http.ts`:
+  - `apiFetch<T>(url, { method, body, signal, timeoutMs=15000, retries=2, retryDelay=750 })`
+  - JSON serialization; abort controller with timeout; exponential backoff on 5xx/network errors; parse `{ ok, data, code, message }` and throw `AppError` on failure.
+
+7) React Error Boundaries & toasts
+- Install `react-error-boundary` and a toast lib (like `sonner` or `react-hot-toast`).
+- Create `src/components/AppErrorBoundary.tsx` that shows a friendly error UI with “Retry” and “Copy error details” including `requestId`.
+- Wrap the entire app in `_app.tsx` (or root layout) with provider + `<AppErrorBoundary>` and a global Toast container.
+- Any `AppError` thrown client-side should trigger a toast with `code` + human text.
+
+8) Uploads: signed URL + safe client
+- Implement server route `/api/uploads/signed` that validates `UploadInitSchema` (fileName, contentType, jobId) and returns a Supabase signed URL.
+- Client helper `uploadFile(file, signedUrl)` with:
+  - chunked upload if available, otherwise streaming with `fetch` PUT
+  - retries on network/5xx
+  - progress events if possible
+  - cancellation via `AbortController`
+- UI component `UploadButton` that:
+  - handles file input + drag/drop
+  - calls signed URL route, uploads with progress bar
+  - on error: toast with actionable guidance.
+
+9) Sentry + feature flags
+- Install Sentry minimal setup. Add `SENTRY_DSN` env but initialize only if present.
+- Hook into `AppError` handler and unhandled rejections.
+- Add a tiny `src/lib/flags.ts` that reads env-based flags like `FEATURE_COLLAB`, `FEATURE_PDF`.
+
+10) Health & diagnostics
+- Add `/api/health` returning `{ ok: true, time: <iso>, env: <node_env>, hasSentry: boolean }`.
+- Add `/api/diag/error` that intentionally throws `internal("DiagnosticsCheck")` behind `NODE_ENV!=='production'` guard to test the pipeline.
+
+11) Pre-commit & pre-push gates (Husky)
+- Install `husky` and `lint-staged`. On `prepare` hook, enable Husky.
+- `pre-commit`: run `lint-staged` configured to run eslint + prettier on changed files, and `pnpm typecheck`.
+- `pre-push`: run `pnpm test` (vitest) and `pnpm build` (ensures deployable).
+- Make build fail on TS or ESLint errors.
+
+12) DX: one script to rule them all
+- Add `check:all` script that runs `lint && typecheck && test && build`.
+- Document all of this in README with exact commands.
+
+After implementing, print:
+- The added/changed files list.
+- The commands for: dev, test, typecheck, check:all.
+- Example usage snippets: calling `apiFetch`, throwing `AppError`, using `AppErrorBoundary`, using UploadButton.
+Do not output placeholders—write runnable code.
