@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 interface ImageUploadProps {
   onImageLoad: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
   onClear?: () => void;
-  currentImage?: string;
+  currentImage?: string | null;
   className?: string;
 }
 

@@ -64,8 +64,19 @@ export default function CanvasEditor() {
 
   // Clear uploaded image
   const handleClearImage = () => {
-    // Reset editor state
-    loadImageFile(new File([], ''), '', { width: 0, height: 0 });
+    // Reset editor state by setting photo to null
+    const state = useEditorStore.getState();
+    state.setPhoto({
+      id: '',
+      jobId: '',
+      originalUrl: '',
+      width: 0,
+      height: 0,
+      exifJson: null,
+      calibrationPixelsPerMeter: null,
+      calibrationMetaJson: null,
+      createdAt: new Date()
+    });
   };
 
   // Update canvas dimensions when container resizes
@@ -194,7 +205,7 @@ export default function CanvasEditor() {
                 <ImageUpload
                   onImageLoad={handleImageUpload}
                   onClear={handleClearImage}
-                  currentImage={photo?.originalUrl}
+                  currentImage={photo && 'originalUrl' in photo ? photo.originalUrl : undefined}
                 />
               </div>
             </div>

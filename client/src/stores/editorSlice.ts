@@ -13,7 +13,8 @@ import {
   CalibrationData, 
   EditorState,
   ToolType,
-  ViewMode 
+  ViewMode,
+  Photo
 } from '@shared/schema';
 import { UndoRedoManager } from '@/lib/undoRedo';
 import { 
@@ -32,12 +33,6 @@ import {
 } from '@/lib/calibration';
 import { apiClient } from '@/lib/api-client';
 
-export interface Photo {
-  id: string;
-  url: string;
-  width: number;
-  height: number;
-}
 
 export interface MaskMetrics {
   area_m2?: number;
@@ -216,9 +211,14 @@ export const useEditorStore = create<EditorSlice>()(
         set({
           photo: {
             id: photo.id,
-            url: photo.originalUrl,
+            originalUrl: photo.originalUrl,
             width: photo.width,
-            height: photo.height
+            height: photo.height,
+            jobId: photo.jobId,
+            exifJson: photo.exifJson,
+            calibrationPixelsPerMeter: photo.calibrationPixelsPerMeter,
+            calibrationMetaJson: photo.calibrationMetaJson,
+            createdAt: photo.createdAt
           },
           photoId,
           jobId,
@@ -249,6 +249,7 @@ export const useEditorStore = create<EditorSlice>()(
       // Create a temporary photo object for the uploaded image
       const tempPhoto: Photo = {
         id: 'temp-' + Date.now(),
+        jobId: 'temp-job',
         originalUrl: imageUrl,
         width: dimensions.width,
         height: dimensions.height,
