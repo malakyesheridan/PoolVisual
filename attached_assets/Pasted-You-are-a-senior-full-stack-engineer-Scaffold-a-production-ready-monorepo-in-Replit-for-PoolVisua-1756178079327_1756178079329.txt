@@ -1,0 +1,314 @@
+You are a senior full-stack engineer. Scaffold a production-ready monorepo in Replit for **PoolVisual Quotes** — a white-label app tailored to pool renovations that lets trades upload a photo, visually swap materials (coping, waterline tiles, interior finishes, paving, fencing), and generate itemized quotes based on measured masks. Build it to Apple/Tesla/Microsoft quality: world-class UX polish, reliability, and codebase hygiene. 80–90% of the core must be reusable for other trades.
+
+==============================================================================
+TECH & ARCHITECTURE
+==============================================================================
+- Package manager: pnpm workspaces
+- Monorepo:
+  - /apps/frontend  → React + Vite + TypeScript + TailwindCSS + Zustand + react-router + Radix Primitives
+  - /apps/backend   → Fastify (TypeScript) + Zod validation + Supabase server client (Auth/Postgres/Storage)
+  - /packages/ui    → Shared UI primitives with Tailwind Variants
+  - /packages/types → Shared Zod schemas + TS types
+- Canvas: Konva.js for layers/masking; small WebGL homography util for perspective warps
+- Image export/compositing: **sharp** on server; long-running jobs via **BullMQ** (Redis) or **pg-boss** (Postgres) worker
+- Storage: Supabase Storage (CDN backed)
+- Auth: Supabase Auth (email magic link + OAuth), JWT w/ org role claims
+- Emails: Resend (transactional)
+- Payments: Stripe (checkout) for **deposit %** on quote acceptance; idempotent webhooks
+- Analytics & reliability: PostHog (product analytics) + Sentry (error tracking)
+- Logging & health: pino logs, /health endpoint (DB + Storage + Queue checks)
+- CI/CD: GitHub Actions (lint, typecheck, test, build); deploy to Fly.io/Render (infra scripts included)
+- Security: Row Level Security (RLS) everywhere; signed URLs for assets; audit logs; rate limiting; input validation w/ Zod
+
+==============================================================================
+DESIGN SYSTEM (WORLD-CLASS POLISH)
+==============================================================================
+- Tokens:
+  - Typography: Inter + system fallback; weights 400/500/600; fluid type scale
+  - Spacing: 4px scale; radii 4/8/12/24; elevation shadows (xs/sm/md/lg)
+  - Color: neutral base; brand accent from org settings; light/dark modes
+- Micro-interactions:
+  - Smooth canvas zoom/pan with inertia
+  - Undo/redo stack (masks, transforms, material changes)
+  - Skeleton states over spinners; optimistic UI for minor ops
+  - Before/After **slider** with 60fps transform
+- Accessibility:
+  - WCAG 2.1 AA, ARIA on all canvas tools, keyboard shortcuts (tool switch, undo, zoom, pan)
+- Internationalization hooks:
+  - Currency formatting (AUD default), tax % configurable per org, locale-aware numbers/dates
+
+==============================================================================
+POOL RENOVATION — DOMAIN REQUIREMENTS
+==============================================================================
+MATERIAL CATEGORIES (sidebar)
+- Coping stones (travertine, granite, porcelain) → unit: "lm"
+- Waterline tiles (glass mosaics, ceramic) → unit: "m2" (band area = perimeter × band_height_m)
+- Interior finishes (quartz, pebblecrete, vinyl, fiberglass gelcoat color) → unit: "m2"
+- Surround paving/decking (stone, concrete, timber, composite) → unit: "m2"
+- Fencing (frameless glass, aluminium) → unit: "lm"
+
+MASK TYPES & MEASUREMENTS
+- Area masks (polygon with optional holes) → compute m² via calibration
+- Linear masks (polyline for edges) → compute lm via calibration
+- Waterline band: set band_height_m; billable area = perimeter_m × band_height_m
+
+CALIBRATION
+- Draw reference line on photo; enter real length (meters). Persist pixels_per_meter and endpoints. Show live m²/lm while drawing masks.
+
+QUOTING RULES
+- Material lines: qty from mask (area/linear) × (1 + wastage%)
+- Labor lines: rule presets by category (flat, per_m2, per_lm, tiered w/ thresholds)
+- Margin: default by category; override per item. Unit price can be cost×(1+margin) or manual
+- Taxes: org.tax_rate (default AU 10%)
+- Validity: org.validity_days default 30
+- Deposit: org.deposit_default_pct for Stripe checkout
+
+DELIVERABLES
+- Branded PDF with Before/After imagery, items, totals, terms, deposit link
+- Public share link (tokenized): view Before/After slider; Accept / Decline / Pay Deposit
+- Audit trail: store photo, masks, chosen materials, settings used for quote
+
+==============================================================================
+DATABASE (SUPABASE POSTGRES) — SCHEMA (SQL OUTLINE) & RLS
+==============================================================================
+Tables (include PKs, FKs, indexes, created_at defaults):
+- orgs(id uuid, name, logo_url, abn, contact_email, contact_phone, address, brand_colors jsonb, created_at)
+- org_members(id uuid, org_id fk, user_id uuid, role enum['owner','estimator','field-tech','viewer'], created_at)
+- settings(org_id fk unique, currency_code default 'AUD', tax_rate numeric default 0.10, deposit_default_pct numeric default 0.3, validity_days int default 30, pdf_terms text)
+- materials(id uuid, org_id fk nullable for global, name, sku, category enum['coping','waterline_tile','interior','paving','fencing'], unit enum['m2','lm','each'], cost numeric, price numeric, default_wastage_pct numeric, default_margin_pct numeric, texture_url text, thumbnail_url text, notes text, is_active boolean default true, created_at)
+- labor_rules(id uuid, org_id fk, category text, name text, rule_type enum['flat','per_m2','per_lm','tiered'], base_amount numeric, rate numeric, tiers_json jsonb, is_default boolean default false, created_at)
+- jobs(id uuid, org_id fk, client_name, client_phone, client_email, address, status enum['new','estimating','sent','accepted','declined','scheduled','completed'] default 'new', created_by fk->org_members.id, created_at)
+- photos(id uuid, job_id fk, original_url, width int, height int, exif_json jsonb, calibration_pixels_per_meter numeric, calibration_meta_json jsonb, created_at)
+- masks(id uuid, photo_id fk, type enum['area','linear','waterline_band'], path_json jsonb, band_height_m numeric, area_m2 numeric, perimeter_m numeric, material_id fk->materials.id nullable, created_by fk->org_members.id, created_at)
+- quotes(id uuid, job_id fk, status enum['draft','sent','accepted','declined'] default 'draft', subtotal numeric, gst numeric, total numeric, deposit_pct numeric, pdf_url text, public_token text unique, stripe_payment_intent_id text, validity_days int default 30, created_at, updated_at)
+- quote_items(id uuid, quote_id fk, kind enum['material','labor','adjustment'], material_id fk nullable, labor_rule_id fk nullable, description text, unit text, qty numeric, unit_price numeric, line_total numeric, calc_meta_json jsonb, created_at)
+- public_links(id uuid, quote_id fk, token text unique, expires_at timestamptz, created_at)
+- notifications(id uuid, user_id uuid, type text, payload_json jsonb, read_at timestamptz, created_at)
+- audit_logs(id uuid, org_id fk, user_id uuid, action text, entity text, payload_json jsonb, created_at)
+- webhook_dedupe(id text pk, created_at) -- for Stripe idempotency
+
+RLS: enable on all org-scoped tables; policies so members can CRUD rows where **org_id in (their orgs)**. Public share endpoints query via backend only; no direct anon selects. Add indexes on (org_id), (job_id), (quote_id), (photo_id), plus GIN on jsonb fields as needed.
+
+==============================================================================
+BACKEND (FASTIFY + ZOD) — ENDPOINTS
+==============================================================================
+Auth/Org
+- POST /api/orgs                                 → create org
+- POST /api/orgs/:id/invite                      → invite user (role)
+- GET  /api/me/orgs                              → list orgs for current user
+- GET  /health                                   → {db:true, storage:true, queue:true}
+
+Settings
+- GET  /api/settings/:orgId
+- PATCH /api/settings/:orgId                     → update tax_rate, currency, deposit_default_pct, validity_days, pdf_terms, brand colors
+
+Materials
+- GET    /api/materials?org_id=&category=&q=
+- POST   /api/materials
+- PATCH  /api/materials/:id
+- DELETE /api/materials/:id
+
+Jobs & Photos
+- POST /api/jobs
+- GET  /api/jobs?org_id=&status=&q=
+- GET  /api/jobs/:id
+- POST /api/photos                               → returns signed upload; on client completion, finalize row
+- POST /api/photos/:id/calibration               → {pixels_per_meter, meta}
+- GET  /api/photos/:id
+
+Masks
+- POST   /api/masks                              → create/update (id optional)
+- DELETE /api/masks/:id
+
+Quoting
+- POST /api/quotes                               → create draft
+- GET  /api/quotes/:id
+- POST /api/quotes/:id/items                     → add/update items (material/labor/adjustment)
+- POST /api/quotes/:id/recalculate               → recompute subtotal/gst/total (pure function)
+- POST /api/quotes/:id/send                      → generate PDF, email via Resend, status 'sent'
+- POST /api/quotes/:id/accept                    → create Stripe Checkout (deposit_pct × total)
+- POST /api/webhooks/stripe                      → idempotent; update status 'accepted' on payment success
+- GET  /api/share/q/:token                       → public quote view payload (before/after URLs, items)
+
+Images/Export (queue)
+- POST /api/photos/:id/composite                 → enqueue composite (before/after/side-by-side); returns job id
+- GET  /api/photos/:id/composite                 → latest composite URLs if ready
+
+AI Stubs (feature flags OFF by default)
+- POST /api/ai/segment                           → rough mask (stub)
+- POST /api/ai/inpaint                           → edited image (stub)
+
+Notifications
+- GET  /api/notifications
+- POST /api/notifications/mark-read
+
+All endpoints: Zod schema validation; authorization: verify org membership; transactions for multi-write ops; consistent error shapes.
+
+==============================================================================
+FRONTEND — ROUTES & PAGES
+==============================================================================
+/login
+/org/select
+/materials                   → CRUD, texture uploads, tiled preview card with perspective knob
+/jobs                        → list, create job
+/jobs/:id                    → job overview (client info, photos, quote status)
+/jobs/:id/photo/:photoId     → **Canvas Editor**
+  - Left 70%: photo canvas with layers
+  - Right 30% Sidebar:
+    1) Calibration (draw line, enter meters)
+    2) Mask tools (Brush/Lasso, Brush size, Feather px, Add hole, Merge masks, Undo/Redo)
+    3) Mask type: Area / Linear / Waterline band (band height m)
+    4) Material picker: tabs (coping / waterline_tile / interior / paving / fencing), search, thumbnails
+    5) Material controls: repeat scale, rotation, homography 4-corner handles, brightness/contrast sliders
+    6) Metrics panel: area m², perimeter m, band area m², effective qty with wastage
+    7) “Add to Quote” button → creates/updates quote item
+/quotes/:id                  → editable table (qty, unit price, wastage, margin), sticky totals, deposit %, “Preview PDF”, “Send”
+/share/q/:token              → public client view: before/after **slider**, items, Accept/Pay/Request Change
+/settings                    → tax rate, currency, default deposit %, validity days, brand colors, PDF terms
+
+==============================================================================
+QUANTITY & QUOTE CALCULATIONS (WITH TESTS)
+==============================================================================
+- Area (m²): polygon_area_px / (pixels_per_meter^2). Support holes. Use robust shoelace algorithm; unit tests with edge cases.
+- Perimeter (m): polyline_length_px / pixels_per_meter.
+- Waterline band (m²): perimeter_m × band_height_m.
+- Wastage: qty_effective = qty × (1 + wastage_pct/100).
+- Labor calculus:
+  - flat: base_amount
+  - per_m2: base_amount + rate × area_m2
+  - per_lm: base_amount + rate × perimeter_m
+  - tiered: iterate tiers_json thresholds in order; blended total. Persist breakdown in calc_meta_json.
+- Margin & pricing: if cost present and margin% set → unit_price = round(cost × (1+margin), 2). Allow manual override; record derivation in calc_meta_json.
+- GST: gst = round(subtotal × tax_rate, 2). total = subtotal + gst.
+- Rounding: consistent bankers’ rounding to 2dp; test coverage >90% for math.
+
+==============================================================================
+IMAGE PIPELINE
+==============================================================================
+- Client:
+  - Pre-upload compression to <5MB via canvas; EXIF stripped; orientation normalized
+  - IndexedDB cache of textures for snappy sidebar previews
+- Server:
+  - Vector path → raster mask PNG (utility)
+  - sharp composite steps:
+    1) Load base photo
+    2) Render material texture: repeat/scale/rotate; apply homography (approx via 4-point warp)
+    3) Clip by mask (alpha)
+    4) Adjust brightness/contrast
+    5) Merge layer with feathered edge
+  - Output: before.jpg, after.jpg, side-by-side.jpg; store URLs; queue runs in background
+  - Endpoint returns job status; polling or subscribe via SSE (optional)
+
+==============================================================================
+PDF GENERATION (SERVER, PDFKit or jsPDF)
+==============================================================================
+- Cover: Org logo, Job, Client, Address, Date, Quote #, Validity
+- Visuals: Before and After (side-by-side)
+- Items table: Description, Qty, Unit, Unit Price, Line Total, Notes
+- Totals: Subtotal, GST (org.tax_rate), Total, Deposit required
+- Terms: validity, exclusions (e.g., no structural repairs, subterranean issues), warranty, payment schedule (deposit %, progress, final)
+- Footer: ABN, license #, contact
+- Save pdf_url; attach small thumbnail for emails
+
+==============================================================================
+SEED DATA (FOR DEMO)
+==============================================================================
+- Org: "Perth Pool Renovations" with brand colors
+- Users: owner (seed login instructions)
+- Materials (example placeholders):
+  - Coping: "Travertine Tumbled 406×610×30", unit lm, price 120, wastage 8%
+  - Waterline: "Glass Mosaic 25×25 Blue", unit m2, price 160, wastage 10%
+  - Interior: "Pebblecrete Quartz Blue", unit m2, price 95, wastage 7%
+  - Paving: "Exposed Aggregate Concrete", unit m2, price 110, wastage 10%
+  - Fencing: "Frameless Glass 12mm", unit lm, price 380, wastage 5%
+- Labor rules:
+  - Drain & Refill (flat): 450
+  - Interior Prep (per_m2): base 0, rate 25
+  - Coping Install (per_lm): base 0, rate 40
+  - Paving Install (tiered): [{threshold:30,rate:55},{threshold:60,rate:50},{threshold:9999,rate:45}]
+- Demo job: 1 photo bundled, pre-calibrated 1.00m reference; 2 demo masks pre-drawn (coping + interior) ready to “Add to Quote”
+
+==============================================================================
+ENV CONFIG (.env.example)
+==============================================================================
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+RESEND_API_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+POSTHOG_KEY=
+POSTHOG_HOST=https://us.posthog.com
+SENTRY_DSN=
+APP_BASE_URL=http://localhost:5173
+API_BASE_URL=http://localhost:3000
+JWT_SECRET=change_me
+DEFAULT_CURRENCY=AUD
+DEFAULT_TAX_RATE=0.10
+QUEUE_DRIVER=pgboss   # or 'bullmq'
+REDIS_URL=            # if bullmq
+DATABASE_URL=         # if pgboss needs raw connection
+
+==============================================================================
+TESTING & QUALITY
+==============================================================================
+- Unit (Vitest): polygon area (holes), polyline length, waterline band area, tiered labor, GST rounding, price derivation
+- E2E (Playwright): upload→calibrate→mask→apply material→add to quote→pdf→send→share→accept & pay deposit
+- Storybook: components incl. Canvas controls; dark/light variants
+- Linting/format: ESLint + Prettier; TypeScript "strict": true
+- Git hooks: pre-commit (lint, typecheck); pre-push (tests)
+
+==============================================================================
+NPM SCRIPTS
+==============================================================================
+root:
+  - "dev": concurrently "pnpm --filter @pvq/backend dev" "pnpm --filter @pvq/frontend dev" "pnpm --filter @pvq/worker dev"
+  - "build": turbo run build
+  - "lint": eslint .
+  - "test": vitest run
+backend:
+  - "dev": ts-node-dev src/index.ts
+  - "migrate": apply SQL schema
+  - "seed": seed demo org/materials/rules/job/photo
+  - "start": node dist/index.js
+worker:
+  - "dev": ts-node-dev src/worker.ts
+  - "start": node dist/worker.js
+frontend:
+  - "dev": vite
+  - "build": vite build
+  - "preview": vite preview
+
+==============================================================================
+OBSERVABILITY & RELIABILITY
+==============================================================================
+- /health returns: { db:true/false, storage:true/false, queue:true/false, version }
+- Structured logs with request ids; error boundaries on frontend; global API error handler; Sentry capture for unexpected exceptions
+- Stripe webhook idempotency: store event.id in webhook_dedupe; reject repeats
+- DB transactions for multi-write flows (quote recalculation + items)
+
+==============================================================================
+DELIVERABLES
+==============================================================================
+- Fully working monorepo with:
+  - Supabase schema SQL + RLS policies + seed script
+  - Fastify API (all endpoints above) with Zod, JWT auth, org checks
+  - Background **worker** for composites & email sends
+  - React editor: calibration, masking, material application, live metrics, quote integration
+  - PDF export & email send via Resend
+  - Public share view with **Before/After slider** and Stripe deposit
+  - Settings page (tax, currency, deposit, validity, brand colors, PDF terms)
+- Demo command: `pnpm run build && pnpm run seed && pnpm run dev` → open seeded job
+- Documentation:
+  - README (setup, env, run)
+  - DEV_GUIDE.md (code style, branching, testing)
+  - UX_GUIDE.md (design tokens, motion rules)
+  - DEPLOY.md (Fly.io/Render, webhooks, secrets)
+
+==============================================================================
+EXTENSIBILITY FOR OTHER TRADES
+==============================================================================
+- Category registry: plug new categories (roofing, tiling, rendering) with default units & formulas
+- AI segmentation/inpaint hooks behind feature flags
+- CRM/webhooks: stubs for GHL/ServiceM8/QuickBooks/Xero sync
+- Multitenancy by org_id; brand & PDF templates per org
