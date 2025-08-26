@@ -1,0 +1,52 @@
+You are a senior front-end engineer. Build a production-ready image editor in Next.js + TypeScript using **Fabric.js** (or PixiJS if you prefer for performance) with the following MUST-HAVES. Write working code (no placeholders), wire to my existing Supabase upload endpoint if present, otherwise stub with local URLs.
+
+GOALS
+- Low-latency editing with large images.
+- Non-destructive masks and materials.
+- Reliable undo/redo with command pattern + snapshots.
+- Clean, testable architecture.
+
+IMPLEMENT
+1) Core editor component <CanvasEditor/>:
+   - Load image (from file input + drag/drop).
+   - Zoom/pan, selection bounds with handles, rotate with 15° snap, Shift to constrain aspect.
+   - Mask tool: brush with adjustable size/hardness; layer-specific mask using Fabric’s clipPath or a dedicated mask layer; implement eraser via destination-out equivalent (non-destructive).
+   - Materials panel: apply material as a top adjustment layer (shader-like effect or blend mode) with parameters (e.g., tint/grain/texture). Swapping material updates live without baking.
+   - Export: PNG (transparent) and PDF at chosen DPI via offscreen render; ensure export matches on-screen.
+
+2) History system:
+   - Command pattern: every action registers a command with do/undo.
+   - Merge policy: brush strokes within 500ms merge.
+   - Snapshot every 20 commands (bitmap snapshot of layer stack) to cap replay time; allow fast seek on undo.
+   - Persist history per document in IndexedDB; on reload, restore document and history.
+
+3) Performance:
+   - OffscreenCanvas + Web Worker when available for heavy ops; fall back to main thread if not.
+   - RequestAnimationFrame rendering loop; throttle expensive recomputations; batch Fabric updates where possible.
+   - Target 60 FPS for small scenes; never drop below 30 FPS on large images.
+
+4) UI/UX:
+   - Toolbar (Select, Brush, Eraser, Mask Select, Hand, Text).
+   - Sidebar tabs: Layers, Materials, History.
+   - Status bar with zoom %, current tool, x/y, and FPS meter (basic).
+   - Keyboard shortcuts: V (select), B (brush), E (eraser), H (hand), Cmd/Ctrl+Z/Y (undo/redo), +/- (zoom).
+
+5) Uploads:
+   - “Upload Image” button + drag/drop. Use Supabase signed URL flow if NEXT_PUBLIC_SUPABASE_URL env is present; otherwise stub local.
+   - Progress bar, cancel, retry logic.
+
+6) Tests:
+   - Vitest: history merge logic, snapshot seek time <150ms for 100 commands (mocked).
+   - Playwright smoke: load image → draw mask 3s → apply material → undo/redo 20x → export PNG; assert file present and size > 0.
+
+7) Error handling:
+   - All actions wrapped with try/catch and a centralized error boundary (use react-error-boundary).
+   - Show toasts on recoverable errors; never hard crash the UI.
+
+8) Device support:
+   - Pointer + touch gestures; pinch-zoom on touch; passive listeners to prevent scroll conflicts.
+
+Provide:
+- Components: CanvasEditor, Toolbar, Sidebar(Layers/Materials/History), UploadButton.
+- Libs: history/Command.ts, store/editorStore.ts (Zustand), utils/workerBridge.ts, utils/export.ts.
+- Docs in README: performance budgets, known limitations, how to add new tools.
