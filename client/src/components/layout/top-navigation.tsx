@@ -50,41 +50,49 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
         </div>
         
         <nav className="hidden md:flex space-x-1" data-testid="nav-main">
-          <Link href="/dashboard">
-            <a className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+          <Link 
+            href="/dashboard"
+            className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               currentPage === 'dashboard' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-            }`} data-testid="link-dashboard">
-              Jobs
-            </a>
+            }`} 
+            data-testid="link-dashboard"
+          >
+            Jobs
           </Link>
-          <Link href="/canvas-editor">
-            <a className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+          <Link 
+            href="/canvas-editor"
+            className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               currentPage === 'canvas-editor' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-            }`} data-testid="link-canvas-editor">
-              Canvas Editor
-            </a>
+            }`} 
+            data-testid="link-canvas-editor"
+          >
+            Canvas Editor
           </Link>
-          <Link href="/materials">
-            <a className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+          <Link 
+            href="/materials"
+            className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               currentPage === 'materials' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-            }`} data-testid="link-materials">
-              Materials
-            </a>
+            }`} 
+            data-testid="link-materials"
+          >
+            Materials
           </Link>
-          <Link href="/quotes">
-            <a className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+          <Link 
+            href="/quotes"
+            className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
               currentPage === 'quotes' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
-            }`} data-testid="link-quotes">
-              Quotes
-            </a>
+            }`} 
+            data-testid="link-quotes"
+          >
+            Quotes
           </Link>
         </nav>
       </div>
@@ -125,8 +133,8 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem asChild>
-                <Link href="/settings">
-                  <a className="w-full" data-testid="link-settings">Settings</a>
+                <Link href="/settings" className="w-full" data-testid="link-settings">
+                  Settings
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={logout} data-testid="button-logout">

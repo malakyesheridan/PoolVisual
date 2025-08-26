@@ -176,7 +176,7 @@ export default function Materials() {
               <SelectValue placeholder="All Categories" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Categories</SelectItem>
+              <SelectItem value="all">All Categories</SelectItem>
               {materialCategories.map((category) => (
                 <SelectItem key={category.value} value={category.value}>
                   {category.label}

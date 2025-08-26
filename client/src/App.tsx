@@ -57,6 +57,12 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
+      <Route path="/jobs/new">
+        <ProtectedRoute>
+          <Jobs />
+        </ProtectedRoute>
+      </Route>
+      
       <Route path="/jobs/:id">
         <ProtectedRoute>
           <JobDetail />
