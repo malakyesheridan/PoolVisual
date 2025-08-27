@@ -48,6 +48,7 @@ export interface EditorSlice {
   commitPath(): void;
   cancelPath(): void;
   cancelAllTransient(): void;
+  deleteMask(id: string): void;
 
   // Legacy support
   photo: Photo | null;
@@ -152,6 +153,11 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   },
   cancelPath(){ set(s=>({...s, transient:undefined })); },
   cancelAllTransient(){ set(s=>({...s, transient:undefined })); },
+
+  deleteMask(id: string) {
+    set(s=>({...s, masks: s.masks.filter(m => m.id !== id)}));
+    console.info('[Mask] deleted', id);
+  },
 
   // UI methods
   setZoom(zoom: number) {

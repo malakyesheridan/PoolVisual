@@ -23,7 +23,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ materials, className }: SidebarProps) {
-  const { masks, calibration } = useEditorStore();
+  const { masks, calibration, deleteMask } = useEditorStore();
 
   const getMaskIcon = (type: string) => {
     switch (type) {
@@ -102,6 +102,7 @@ export function Sidebar({ materials, className }: SidebarProps) {
                       size="sm"
                       className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
                       title="Delete mask"
+                      onClick={() => deleteMask(mask.id)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
