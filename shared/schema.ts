@@ -338,6 +338,9 @@ export interface EditorState {
   brushSize: number;
   selectedMaskId?: string;
   calibration?: CalibrationData;
+  calibrationV2?: Calibration;
+  calState: CalState;
+  calTemp: CalibrationTemp;
   mode: ViewMode;
   isDirty: boolean;
   lastSaved?: string;

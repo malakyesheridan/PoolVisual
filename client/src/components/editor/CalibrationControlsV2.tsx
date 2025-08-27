@@ -26,7 +26,7 @@ export function CalibrationControlsV2() {
   const { editorState, startCalibration, placeCalPoint, setCalMeters, commitCalSample, 
           deleteCalSample, cancelCalibration, persistCalibration, photoId } = store;
   
-  const { calibrationV2, calState, calTemp } = editorState;
+  const { calibrationV2, calState, calTemp } = editorState || {};
   
   const isCalibrated = calibrationV2 && calibrationV2.samples.length > 0;
   const confidence = calibrationV2 ? getConfidenceLevel(calibrationV2.stdevPct) : 'low';

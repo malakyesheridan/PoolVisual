@@ -1,0 +1,191 @@
+You are a senior engineer. The editor’s calibration works, but other tools stopped interacting. Refactor input handling so **one Input Router** owns Stage events and dispatches to the active tool (Calibration or Area/Linear/Waterline/Eraser/Hand). Keep TypeScript strict; Konva; Zustand. No regressions; tests included.
+
+==============================================================================
+GOAL
+==============================================================================
+- Restore Area/Linear/Waterline/Eraser/Hand functionality **while** keeping the new calibration flow.
+- Prevent tools from “stealing” events; only the active tool consumes them.
+- Stage is draggable **only** in Hand mode.
+- Clean, testable architecture: Tool Controllers + Input Router.
+
+==============================================================================
+ARCH CHANGES
+==============================================================================
+Create `/apps/frontend/src/editor/input/InputRouter.ts` and Tool controllers:
+
+```ts
+// ToolController contract
+export interface ToolController {
+  name: 'calibration'|'area'|'linear'|'waterline'|'eraser'|'hand';
+  onPointerDown(pt: {x:number;y:number}, e: Konva.KonvaEventObject<any>): boolean; // return true if consumed
+  onPointerMove(pt: {x:number;y:number}, e: Konva.KonvaEventObject<any>): boolean;
+  onPointerUp(pt: {x:number;y:number}, e: Konva.KonvaEventObject<any>): boolean;
+  onCancel?(): void;            // Esc
+  onKey?(code: string, e: KeyboardEvent): boolean;
+  getCursor?(): string;         // CSS cursor
+}
+
+export type ToolName = ToolController['name'];
+
+export class InputRouter {
+  constructor(private getActive: () => ToolName, private controllers: Record<ToolName, ToolController>) {}
+  handleDown(stage: Konva.Stage, e: Konva.KonvaEventObject<any>) { const pt = getStagePoint(stage); if(!pt) return;
+    const tool = this.controllers[this.getActive()];
+    if (tool?.onPointerDown(pt, e)) { e.cancelBubble = true; }
+  }
+  handleMove(stage: Konva.Stage, e: Konva.KonvaEventObject<any>) { const pt = getStagePoint(stage); if(!pt) return;
+    const tool = this.controllers[this.getActive()];
+    if (tool?.onPointerMove(pt, e)) { e.cancelBubble = true; }
+  }
+  handleUp(stage: Konva.Stage, e: Konva.KonvaEventObject<any>) { const pt = getStagePoint(stage); if(!pt) return;
+    const tool = this.controllers[this.getActive()];
+    if (tool?.onPointerUp(pt, e)) { e.cancelBubble = true; }
+  }
+}
+
+export function getStagePoint(stage: Konva.Stage) {
+  const p = stage.getPointerPosition(); if (!p) return null;
+  const t = stage.getAbsoluteTransform().copy().invert();
+  return t.point(p);
+}
+Implement controllers in /apps/frontend/src/editor/input/controllers/:
+
+CalibrationController.ts (reuse existing calibration logic: placingA → placingB → lengthEntry → commit)
+
+AreaController.ts (freehand polygon with smoothing, double-click/Enter to close)
+
+LinearController.ts (polyline)
+
+WaterlineController.ts (polyline + band height; visuals)
+
+EraserController.ts (hit-test and delete or pop last segment)
+
+HandController.ts (no drawing; router sets stage draggable)
+
+Each controller uses Zustand actions already present (editorSlice): startPath/addPoint/commitPath/etc. Return true when it consumes the event; false otherwise.
+
+==============================================================================
+WIRE THE ROUTER ON THE STAGE
+Edit CanvasStage.tsx:
+
+tsx
+Copy
+Edit
+const stageRef = useRef<Konva.Stage>(null);
+const activeTool = useStore(s => {
+  // If calibration state not 'idle', force tool='calibration'
+  return s.calState !== 'idle' ? 'calibration' : s.activeTool;
+});
+const router = useMemo(() => new InputRouter(() => activeTool, {
+  calibration: new CalibrationController(useStore),
+  area:        new AreaController(useStore),
+  linear:      new LinearController(useStore),
+  waterline:   new WaterlineController(useStore),
+  eraser:      new EraserController(useStore),
+  hand:        new HandController(useStore),
+}), [activeTool]);
+
+const setStageDraggable = useCallback((stage: Konva.Stage | null, tool: string) => {
+  if (!stage) return;
+  stage.draggable(tool === 'hand'); // only hand drags
+}, []);
+
+useEffect(() => setStageDraggable(stageRef.current, activeTool), [activeTool]);
+
+<Stage
+  ref={stageRef}
+  width={containerW}
+  height={containerH}
+  onMouseDown={e => router.handleDown(stageRef.current!, e)}
+  onMouseMove={e => router.handleMove(stageRef.current!, e)}
+  onMouseUp={e => router.handleUp(stageRef.current!, e)}
+  onTouchStart={e => router.handleDown(stageRef.current!, e)}
+  onTouchMove={e => router.handleMove(stageRef.current!, e)}
+  onTouchEnd={e => router.handleUp(stageRef.current!, e)}
+/>
+Notes:
+
+Remove prior ad-hoc isCalOn branching & global e.cancelBubble = true scattered in code.
+
+Ensure only the router binds to Stage events (no duplicate handlers).
+
+==============================================================================
+ZUSTAND STORE GUARANTEES
+In editorSlice.ts:
+
+Keep activeTool: 'hand'|'area'|'linear'|'waterline'|'eraser'.
+
+When calState transitions from anything → 'idle', do not overwrite activeTool.
+
+Add cancelAllTransient() that:
+
+ends any drawing in progress for non-active tools,
+
+clears hover highlights,
+
+is called when switching tools or entering calibration.
+
+Keyboard map (unchanged):
+
+A/L/W/E/H switch tools, C start calibration, Esc calls onCancel() of the active controller; if calibration → cancelCalibration().
+
+==============================================================================
+LAYER ORDER & HIT TESTING
+<Layer> order in CanvasStage:
+
+BackgroundImageLayer (listening: false)
+
+MaskDrawingLayer (active tool path)
+
+MasksLayer (committed shapes; listening: true for selection)
+
+CalibrationLayer (anchors + dashed line; listening: true)
+
+HUDLayer (cursor, guides; listening: false)
+
+CSS: ensure no DOM overlay sits above the Stage:
+
+css
+Copy
+Edit
+.editor-overlay { pointer-events: none; }
+.editor-overlay [data-interactive="true"] { pointer-events: auto; }
+==============================================================================
+BUG TRAPS TO FIX
+Don’t keep Stage draggable when not in Hand.
+
+If a controller starts drawing, it should set a drawing=true flag in store; others must be idle.
+
+On tool switch, commit or cancel the previous controller’s transient path.
+
+Don’t call stopPropagation() on Konva shapes inside layers; routing happens at Stage.
+
+==============================================================================
+TESTS (Playwright)
+Start Calibration (C) → place A/B → enter meters → Calibrated pill shows; exit to idle.
+
+Switch to Area (A) → draw polygon → double-click to close → shape appears.
+
+Switch to Linear (L) → draw polyline; move points; metrics update.
+
+Switch to Hand (H) → Stage pans; back to Area (A) → Stage no longer draggable; drawing works.
+
+Press Esc while drawing → cancels current path; other tools still work.
+
+Reload → masks & calibration persist.
+
+Vitest:
+
+Router picks Calibration when calState!='idle'.
+
+Controllers return true on consume; router sets cancelBubble only then.
+
+==============================================================================
+ACCEPTANCE CRITERIA
+Calibration works and other tools work immediately after (no reload).
+
+Only one tool consumes input at a time; switching tools never leaves the Stage unresponsive.
+
+Stage pans only in Hand mode.
+
+No console errors/warnings during draw, pan, or calibration.

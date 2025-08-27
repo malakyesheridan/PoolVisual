@@ -170,6 +170,9 @@ export interface EditorSliceActions {
   getRedoAction: () => string | null;
   resetEditor: () => void;
   
+  // Tool coordination
+  cancelAllTransient: () => void;
+  
   // Composites
   generateComposite: (type: 'after' | 'sideBySide') => Promise<void>;
   clearComposites: () => void;
@@ -957,6 +960,21 @@ export const useEditorStore = create<EditorSlice>()(
 
     setError: (error: string | null) => {
       set({ error });
+    },
+
+    cancelAllTransient: () => {
+      const state = get();
+      
+      // Cancel any ongoing drawing
+      if (state.currentDrawing) {
+        set({
+          currentDrawing: null,
+          isDirty: true
+        });
+      }
+      
+      // Clear any hover highlights or temporary states
+      // This ensures clean transitions between tools
     }
   }))
 );
