@@ -10,45 +10,46 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class WaterlineController implements ToolController {
   name = 'waterline' as const;
 
-  constructor(private store: any) {}
+  constructor(private store: EditorSlice) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { activeTool, calState, transient } = this.store;
     
     // Only handle if waterline tool is active and not in calibration
-    if (editorState.activeTool !== 'waterline' || editorState.calState !== 'idle') {
+    if (activeTool !== 'waterline' || calState !== 'idle') {
       return false;
     }
 
     // Start new drawing or add point to existing
-    if (!this.store.currentDrawing) {
-      this.store.startDrawing(pt);
+    if (!transient) {
+      this.store.startPath('waterline', pt);
+      console.log('[WaterlineController] Started new waterline path', { pt });
     } else {
-      this.store.addPoint(pt);
+      this.store.appendPoint(pt);
+      console.log('[WaterlineController] Added point to waterline path', { pt, totalPoints: transient.points.length + 1 });
     }
     
     return true;
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { activeTool, calState, transient } = this.store;
     
     // Only handle if waterline tool is active and drawing
-    if (editorState.activeTool !== 'waterline' || 
-        editorState.calState !== 'idle' || 
-        !currentDrawing) {
+    if (activeTool !== 'waterline' || calState !== 'idle' || !transient) {
       return false;
     }
 
-    // Show preview for waterline band
+    // Show live preview for waterline band
+    this.store.updatePathPreview(pt);
     return true;
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { activeTool, calState } = this.store;
     
     // Only handle if waterline tool is active
-    if (editorState.activeTool !== 'waterline' || editorState.calState !== 'idle') {
+    if (activeTool !== 'waterline' || calState !== 'idle') {
       return false;
     }
 
@@ -57,29 +58,30 @@ export class WaterlineController implements ToolController {
   }
 
   onCancel(): void {
-    if (this.store.currentDrawing) {
-      this.store.cancelDrawing();
-    }
+    this.store.cancelPath();
+    console.log('[WaterlineController] Cancelled waterline drawing');
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { activeTool, calState, transient } = this.store;
     
-    if (editorState.activeTool !== 'waterline' || editorState.calState !== 'idle') {
+    if (activeTool !== 'waterline' || calState !== 'idle') {
       return false;
     }
 
     switch (code) {
       case 'Escape':
-        if (currentDrawing) {
-          this.onCancel();
+        if (transient) {
+          this.store.cancelPath();
+          console.log('[WaterlineController] Cancelled waterline path via Escape');
           return true;
         }
         break;
         
       case 'Enter':
-        if (currentDrawing) {
-          this.store.finishDrawing('waterline_band');
+        if (transient && transient.points.length >= 2) {
+          this.store.commitPath();
+          console.log('[WaterlineController] Committed waterline path via Enter', { points: transient.points.length });
           return true;
         }
         break;

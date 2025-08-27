@@ -1,6 +1,7 @@
 /**
  * Calibration Tool Controller
- * Handles the calibration state machine: placingA → placingB → lengthEntry → ready
+ * Handles the calibration state machine: placingA → placingB → lengthEntry → idle
+ * Fixed to work with the new bulletproof store structure
  */
 
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -10,23 +11,24 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class CalibrationController implements ToolController {
   name = 'calibration' as const;
 
-  constructor(private store: any) {}
+  constructor(private store: EditorSlice) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { calState } = this.store;
     
-    // F. CONTROLLER CONTRACTS - Only handle during active calibration states
-    const isActive = editorState?.calState === 'placingA' || 
-                    editorState?.calState === 'placingB' || 
-                    editorState?.calState === 'lengthEntry';
+    // Only handle during active calibration states
+    const isActive = calState === 'placingA' || 
+                    calState === 'placingB' || 
+                    calState === 'lengthEntry';
     
     if (!isActive) {
       return false;
     }
 
     // Place calibration points
-    if (editorState.calState === 'placingA' || editorState.calState === 'placingB') {
+    if (calState === 'placingA' || calState === 'placingB') {
       this.store.placeCalPoint(pt);
+      console.log('[CalibrationController] Placed point', { calState, pt });
       return true;
     }
 
@@ -34,10 +36,10 @@ export class CalibrationController implements ToolController {
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { calState } = this.store;
     
     // Show preview line when placing second point
-    if (editorState?.calState === 'placingB') {
+    if (calState === 'placingB') {
       this.store.updateCalPreview(pt);
       return true;
     }
@@ -46,36 +48,36 @@ export class CalibrationController implements ToolController {
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { calState } = this.store;
     
-    // Return true only during active calibration states
-    const isActive = editorState?.calState === 'placingA' || 
-                    editorState?.calState === 'placingB' || 
-                    editorState?.calState === 'lengthEntry';
+    // Return true only during active calibration states to consume the event
+    const isActive = calState === 'placingA' || 
+                    calState === 'placingB' || 
+                    calState === 'lengthEntry';
     
     return isActive;
   }
 
   onCancel(): void {
     this.store.cancelCalibration();
+    console.log('[CalibrationController] Cancelled calibration');
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState } = this.store;
+    const { calState, calTemp } = this.store;
     
     switch (code) {
       case 'Escape':
-        if (editorState?.calState !== 'idle' && editorState?.calState !== 'ready') {
+        if (calState !== 'idle') {
           this.onCancel();
           return true;
         }
         break;
         
       case 'Enter':
-        if (editorState?.calState === 'lengthEntry' && 
-            editorState?.calTemp?.meters && 
-            editorState.calTemp.meters > 0) {
+        if (calState === 'lengthEntry' && calTemp?.meters && calTemp.meters > 0) {
           this.store.commitCalSample();
+          console.log('[CalibrationController] Committed calibration sample');
           return true;
         }
         break;
@@ -85,9 +87,9 @@ export class CalibrationController implements ToolController {
   }
 
   getCursor(): string {
-    const { editorState } = this.store;
+    const { calState } = this.store;
     
-    switch (editorState?.calState) {
+    switch (calState) {
       case 'placingA':
       case 'placingB':
         return 'crosshair';

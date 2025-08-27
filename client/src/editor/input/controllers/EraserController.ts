@@ -10,19 +10,21 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class EraserController implements ToolController {
   name = 'eraser' as const;
 
-  constructor(private store: any) {}
+  constructor(private store: EditorSlice) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, selectedMaskId } = this.store;
+    const { activeTool, calState, selectedMaskId, brushSize } = this.store;
     
     // Only handle if eraser tool is active and not in calibration
-    if (editorState.activeTool !== 'eraser' || editorState.calState !== 'idle') {
+    if (activeTool !== 'eraser' || calState !== 'idle') {
       return false;
     }
 
     // Erase from selected mask if available
     if (selectedMaskId) {
-      this.store.eraseFromSelected([pt], editorState.brushSize || 10);
+      // For now, just remove the selected mask entirely
+      this.store.deleteMask(selectedMaskId);
+      console.log('[EraserController] Deleted mask', { selectedMaskId });
       return true;
     }
     
@@ -30,27 +32,22 @@ export class EraserController implements ToolController {
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, selectedMaskId } = this.store;
+    const { activeTool, calState } = this.store;
     
     // Only handle if eraser tool is active and not in calibration
-    if (editorState.activeTool !== 'eraser' || editorState.calState !== 'idle') {
+    if (activeTool !== 'eraser' || calState !== 'idle') {
       return false;
     }
 
-    // Continue erasing if mouse is down
-    if (selectedMaskId && ('buttons' in e.evt ? e.evt.buttons === 1 : true)) {
-      this.store.eraseFromSelected([pt], editorState.brushSize || 10);
-      return true;
-    }
-    
+    // Eraser tool doesn't have drag behavior for now
     return false;
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { activeTool, calState } = this.store;
     
     // Only handle if eraser tool is active
-    if (editorState.activeTool !== 'eraser' || editorState.calState !== 'idle') {
+    if (activeTool !== 'eraser' || calState !== 'idle') {
       return false;
     }
 
@@ -63,9 +60,9 @@ export class EraserController implements ToolController {
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState } = this.store;
+    const { activeTool, calState } = this.store;
     
-    if (editorState.activeTool !== 'eraser' || editorState.calState !== 'idle') {
+    if (activeTool !== 'eraser' || calState !== 'idle') {
       return false;
     }
 

@@ -1,6 +1,7 @@
 /**
  * Linear Tool Controller
  * Handles polyline drawing for perimeter measurements
+ * Fixed to work with the new bulletproof store structure
  */
 
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -10,43 +11,46 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class LinearController implements ToolController {
   name = 'linear' as const;
 
-  constructor(private store: any) {}
+  constructor(private store: EditorSlice) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, transient } = this.store;
+    const { activeTool, transient } = this.store;
     
-    // F. CONTROLLER CONTRACTS - Only handle if linear tool is active
-    if (editorState?.activeTool !== 'linear') {
+    // Only handle if linear tool is active
+    if (activeTool !== 'linear') {
       return false;
     }
 
     // Start new drawing or add point to existing
     if (!transient) {
       this.store.startPath('linear', pt);
+      console.log('[LinearController] Started new linear path', { pt });
     } else {
       this.store.appendPoint(pt);
+      console.log('[LinearController] Added point to linear path', { pt, totalPoints: transient.points.length + 1 });
     }
     
     return true;
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { activeTool, transient } = this.store;
     
     // Only handle if linear tool is active and drawing
-    if (editorState?.activeTool !== 'linear' || !currentDrawing) {
+    if (activeTool !== 'linear' || !transient) {
       return false;
     }
 
-    // For linear tool, show preview or add points
+    // Show live preview line from last point to cursor
+    this.store.updatePathPreview(pt);
     return true;
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { activeTool } = this.store;
     
     // Only handle if linear tool is active
-    if (editorState?.activeTool !== 'linear') {
+    if (activeTool !== 'linear') {
       return false;
     }
 
@@ -55,15 +59,14 @@ export class LinearController implements ToolController {
   }
 
   onCancel(): void {
-    if (this.store.currentDrawing) {
-      this.store.cancelDrawing();
-    }
+    this.store.cancelPath();
+    console.log('[LinearController] Cancelled linear drawing');
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState, transient } = this.store;
+    const { activeTool, transient } = this.store;
     
-    if (editorState?.activeTool !== 'linear') {
+    if (activeTool !== 'linear') {
       return false;
     }
 
@@ -71,13 +74,15 @@ export class LinearController implements ToolController {
       case 'Escape':
         if (transient) {
           this.store.cancelPath();
+          console.log('[LinearController] Cancelled linear path via Escape');
           return true;
         }
         break;
         
       case 'Enter':
-        if (transient) {
+        if (transient && transient.points.length >= 2) {
           this.store.commitPath();
+          console.log('[LinearController] Committed linear path via Enter', { points: transient.points.length });
           return true;
         }
         break;

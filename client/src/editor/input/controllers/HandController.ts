@@ -13,7 +13,7 @@ export class HandController implements ToolController {
   private isPanning = false;
   private lastPointerPosition: { x: number; y: number } | null = null;
 
-  constructor(private store: any) {}
+  constructor(private store: EditorSlice) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
     // F. CONTROLLER CONTRACTS - Hand returns false; Stage pan is handled by draggable stage

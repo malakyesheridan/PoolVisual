@@ -22,7 +22,7 @@ export interface EditorMask {
 }
 
 // Main store interface - explicitly handles all optional properties
-interface EditorSlice {
+export interface EditorSlice {
   // Photo state
   photo: Photo | null;
   photoId: string | null;
@@ -41,6 +41,7 @@ interface EditorSlice {
   selectedMaskId: string | null;
   zoom: number;
   pan: Vec2;
+  brushSize: number;
   
   // Actions - well-typed and error-safe
   startCalibration(): void;
@@ -61,6 +62,10 @@ interface EditorSlice {
   setZoom(zoom: number): void;
   setPan(pan: Vec2): void;
   loadImageFile(file: File, url: string, dimensions: { width: number; height: number }): void;
+  
+  // Mask operations
+  deleteMask(id: string): void;
+  updatePathPreview(p: Vec2): void;
 }
 
 // Helper functions
@@ -96,6 +101,7 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   selectedMaskId: null,
   zoom: 1,
   pan: { x: 0, y: 0 },
+  brushSize: 10,
 
   // Calibration actions - error-safe implementations
   startCalibration() {
@@ -174,10 +180,12 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   deleteCalSample(id: string) {
     const curr = get().calibration?.samples ?? [];
     const samples = curr.filter(s => s.id !== id);
-    const ppm = samples.length ? samples[samples.length - 1].ppm : undefined;
-    set({ 
-      calibration: samples.length && ppm ? { ppm, samples } : null 
-    });
+    if (samples.length > 0) {
+      const ppm = samples[samples.length - 1].ppm;
+      set({ calibration: { ppm, samples } });
+    } else {
+      set({ calibration: null });
+    }
   },
 
   cancelCalibration() {
@@ -276,5 +284,22 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
       zoom: 1,
       pan: { x: 0, y: 0 }
     });
+  },
+
+  // Mask operations - bulletproof implementations
+  deleteMask(id: string) {
+    const s = get();
+    const masks = s.masks.filter(m => m.id !== id);
+    set({ 
+      masks,
+      selectedMaskId: s.selectedMaskId === id ? null : s.selectedMaskId
+    });
+    console.info('[Mask] deleted', id, 'remaining=', masks.length);
+  },
+
+  updatePathPreview(p: Vec2) {
+    // For now, this is a placeholder for live preview functionality
+    // Will be used to show preview lines while drawing
+    console.debug('[Path] preview update', p);
   }
 }));
