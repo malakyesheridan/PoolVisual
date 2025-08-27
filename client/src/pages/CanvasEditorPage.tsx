@@ -141,8 +141,16 @@ export function CanvasEditorPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas Area */}
         <div className="flex-1 flex flex-col bg-white">
+          {/* Canvas */}
+          <div className="flex-1 relative bg-gray-100 overflow-auto">
+            <CanvasStage
+              className="w-full h-full min-h-0"
+              onStageRef={handleStageRef}
+            />
+          </div>
+
           {/* Canvas Header */}
-          <div className="bg-slate-50 border-b px-4 py-2 flex items-center justify-between">
+          <div className="bg-slate-50 border-t px-4 py-2 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <h2 className="text-sm font-medium text-slate-700">
                 Canvas Editor
@@ -162,14 +170,6 @@ export function CanvasEditorPage() {
                 className="text-xs"
               />
             </div>
-          </div>
-
-          {/* Canvas */}
-          <div className="flex-1 relative bg-gray-100 overflow-auto">
-            <CanvasStage
-              className="w-full h-full min-h-0"
-              onStageRef={handleStageRef}
-            />
           </div>
         </div>
 
