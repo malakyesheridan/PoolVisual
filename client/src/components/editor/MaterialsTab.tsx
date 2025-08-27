@@ -188,7 +188,7 @@ export function MaterialsTab() {
             <div className="text-sm text-slate-600">
               Selected: <span className="font-medium capitalize">{currentMask.type} mask</span>
             </div>
-            {currentMask.materialId && (
+            {(currentMask as any)?.materialId && (
               <Badge variant="outline" className="text-xs">
                 Material attached
               </Badge>

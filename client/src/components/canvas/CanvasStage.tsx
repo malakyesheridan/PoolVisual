@@ -130,6 +130,28 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           ):null}
         </Layer>
 
+        {/* Material Layer - renders textures for masks with attached materials */}
+        <Layer id="MaterialOverlay" listening={false}>
+          {masks.map((mask) => {
+            if (!mask.materialId || mask.type !== 'area') {
+              return null;
+            }
+            
+            // Simple material visualization - shows attached materials
+            return (
+              <Line
+                key={`material-${mask.id}`}
+                points={mask.path.points.flatMap(p => [p.x, p.y])}
+                fill="rgba(100, 150, 255, 0.25)"
+                stroke="rgba(100, 150, 255, 0.8)"
+                strokeWidth={1}
+                closed={true}
+                opacity={0.6}
+              />
+            );
+          })}
+        </Layer>
+
         <Layer id="Masks" listening>
           {masks.map(m =>
             m.type==='area'

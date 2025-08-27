@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +17,9 @@ import {
   Search, 
   Upload,
   Package,
-  Filter
+  Filter,
+  Image,
+  X
 } from "lucide-react";
 
 const materialCategories = [
@@ -39,6 +41,10 @@ export default function Materials() {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [texturePreview, setTexturePreview] = useState<string | null>(null);
+  const [fileKey, setFileKey] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -46,9 +52,18 @@ export default function Materials() {
     unit: '',
     cost: '',
     price: '',
-    defaultWastagePct: '10',
-    defaultMarginPct: '30',
+    wastagePct: '10',
+    marginPct: '30',
+    supplier: '',
+    color: '',
+    finish: '',
+    tileWidthMm: '',
+    tileHeightMm: '',
+    sheetWidthMm: '',
+    sheetHeightMm: '',
+    groutWidthMm: '',
     notes: '',
+    makeSeamless: true
   });
 
   const { toast } = useToast();
@@ -112,8 +127,9 @@ export default function Materials() {
       orgId: selectedOrgId,
       cost: formData.cost ? parseFloat(formData.cost) : null,
       price: formData.price ? parseFloat(formData.price) : null,
-      defaultWastagePct: parseFloat(formData.defaultWastagePct),
-      defaultMarginPct: parseFloat(formData.defaultMarginPct),
+      wastagePct: parseFloat(formData.wastagePct),
+      marginPct: parseFloat(formData.marginPct),
+      fileKey: fileKey
     };
 
     createMaterialMutation.mutate(materialData);
@@ -121,6 +137,85 @@ export default function Materials() {
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  // Handle file upload
+  const handleFileSelect = useCallback(async (file: File) => {
+    if (!file.type.match(/^image\/(jpeg|png|jpg)$/)) {
+      toast({
+        title: "Invalid file type",
+        description: "Please select a JPEG or PNG image.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSelectedFile(file);
+    setIsUploading(true);
+
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setTexturePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload file
+    try {
+      const formData = new FormData();
+      formData.append('texture', file);
+      
+      const response = await fetch('/api/materials/upload-texture', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+      
+      const { fileKey } = await response.json();
+      setFileKey(fileKey);
+      
+      toast({
+        title: "Texture uploaded",
+        description: "Ready to create material with texture."
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload failed",
+        description: "Could not upload texture. Please try again.",
+        variant: "destructive"
+      });
+      setSelectedFile(null);
+      setTexturePreview(null);
+    } finally {
+      setIsUploading(false);
+    }
+  }, [toast]);
+
+  const handleFileDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      handleFileSelect(files[0]);
+    }
+  }, [handleFileSelect]);
+
+  const calculateRepeatM = useCallback(() => {
+    if (formData.sheetWidthMm && parseFloat(formData.sheetWidthMm) > 0) {
+      return (parseFloat(formData.sheetWidthMm) / 1000).toFixed(3);
+    } else if (formData.tileWidthMm && parseFloat(formData.tileWidthMm) > 0) {
+      return (parseFloat(formData.tileWidthMm) / 1000).toFixed(3);
+    }
+    return '0.300'; // Default 30cm
+  }, [formData.sheetWidthMm, formData.tileWidthMm]);
+
+  const clearTexture = () => {
+    setSelectedFile(null);
+    setTexturePreview(null);
+    setFileKey(null);
   };
 
   return (
@@ -345,8 +440,8 @@ export default function Materials() {
                           id="wastage"
                           type="number"
                           step="0.1"
-                          value={formData.defaultWastagePct}
-                          onChange={(e) => handleInputChange('defaultWastagePct', e.target.value)}
+                          value={formData.wastagePct}
+                          onChange={(e) => handleInputChange('wastagePct', e.target.value)}
                           data-testid="input-material-wastage"
                         />
                       </div>
@@ -357,10 +452,132 @@ export default function Materials() {
                           id="margin"
                           type="number"
                           step="0.1"
-                          value={formData.defaultMarginPct}
-                          onChange={(e) => handleInputChange('defaultMarginPct', e.target.value)}
+                          value={formData.marginPct}
+                          onChange={(e) => handleInputChange('marginPct', e.target.value)}
                           data-testid="input-material-margin"
                         />
+                      </div>
+                    </div>
+
+                    {/* Texture Upload Section */}
+                    <div className="space-y-3">
+                      <Label>Texture</Label>
+                      
+                      {!texturePreview ? (
+                        <div
+                          className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center hover:border-slate-400 transition-colors cursor-pointer"
+                          onDrop={handleFileDrop}
+                          onDragOver={(e) => e.preventDefault()}
+                          onClick={() => document.getElementById('texture-upload')?.click()}
+                          data-testid="texture-upload-zone"
+                        >
+                          <input
+                            id="texture-upload"
+                            type="file"
+                            accept="image/jpeg,image/png,image/jpg"
+                            onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
+                            className="hidden"
+                          />
+                          <Image className="w-8 h-8 mx-auto mb-2 text-slate-400" />
+                          <p className="text-sm text-slate-600">
+                            {isUploading ? 'Uploading...' : 'Drop texture image or click to browse'}
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            JPEG or PNG, up to 50MB
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <img
+                            src={texturePreview}
+                            alt="Texture preview"
+                            className="w-full h-32 object-cover rounded-lg"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="absolute top-2 right-2"
+                            onClick={clearTexture}
+                            data-testid="button-clear-texture"
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Physical Dimensions */}
+                    <div className="space-y-3">
+                      <Label>Physical Dimensions (Optional)</Label>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="tileWidth" className="text-xs">Tile Width (mm)</Label>
+                          <Input
+                            id="tileWidth"
+                            type="number"
+                            value={formData.tileWidthMm}
+                            onChange={(e) => handleInputChange('tileWidthMm', e.target.value)}
+                            placeholder="300"
+                            data-testid="input-tile-width"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="tileHeight" className="text-xs">Tile Height (mm)</Label>
+                          <Input
+                            id="tileHeight"
+                            type="number"
+                            value={formData.tileHeightMm}
+                            onChange={(e) => handleInputChange('tileHeightMm', e.target.value)}
+                            placeholder="300"
+                            data-testid="input-tile-height"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="sheetWidth" className="text-xs">Sheet Width (mm)</Label>
+                          <Input
+                            id="sheetWidth"
+                            type="number"
+                            value={formData.sheetWidthMm}
+                            onChange={(e) => handleInputChange('sheetWidthMm', e.target.value)}
+                            placeholder="315"
+                            data-testid="input-sheet-width"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="sheetHeight" className="text-xs">Sheet Height (mm)</Label>
+                          <Input
+                            id="sheetHeight"
+                            type="number"
+                            value={formData.sheetHeightMm}
+                            onChange={(e) => handleInputChange('sheetHeightMm', e.target.value)}
+                            placeholder="315"
+                            data-testid="input-sheet-height"
+                          />
+                        </div>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label htmlFor="groutWidth" className="text-xs">Grout Width (mm)</Label>
+                          <Input
+                            id="groutWidth"
+                            type="number"
+                            value={formData.groutWidthMm}
+                            onChange={(e) => handleInputChange('groutWidthMm', e.target.value)}
+                            placeholder="3"
+                            data-testid="input-grout-width"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <div className="text-xs text-slate-600">
+                            <strong>Calculated Repeat:</strong> {calculateRepeatM()} m
+                          </div>
+                        </div>
                       </div>
                     </div>
                     

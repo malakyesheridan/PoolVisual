@@ -1,0 +1,198 @@
+You are a senior full-stack engineer inside Replit. Evolve the current “Add Material” feature into a full **Texture Materials System** that (a) uploads material images, (b) generates seamless, scaled textures, and (c) applies them to masks in the Canvas Editor with professional rendering (no cheap overlays). TypeScript everywhere. No TODOs.
+
+==============================================================================
+NON-REGRESSION
+==============================================================================
+- Preserve all existing Canvas Editor behavior, routes, state keys, and APIs.
+- Changes are additive. Existing masks/quotes continue to work.
+
+==============================================================================
+DB MIGRATION (Neon Postgres)
+==============================================================================
+-- Extend materials with texture + scale metadata
+ALTER TABLE materials
+  ADD COLUMN IF NOT EXISTS texture_url TEXT,
+  ADD COLUMN IF NOT EXISTS thumbnail_url TEXT,
+  ADD COLUMN IF NOT EXISTS physical_repeat_m NUMERIC,     -- meters represented by one texture tile
+  ADD COLUMN IF NOT EXISTS tile_width_mm INT,
+  ADD COLUMN IF NOT EXISTS tile_height_mm INT,
+  ADD COLUMN IF NOT EXISTS sheet_width_mm INT,
+  ADD COLUMN IF NOT EXISTS sheet_height_mm INT,
+  ADD COLUMN IF NOT EXISTS grout_width_mm INT,
+  ADD COLUMN IF NOT EXISTS finish TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_materials_category ON materials(category);
+CREATE INDEX IF NOT EXISTS idx_materials_active ON materials(is_active);
+
+-- Masks already have material_id; if not, add it:
+-- ALTER TABLE masks ADD COLUMN material_id UUID REFERENCES materials(id) ON DELETE SET NULL;
+
+==============================================================================
+STORAGE
+==============================================================================
+- Create storage bucket/folder structure (reuse existing file storage):
+  - materials/textures/{uuid}.jpg (1024 or 2048)
+  - materials/thumbs/{uuid}.jpg   (256)
+- Signed uploads, CDN delivery enabled.
+
+==============================================================================
+BACKEND ENDPOINTS (Fastify + Zod)
+==============================================================================
+1) POST /api/materials/upload-texture
+   Req: { mimeType: 'image/jpeg'|'image/png' }
+   Res: { uploadUrl, fileKey }    // signed PUT URL; fileKey to reference
+
+2) POST /api/materials
+   Body includes:
+     { name, sku, category, unit, price?, cost?, wastage_pct?, margin_pct?,
+       tile_width_mm?, tile_height_mm?, sheet_width_mm?, sheet_height_mm?, grout_width_mm?,
+       finish?, notes?, fileKey? }
+   Behavior:
+     - If fileKey present: finalize upload, process image (see "Seamless pipeline"), produce texture_url, thumbnail_url.
+     - Compute `physical_repeat_m`:
+         if sheet_width_mm -> sheet_width_mm/1000
+         else if tile_width_mm -> tile_width_mm/1000
+         else null
+     - Insert material; return full row.
+
+3) PATCH /api/materials/:id  // allow updating metadata and reprocessing texture
+
+4) GET /api/materials?category=&q=&page=&pageSize=   // paginated library
+   Returns fields required by editor card: {id, name, price, wastage_pct, category, texture_url, thumbnail_url, physical_repeat_m}
+
+Zod-validate all payloads; transactions for multi-write ops.
+
+==============================================================================
+SEAMLESS TEXTURE PIPELINE (sharp)
+==============================================================================
+Implement server function `processMaterialTexture(fileKey, opts)`:
+- Load the uploaded image, normalize orientation, convert to sRGB.
+- Square crop or pad to max edge (center), then:
+  - Resize to 2048x2048 if high quality available, else 1024x1024.
+  - **Make Seamless (offset-mirror method)**:
+      1) Offset the image by 50% in X and Y (wrap edges).
+      2) Blend seams: create a blurred cross mask (~32–48px) and linear-blend across seams.
+      3) Optional grout enhance if `grout_width_mm` provided and mosaic chips are visible: draw 1–3px light lines on a separate layer and soft-light blend.
+- Export optimized JPG (quality≈85, progressive), and 256x256 thumbnail.
+- Upload both to storage; return { texture_url, thumbnail_url }.
+
+If the source is already tileable, still normalize and export.
+
+==============================================================================
+FRONTEND — ADD MATERIAL MODAL → TEXTURE UPLOAD
+==============================================================================
+Update the existing “Add New Material” form:
+
+UI changes:
+- Add a **Texture** section above “Notes”:
+  - [ Upload Texture ] button (plus drag-and-drop)
+  - Live preview (256px)
+  - Inputs (optional):
+    - Tile size (mm): width × height
+    - Sheet size (mm): width × height (preferred for mosaics)
+    - Grout width (mm)
+    - Toggle: “Make texture seamless (recommended)”
+  - Read-only computed: **Calculated Repeat**: `${repeat_m} m`  (sheet_width or tile_width in meters)
+
+Flow:
+- On file select: call `POST /api/materials/upload-texture` to get `uploadUrl`.
+- PUT the file → keep `fileKey` in form state.
+- On Save:
+  - POST /api/materials with all fields + `fileKey`.
+  - After API resolves, show success, clear form, refresh library.
+
+UX polish:
+- Show skeleton while processing.
+- Validate category/unit required.
+- If neither sheet nor tile size provided, show hint “You can still upload—adjust scale later in editor.”
+
+==============================================================================
+FRONTEND — MATERIALS LIBRARY PAGE
+==============================================================================
+- Grid cards: thumb, name, size/finish, unit price.
+- Search/filter by category.
+- “Add Material” opens the modal above.
+- Cards have “Use in Editor” (when a job/photo is open, this button jumps back and selects it for the current mask if one is active).
+
+==============================================================================
+CANVAS EDITOR — PROFESSIONAL RENDERING
+==============================================================================
+Implement a high-quality **MaterialOverlay** renderer (WebGL first, 2D fallback):
+
+A) Rendering engine
+- Add lightweight WebGL via **pixi.js** or **regl** in a separate overlay canvas synced to pan/zoom.
+- Triangulate mask polygons with **earcut**.
+- Shader draws a **tiled texture** within the polygon:
+  - Inputs:
+    - world position (image pixel coords), ppm (pixels_per_meter),
+    - repeatScale (user adjustable), rotationDeg,
+    - texture sampler (mipmap enabled, anisotropic filtering), brightness, contrast.
+  - UV mapping:
+    ```
+    // convert world px → meters
+    vec2 m = worldPx / ppm;
+    // rotate
+    float r = radians(rotationDeg);
+    mat2 R = mat2(cos(r), -sin(r), sin(r), cos(r));
+    vec2 mr = R * m;
+    // scale so that 1 UV unit == material.physical_repeat_m
+    float repeat_m = material.physical_repeat_m > 0.0 ? material.physical_repeat_m : 0.30; // fallback 30cm
+    vec2 uv = (mr / repeat_m) * repeatScale;
+    ```
+  - Sample texture with `texture2D` and apply **soft-light** style blending with the base photo luminance to preserve lighting:
+    - Pass the base photo as a second sampler (downscaled) or compute a grayscale luminance buffer once and sample it in the shader for subtle shading.
+  - Edge **feather**: expand polygon alpha by 8–16px and apply smoothstep falloff.
+
+- Fallback (if WebGL unavailable): 2D canvas pattern fill with per-tile transform, plus feathering; no soft-light.
+
+B) Controls (already in sidebar)
+- Repeat scale slider (0.25–4×), Rotation (snap 0/90 for waterline), Brightness, Contrast.
+- Store in `masks.calc_meta_json = { repeatScale, rotationDeg, brightness, contrast }`.
+- History snapshots on change (undo/redo works).
+
+C) Initial scale (no manual fiddling needed)
+- When attaching a material:
+  - ppm = photo.calibration_pixels_per_meter
+  - repeat_m:
+      1) material.physical_repeat_m
+      2) sheet_width_mm / 1000
+      3) tile_width_mm / 1000
+      4) default 0.30
+  - texture tile size = 1024 px
+  - initial repeatScale = (1024 / repeat_m) / ppm
+  - Apply and render immediately.
+
+D) Waterline specifics
+- If mask.type === 'waterline_band':
+  - rotation snaps to 0° or 90° (based on band orientation).
+  - Optional grout tint slider: adjust mid-tones color between tiles.
+
+==============================================================================
+EDITOR INTEGRATION
+==============================================================================
+- Materials Tab (sidebar): shows library by category. Selecting a card:
+  - If a mask is selected → attach to that mask: PATCH /api/masks with material_id and set default calc_meta_json.
+  - If no mask selected → toast “Select a mask first.”
+- MetricsBar: display “Material: {name}” and live Est. Cost = qty × price × (1 + wastage%).
+
+==============================================================================
+TESTS
+==============================================================================
+Unit:
+- Scale calc given ppm + sheet/tile size → expected repeatScale.
+- Texture processor returns 1024/2048 tile + 256 thumb.
+E2E:
+1) Add Material with image → texture generated → appears in library grid.
+2) Attach material to an area mask → renders with correct scale; rotate/scale sliders update in real time; undo/redo restores.
+3) Waterline mask: rotation snaps; band looks even; feathered edges; no harsh seams.
+4) Save, reload editor → identical visual (within 1px tolerance).
+
+==============================================================================
+QUALITY & PERFORMANCE
+==============================================================================
+- Enable mipmaps + anisotropic filtering in WebGL to avoid moiré.
+- Gamma-correct blending in shader (convert to linear before mixing, back to sRGB).
+- Texture cache in browser (IndexedDB) for instant re-select.
+- No console errors; strict TS; 60fps on 3000px photos.
+
+Implement everything above now. Keep the current editor intact. The result must look like a professional render, not a pasted image.

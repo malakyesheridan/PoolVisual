@@ -20,6 +20,7 @@ import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
+import { registerMaterialRoutes } from "./materialRoutes";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-dev-secret';
 
@@ -95,6 +96,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Add health routes
   app.use("/api", healthRoutes);
+  
+  // Register material routes (texture system)
+  registerMaterialRoutes(app);
   
   // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
