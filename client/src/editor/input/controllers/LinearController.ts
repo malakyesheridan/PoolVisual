@@ -34,14 +34,11 @@ export class LinearController implements ToolController {
     const { editorState, currentDrawing } = this.store;
     
     // Only handle if linear tool is active and drawing
-    if (editorState.activeTool !== 'linear' || 
-        editorState.calState !== 'idle' || 
-        !currentDrawing) {
+    if (editorState?.activeTool !== 'linear' || !currentDrawing) {
       return false;
     }
 
-    // For linear tool, we typically show a preview line to the cursor
-    // The actual implementation depends on how the drawing system works
+    // For linear tool, show preview or add points
     return true;
   }
 
@@ -49,7 +46,7 @@ export class LinearController implements ToolController {
     const { editorState } = this.store;
     
     // Only handle if linear tool is active
-    if (editorState.activeTool !== 'linear' || editorState.calState !== 'idle') {
+    if (editorState?.activeTool !== 'linear') {
       return false;
     }
 
@@ -66,7 +63,7 @@ export class LinearController implements ToolController {
   onKey(code: string, e: KeyboardEvent): boolean {
     const { editorState, currentDrawing } = this.store;
     
-    if (editorState.activeTool !== 'linear' || editorState.calState !== 'idle') {
+    if (editorState?.activeTool !== 'linear') {
       return false;
     }
 

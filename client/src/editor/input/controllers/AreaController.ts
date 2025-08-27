@@ -34,9 +34,7 @@ export class AreaController implements ToolController {
     const { editorState, currentDrawing } = this.store;
     
     // Only handle if area tool is active and drawing
-    if (editorState.activeTool !== 'area' || 
-        editorState.calState !== 'idle' || 
-        !currentDrawing) {
+    if (editorState?.activeTool !== 'area' || !currentDrawing) {
       return false;
     }
 
@@ -49,7 +47,7 @@ export class AreaController implements ToolController {
     const { editorState } = this.store;
     
     // Only handle if area tool is active
-    if (editorState.activeTool !== 'area' || editorState.calState !== 'idle') {
+    if (editorState?.activeTool !== 'area') {
       return false;
     }
 
@@ -66,7 +64,7 @@ export class AreaController implements ToolController {
   onKey(code: string, e: KeyboardEvent): boolean {
     const { editorState, currentDrawing } = this.store;
     
-    if (editorState.activeTool !== 'area' || editorState.calState !== 'idle') {
+    if (editorState?.activeTool !== 'area') {
       return false;
     }
 

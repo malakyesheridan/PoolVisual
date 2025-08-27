@@ -33,7 +33,7 @@ export class InputRouter {
     if (tool?.onPointerDown(pt, e)) {
       e.cancelBubble = true;
       // E. EVENT HUD instrumentation
-      const currentDebug = this.store.getState().__debug || {};
+      const currentDebug = this.store.__debug || {};
       this.store.setDebug({ 
         lastConsumer: tool.name, 
         down: (currentDebug.down || 0) + 1 
@@ -49,7 +49,7 @@ export class InputRouter {
     if (tool?.onPointerMove(pt, e)) {
       e.cancelBubble = true;
       // E. EVENT HUD instrumentation
-      const currentDebug = this.store.getState().__debug || {};
+      const currentDebug = this.store.__debug || {};
       this.store.setDebug({ 
         lastConsumer: tool.name, 
         move: (currentDebug.move || 0) + 1 
@@ -65,7 +65,7 @@ export class InputRouter {
     if (tool?.onPointerUp(pt, e)) {
       e.cancelBubble = true;
       // E. EVENT HUD instrumentation
-      const currentDebug = this.store.getState().__debug || {};
+      const currentDebug = this.store.__debug || {};
       this.store.setDebug({ 
         lastConsumer: tool.name, 
         up: (currentDebug.up || 0) + 1 
