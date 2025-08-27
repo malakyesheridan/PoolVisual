@@ -1,0 +1,198 @@
+You are a senior engineer. Perform a deep repair on the **Canvas Editor** so tools interact with the image in real time. Do not guess. Audit, then fix. Deliver code with TypeScript, Konva, Zustand, and Vite. Steps:
+
+==============================================================================
+AUDIT (DO NOT SKIP)
+==============================================================================
+1) Identify the **actual route** used by the running preview for the editor:
+   - The route path must be `/jobs/:jobId/photo/:photoId` or the app’s current “Canvas Editor” route (read router config).
+   - Print the resolved file path for that route’s page component (e.g., `apps/frontend/src/pages/EditorPage.tsx`).
+
+2) Detect **duplicate components**:
+   - Search for multiple files named `EditorPage.*`, `CanvasStage.*`, `Sidebar.*`, `Toolbar.*`.
+   - If duplicates exist, output the list and which one the router uses. Delete dead/unused duplicates after confirmation in code comments and update imports.
+
+3) Open the editor page that is **actually mounted** and confirm it renders a `<Stage>` from Konva.
+   - If a wrapper component exists, trace down to the file exporting `<Stage>`. Print that path.
+
+==============================================================================
+FIX CANVAS INTERACTION (WORLD-CLASS, NO REGRESSIONS)
+==============================================================================
+Implement or repair the following in the mounted `CanvasStage.tsx` and related components. Use strict TypeScript. No `any`.
+
+A) Stage & Layers
+- Stage: width/height fit to container; pixelRatio = `window.devicePixelRatio`.
+- Layers in order:
+  1. BackgroundImageLayer (Konva.Image for photo)
+  2. MaskDrawingLayer (temp path while drawing)
+  3. MasksLayer (committed masks)
+  4. HandlesLayer (vertices for selected mask, calibration anchors)
+  5. HUDLayer (cursor, guides)
+- Ensure all layers have `listening: true` unless they are static HUD only.
+- Ensure **no overlay DOM** sits above the stage. For `.editor-overlay` wrappers, set:
+  ```css
+  .editor-overlay { pointer-events: none; }
+  .editor-overlay [data-interactive="true"] { pointer-events: auto; }
+Do not set listening={false} on the image; we will handle events on the Stage.
+
+B) Pointer Wiring
+
+Add stable refs:
+
+ts
+Copy
+Edit
+const stageRef = useRef<Konva.Stage>(null);
+const [isDrawing, setIsDrawing] = useState(false);
+Bind handlers on the Stage:
+
+onMouseDown / onTouchStart → handlePointerDown
+
+onMouseMove / onTouchMove → handlePointerMove
+
+onMouseUp / onTouchEnd → handlePointerUp
+
+Convert to stage-space coords accounting for zoom/pan:
+
+ts
+Copy
+Edit
+function getStagePoint(stage: Konva.Stage) {
+  const p = stage.getPointerPosition(); if (!p) return null;
+  const tr = stage.getAbsoluteTransform().copy().invert();
+  return tr.point(p); // returns coords in stage content space
+  // Alternatively: const scale = stage.scaleX(); const pos = stage.position();
+  // const x = (p.x - pos.x) / scale; const y = (p.y - pos.y) / scale;
+}
+Respect active tool from Zustand (area | linear | waterline | eraser | hand).
+
+If hand tool → pan with inertia; else Stage is not draggable.
+
+Use requestAnimationFrame to throttle move events.
+
+C) Minimal “proof of life”
+
+Temporarily, on pointerDown, add a tiny Konva.Circle at the clicked point on MaskDrawingLayer. This is removed after all tests pass. This proves the handlers are firing and coordinates are correct.
+
+D) Drawing Logic (freehand + polygon)
+
+Area mask: record points while moving with a minimum pixel delta based on brush size (minDelta = max(2, brushSize * 0.5)), smooth with Douglas–Peucker on commit.
+
+Linear mask: same, but don’t close the polygon.
+
+Waterline: draw a polyline; band overlay is computed from calibration later.
+
+Close Area polygon on double-click or Enter; cancel with Esc.
+
+Selection: clicking near a path selects it (hit test by shape.intersects or custom distance).
+
+Delete selected with Delete/Backspace (confirm dialog).
+
+E) Zoom/Pan
+
+Wheel zoom around pointer:
+
+ts
+Copy
+Edit
+stageRef.current?.on('wheel', (e) => { 
+  e.evt.preventDefault();
+  const scaleBy = 1.05;
+  const oldScale = stage.scaleX();
+  const mousePoint = stage.getPointerPosition(); if (!mousePoint) return;
+  const direction = e.evt.deltaY > 0 ? 1 : -1;
+  const newScale = direction > 0 ? oldScale / scaleBy : oldScale * scaleBy;
+  const pointer = getStagePoint(stage)!;
+  stage.scale({ x: newScale, y: newScale });
+  const newPos = { 
+    x: mousePoint.x - pointer.x * newScale, 
+    y: mousePoint.y - pointer.y * newScale 
+  };
+  stage.position(newPos); stage.batchDraw();
+});
+Double-click to “fit to image” (compute scale to fit canvas container).
+
+F) Calibration
+
+Calibration mode adds two draggable anchors A/B over the image.
+
+On meters input, compute pixelsPerMeter = distPx(A,B)/meters, store in Zustand and persist via POST /api/photos/:id/calibration.
+
+Recompute displayed metrics on masks when ppm changes.
+
+G) Metrics & Store
+
+Zustand editorSlice must expose: activeTool, brushSize, calibration, masks[], selectedMaskId, setActiveTool, setBrushSize, addMask, updateMask, removeMask, selectMask, undo, redo.
+
+Add geometry helpers with tests:
+
+polygonAreaPx(points, holes?)
+
+polylineLengthPx(points)
+
+toSquareMeters(px2, ppm)
+
+toMeters(px, ppm)
+
+H) Save & Load
+
+Debounced auto-save (1200ms) to POST /api/masks for create/update. On load, render masks exactly (no drift).
+
+On navigation back into the editor, restore full state (masks, calibration, last selected tool).
+
+I) Keyboard Shortcuts
+
+A Area, L Linear, W Waterline, E Eraser, H Hand, Esc cancel, Ctrl/Cmd+Z undo, Shift+Ctrl/Cmd+Z redo, Del delete.
+
+==============================================================================
+IMAGE UPLOAD (MUST BE INTERACTIVE)
+Implement ImageUploader:
+
+Drag-drop or file select → compress client-side to ≤ 3000px longest edge, quality 0.85, strip EXIF; show immediate preview.
+
+Request signed URL via POST /api/photos (jobId) → PUT upload → finalize row.
+
+After finalize, navigate to the new photoId editor; BackgroundImageLayer loads the image with Image object and waits for onload to draw.
+
+==============================================================================
+CSS / HIT-TESTING GUARDRAILS
+Ensure no DOM overlay blocks the Stage:
+
+css
+Copy
+Edit
+.editor-stage { position: relative; }
+.editor-overlay { position: absolute; inset: 0; pointer-events: none; }
+.editor-overlay [data-interactive="true"] { pointer-events: auto; }
+Toolbars/sidebars must not extend invisibly over the canvas (check z-index and width).
+
+==============================================================================
+TESTS
+Vitest: polygon area, polyline length, px→m conversions.
+
+Playwright e2e:
+
+Upload → canvas shows image.
+
+Draw area → points captured → area m² > 0.
+
+Switch to linear → draw → perimeter lm > 0.
+
+Set calibration → metrics update.
+
+Undo/redo changes point count and metrics.
+
+Reload page → masks + calibration persist.
+
+==============================================================================
+LOGGING & ASSERTIONS
+Add a temporary on-screen debug overlay (top-left) that shows: activeTool, zoom, selected mask id, ppm, last pointer (x,y) in stage coords. Hide in production build.
+
+==============================================================================
+ACCEPTANCE
+Clicking on the image places a temporary dot (only in dev) → proves event wiring.
+
+Drawing with Area/Linear/Waterline creates visible paths that follow the cursor.
+
+Metrics update in real time; no console errors; 50+ FPS at 3000px images.
+
+After refresh, state restores; tools continue to work.

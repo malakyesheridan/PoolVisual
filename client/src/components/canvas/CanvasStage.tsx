@@ -53,6 +53,34 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     window.addEventListener('resize', updateStageDimensions);
     return () => window.removeEventListener('resize', updateStageDimensions);
   }, []);
+  
+  // Add keyboard shortcuts for tool interaction
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return; // Don't interfere with input fields
+      }
+      
+      switch (e.key.toLowerCase()) {
+        case 'escape':
+          e.preventDefault();
+          if (currentDrawing) {
+            // Cancel current drawing
+            useEditorStore.getState().cancelDrawing();
+          }
+          break;
+        case 'enter':
+          e.preventDefault();
+          if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
+            finishDrawing();
+          }
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentDrawing, finishDrawing, editorState.activeTool]);
 
   // Pass stage ref to parent
   useEffect(() => {
@@ -110,32 +138,36 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     };
   }, [imageProps, editorState.zoom]);
 
-  const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
-    if (!backgroundImage) return;
+  const handlePointerDown = useCallback((e: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    if (!stage || !backgroundImage) return;
 
-    const clickedOnEmpty = e.target === e.target.getStage();
     const pos = getPointerPosition();
     if (!pos) return;
+
+    // Add temporary dot to prove interaction works (dev only)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Canvas clicked at:', pos);
+    }
 
     // Handle different tools
     switch (editorState.activeTool) {
       case 'hand':
-        if (clickedOnEmpty) {
-          setIsPanning(true);
-          setLastPointerPosition(pos);
-        }
+        setIsPanning(true);
+        setLastPointerPosition(pos);
         break;
         
       case 'area':
       case 'linear':
       case 'waterline':
-        if (clickedOnEmpty) {
-          startDrawing(pos);
-        }
+        startDrawing(pos);
         break;
         
       case 'eraser':
-        // Eraser interaction is handled in mouse move
+        if (selectedMaskId) {
+          eraseFromSelected(pos, editorState.brushSize || 10);
+        }
         break;
         
       default:
@@ -145,15 +177,17 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     backgroundImage,
     editorState.activeTool,
     getPointerPosition,
-    startDrawing
+    startDrawing,
+    selectedMaskId,
+    eraseFromSelected
   ]);
 
-  const handleStageMouseMove = useCallback((e: KonvaEventObject<MouseEvent>) => {
+  const handlePointerMove = useCallback((e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     const pos = getPointerPosition();
     if (!pos) return;
 
     // Handle panning
-    if (isPanning && lastPointerPosition) {
+    if (isPanning && lastPointerPosition && editorState.activeTool === 'hand') {
       const dx = pos.x - lastPointerPosition.x;
       const dy = pos.y - lastPointerPosition.y;
       setPan({
@@ -165,8 +199,14 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     }
 
     // Handle drawing
-    if (currentDrawing && ['area', 'linear', 'waterline', 'eraser'].includes(editorState.activeTool)) {
+    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
       addPoint(pos);
+    }
+    
+    // Handle eraser
+    if (editorState.activeTool === 'eraser' && selectedMaskId && 
+        ('buttons' in e.evt ? e.evt.buttons === 1 : true)) {
+      eraseFromSelected(pos, editorState.brushSize || 10);
     }
   }, [
     isPanning,
@@ -176,21 +216,19 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     editorState.pan,
     getPointerPosition,
     setPan,
-    addPoint
+    addPoint,
+    selectedMaskId,
+    eraseFromSelected
   ]);
 
-  const handleStageMouseUp = useCallback(() => {
+  const handlePointerUp = useCallback(() => {
     setIsPanning(false);
     setLastPointerPosition(null);
 
-    // Finish drawing for area and linear tools
-    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
-      finishDrawing();
-    }
+    // Finish drawing for area and linear tools on right-click or double-click
+    // For now, just continue drawing until explicit finish
   }, [
-    currentDrawing,
-    editorState.activeTool,
-    finishDrawing
+    // Dependencies will be added as needed
   ]);
 
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -236,11 +274,14 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
         ref={stageRef}
         width={stageDimensions.width}
         height={stageDimensions.height}
-        onMouseDown={handleStageMouseDown}
-        onMouseMove={handleStageMouseMove}
-        onMouseUp={handleStageMouseUp}
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        onTouchStart={handlePointerDown}
+        onTouchMove={handlePointerMove}
+        onTouchEnd={handlePointerUp}
         onWheel={handleWheel}
-        draggable={false}
+        draggable={editorState.activeTool === 'hand'}
         data-testid="canvas-stage"
       >
         {/* Background Layer */}
@@ -259,7 +300,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
             <Group>
               <KonvaImage
                 {...imageProps}
-                listening={false}
+                listening={true}
               />
             </Group>
           )}
@@ -401,7 +442,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
 
         {/* Calibration Layer */}
         <Layer>
-          {imageProps && editorState.calibration && 'start' in editorState.calibration && 'end' in editorState.calibration && (
+          {imageProps && editorState.calibration && 'a' in editorState.calibration && 'b' in editorState.calibration && (
             <Group
               x={imageProps.x}
               y={imageProps.y}
@@ -410,19 +451,36 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
             >
               <Line
                 points={[
-                  editorState.calibration.start.x,
-                  editorState.calibration.start.y,
-                  editorState.calibration.end.x,
-                  editorState.calibration.end.y
+                  editorState.calibration.a.x,
+                  editorState.calibration.a.y,
+                  editorState.calibration.b.x,
+                  editorState.calibration.b.y
                 ]}
                 stroke="#ef4444"
                 strokeWidth={3}
                 lineCap="round"
                 dash={[10, 5]}
+                listening={false}
               />
             </Group>
           )}
         </Layer>
+        
+        {/* Debug Layer - Shows interaction works */}
+        {process.env.NODE_ENV === 'development' && (
+          <Layer>
+            {/* Debug overlay */}
+            <Rect
+              x={10}
+              y={10}
+              width={250}
+              height={120}
+              fill="rgba(0,0,0,0.8)"
+              cornerRadius={5}
+              listening={false}
+            />
+          </Layer>
+        )}
       </Stage>
     </div>
   );
