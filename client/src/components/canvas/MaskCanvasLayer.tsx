@@ -3,14 +3,13 @@
  * Renders all editor masks using the MaskRenderer component
  */
 
-import { Layer } from 'react-konva';
+import { Layer, Line } from 'react-konva';
 import { useEditorStore } from '@/stores/editorSlice';
-import { MaskRenderer } from './MaskRenderer';
 
 export function MaskCanvasLayer() {
-  const { masks, selectedMaskId, selectMask, photo } = useEditorStore();
+  const { masks, transient, selectedMaskId, selectMask, photo, editorState } = useEditorStore();
 
-  if (!photo || !masks.length) {
+  if (!photo) {
     return <Layer listening={false} />;
   }
 
@@ -18,17 +17,42 @@ export function MaskCanvasLayer() {
   const imageHeight = photo.height || 600;
 
   return (
-    <Layer listening={true}>
-      {masks.map(mask => (
-        <MaskRenderer
-          key={mask.id}
-          mask={mask}
-          isSelected={selectedMaskId === mask.id}
-          onSelect={() => selectMask(mask.id)}
-          imageWidth={imageWidth}
-          imageHeight={imageHeight}
-        />
-      ))}
-    </Layer>
+    <>
+      {/* E. CANVAS LAYERS MUST RENDER THE SAME MASK ARRAY */}
+      <Layer id="MaskDrawing" listening>
+        {/* Render transient path for current tool */}
+        {transient?.points?.length ? (
+          <Line
+            points={transient.points.flatMap(p => [p.x, p.y])}
+            stroke="#34d399"
+            strokeWidth={2}
+            closed={editorState?.activeTool === 'area'}
+            opacity={0.9}
+          />
+        ) : null}
+      </Layer>
+
+      <Layer id="Masks" listening>
+        {masks.map(m => (
+          m.type === 'area'
+            ? <Line 
+                key={m.id} 
+                points={m.path.points.flatMap(p => [p.x, p.y])} 
+                closed 
+                fill="rgba(52,211,153,.25)" 
+                stroke="#10b981" 
+                strokeWidth={2}
+                onClick={() => selectMask(m.id)}
+              />
+            : <Line 
+                key={m.id} 
+                points={m.path.points.flatMap(p => [p.x, p.y])} 
+                stroke="#f59e0b" 
+                strokeWidth={3}
+                onClick={() => selectMask(m.id)}
+              />
+        ))}
+      </Layer>
+    </>
   );
 }

@@ -1,0 +1,218 @@
+You are a senior engineer. Fix two regressions in the PoolVisual editor:
+
+- Calibration commit does not persist ppm (line disappears and app still asks to calibrate).
+- Area/Linear/Waterline/Eraser tools do not create visible masks.
+
+Deliverables: working calibration that sets ppm and remains “Calibrated”, and drawing tools that commit masks which render on canvas. No UI debug HUD. Use TypeScript strict, Konva, Zustand. Print short console banners for verification.
+
+==============================================================================
+A) VERIFY WE’RE EDITING THE *MOUNTED* FILES
+==============================================================================
+1) In the component that renders the Konva <Stage> (the one actually used by the route), insert:
+   ```ts
+   console.info('[CanvasStage] mounted from:', import.meta?.url || __filename);
+If this does NOT appear on refresh, you are editing the wrong file. Find and replace the mounted one. Remove unused/duplicate Canvas files afterwards.
+
+In the router/page for the editor, add:
+
+ts
+Copy
+Edit
+console.info('[EditorPage] route file:', import.meta?.url || __filename);
+==============================================================================
+B) INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS
+Bug: router treats calState !== 'idle' as active. Use this helper:
+
+ts
+Copy
+Edit
+export type CalState = 'idle'|'placingA'|'placingB'|'lengthEntry'|'ready';
+
+export const isCalibrationActive = (s: { calState: CalState }) =>
+  s.calState === 'placingA' || s.calState === 'placingB' || s.calState === 'lengthEntry';
+Update InputRouter’s getActive():
+
+ts
+Copy
+Edit
+const getActive = () => {
+  const s = store.getState();
+  return isCalibrationActive(s) ? 'calibration' : s.activeTool;
+};
+==============================================================================
+C) CALIBRATION COMMIT PATH (MUST SET PPM + GO IDLE)
+In editor store (editorSlice.ts), implement this exact flow:
+
+ts
+Copy
+Edit
+startCalibration() { set(state => ({ calState: 'placingA', calTemp: {} })); }
+placeCalPoint(p) {
+  set(s => {
+    if (s.calState === 'placingA') return { calTemp: { a: p, preview: p }, calState: 'placingB' };
+    if (s.calState === 'placingB') return { calTemp: { ...s.calTemp, b: p }, calState: 'lengthEntry' };
+    return {};
+  });
+}
+updateCalPreview(p) { set(s => s.calState === 'placingB' ? { calTemp: { ...s.calTemp, preview: p } } : {}); }
+setCalMeters(m) { set(s => s.calState === 'lengthEntry' ? { calTemp: { ...s.calTemp, meters: m } } : {}); }
+
+async function persistCalibration(photoId: string, ppm: number, meta: any) {
+  const res = await api.photos.setCalibration(photoId, { ppm, meta });
+  if (!res?.ppm) throw new Error('Calibration persist failed');
+}
+
+commitCalSample() {
+  const s = get();
+  const { a, b, meters } = s.calTemp || {};
+  if (!a || !b || !meters || meters <= 0) return;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const px = Math.hypot(dx, dy);
+  if (px < 10) { toast.warn('Reference too short'); return; }
+  const ppm = px / meters;
+
+  // set ppm locally first
+  set({ calibration: { ppm }, calState: 'idle', calTemp: {} });
+  console.info('[Calibration] committed ppm=', ppm);
+
+  // persist to backend and handle failure by reverting readiness indicator but keep local ppm
+  persistCalibration(get().photoId, ppm, { a, b, meters }).catch(err => {
+    console.error('[Calibration] persist failed', err);
+    toast.error('Failed to save calibration; working locally');
+  });
+}
+
+cancelCalibration() { set({ calState: 'idle', calTemp: {} }); }
+Rules:
+
+After commit, calState MUST be 'idle' (calibrated but not capturing input).
+
+Keep calibration.ppm in state regardless of network outcome; don’t drop it on error.
+
+Sidebar pill should read from calibration.ppm (not from calState).
+
+==============================================================================
+D) TOOL COMMIT PATHS MUST CREATE NEW MASK OBJECTS (IMMUTABLE!)
+Symptoms indicate masks are mutated in place (no new array ref) or committed to a different slice. Fix:
+
+Store shape (minimal):
+
+ts
+Copy
+Edit
+type MaskType = 'area'|'linear'|'waterline_band';
+
+type Mask = {
+  id: string;
+  photoId: string;
+  type: MaskType;
+  path: { points: {x:number;y:number}[]; holes?: {x:number;y:number}[][] };
+  bandHeightM?: number;
+  createdAt: string;
+};
+
+masks: Mask[];
+transient?: { tool?: MaskType; points: Vec2[] };
+startPath(tool: MaskType, p: Vec2);
+appendPoint(p: Vec2);
+commitPath(): void;
+cancelPath(): void;
+removeMask(id: string): void;
+Implement immutable updates exactly:
+
+ts
+Copy
+Edit
+startPath(tool, p) { set({ transient: { tool, points: [p] } }); }
+appendPoint(p) { set(s => s.transient ? { transient: { ...s.transient, points: [...s.transient.points, p] } } : {}); }
+commitPath() {
+  const s = get();
+  if (!s.transient || s.transient.points.length < 2) { set({ transient: undefined }); return; }
+  const id = crypto.randomUUID();
+  const mask: Mask = {
+    id, photoId: s.photoId, type: s.transient.tool!,
+    path: { points: s.transient.points.slice() },
+    createdAt: new Date().toISOString()
+  };
+  set({ masks: [...s.masks, mask], transient: undefined, selectedMaskId: id });
+  console.info('[Mask] committed', mask.type, 'count=', get().masks.length);
+
+  // async persist (do not block UI)
+  api.masks.upsert(mask).catch(e => console.error('persist mask failed', e));
+}
+cancelPath() { set({ transient: undefined }); }
+Do not ever mutate masks[i].path.points.push(...) in place; Konva render relies on new refs.
+
+==============================================================================
+E) CANVAS LAYERS MUST RENDER THE SAME MASK ARRAY
+In CanvasStage.tsx ensure layer order and props:
+
+tsx
+Copy
+Edit
+<Layer id="Background" listening={false}> … </Layer>
+
+<Layer id="MaskDrawing" listening>
+  {/* Render transient path for current tool */}
+  {transient?.points?.length ? (
+    <Line
+      points={transient.points.flatMap(p => [p.x, p.y])}
+      stroke="#34d399"
+      strokeWidth={2}
+      closed={activeTool==='area'}
+      opacity={0.9}
+    />
+  ) : null}
+</Layer>
+
+<Layer id="Masks" listening>
+  {masks.map(m => (
+    m.type === 'area'
+      ? <Line key={m.id} points={m.path.points.flatMap(p => [p.x,p.y])} closed fill="rgba(52,211,153,.25)" stroke="#10b981" strokeWidth={2}/>
+      : <Line key={m.id} points={m.path.points.flatMap(p => [p.x,p.y])} stroke="#f59e0b" strokeWidth={3}/>
+  ))}
+</Layer>
+
+<Layer id="Calibration" listening>
+  {/* draw A/B anchors and preview/confirmed line from store.calTemp */}
+</Layer>
+Make sure masks and transient come from the same useEditorStore selector. If MaskCanvasLayer exists, have it consume masks from that store, not from a stale context.
+
+==============================================================================
+F) STAGE EVENT BINDINGS (ONE SOURCE OF TRUTH)
+Remove all legacy on* handlers from layers/shapes. Only the Stage binds events and dispatches via the InputRouter.
+
+Stage draggable only when tool === 'hand'.
+
+Ensure pointer-events:none on any overlay DOM above the stage.
+
+==============================================================================
+G) KEYBOARD BINDINGS (NO DRAW SWALLOW)
+A/L/W/E/H set activeTool.
+
+Enter → store.commitPath() for drawing tools; for calibration in lengthEntry, run commitCalSample().
+
+Esc → store.cancelPath() or cancelCalibration() depending on calState.
+
+==============================================================================
+H) QUICK SELF-TEST (console-only)
+Add one-time assertions:
+
+After calibration commit: console.info('[Assert] ppm set =', store.getState().calibration?.ppm);
+
+After drawing → Enter: console.info('[Assert] masks length =', store.getState().masks.length);
+You can remove these after we confirm behavior.
+
+==============================================================================
+I) ACCEPTANCE
+Calibrating sets ppm, flips calState to 'idle', and the sidebar shows “Calibrated”. No more “Required”.
+
+Area tool: click–click–Enter → a green polygon appears; reloading keeps it.
+
+Linear tool: click–click–Enter → an amber polyline appears; persists.
+
+Waterline: same as linear; bandHeight UI shows; persists.
+
+Eraser deletes selected mask; masks array length decreases.
+
+No console errors; console banners show the mounted file paths.

@@ -13,7 +13,7 @@ export class LinearController implements ToolController {
   constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { editorState, transient } = this.store;
     
     // F. CONTROLLER CONTRACTS - Only handle if linear tool is active
     if (editorState?.activeTool !== 'linear') {
@@ -21,10 +21,10 @@ export class LinearController implements ToolController {
     }
 
     // Start new drawing or add point to existing
-    if (!currentDrawing) {
-      this.store.startDrawing(pt);
+    if (!transient) {
+      this.store.startPath('linear', pt);
     } else {
-      this.store.addPoint(pt);
+      this.store.appendPoint(pt);
     }
     
     return true;
@@ -61,7 +61,7 @@ export class LinearController implements ToolController {
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { editorState, transient } = this.store;
     
     if (editorState?.activeTool !== 'linear') {
       return false;
@@ -69,15 +69,15 @@ export class LinearController implements ToolController {
 
     switch (code) {
       case 'Escape':
-        if (currentDrawing) {
-          this.onCancel();
+        if (transient) {
+          this.store.cancelPath();
           return true;
         }
         break;
         
       case 'Enter':
-        if (currentDrawing) {
-          this.store.finishDrawing('linear');
+        if (transient) {
+          this.store.commitPath();
           return true;
         }
         break;

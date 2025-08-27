@@ -57,11 +57,10 @@ export interface MaskMaterialSettings {
 }
 
 export interface EditorState {
-  calibration: CalibrationData | null;
+  calibration: { ppm?: number } | null;
   calibrationV2: Calibration | null;
   calState: CalState;
-  calTempPoints: { a?: Vec2; b?: Vec2 };
-  calTempMeters: number;
+  calTemp: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number };
   zoom: number;
   pan: Vec2;
   activeTool: ToolType;
@@ -81,9 +80,9 @@ export interface EditorSliceState {
   // Per-mask overrides
   maskOverrides: Record<string, { override_ppm?: number }>;
   
-  // Masks and drawing
+  // D. TOOL COMMIT PATHS MUST CREATE NEW MASK OBJECTS (IMMUTABLE!)
   masks: EditorMask[];
-  currentDrawing: Vec2[] | null;
+  transient: { tool?: 'area' | 'linear' | 'waterline_band'; points: Vec2[] } | null;
   selectedMaskId: string | null;
   
   // Materials and settings
@@ -131,13 +130,13 @@ export interface EditorSliceActions {
   persistCalibration: (photoId: string) => Promise<void>;
   applyPerMaskLength: (maskId: string, meters: number) => void;
   
-  // Drawing tools
+  // Drawing tools - new immutable mask system
   setActiveTool: (tool: ToolType) => void;
   setBrushSize: (size: number) => void;
-  startDrawing: (point: Vec2) => void;
-  addPoint: (point: Vec2) => void;
-  finishDrawing: (type?: 'area' | 'linear' | 'waterline_band') => void;
-  cancelDrawing: () => void;
+  startPath: (tool: 'area' | 'linear' | 'waterline_band', p: Vec2) => void;
+  appendPoint: (p: Vec2) => void;
+  commitPath: () => void;
+  cancelPath: () => void;
   
   // Mask management
   selectMask: (maskId: string | null) => void;
@@ -330,126 +329,95 @@ export const useEditorStore = create<EditorSlice>()(
 
     // Calibration V2 - Robust State Machine
     startCalibration: () => {
-      set({
+      set(state => ({
         editorState: {
-          ...get().editorState,
+          ...state.editorState,
           calState: 'placingA',
-          calTemp: {},
-          activeTool: 'calibration'
+          calTemp: {}
         }
-      });
+      }));
     },
 
     placeCalPoint: (p: Vec2) => {
-      const state = get().editorState;
-      
-      if (state.calState === 'placingA') {
-        set({
-          editorState: {
-            ...state,
-            calState: 'placingB',
-            calTemp: { a: p }
-          }
-        });
-      } else if (state.calState === 'placingB') {
-        set({
-          editorState: {
-            ...state,
-            calState: 'lengthEntry',
-            calTemp: { ...state.calTemp, b: p }
-          }
-        });
-      }
-    },
-
-    updateCalPreview: (p: Vec2) => {
-      const state = get().editorState;
-      if (state.calState === 'placingB') {
-        set({
-          editorState: {
-            ...state,
-            calTemp: { ...state.calTemp, preview: p }
-          }
-        });
-      }
-    },
-
-    setCalMeters: (m: number) => {
-      if (m < 0.01) return;
-      
-      set({
-        editorState: {
-          ...get().editorState,
-          calTemp: { ...get().editorState.calTemp, meters: m }
+      set(s => {
+        if (s.editorState.calState === 'placingA') {
+          return {
+            editorState: {
+              ...s.editorState,
+              calTemp: { a: p, preview: p },
+              calState: 'placingB'
+            }
+          };
         }
+        if (s.editorState.calState === 'placingB') {
+          return {
+            editorState: {
+              ...s.editorState,
+              calTemp: { ...s.editorState.calTemp, b: p },
+              calState: 'lengthEntry'
+            }
+          };
+        }
+        return {};
       });
     },
 
+    updateCalPreview: (p: Vec2) => {
+      set(s => s.editorState.calState === 'placingB' ? {
+        editorState: {
+          ...s.editorState,
+          calTemp: { ...s.editorState.calTemp, preview: p }
+        }
+      } : {});
+    },
+
+    setCalMeters: (m: number) => {
+      set(s => s.editorState.calState === 'lengthEntry' ? {
+        editorState: {
+          ...s.editorState,
+          calTemp: { ...s.editorState.calTemp, meters: m }
+        }
+      } : {});
+    },
+
     commitCalSample: async () => {
-      const state = get().editorState;
-      const { a, b, meters } = state.calTemp;
+      const s = get();
+      const { a, b, meters } = s.editorState.calTemp || {};
+      if (!a || !b || !meters || meters <= 0) return;
       
-      if (!a || !b || !meters || meters < 0.01) return;
-      
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const px = Math.hypot(dx, dy);
+      if (px < 10) { 
+        console.warn('Reference too short');
+        return; 
+      }
+      const ppm = px / meters;
+
+      // Set ppm locally first - MUST GO TO IDLE
+      set({ 
+        editorState: {
+          ...s.editorState,
+          calibration: { ppm }, 
+          calState: 'idle', 
+          calTemp: {} 
+        }
+      });
+      console.info('[Calibration] committed ppm=', ppm);
+      console.info('[Assert] ppm set =', get().editorState.calibration?.ppm);
+
+      // Persist to backend - handle failure by keeping local ppm
       try {
-        // Calculate pixels per meter
-        const distPx = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
-        if (distPx < 10) {
-          get().setError('Reference too short; choose a longer edge.');
-          return;
-        }
-        
-        const ppm = distPx / meters;
-        const newSample: CalSample = {
-          id: `cal-${Date.now()}`,
-          a, b, meters, ppm,
-          createdAt: new Date().toISOString()
-        };
-        
-        const currentCal = state.calibrationV2;
-        const samples = currentCal?.samples || [];
-        
-        if (samples.length >= 3) {
-          samples.shift();
-        }
-        
-        const updatedSamples = [...samples, newSample];
-        const avgPpm = updatedSamples.reduce((sum, s) => sum + s.ppm, 0) / updatedSamples.length;
-        
-        // Calculate standard deviation percentage
-        const variance = updatedSamples.reduce((sum, s) => sum + Math.pow(s.ppm - avgPpm, 2), 0) / updatedSamples.length;
-        const stdevPct = updatedSamples.length > 1 ? (Math.sqrt(variance) / avgPpm) * 100 : 0;
-        
-        const newCalibration: Calibration = {
-          ppm: avgPpm,
-          samples: updatedSamples,
-          stdevPct
-        };
-        
-        set({
-          editorState: {
-            ...state,
-            calibrationV2: newCalibration,
-            calState: 'idle', // C. RESET CALIBRATION MODE CORRECTLY
-            calTemp: {},
-            activeTool: 'hand'
-          },
-          isDirty: true
+        const res = await fetch(`/api/photos/${s.photoId}/calibration`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ppm, meta: { a, b, meters } })
         });
-        
-        // Show success message
-        get().setError(null);
-        
-        // Persist to backend if photoId exists
-        if (get().photoId) {
-          await get().persistCalibration(get().photoId!);
-        }
-        
-        get().recomputeFromSamples();
-        
-      } catch (error) {
-        console.error('Failed to create calibration sample:', error);
-        get().setError('Failed to save calibration');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        if (!data?.ppm) throw new Error('Calibration persist failed');
+      } catch (err) {
+        console.error('[Calibration] persist failed', err);
+        // Keep local calibration but don't show error to user
       }
     },
 
@@ -501,14 +469,13 @@ export const useEditorStore = create<EditorSlice>()(
     },
 
     cancelCalibration: () => {
-      set({
+      set(state => ({
         editorState: {
-          ...get().editorState,
+          ...state.editorState,
           calState: 'idle',
-          calTemp: {},
-          activeTool: 'hand'
+          calTemp: {}
         }
-      });
+      }));
     },
 
     recomputeFromSamples: () => {
@@ -611,29 +578,63 @@ export const useEditorStore = create<EditorSlice>()(
       });
     },
 
+    // D. IMMUTABLE MASK CREATION SYSTEM
+    startPath: (tool: 'area' | 'linear' | 'waterline_band', p: Vec2) => {
+      set({ transient: { tool, points: [p] } });
+    },
+
+    appendPoint: (p: Vec2) => {
+      set(s => s.transient ? { 
+        transient: { 
+          ...s.transient, 
+          points: [...s.transient.points, p] 
+        } 
+      } : {});
+    },
+
+    commitPath: () => {
+      const s = get();
+      if (!s.transient || s.transient.points.length < 2) { 
+        set({ transient: undefined }); 
+        return; 
+      }
+      
+      const id = crypto.randomUUID();
+      const mask: EditorMask = {
+        id,
+        photoId: s.photoId || 'temp',
+        type: s.transient.tool! as any,
+        path: { points: s.transient.points.slice() },
+        createdAt: new Date().toISOString()
+      };
+      
+      set({ 
+        masks: [...s.masks, mask], 
+        transient: undefined, 
+        selectedMaskId: id 
+      });
+      console.info('[Mask] committed', mask.type, 'count=', get().masks.length);
+      console.info('[Assert] masks length =', get().masks.length);
+
+      // Async persist (do not block UI)
+      // TODO: api.masks.upsert(mask).catch(e => console.error('persist mask failed', e));
+    },
+
+    cancelPath: () => {
+      set({ transient: undefined });
+    },
+
+    // Legacy drawing functions (keep for compatibility)
     startDrawing: (point: Vec2) => {
-      set({ currentDrawing: [point] });
+      get().startPath('area', point);
     },
 
     addPoint: (point: Vec2) => {
-      const current = get().currentDrawing;
-      if (current) {
-        set({ currentDrawing: [...current, point] });
-      }
+      get().appendPoint(point);
     },
 
-    finishDrawing: (type?: 'area' | 'linear' | 'waterline_band') => {
-      const { currentDrawing, photoId, editorState } = get();
-      if (!currentDrawing || currentDrawing.length < 2 || !photoId) return;
-
-      // Auto-detect type based on active tool if not specified
-      const maskType = type || editorState.activeTool === 'linear' ? 'linear' : 
-                           editorState.activeTool === 'waterline' ? 'waterline_band' : 'area';
-
-      const maskId = crypto.randomUUID();
-      const now = new Date().toISOString();
-      
-      let newMask: EditorMask;
+    finishDrawing: () => {
+      get().commitPath();
       
       if (maskType === 'area') {
         newMask = {
@@ -686,7 +687,7 @@ export const useEditorStore = create<EditorSlice>()(
     },
 
     cancelDrawing: () => {
-      set({ currentDrawing: null });
+      get().cancelPath();
     },
 
     // Mask management

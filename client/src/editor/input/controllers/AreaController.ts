@@ -13,7 +13,7 @@ export class AreaController implements ToolController {
   constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { editorState, transient } = this.store;
     
     // F. CONTROLLER CONTRACTS - Only handle if area tool is active
     if (editorState?.activeTool !== 'area') {
@@ -21,26 +21,18 @@ export class AreaController implements ToolController {
     }
 
     // Start new drawing or add point to existing
-    if (!currentDrawing) {
-      this.store.startDrawing(pt);
+    if (!transient) {
+      this.store.startPath('area', pt);
     } else {
-      this.store.addPoint(pt);
+      this.store.appendPoint(pt);
     }
     
     return true;
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState, currentDrawing } = this.store;
-    
-    // Only handle if area tool is active and drawing
-    if (editorState?.activeTool !== 'area' || !currentDrawing) {
-      return false;
-    }
-
-    // Add point to current drawing
-    this.store.addPoint(pt);
-    return true;
+    // Area tool doesn't use move for drawing - only click-to-add points
+    return false;
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
@@ -62,7 +54,7 @@ export class AreaController implements ToolController {
   }
 
   onKey(code: string, e: KeyboardEvent): boolean {
-    const { editorState, currentDrawing } = this.store;
+    const { editorState, transient } = this.store;
     
     if (editorState?.activeTool !== 'area') {
       return false;
@@ -70,15 +62,15 @@ export class AreaController implements ToolController {
 
     switch (code) {
       case 'Escape':
-        if (currentDrawing) {
-          this.onCancel();
+        if (transient) {
+          this.store.cancelPath();
           return true;
         }
         break;
         
       case 'Enter':
-        if (currentDrawing) {
-          this.store.finishDrawing('area');
+        if (transient) {
+          this.store.commitPath();
           return true;
         }
         break;

@@ -40,21 +40,25 @@ interface CanvasStageProps {
 }
 
 export function CanvasStage({ className, width = 800, height = 600 }: CanvasStageProps) {
+  console.info('[CanvasStage] mounted from:', import.meta?.url || 'CanvasStage.tsx');
+  
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
 
   const store = useEditorStore();
   const { photo, editorState, setZoom, setPan } = store;
 
-  // B. ROUTER SELECTION LOGIC - Only route to calibration when actively placing/measuring
-  const activeTool = isCalibrationActive(editorState || { calState: 'idle' }) 
-    ? 'calibration' 
-    : editorState?.activeTool || 'hand';
+  // B. INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS
+  const getActive = () => {
+    const s = editorState || { calState: 'idle' };
+    return isCalibrationActive(s) ? 'calibration' : s.activeTool || 'hand';
+  };
+  const activeTool = getActive();
 
   // Create input router with tool controllers
   const router = useMemo(() => {
     return new InputRouter(
-      () => activeTool,
+      getActive,
       {
         calibration: new CalibrationController(store),
         area: new AreaController(store),
@@ -62,10 +66,9 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         waterline: new WaterlineController(store),
         eraser: new EraserController(store),
         hand: new HandController(store),
-      },
-      store // Pass store for debug instrumentation
+      }
     );
-  }, [activeTool, store]);
+  }, [store]);
 
   const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
 

@@ -14,6 +14,8 @@ import { useEditorStore } from '@/stores/editorSlice';
 import { cn } from '@/lib/utils';
 
 export function CanvasEditorPage() {
+  console.info('[EditorPage] route file:', import.meta?.url || 'CanvasEditorPage.tsx');
+  
   const stageRef = useRef<StageType>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibrationDialog, setShowCalibrationDialog] = useState(false);

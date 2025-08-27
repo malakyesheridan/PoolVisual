@@ -21,8 +21,7 @@ export type ToolName = ToolController['name'];
 export class InputRouter {
   constructor(
     private getActive: () => ToolName,
-    private controllers: Record<ToolName, ToolController>,
-    private store: any
+    private controllers: Record<ToolName, ToolController>
   ) {}
 
   handleDown(stage: Stage, e: KonvaEventObject<any>) {
