@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { MaskProperties } from './MaskProperties';
 import { CalibrationControls } from './CalibrationControls';
 import { QuoteGenerator } from './QuoteGenerator';
+import { Material3DViewer } from '../3d/Material3DViewer';
 
 interface SidebarProps {
   materials: Material[];
@@ -110,7 +111,7 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
     <div className={cn("w-80 bg-white border-l border-slate-200 flex flex-col h-full", className)}>
       <Tabs defaultValue="properties" className="flex flex-col h-full">
         <div className="p-4 border-b border-slate-200">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="properties" className="text-xs">
               <Settings className="w-4 h-4 mr-1" />
               Properties
@@ -122,6 +123,10 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
             <TabsTrigger value="materials" className="text-xs">
               <Package className="w-4 h-4 mr-1" />
               Materials
+            </TabsTrigger>
+            <TabsTrigger value="3d" className="text-xs">
+              <Palette className="w-4 h-4 mr-1" />
+              3D Preview
             </TabsTrigger>
           </TabsList>
         </div>
@@ -366,6 +371,14 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
           <div className="border-t">
             <MaskProperties />
           </div>
+        </TabsContent>
+
+        <TabsContent value="3d" className="flex-1 p-0 m-0">
+          <ScrollArea className="h-full">
+            <div className="p-4">
+              <Material3DViewer />
+            </div>
+          </ScrollArea>
         </TabsContent>
       </Tabs>
     </div>
