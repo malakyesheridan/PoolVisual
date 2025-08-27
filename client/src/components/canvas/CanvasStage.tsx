@@ -68,7 +68,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     let displayHeight = backgroundImage.height;
     
     // Fit image to stage while maintaining aspect ratio - fit to screen
-    const maxScale = 0.8; // Use 80% of available space
+    const maxScale = 0.9; // Use 90% of available space
     if (imageAspect > stageAspect) {
       displayWidth = stageDimensions.width * maxScale;
       displayHeight = displayWidth / imageAspect;

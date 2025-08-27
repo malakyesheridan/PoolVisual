@@ -137,12 +137,6 @@ export function CanvasEditorPage() {
       "h-screen flex flex-col bg-slate-100",
       isFullscreen && "fixed inset-0 z-50"
     )}>
-      {/* Toolbar */}
-      <Toolbar
-        onExport={handleExport}
-        onFullscreen={handleFullscreen}
-      />
-
       {/* Main Editor Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas Area */}
@@ -171,9 +165,9 @@ export function CanvasEditorPage() {
           </div>
 
           {/* Canvas */}
-          <div className="flex-1 relative bg-gray-100">
+          <div className="flex-1 relative bg-gray-100 overflow-auto">
             <CanvasStage
-              className="w-full h-full"
+              className="w-full h-full min-h-0"
               onStageRef={handleStageRef}
             />
           </div>
@@ -184,6 +178,12 @@ export function CanvasEditorPage() {
           <Sidebar materials={[]} />
         </div>
       </div>
+
+      {/* Toolbar */}
+      <Toolbar
+        onExport={handleExport}
+        onFullscreen={handleFullscreen}
+      />
 
       {/* Calibration Dialog - TODO: Implement when needed */}
       {showCalibrationDialog && (
