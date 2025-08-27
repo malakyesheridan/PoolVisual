@@ -10,11 +10,6 @@ import { KonvaEventObject } from 'konva/lib/Node';
 import useImage from 'use-image';
 import { Vec2 } from '@shared/schema';
 import { useEditorStore } from '@/stores/editorSlice';
-// Import components - will create these components
-// import { MaskRenderer } from './MaskRenderer';
-// import { DrawingLayer } from './DrawingLayer';
-// import { CalibrationLayer } from './CalibrationLayer';
-// import { SelectionLayer } from './SelectionLayer';
 
 interface CanvasStageProps {
   className?: string;
@@ -64,23 +59,56 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     onStageRef?.(stageRef.current);
   }, [onStageRef]);
 
+  // Calculate image dimensions and positioning
+  const imageProps = backgroundImage && photo ? (() => {
+    const imageAspect = backgroundImage.width / backgroundImage.height;
+    const stageAspect = stageDimensions.width / stageDimensions.height;
+    
+    let displayWidth = backgroundImage.width;
+    let displayHeight = backgroundImage.height;
+    
+    // Fit image to stage while maintaining aspect ratio - fit to screen
+    const maxScale = 0.8; // Use 80% of available space
+    if (imageAspect > stageAspect) {
+      displayWidth = stageDimensions.width * maxScale;
+      displayHeight = displayWidth / imageAspect;
+    } else {
+      displayHeight = stageDimensions.height * maxScale;
+      displayWidth = displayHeight * imageAspect;
+    }
+    
+    // Center the image and apply zoom/pan
+    const centerX = stageDimensions.width / 2;
+    const centerY = stageDimensions.height / 2;
+    
+    return {
+      image: backgroundImage,
+      width: displayWidth,
+      height: displayHeight,
+      x: centerX - (displayWidth * editorState.zoom) / 2 + editorState.pan.x,
+      y: centerY - (displayHeight * editorState.zoom) / 2 + editorState.pan.y,
+      scaleX: editorState.zoom,
+      scaleY: editorState.zoom
+    };
+  })() : null;
+
   // Canvas interaction handlers
   const getPointerPosition = useCallback((): Vec2 | null => {
     const stage = stageRef.current;
-    if (!stage) return null;
+    if (!stage || !imageProps) return null;
     
     const pos = stage.getPointerPosition();
     if (!pos) return null;
     
     // Convert stage coordinates to image coordinates
-    const scaleX = backgroundImage ? backgroundImage.width / (backgroundImage.width * editorState.zoom) : 1;
-    const scaleY = backgroundImage ? backgroundImage.height / (backgroundImage.height * editorState.zoom) : 1;
+    const imageX = (pos.x - imageProps.x) / editorState.zoom;
+    const imageY = (pos.y - imageProps.y) / editorState.zoom;
     
     return {
-      x: (pos.x - editorState.pan.x) * scaleX,
-      y: (pos.y - editorState.pan.y) * scaleY
+      x: imageX,
+      y: imageY
     };
-  }, [backgroundImage, editorState.zoom, editorState.pan]);
+  }, [imageProps, editorState.zoom]);
 
   const handleStageMouseDown = useCallback((e: KonvaEventObject<MouseEvent>) => {
     if (!backgroundImage) return;
@@ -125,66 +153,44 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     if (!pos) return;
 
     // Handle panning
-    if (isPanning && lastPointerPosition && editorState.activeTool === 'hand') {
+    if (isPanning && lastPointerPosition) {
       const dx = pos.x - lastPointerPosition.x;
       const dy = pos.y - lastPointerPosition.y;
-      
       setPan({
         x: editorState.pan.x + dx,
         y: editorState.pan.y + dy
       });
+      setLastPointerPosition(pos);
       return;
     }
 
     // Handle drawing
-    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
+    if (currentDrawing && ['area', 'linear', 'waterline', 'eraser'].includes(editorState.activeTool)) {
       addPoint(pos);
     }
-
-    // Handle eraser
-    if (editorState.activeTool === 'eraser' && e.evt.buttons === 1) {
-      if (selectedMaskId && currentDrawing) {
-        // Add eraser stroke point
-        addPoint(pos);
-      } else if (selectedMaskId) {
-        // Start eraser stroke
-        startDrawing(pos);
-      }
-    }
   }, [
-    getPointerPosition,
     isPanning,
     lastPointerPosition,
+    currentDrawing,
     editorState.activeTool,
     editorState.pan,
-    currentDrawing,
-    selectedMaskId,
+    getPointerPosition,
     setPan,
-    addPoint,
-    startDrawing
+    addPoint
   ]);
 
   const handleStageMouseUp = useCallback(() => {
     setIsPanning(false);
     setLastPointerPosition(null);
 
-    // Handle drawing completion
+    // Finish drawing for area and linear tools
     if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
-      finishDrawing();
-    }
-
-    // Handle eraser completion
-    if (currentDrawing && editorState.activeTool === 'eraser' && selectedMaskId) {
-      eraseFromSelected(currentDrawing, editorState.brushSize);
       finishDrawing();
     }
   }, [
     currentDrawing,
     editorState.activeTool,
-    editorState.brushSize,
-    selectedMaskId,
-    finishDrawing,
-    eraseFromSelected
+    finishDrawing
   ]);
 
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -215,36 +221,6 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     setZoom(finalScale);
     setPan(newPos);
   }, [editorState.zoom, editorState.pan, setZoom, setPan]);
-
-  // Calculate image dimensions and positioning
-  const imageProps = backgroundImage && photo ? (() => {
-    const imageAspect = backgroundImage.width / backgroundImage.height;
-    const stageAspect = stageDimensions.width / stageDimensions.height;
-    
-    let displayWidth = backgroundImage.width;
-    let displayHeight = backgroundImage.height;
-    
-    // Fit image to stage while maintaining aspect ratio
-    if (imageAspect > stageAspect) {
-      displayWidth = stageDimensions.width * 0.9;
-      displayHeight = displayWidth / imageAspect;
-    } else {
-      displayHeight = stageDimensions.height * 0.9;
-      displayWidth = displayHeight * imageAspect;
-    }
-    
-    return {
-      image: backgroundImage,
-      width: displayWidth,
-      height: displayHeight,
-      x: (stageDimensions.width - displayWidth) / 2,
-      y: (stageDimensions.height - displayHeight) / 2,
-      scaleX: editorState.zoom,
-      scaleY: editorState.zoom,
-      offsetX: -editorState.pan.x / editorState.zoom,
-      offsetY: -editorState.pan.y / editorState.zoom
-    };
-  })() : null;
 
   return (
     <div 
@@ -297,8 +273,6 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               y={imageProps.y}
               scaleX={editorState.zoom}
               scaleY={editorState.zoom}
-              offsetX={imageProps.offsetX}
-              offsetY={imageProps.offsetY}
             >
               {/* Render all masks */}
               {masks.map(mask => {
@@ -358,8 +332,6 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               y={imageProps.y}
               scaleX={editorState.zoom}
               scaleY={editorState.zoom}
-              offsetX={imageProps.offsetX}
-              offsetY={imageProps.offsetY}
             >
               {/* Current drawing stroke */}
               {editorState.activeTool === 'area' && currentDrawing.length > 2 && (
@@ -373,13 +345,13 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
                     dash={[5, 5]}
                   />
                   {/* Close line */}
-                  {currentDrawing.length > 0 && currentDrawing[0] && currentDrawing[currentDrawing.length - 1] && (
+                  {currentDrawing.length > 0 && (
                     <Line
                       points={[
-                        currentDrawing[currentDrawing.length - 1].x,
-                        currentDrawing[currentDrawing.length - 1].y,
-                        currentDrawing[0].x,
-                        currentDrawing[0].y
+                        currentDrawing[currentDrawing.length - 1]?.x || 0,
+                        currentDrawing[currentDrawing.length - 1]?.y || 0,
+                        currentDrawing[0]?.x || 0,
+                        currentDrawing[0]?.y || 0
                       ]}
                       stroke="#3b82f6"
                       strokeWidth={1}
@@ -429,32 +401,25 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
 
         {/* Calibration Layer */}
         <Layer>
-          {imageProps && editorState.calibration && (
+          {imageProps && editorState.calibration && 'start' in editorState.calibration && 'end' in editorState.calibration && (
             <Group
               x={imageProps.x}
               y={imageProps.y}
               scaleX={editorState.zoom}
               scaleY={editorState.zoom}
-              offsetX={imageProps.offsetX}
-              offsetY={imageProps.offsetY}
             >
-              {/* Calibration layer temporarily disabled */}
-            </Group>
-          )}
-        </Layer>
-
-        {/* Selection Layer */}
-        <Layer>
-          {imageProps && selectedMaskId && (
-            <Group
-              x={imageProps.x}
-              y={imageProps.y}
-              scaleX={editorState.zoom}
-              scaleY={editorState.zoom}
-              offsetX={imageProps.offsetX}
-              offsetY={imageProps.offsetY}
-            >
-              {/* Selection layer temporarily disabled */}
+              <Line
+                points={[
+                  editorState.calibration.start.x,
+                  editorState.calibration.start.y,
+                  editorState.calibration.end.x,
+                  editorState.calibration.end.y
+                ]}
+                stroke="#ef4444"
+                strokeWidth={3}
+                lineCap="round"
+                dash={[10, 5]}
+              />
             </Group>
           )}
         </Layer>
