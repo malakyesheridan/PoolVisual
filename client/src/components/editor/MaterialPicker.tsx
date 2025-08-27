@@ -25,7 +25,8 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(false);
   
-  const { attachMaterial } = useEditorStore();
+  const store = useEditorStore();
+  const { attachMaterial } = store || {};
 
   // Load materials on component mount
   useEffect(() => {
@@ -51,7 +52,7 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
   };
 
   const handleMaterialSelect = (materialId: string) => {
-    if (selectedMaskId) {
+    if (selectedMaskId && attachMaterial) {
       attachMaterial(selectedMaskId, materialId);
       onClose();
     }

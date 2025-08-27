@@ -26,6 +26,7 @@ import { MaterialPicker } from './MaterialPicker';
 export function MaskProperties() {
   const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   
+  const store = useEditorStore();
   const {
     selectedMaskId,
     masks,
@@ -34,10 +35,10 @@ export function MaskProperties() {
     updateMaterialSettings,
     setBandHeight,
     computeMetrics
-  } = useEditorStore();
+  } = store || {};
 
   // Get selected mask
-  const selectedMask = selectedMaskId ? masks.find(m => m.id === selectedMaskId) : null;
+  const selectedMask = selectedMaskId && masks ? masks.find(m => m.id === selectedMaskId) : null;
   if (!selectedMask) {
     return (
       <div className="h-full flex items-center justify-center text-gray-500">
@@ -50,7 +51,13 @@ export function MaskProperties() {
   }
 
   // Get material settings for this mask
-  const materialSettings = maskMaterials[selectedMaskId!] || {
+  const materialSettings = (maskMaterials && selectedMaskId) ? (maskMaterials[selectedMaskId] || {
+    materialId: '',
+    repeatScale: 1.0,
+    rotationDeg: 0,
+    brightness: 0,
+    contrast: 1.0
+  }) : {
     materialId: '',
     repeatScale: 1.0,
     rotationDeg: 0,
@@ -59,17 +66,19 @@ export function MaskProperties() {
   };
 
   // Get metrics for selected mask
-  const metrics = computeMetrics(selectedMaskId!);
-  const hasCalibration = editorState.calibration && editorState.calibration.pixelsPerMeter > 0;
+  const metrics = (computeMetrics && selectedMaskId) ? computeMetrics(selectedMaskId) : {};
+  const hasCalibration = editorState?.calibration && editorState.calibration.pixelsPerMeter > 0;
 
   const handleMaterialSettingChange = (key: keyof typeof materialSettings, value: number) => {
-    updateMaterialSettings(selectedMaskId!, { [key]: value });
+    if (updateMaterialSettings && selectedMaskId) {
+      updateMaterialSettings(selectedMaskId, { [key]: value });
+    }
   };
 
   const handleBandHeightChange = (value: string) => {
     const height = parseFloat(value);
-    if (!isNaN(height) && height > 0) {
-      setBandHeight(selectedMaskId!, height);
+    if (!isNaN(height) && height > 0 && setBandHeight && selectedMaskId) {
+      setBandHeight(selectedMaskId, height);
     }
   };
 

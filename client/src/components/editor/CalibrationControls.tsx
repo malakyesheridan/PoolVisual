@@ -17,18 +17,19 @@ export function CalibrationControls() {
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [referenceLength, setReferenceLength] = useState<string>('1.0');
   
-  const { editorState, setCalibrationMode } = useEditorStore();
-  const calibration = editorState.calibration;
+  const store = useEditorStore();
+  const { editorState, setCalibrationMode } = store || {};
+  const calibration = editorState?.calibration;
   const isCalibrated = calibration && calibration.pixelsPerMeter > 0;
 
   const handleStartCalibration = () => {
     setIsCalibrating(true);
-    setCalibrationMode(true);
+    setCalibrationMode?.(true);
   };
 
   const handleCancelCalibration = () => {
     setIsCalibrating(false);
-    setCalibrationMode(false);
+    setCalibrationMode?.(false);
   };
 
   const getScaleDescription = (ppm: number): string => {

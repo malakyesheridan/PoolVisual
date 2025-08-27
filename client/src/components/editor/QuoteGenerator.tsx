@@ -14,6 +14,7 @@ import { useToast } from '@/hooks/use-toast';
 export function QuoteGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   
+  const store = useEditorStore();
   const { 
     masks, 
     editorState, 
@@ -22,34 +23,36 @@ export function QuoteGenerator() {
     computeMetrics, 
     maskMaterials,
     generateQuote 
-  } = useEditorStore();
+  } = store || {};
   
   const { toast } = useToast();
   
-  const isCalibrated = editorState.calibration && editorState.calibration.pixelsPerMeter > 0;
+  const isCalibrated = editorState?.calibration && editorState.calibration.pixelsPerMeter > 0;
   
   // Calculate total estimated cost
   const calculateTotalCost = () => {
     let total = 0;
     let hasItems = false;
     
-    masks.forEach(mask => {
-      const materialSettings = maskMaterials[mask.id];
-      if (materialSettings?.materialId) {
-        hasItems = true;
-        const metrics = computeMetrics(mask.id);
-        // TODO: Get actual material price and calculate cost
-        // total += metrics.estimatedCost || 0;
-      }
-    });
+    if (masks && maskMaterials && computeMetrics) {
+      masks.forEach(mask => {
+        const materialSettings = maskMaterials[mask.id];
+        if (materialSettings?.materialId) {
+          hasItems = true;
+          const metrics = computeMetrics(mask.id);
+          // TODO: Get actual material price and calculate cost
+          // total += metrics.estimatedCost || 0;
+        }
+      });
+    }
     
     return { total, hasItems };
   };
 
   const { total, hasItems } = calculateTotalCost();
   
-  const masksWithMaterials = masks.filter(mask => 
-    maskMaterials[mask.id]?.materialId
+  const masksWithMaterials = (masks || []).filter(mask => 
+    maskMaterials?.[mask.id]?.materialId
   );
 
   const handleGenerateQuote = async () => {
@@ -83,7 +86,7 @@ export function QuoteGenerator() {
     setIsGenerating(true);
     
     try {
-      await generateQuote(jobId, photoId);
+      await generateQuote?.(jobId!, photoId!);
       
       toast({
         title: "Quote Generated",
@@ -157,8 +160,8 @@ export function QuoteGenerator() {
           <div className="space-y-2">
             <div className="text-xs font-medium text-gray-700">Materials Required:</div>
             {masksWithMaterials.map((mask, index) => {
-              const metrics = computeMetrics(mask.id);
-              const materialSettings = maskMaterials[mask.id];
+              const metrics = computeMetrics?.(mask.id) || {};
+              const materialSettings = maskMaterials?.[mask.id];
               
               return (
                 <div key={mask.id} className="bg-blue-50 rounded p-2">
