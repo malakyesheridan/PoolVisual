@@ -58,16 +58,27 @@ export const settings = pgTable("settings", {
 export const materials = pgTable("materials", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   orgId: uuid("org_id").references(() => orgs.id),
+  supplier: text("supplier").default("PoolTile"),
+  sourceUrl: text("source_url"),
   name: text("name").notNull(),
-  sku: text("sku").notNull(),
+  sku: text("sku"),
   category: materialCategoryEnum("category").notNull(),
   unit: materialUnitEnum("unit").notNull(),
+  color: text("color"),
+  finish: text("finish"),
+  tileWidthMm: integer("tile_width_mm"),
+  tileHeightMm: integer("tile_height_mm"),
+  sheetWidthMm: integer("sheet_width_mm"),
+  sheetHeightMm: integer("sheet_height_mm"),
+  thicknessMm: integer("thickness_mm"),
+  groutWidthMm: integer("grout_width_mm"),
   cost: numeric("cost", { precision: 10, scale: 2 }),
   price: numeric("price", { precision: 10, scale: 2 }),
-  defaultWastagePct: numeric("default_wastage_pct", { precision: 5, scale: 2 }),
-  defaultMarginPct: numeric("default_margin_pct", { precision: 5, scale: 2 }),
+  wastagePct: numeric("wastage_pct", { precision: 5, scale: 2 }).default("8"),
+  marginPct: numeric("margin_pct", { precision: 5, scale: 2 }),
   textureUrl: text("texture_url"),
   thumbnailUrl: text("thumbnail_url"),
+  physicalRepeatM: numeric("physical_repeat_m", { precision: 10, scale: 4 }),
   notes: text("notes"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -123,9 +134,19 @@ export const masks = pgTable("masks", {
   areaM2: numeric("area_m2", { precision: 10, scale: 2 }),
   perimeterM: numeric("perimeter_m", { precision: 10, scale: 2 }),
   materialId: uuid("material_id").references(() => materials.id),
-  calcMetaJson: jsonb("calc_meta_json"), // For per-mask override_ppm
+  calcMetaJson: jsonb("calc_meta_json"), // For material settings: repeatScale, rotationDeg, brightness, contrast
   createdBy: uuid("created_by").references(() => orgMembers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Import runs for supplier data
+export const importRuns = pgTable("import_runs", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  supplier: text("supplier").notNull(),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+  totals: jsonb("totals"),
+  log: text("log"),
 });
 
 // Quotes

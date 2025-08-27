@@ -6,15 +6,18 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   Package,
   Ruler,
   Trash2,
   Square,
   Zap,
-  Waves
+  Waves,
+  Layers
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorSlice';
+import { MaterialsTab } from './MaterialsTab';
 import { cn } from '@/lib/utils';
 
 interface SidebarProps {
@@ -24,6 +27,7 @@ interface SidebarProps {
 
 export function Sidebar({ materials, className }: SidebarProps) {
   const { masks, calibration, deleteMask } = useEditorStore();
+  const [activeTab, setActiveTab] = useState('masks');
 
   const getMaskIcon = (type: string) => {
     switch (type) {
@@ -49,7 +53,7 @@ export function Sidebar({ materials, className }: SidebarProps) {
       <div className="p-4 border-b">
         <div className="flex items-center gap-2 mb-3">
           <Package className="w-5 h-5" />
-          <h2 className="font-semibold">Masks & Materials</h2>
+          <h2 className="font-semibold">Editor Panel</h2>
         </div>
         
         {/* Calibration Status */}
@@ -61,69 +65,77 @@ export function Sidebar({ materials, className }: SidebarProps) {
         </div>
       </div>
 
-      {/* Masks List */}
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-3">
-          <h3 className="font-medium text-sm text-gray-700">
-            Drawn Masks ({masks.length})
-          </h3>
-          
-          {masks.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              <Square className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>No masks drawn yet</p>
-              <p className="text-xs mt-1">Use A, L, or W tools to draw</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {masks.map((mask, index) => {
-                const Icon = getMaskIcon(mask.type);
-                const label = getMaskLabel(mask.type);
-                
-                return (
-                  <div
-                    key={mask.id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-4 h-4 text-blue-600" />
-                      <div>
-                        <div className="font-medium text-sm">
-                          {label} {index + 1}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {mask.path.points.length} points
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
-                      title="Delete mask"
-                      onClick={() => deleteMask(mask.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
+      {/* Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
+        <TabsList className="grid w-full grid-cols-2 mx-4 mb-2">
+          <TabsTrigger value="masks" className="flex items-center gap-1">
+            <Layers className="w-3 h-3" />
+            Masks
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="flex items-center gap-1">
+            <Package className="w-3 h-3" />
+            Materials
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Materials Section */}
-      <div className="p-4 border-t">
-        <h3 className="font-medium text-sm text-gray-700 mb-2">
-          Materials
-        </h3>
-        <div className="text-center py-4 text-gray-500 text-sm">
-          <Package className="w-6 h-6 mx-auto mb-2 opacity-50" />
-          <p>Materials coming soon</p>
-        </div>
-      </div>
+        <TabsContent value="masks" className="flex-1 flex flex-col m-0">
+          <ScrollArea className="flex-1">
+            <div className="p-4 space-y-3">
+              <h3 className="font-medium text-sm text-gray-700">
+                Drawn Masks ({masks.length})
+              </h3>
+              
+              {masks.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  <Square className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No masks drawn yet</p>
+                  <p className="text-xs mt-1">Use A, L, or W tools to draw</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {masks.map((mask, index) => {
+                    const Icon = getMaskIcon(mask.type);
+                    const label = getMaskLabel(mask.type);
+                    
+                    return (
+                      <div
+                        key={mask.id}
+                        className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Icon className="w-4 h-4 text-blue-600" />
+                          <div>
+                            <div className="font-medium text-sm">
+                              {label} {index + 1}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              {mask.path.points.length} points
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                          title="Delete mask"
+                          onClick={() => deleteMask(mask.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="materials" className="flex-1 flex flex-col m-0">
+          <MaterialsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

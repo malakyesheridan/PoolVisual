@@ -1,0 +1,118 @@
+Proceed — answers and scope are locked in:
+
+1) Database: **Use the existing Neon PostgreSQL**. Do not introduce Supabase. Keep current auth/storage exactly as-is. Create SQL migrations against Neon.
+
+2) Delivery approach: **Phase it to avoid regressions**. Implement **Phase 1–3 now** (core library + UI + canvas hookup). Leave the supplier scraper/texture generator for Phase 4 after we confirm stability.
+
+3) Current priority: **Core Materials Library** first, with full CRUD, sidebar selection, and correct texture scaling in the editor.
+
+==============================================================================
+NON-REGRESSION (HARD REQUIREMENT)
+==============================================================================
+- Do not rename/remove existing types, routes, keys, or state.
+- All changes are additive and backward compatible.
+- Editor must behave identically on existing projects after this change.
+
+==============================================================================
+PHASE 1 — DB MIGRATIONS (NEON)
+==============================================================================
+Create migrations (use our existing migration tool; if none, add a simple SQL runner):
+- `materials`:
+  - id uuid pk default gen_random_uuid()
+  - org_id uuid null references orgs(id) on delete set null
+  - supplier text default 'PoolTile'
+  - source_url text
+  - name text not null
+  - sku text
+  - category text check (category in ('coping','waterline_tile','interior','paving','fencing')) not null
+  - unit text check (unit in ('m2','lm','each')) not null
+  - color text, finish text
+  - tile_width_mm int, tile_height_mm int
+  - sheet_width_mm int, sheet_height_mm int
+  - thickness_mm int, grout_width_mm int
+  - cost numeric, price numeric
+  - wastage_pct numeric default 8
+  - margin_pct numeric
+  - texture_url text, thumbnail_url text
+  - physical_repeat_m numeric  -- meters represented by one texture tile (if known)
+  - notes text
+  - is_active boolean default true
+  - created_at timestamptz default now()
+
+- `import_runs`:
+  - id uuid pk default gen_random_uuid()
+  - supplier text not null
+  - started_at timestamptz default now()
+  - finished_at timestamptz
+  - totals jsonb
+  - log text
+
+- **Alter** `masks` to add `material_id uuid null references materials(id) on delete set null`.
+
+Indexes:
+- create index on materials(category), materials(org_id), materials(supplier, sku).
+
+==============================================================================
+PHASE 2 — BACKEND API (FASTIFY + ZOD)
+==============================================================================
+Add endpoints (keep existing routes untouched):
+- `GET /api/materials?org_id=&category=&q=&page=&pageSize=`  // search + pagination
+- `POST /api/materials`  // create
+- `PATCH /api/materials/:id`  // update
+- `DELETE /api/materials/:id`
+- DTOs fully validated with Zod. Enforce org scoping on read/write when org_id is present.
+- Update `/api/masks` upsert to accept `material_id` and persist it. Return joined material fields needed by the editor (name, price, texture_url, physical_repeat_m, wastage_pct).
+
+==============================================================================
+PHASE 3 — FRONTEND (LIBRARY + SIDEBAR + CANVAS HOOKUP)
+==============================================================================
+A) **/materials page**
+- Table + grid view, search, filters (category, active).
+- Row create/edit drawer: all fields above; image uploads for texture/thumbnail (reuse existing storage).
+- Bulk CSV upload button (wire only UI & parser now; endpoint added in Phase 4).
+
+B) **Editor Sidebar → Materials tab**
+- Tabs: Coping | Waterline Tiles | Interior | Paving | Fencing
+- Search box
+- Cards: thumbnail, name, unit price. “Select” button attaches to the **selected mask**.
+- If no mask selected → non-blocking toast “Select a mask first”.
+
+C) **Canvas overlay scaling (accurate by default)**
+- When a material attaches to a mask:
+  - Let `ppm = photo.calibration_pixels_per_meter`.
+  - Determine real-world repeat (`repeat_m`) in this order:
+    1) `material.physical_repeat_m` if present
+    2) `sheet_width_mm / 1000` if set
+    3) `tile_width_mm / 1000` if set
+    4) fallback `0.3` (30cm) with a tooltip “Adjust scale”
+  - The pattern tile is rendered at 1024px; compute initial repeat:
+    `texturePxPerMeter = 1024 / repeat_m`
+    `initialScale = texturePxPerMeter / ppm`
+  - Apply `initialScale` to the texture layer; allow user to fine-tune via existing repeat/rotation controls.
+- Persist per-mask `calc_meta_json = { repeatScale, rotationDeg, brightness, contrast }`.
+
+D) **MetricsBar**
+- Show Material name and Est. Cost = qty × price × (1 + wastage_pct/100) when `price` present.
+- If calibration is missing, show “—” and a tooltip “Calibrate to unlock measurements”.
+
+E) **Undo/Redo compatibility**
+- Attaching/removing a material and changing material controls must push a history snapshot and restore correctly on undo/redo.
+
+==============================================================================
+PHASE 4 — IMPORTERS (DEFERRED UNTIL PHASE 1–3 PASS)
+==============================================================================
+- Add `/api/import/pooltile` worker + sharp texture pipeline and CSV importer.
+- Only start this **after** Phases 1–3 ship and pass tests.
+
+==============================================================================
+TESTS & ACCEPTANCE
+==============================================================================
+- Unit tests: material repeat scale calc; CSV parser.
+- E2E:
+  1) Create a material; it appears in /materials and the sidebar.
+  2) Draw mask → attach material → texture repeats at sensible scale → tweak repeat → save → reload state identical.
+  3) Est. cost updates when price/wastage change.
+  4) Undo/Redo restores material attachment and control changes exactly.
+- Zero console errors; strict TypeScript; existing editor flows unchanged.
+
+Implement Phases 1–3 now, preserving all existing functionality. After I verify, we’ll green-light Phase 4 (PoolTile importer + sharp texture generation).
