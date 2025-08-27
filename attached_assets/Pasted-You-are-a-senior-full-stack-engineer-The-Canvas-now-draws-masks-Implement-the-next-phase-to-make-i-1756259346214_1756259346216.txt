@@ -1,0 +1,167 @@
+You are a senior full-stack engineer. The Canvas now draws masks. Implement the next phase to make it production-useful:
+
+GOAL
+- Calibrate scale from a reference line → compute pixels_per_meter (ppm)
+- Live metrics: for selected mask show Area (m²), Perimeter (lm), Waterline band area (m²), Est. cost
+- Materials: pick from sidebar; assign per mask; overlay a tiled texture on canvas (non-perspective v1), brightness/contrast/rotation/scale controls
+- Persistence: debounced autosave of masks + calibration to backend; reload restores state
+- Quote Draft: “Generate Quote” builds/updates a draft with material line items (qty from masks, wastage, unit price), optional labor presets
+- UX polish: properties panel for the selected mask; clean errors; no console warnings
+
+CONSTRAINTS
+- TypeScript strict, no `any`. Zod-validated API I/O. Konva for canvas. Zustand for state.
+- Do not break existing drawing tools.
+
+==============================================================================
+FILES TO CREATE/UPDATE (FRONTEND)
+==============================================================================
+- src/pages/EditorPage.tsx                       (route already exists)
+- src/components/editor/CanvasStage.tsx          (extend)
+- src/components/editor/MaterialPicker.tsx       (assign material to selection)
+- src/components/editor/MaskProperties.tsx       (material controls + metrics)
+- src/state/editorSlice.ts                       (add calibration, materials, autosave)
+- src/lib/geometry.ts                            (shoelace + polyline length + conversions)
+- src/lib/calibration.ts                         (ppm compute)
+- src/api/editor.ts                              (typed API client)
+
+==============================================================================
+STATE (ZUSTAND) – editorSlice additions
+==============================================================================
+type EditorCalibration = { ppm: number; a: {x:number;y:number}; b:{x:number;y:number}; meters: number };
+type MaskMaterialSettings = { materialId: string; repeatScale: number; rotationDeg: number; brightness: number; contrast: number };
+
+Add to store:
+- calibration?: EditorCalibration
+- selectedMaskId?: string
+- maskMaterial: Record<string, MaskMaterialSettings> // keyed by maskId
+- setCalibration(a,b,meters) → computes ppm and persists via API
+- attachMaterial(maskId, materialId)
+- updateMaterialSettings(maskId, partialSettings)
+- computeMetrics(maskId) → { area_m2, perimeter_m, band_area_m2, qty_effective, est_cost }
+- saveProgress() debounced (1200ms) → POST/PUT masks + calibration
+- loadPhotoState(photoId) → fetch masks + calibration + materials
+- generateQuote(jobId, photoId) → server call
+
+==============================================================================
+CALIBRATION UI
+==============================================================================
+- In EditorPage Toolbar or Sidebar, add a “Draw Reference Line” mode: place point A then B on the image; show draggable anchors.
+- Numeric input “Reference length (m)” (must be > 0). On commit: compute ppm and persist:
+  ppm = distancePx(A,B) / meters
+- Show chip near tools: “Calibrated • 1px = (1/ppm).m”; clicking chip re-enters edit mode.
+
+==============================================================================
+GEOMETRY (src/lib/geometry.ts) – with tests
+==============================================================================
+export function polygonAreaPx(points: Vec2[], holes?: Vec2[][]): number  // shoelace, abs
+export function polylineLengthPx(points: Vec2[]): number
+export function toSquareMeters(px2: number, ppm: number): number { return px2 / (ppm*ppm); }
+export function toMeters(px: number, ppm: number): number { return px / ppm; }
+
+Area rules:
+- Area mask → area_m2 = toSquareMeters(polygonAreaPx(...), ppm)
+- Linear mask → perimeter_m = toMeters(polylineLengthPx(...), ppm)
+- Waterline mask → band_area_m2 = perimeter_m × band_height_m  (read band height from mask props)
+
+==============================================================================
+MATERIALS → ASSIGNMENT & OVERLAY
+==============================================================================
+MaterialPicker:
+- GET /api/materials?org_id=&category= (searchable)
+- Clicking a material assigns it to the **selected** mask (if none selected, set as “default for new masks” until changed)
+- Show small chip on each mask with its assigned material name when hovered/selected
+
+Visual overlay (v1, non-perspective):
+- In CanvasStage, for each mask with material:
+  - Create a Konva.Group clipped to the polygon path (or stroked polyline for linear).
+  - Inside, draw a Konva.Image using the material’s texture URL as a fill pattern:
+    - Use `sceneFunc` or `fillPatternImage` pattern on a Konva.Shape:
+      shape.fillPatternImage(img)
+      shape.fillPatternRotation(rotationRad)
+      shape.fillPatternScale({ x: repeatScale, y: repeatScale })
+      // brightness/contrast applied using a filter pass on the image node (Konva.Filters.Brighten, Contrast) or draw to offscreen canvas and read back
+- Controls in MaskProperties:
+  - Repeat Scale (0.2–5.0), Rotation (−180..180), Brightness (−0.5..0.5), Contrast (0..2)
+- Store these per-mask settings in `maskMaterial[maskId]` and persist to `calc_meta_json` server-side on save
+
+NOTE: For exports we still use server composites; canvas overlay is for live preview.
+
+==============================================================================
+METRICS & ESTIMATED COST
+==============================================================================
+For selected mask, compute:
+- area_m2, perimeter_m, band_area_m2
+- qty = 
+  - Area mask → area_m2
+  - Linear mask → perimeter_m
+  - Waterline → band_area_m2
+- qty_effective = qty × (1 + wastage_pct/100)  // pull wastage from material.default_wastage_pct
+- est_cost = qty_effective × material.price
+Display these in MaskProperties. If calibration is missing, show “—” with a warning.
+
+==============================================================================
+MASK PROPERTIES PANEL (right sidebar)
+==============================================================================
+- Section 1: Assigned Material (name, SKU, unit, price, wastage%)
+  - [Change] opens MaterialPicker filtered by relevant category
+- Section 2: Visual Controls (Repeat, Rotation, Brightness, Contrast)
+- Section 3: Measurements (Area m², Perimeter lm, Band m²) + Est. Cost
+- Section 4: Waterline specific: numeric Band Height (m). Updating recalculates band area live.
+
+==============================================================================
+PERSISTENCE
+==============================================================================
+- Debounced autosave on:
+  - mask create/commit, vertex edit, delete
+  - material (attach/change), visual settings change
+  - waterline band height change
+  - calibration commit
+- Backend contract (confirm or implement):
+  POST/PUT /api/masks  { id?, photo_id, type, path_json, band_height_m?, material_id?, calc_meta_json? }
+  Server recomputes/stores area_m2 & perimeter_m using ppm if available and returns row.
+  POST /api/photos/:id/calibration { pixels_per_meter, meta }
+- `loadPhotoState(photoId)` fetches masks and calibration on page mount; render exactly what was saved.
+
+==============================================================================
+QUOTE DRAFT (Generate Quote button)
+==============================================================================
+- If no draft exists → POST /api/quotes { job_id } returns { id }
+- Build items from masks that have materials:
+  - kind='material', material_id, unit=(material.unit), qty=qty_effective, unit_price=material.price
+  - calc_meta_json includes: mask_id, base_qty, wastage_pct, unit
+- POST /api/quotes/:id/items to upsert items; then POST /api/quotes/:id/recalculate to set subtotal/gst/total
+- Toast: “Draft quote updated” with link to /quotes/:id
+
+==============================================================================
+UI POLISH
+==============================================================================
+- Disable cost & quote button until calibration set
+- Live “Saved • hh:mm:ss” indicator; show “Unsaved changes” when dirty
+- Tooltip on tools: “Double-click to close polygon” (area), “Esc to cancel”
+- Keyboard: A/L/W/E/H tools; Ctrl/Cmd+Z undo; Shift+Ctrl/Cmd+Z redo; Del delete
+
+==============================================================================
+TESTS
+==============================================================================
+Vitest:
+- polygonAreaPx with and without holes
+- polylineLengthPx
+- conversions px↔m using ppm
+- qty calculations and est_cost with wastage
+
+Playwright:
+1) Load editor → set calibration → ppm stored
+2) Draw area mask → assign material → metrics show area and est_cost
+3) Draw linear mask → metrics show lm
+4) Set waterline band height → band area updates
+5) Reload page → masks, calibration, materials restored
+6) Generate Quote → draft created with correct line items
+
+==============================================================================
+ACCEPTANCE CRITERIA
+==============================================================================
+- Selecting a mask shows fully working Mask Properties with live metrics and visual controls
+- Assigning a material updates overlay instantly; autosaves within ~1.2s
+- Calibration affects all measurements; changing it recomputes metrics
+- Generate Quote creates a draft with correct quantities and totals; no console errors
+- All functions covered by unit tests; e2e happy path passes

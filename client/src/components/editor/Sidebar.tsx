@@ -19,11 +19,15 @@ import {
   Eye,
   EyeOff,
   Search,
-  Palette
+  Palette,
+  Settings
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorSlice';
 import { Material, EditorMask } from '@shared/schema';
 import { cn } from '@/lib/utils';
+import { MaskProperties } from './MaskProperties';
+import { CalibrationControls } from './CalibrationControls';
+import { QuoteGenerator } from './QuoteGenerator';
 
 interface SidebarProps {
   materials: Material[];
@@ -104,16 +108,20 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
 
   return (
     <div className={cn("w-80 bg-white border-l border-slate-200 flex flex-col h-full", className)}>
-      <Tabs defaultValue="materials" className="flex flex-col h-full">
+      <Tabs defaultValue="properties" className="flex flex-col h-full">
         <div className="p-4 border-b border-slate-200">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="materials" className="text-xs">
-              <Package className="w-4 h-4 mr-1" />
-              Materials
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="properties" className="text-xs">
+              <Settings className="w-4 h-4 mr-1" />
+              Properties
             </TabsTrigger>
             <TabsTrigger value="masks" className="text-xs">
               <Ruler className="w-4 h-4 mr-1" />
               Masks ({masks.length})
+            </TabsTrigger>
+            <TabsTrigger value="materials" className="text-xs">
+              <Package className="w-4 h-4 mr-1" />
+              Materials
             </TabsTrigger>
           </TabsList>
         </div>
@@ -349,72 +357,17 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
             </div>
           </ScrollArea>
         </TabsContent>
-      </Tabs>
 
-      {/* Selected Mask Properties */}
-      {selectedMask && (
-        <div className="border-t border-slate-200 p-4">
-          <h3 className="text-sm font-medium mb-3 flex items-center">
-            <Calculator className="w-4 h-4 mr-2" />
-            Mask Properties
-          </h3>
-          
-          <div className="space-y-3">
-            {/* Waterline Band Height */}
-            {selectedMask.type === 'waterline_band' && (
-              <div>
-                <Label htmlFor="band-height" className="text-xs">
-                  Band Height (meters)
-                </Label>
-                <Input
-                  id="band-height"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={(selectedMask as any).band_height_m || 0.1}
-                  onChange={(e) => {
-                    const height = parseFloat(e.target.value) || 0.1;
-                    updateMask(selectedMask.id, { band_height_m: height });
-                  }}
-                  className="mt-1"
-                />
-              </div>
-            )}
-
-            {/* Material Assignment */}
-            <div>
-              <Label className="text-xs">Assigned Material</Label>
-              <div className="mt-1">
-                {selectedMask.materialId ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <div 
-                        className="w-3 h-3 rounded border"
-                        style={{ backgroundColor: '#' + (Math.floor(Math.random() * 16777215)).toString(16).padStart(6, '0') }}
-                      />
-                      <span className="text-xs">
-                        {materials.find(m => m.id === selectedMask.materialId)?.name}
-                      </span>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => updateMask(selectedMask.id, { materialId: undefined })}
-                      className="text-xs p-1 h-6"
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500">
-                    No material assigned. Select a material and it will be applied to this mask.
-                  </p>
-                )}
-              </div>
-            </div>
+        <TabsContent value="properties" className="flex-1 p-0 m-0">
+          <div className="p-4 space-y-4">
+            <CalibrationControls />
+            <QuoteGenerator />
           </div>
-        </div>
-      )}
+          <div className="border-t">
+            <MaskProperties />
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

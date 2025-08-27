@@ -29,7 +29,8 @@ import {
 import { 
   pixelsToMeters, 
   pixelsToSquareMeters, 
-  validateCalibration 
+  validateCalibration,
+  computePixelsPerMeter
 } from '@/lib/calibration';
 import { apiClient } from '@/lib/api-client';
 
@@ -37,7 +38,17 @@ import { apiClient } from '@/lib/api-client';
 export interface MaskMetrics {
   area_m2?: number;
   perimeter_m?: number;
+  band_area_m2?: number;
+  qty_effective?: number;
   estimatedCost?: number;
+}
+
+export interface MaskMaterialSettings {
+  materialId: string;
+  repeatScale: number;
+  rotationDeg: number;
+  brightness: number;
+  contrast: number;
 }
 
 export interface EditorSliceState {
@@ -54,8 +65,9 @@ export interface EditorSliceState {
   currentDrawing: Vec2[] | null;
   selectedMaskId: string | null;
   
-  // Materials
+  // Materials and settings
   selectedMaterialId: string | null;
+  maskMaterials: Record<string, MaskMaterialSettings>;
   
   // History
   undoRedoManager: UndoRedoManager;
@@ -122,6 +134,21 @@ export interface EditorSliceActions {
   getUndoAction: () => string | null;
   getRedoAction: () => string | null;
   
+  // Persistence and autosave
+  saveProgress: () => Promise<void>;
+  loadPhotoState: (photoId: string) => Promise<void>;
+  generateQuote: (jobId: string, photoId: string) => Promise<void>;
+  
+  // Calibration
+  setCalibrationMode: (enabled: boolean) => void;
+  setCalibrationPoints: (pointA: Vec2, pointB: Vec2, meters: number) => void;
+  
+  // Material management
+  updateMaterialSettings: (maskId: string, settings: Partial<MaskMaterialSettings>) => void;
+  
+  // Utilities
+  resetEditor: () => void;
+  
   // Persistence
   saveProgress: () => Promise<void>;
   autoSave: () => void;
@@ -160,6 +187,7 @@ export const useEditorStore = create<EditorSlice>()(
     currentDrawing: null,
     selectedMaskId: null,
     selectedMaterialId: null,
+    maskMaterials: {},
     undoRedoManager: new UndoRedoManager(),
     isLoading: false,
     isDirty: false,
@@ -494,7 +522,65 @@ export const useEditorStore = create<EditorSlice>()(
     attachMaterial: (maskId: string, materialId: string) => {
       const state = get();
       get().updateMask(maskId, { materialId });
+      
+      // Initialize material settings if not exists
+      const currentSettings = state.maskMaterials[maskId];
+      if (!currentSettings) {
+        set(state => {
+          state.maskMaterials[maskId] = {
+            materialId,
+            repeatScale: 1.0,
+            rotationDeg: 0,
+            brightness: 0,
+            contrast: 1.0
+          };
+        });
+      } else {
+        set(state => {
+          state.maskMaterials[maskId].materialId = materialId;
+        });
+      }
+      
       set({ selectedMaterialId: materialId });
+    },
+    
+    updateMaterialSettings: (maskId: string, settings: Partial<MaskMaterialSettings>) => {
+      set(state => {
+        if (state.maskMaterials[maskId]) {
+          Object.assign(state.maskMaterials[maskId], settings);
+          state.isDirty = true;
+          state.lastSaved = null;
+        }
+      });
+    },
+    
+    setCalibrationMode: (enabled: boolean) => {
+      set(state => {
+        if (enabled) {
+          state.editorState.activeTool = 'calibration' as ToolType;
+        } else if (state.editorState.activeTool === 'calibration') {
+          state.editorState.activeTool = 'area';
+        }
+      });
+    },
+    
+    setCalibrationPoints: (pointA: Vec2, pointB: Vec2, meters: number) => {
+      set(state => {
+        try {
+          const calibration = {
+            pixelsPerMeter: computePixelsPerMeter(pointA, pointB, meters),
+            a: pointA,
+            b: pointB,
+            lengthMeters: meters
+          };
+          state.editorState.calibration = calibration;
+          state.isDirty = true;
+          state.lastSaved = null;
+        } catch (error) {
+          console.error('Calibration failed:', error);
+          state.error = 'Invalid calibration points';
+        }
+      });
     },
 
     detachMaterial: (maskId: string) => {
@@ -522,6 +608,7 @@ export const useEditorStore = create<EditorSlice>()(
         currentDrawing: null,
         selectedMaskId: null,
         selectedMaterialId: null,
+        maskMaterials: {},
         editorState: defaultEditorState,
         undoRedoManager: new UndoRedoManager(),
         isDirty: false,

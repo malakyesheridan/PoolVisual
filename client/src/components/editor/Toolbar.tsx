@@ -34,7 +34,7 @@ import {
   Undo,
   Redo
 } from 'lucide-react';
-import { useEditorStore } from '@/stores/useEditorStore';
+import { useEditorStore } from '@/stores/editorSlice';
 import { cn } from '@/lib/utils';
 
 interface ToolbarProps {
@@ -248,7 +248,7 @@ export function Toolbar({ onExport, onFullscreen, className }: ToolbarProps) {
                   <SelectItem 
                     key={mode.value} 
                     value={mode.value}
-                    disabled={mode.disabled}
+                    disabled={mode.disabled || false}
                   >
                     <div className="flex items-center space-x-2">
                       <Icon className="w-4 h-4" />
