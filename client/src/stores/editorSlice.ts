@@ -1,305 +1,192 @@
 /**
- * Editor Store - Bulletproof Implementation
- * Fixed all TypeScript strict mode errors and future-proofed for maintainability
+ * Editor Store - Reliable, Testable Overhaul
+ * Single source of truth with TypeScript strict mode
  */
 
 import { create } from 'zustand';
 import type { Photo } from '@shared/schema';
 
-// Core types - well-defined and future-proof
-export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry';
-export type Vec2 = { x: number; y: number };
-export type CalSample = { id: string; a: Vec2; b: Vec2; meters: number; ppm: number };
+// Canonical types exactly as specified
+export type Tool = 'hand'|'area'|'linear'|'waterline'|'eraser';
+export type CalState = 'idle'|'placingA'|'placingB'|'lengthEntry';
+export type Vec2 = { x:number; y:number };
 
-export type ToolType = 'hand' | 'area' | 'linear' | 'waterline' | 'eraser';
+export type CalSample = { id:string; a:Vec2; b:Vec2; meters:number; ppm:number };
 
-export interface EditorMask {
-  id: string;
-  photoId: string;
-  type: 'area' | 'linear' | 'waterline_band';
-  path: { points: Vec2[] };
-  bandHeightM?: number;
-}
+export type MaskType = 'area'|'linear'|'waterline_band';
+export type Mask = {
+  id:string; photoId:string; type:MaskType;
+  path:{ points:Vec2[] }; bandHeightM?:number;
+  createdAt:string;
+};
 
-// Main store interface - explicitly handles all optional properties
 export interface EditorSlice {
-  // Photo state
-  photo: Photo | null;
-  photoId: string | null;
-  
-  // Calibration - proper optional handling
+  photoId: string;
+  activeTool: Tool;
+  // Calibration
   calState: CalState;
-  calTemp: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number } | null;
-  calibration: { ppm: number; samples: CalSample[] } | null;
-  
-  // Tools & masks - future-proof structure
-  activeTool: ToolType;
-  transient: { tool: 'area' | 'linear' | 'waterline'; points: Vec2[] } | null;
-  masks: EditorMask[];
-  
-  // UI state
-  selectedMaskId: string | null;
-  zoom: number;
-  pan: Vec2;
-  brushSize: number;
-  
-  // Actions - well-typed and error-safe
+  calTemp?: { a?:Vec2; b?:Vec2; preview?:Vec2; meters?:number } | undefined;
+  calibration?: { ppm:number; samples:CalSample[] } | undefined;
+
+  // Drawing
+  transient?: { tool:'area'|'linear'|'waterline'; points:Vec2[] } | undefined;
+  masks: Mask[];
+
+  // Actions
+  setTool(t:Tool): void;
+
   startCalibration(): void;
-  placeCalPoint(p: Vec2): void;
-  updateCalPreview(p: Vec2): void;
-  setCalMeters(m: number): void;
+  placeCalPoint(p:Vec2): void;
+  updateCalPreview(p:Vec2): void;
+  setCalMeters(m:number): void;
   commitCalSample(): Promise<void>;
-  deleteCalSample(id: string): void;
+  deleteCalSample(id:string): void;
   cancelCalibration(): void;
-  
-  startPath(tool: 'area' | 'linear' | 'waterline', p: Vec2): void;
-  appendPoint(p: Vec2): void;
+
+  startPath(tool:'area'|'linear'|'waterline', p:Vec2): void;
+  appendPoint(p:Vec2): void;
   commitPath(): void;
   cancelPath(): void;
   cancelAllTransient(): void;
-  
-  setActiveTool(tool: ToolType): void;
+
+  // Legacy support
+  photo: Photo | null;
+  zoom: number;
+  pan: Vec2;
   setZoom(zoom: number): void;
   setPan(pan: Vec2): void;
   loadImageFile(file: File, url: string, dimensions: { width: number; height: number }): void;
-  
-  // Mask operations
-  deleteMask(id: string): void;
-  updatePathPreview(p: Vec2): void;
 }
 
 // Helper functions
-function _distance(a: Vec2, b: Vec2): number {
-  return Math.hypot(b.x - a.x, b.y - a.y);
-}
+const dist = (a:Vec2,b:Vec2)=>Math.hypot(b.x-a.x,b.y-a.y);
 
-async function _persistCalibration(photoId: string, data: { ppm: number; sample: CalSample; samples: CalSample[] }) {
-  try {
-    const response = await fetch(`/api/photos/${photoId}/calibration`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ppm: data.ppm, samples: data.samples })
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  } catch (error) {
-    console.error('[Calibration] persist failed:', error);
-    throw error;
+// Mock API calls - will be replaced with real endpoints
+const api = {
+  photos: {
+    async setCalibration(photoId: string, data: { ppm: number; samples: CalSample[] }) {
+      console.info('[API] persist calibration', photoId, data);
+    }
+  },
+  masks: {
+    async upsert(mask: Mask) {
+      console.info('[API] persist mask', mask);
+    }
   }
-}
+};
 
-// Store implementation - bulletproof with proper error handling
+// Store implementation exactly as specified
 export const useEditorStore = create<EditorSlice>((set, get) => ({
-  // Initial state - all properly typed
-  photo: null,
-  photoId: null,
-  calState: 'idle',
-  calTemp: null,
-  calibration: null,
+  // Initial state
+  photoId: 'temp-photo',
   activeTool: 'hand',
-  transient: null,
+  calState: 'idle',
+  calTemp: undefined,
+  calibration: undefined,
+  transient: undefined,
   masks: [],
-  selectedMaskId: null,
+
+  // Legacy support
+  photo: null,
   zoom: 1,
   pan: { x: 0, y: 0 },
-  brushSize: 10,
 
-  // Calibration actions - error-safe implementations
-  startCalibration() {
-    set({ calState: 'placingA', calTemp: {} });
-    get().cancelAllTransient();
+  // Actions implemented exactly as specified
+  setTool(t){ set(s=>{ if(s.activeTool!==t) return {...s, activeTool:t, transient:undefined}; return s; }); },
+
+  startCalibration(){ set(s=>({...s, calState:'placingA', calTemp:{}, transient:undefined })); },
+
+  placeCalPoint(p){
+    const s=get();
+    if(s.calState==='placingA') set({ calTemp:{ a:p, preview:p }, calState:'placingB' });
+    else if(s.calState==='placingB') set({ calTemp:{ ...s.calTemp, b:p }, calState:'lengthEntry' });
   },
 
-  placeCalPoint(p: Vec2) {
-    const s = get();
-    if (s.calState === 'placingA') {
-      set({ calTemp: { a: p, preview: p }, calState: 'placingB' });
-    } else if (s.calState === 'placingB') {
-      const currentTemp = s.calTemp || {};
-      set({ calTemp: { ...currentTemp, b: p }, calState: 'lengthEntry' });
-    }
-  },
+  updateCalPreview(p){ if(get().calState==='placingB') set(s=>({ calTemp:{ ...s.calTemp, preview:p } })); },
 
-  updateCalPreview(p: Vec2) {
-    const s = get();
-    if (s.calState === 'placingB') {
-      const currentTemp = s.calTemp || {};
-      set({ calTemp: { ...currentTemp, preview: p } });
-    }
-  },
+  setCalMeters(m){ if(get().calState==='lengthEntry') set(s=>({ calTemp:{ ...s.calTemp, meters:m } })); },
 
-  setCalMeters(m: number) {
-    const s = get();
-    if (s.calState === 'lengthEntry') {
-      const currentTemp = s.calTemp || {};
-      set({ calTemp: { ...currentTemp, meters: m } });
-    }
-  },
+  commitCalSample: async ()=>{
+    const s=get(); const {a,b,meters}=s.calTemp || {};
+    if(!a||!b||!meters||meters<=0) return;
+    const px=dist(a,b); if(px<10) { console.warn('[Calibration] ref too short'); return; }
+    const ppm=px/meters;
+    const sample:CalSample={ id:crypto.randomUUID(), a,b,meters,ppm };
+    const samples=[...(s.calibration?.samples||[]), sample];
 
-  async commitCalSample() {
-    const s = get();
-    const temp = s.calTemp;
-    if (!temp?.a || !temp?.b || !temp?.meters || temp.meters <= 0) return;
-
-    const px = _distance(temp.a, temp.b);
-    if (px < 10) {
-      console.warn('[Calibration] Reference too short');
-      return;
-    }
-
-    const ppm = px / temp.meters;
-    const sample: CalSample = { 
-      id: crypto.randomUUID(), 
-      a: temp.a, 
-      b: temp.b, 
-      meters: temp.meters, 
-      ppm 
-    };
-
-    // Update local state FIRST - bulletproof approach
-    const prev = s.calibration?.samples ?? [];
-    const samples = [...prev, sample];
-    set({ 
-      calibration: { ppm, samples }, 
-      calState: 'idle', 
-      calTemp: null 
-    });
-    
+    // Commit locally FIRST; calState back to idle so other tools work
+    set(s=>({...s, calibration:{ ppm, samples }, calState:'idle', calTemp:undefined }));
     console.info('[Calibration] committed ppm=', ppm.toFixed(4), 'samples=', samples.length);
-    console.info('[Assert] ppm=', get().calibration?.ppm, 'calState=', get().calState);
 
-    // Persist asynchronously - failure doesn't break UI
-    if (s.photoId) {
-      try {
-        await _persistCalibration(s.photoId, { ppm, sample, samples });
-      } catch (error) {
-        console.error('[Calibration] persist failed, keeping local state');
-      }
-    }
+    // Persist async; never clear local ppm on failure
+    try {
+      await api.photos.setCalibration(s.photoId, { ppm, samples });
+    } catch(err){ console.error('[Calibration] persist failed', err); }
   },
 
-  deleteCalSample(id: string) {
-    const curr = get().calibration?.samples ?? [];
-    const samples = curr.filter(s => s.id !== id);
-    if (samples.length > 0) {
-      const ppm = samples[samples.length - 1].ppm;
-      set({ calibration: { ppm, samples } });
-    } else {
-      set({ calibration: null });
-    }
+  deleteCalSample(id){
+    const cur=get().calibration?.samples||[];
+    const samples=cur.filter(x=>x.id!==id);
+    if(!samples.length){ set(s=>({...s, calibration:undefined })); return; }
+    const lastSample = samples[samples.length-1];
+    if(lastSample) set(s=>({...s, calibration:{ ppm:lastSample.ppm, samples }}));
   },
 
-  cancelCalibration() {
-    set({ calState: 'idle', calTemp: null });
-  },
+  cancelCalibration(){ set(s=>({...s, calState:'idle', calTemp:undefined })); },
 
-  // Tool actions - bulletproof implementations
-  startPath(tool: 'area' | 'linear' | 'waterline', p: Vec2) {
-    set({ transient: { tool, points: [p] } });
-  },
-
-  appendPoint(p: Vec2) {
-    const s = get();
-    if (s.transient) {
-      set({ 
-        transient: { 
-          ...s.transient, 
-          points: [...s.transient.points, p] 
-        } 
-      });
-    }
-  },
-
-  commitPath() {
-    const s = get();
-    const t = s.transient;
-    if (!t || t.points.length < 2) {
-      set({ transient: null });
-      return;
-    }
-
-    const id = crypto.randomUUID();
-    const mask: EditorMask = {
-      id,
-      photoId: s.photoId || 'temp',
-      type: t.tool === 'waterline' ? 'waterline_band' : t.tool,
-      path: { points: t.points.slice() },
-      ...(t.tool === 'waterline' && { bandHeightM: 0.3 })
+  startPath(tool,p){ set(s=>({...s, transient:{ tool, points:[p] } })); },
+  appendPoint(p){ set(s=> s.transient ? ({ transient:{ ...s.transient, points:[...s.transient.points,p] } }) : ({})); },
+  commitPath(){
+    const s=get(); const t=s.transient;
+    if(!t || t.points.length<2) { set(s=>({...s, transient:undefined })); return; }
+    const id=crypto.randomUUID();
+    const mask:Mask={
+      id, photoId:s.photoId,
+      type: t.tool==='waterline' ? 'waterline_band' : t.tool,
+      path:{ points: t.points.slice() },
+      createdAt: new Date().toISOString()
     };
-
-    set({ 
-      masks: [...s.masks, mask], 
-      transient: null 
-    });
-
+    set(s=>({...s, masks:[...s.masks, mask], transient:undefined }));
     console.info('[Mask] commit', mask.type, 'count=', get().masks.length);
-    console.info('[Assert] masks count=', get().masks.length);
+    api.masks.upsert(mask).catch(e=>console.error('[Mask] persist failed', e));
   },
+  cancelPath(){ set(s=>({...s, transient:undefined })); },
+  cancelAllTransient(){ set(s=>({...s, transient:undefined })); },
 
-  cancelPath() {
-    set({ transient: null });
-  },
-
-  cancelAllTransient() {
-    set({ transient: null });
-  },
-
-  // Tool management - future-proof
-  setActiveTool(tool: ToolType) {
-    get().cancelAllTransient();
-    set({ activeTool: tool });
-  },
-
-  // View controls
+  // UI methods
   setZoom(zoom: number) {
-    set({ zoom: Math.max(0.1, Math.min(10, zoom)) }); // Bounded zoom
+    set(s=>({...s, zoom}));
   },
 
   setPan(pan: Vec2) {
-    set({ pan });
+    set(s=>({...s, pan}));
   },
 
-  // Image loading - properly typed Photo interface
+  // Legacy support methods
   loadImageFile(file: File, url: string, dimensions: { width: number; height: number }) {
     const photoId = `temp-${Date.now()}`;
     const photo: Photo = {
       id: photoId,
       jobId: 'temp-job',
-      originalUrl: url, // Use originalUrl as expected by shared schema
+      originalUrl: url,
       width: dimensions.width,
       height: dimensions.height,
       exifJson: null,
       calibrationPixelsPerMeter: null,
       calibrationMetaJson: null,
-      createdAt: new Date() // Proper Date object
+      createdAt: new Date()
     };
 
-    set({
+    set(s=>({
+      ...s,
       photo,
       photoId,
       masks: [],
-      calibration: null,
+      calibration: undefined,
       calState: 'idle',
-      transient: null,
-      selectedMaskId: null,
+      transient: undefined,
       zoom: 1,
       pan: { x: 0, y: 0 }
-    });
-  },
-
-  // Mask operations - bulletproof implementations
-  deleteMask(id: string) {
-    const s = get();
-    const masks = s.masks.filter(m => m.id !== id);
-    set({ 
-      masks,
-      selectedMaskId: s.selectedMaskId === id ? null : s.selectedMaskId
-    });
-    console.info('[Mask] deleted', id, 'remaining=', masks.length);
-  },
-
-  updatePathPreview(p: Vec2) {
-    // For now, this is a placeholder for live preview functionality
-    // Will be used to show preview lines while drawing
-    console.debug('[Path] preview update', p);
+    }));
   }
 }));

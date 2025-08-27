@@ -34,9 +34,10 @@ export function Toolbar({ onExport, onFullscreen, className }: ToolbarProps) {
     activeTool,
     zoom,
     calibration,
-    setActiveTool,
+    setTool,
     setZoom,
-    setPan
+    setPan,
+    startCalibration
   } = useEditorStore();
 
   const handleZoomIn = () => {
@@ -103,7 +104,7 @@ export function Toolbar({ onExport, onFullscreen, className }: ToolbarProps) {
                 key={tool.id}
                 variant={isActive ? "default" : "ghost"}
                 size="sm"
-                onClick={() => setActiveTool(tool.id)}
+                onClick={() => setTool(tool.id)}
                 title={tool.label}
                 className="w-9 h-9 p-0"
                 data-testid={`tool-${tool.id}`}

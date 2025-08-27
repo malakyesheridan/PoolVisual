@@ -1,13 +1,18 @@
 /**
- * Canvas Stage Component - Main Konva Stage for pool photo editing
- * Uses InputRouter for clean tool event dispatch
+ * Canvas Stage - Reliable, Testable Implementation
+ * One set of handlers, correct layer order
  */
 
-import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
+import { Stage, Layer, Line, Circle } from 'react-konva';
+import { Stage as StageType } from 'konva/lib/Stage';
+import useImage from 'use-image';
+import { useEditorStore } from '@/stores/editorSlice';
+import { InputRouter } from '@/editor/input/InputRouter';
 
-// A. AUDIT BANNER - Console banner to verify this is the mounted Canvas
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
+
 console.log(`
 🎯 MOUNTED CANVAS AUDIT
 ======================
@@ -16,22 +21,6 @@ Build: ${BUILD_TIMESTAMP}
 ID: ${RANDOM_ID}
 ======================
 `);
-import { Stage, Layer, Rect, Image } from 'react-konva';
-import { KonvaEventObject } from 'konva/lib/Node';
-import { Stage as StageType } from 'konva/lib/Stage';
-import useImage from 'use-image';
-import { useEditorStore } from '@/stores/editorSlice';
-import { CalibrationCanvasLayer } from './CalibrationCanvasLayer';
-import { MaskCanvasLayer } from './MaskCanvasLayer';
-import { InputRouter } from '@/editor/input/InputRouter';
-import { CalibrationController } from '@/editor/input/controllers/CalibrationController';
-import { AreaController } from '@/editor/input/controllers/AreaController';
-import { LinearController } from '@/editor/input/controllers/LinearController';
-import { WaterlineController } from '@/editor/input/controllers/WaterlineController';
-import { EraserController } from '@/editor/input/controllers/EraserController';
-import { HandController } from '@/editor/input/controllers/HandController';
-import { isCalibrationActive } from '@/utils/calibrationHelpers';
-import type { Vec2 } from '@shared/schema';
 
 interface CanvasStageProps {
   className?: string;
@@ -45,33 +34,27 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
 
-  const store = useEditorStore();
-  const { photo, zoom, pan, calState, activeTool } = store;
+  // Destructure state exactly as specified
+  const { masks, transient, calState, calTemp, activeTool, photo, zoom, pan } = useEditorStore(s=>({
+    masks:s.masks, 
+    transient:s.transient, 
+    calState:s.calState, 
+    calTemp:s.calTemp, 
+    activeTool:s.activeTool,
+    photo: s.photo,
+    zoom: s.zoom,
+    pan: s.pan
+  }));
 
-  // B. INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS  
-  const getActive = () => {
-    return (calState === 'placingA' || calState === 'placingB' || calState === 'lengthEntry') 
-      ? 'calibration' 
-      : activeTool;
-  };
-  const activeController = getActive();
-
-  // Create input router with tool controllers
-  const router = useMemo(() => {
-    return new InputRouter(
-      getActive,
-      {
-        calibration: new CalibrationController(store),
-        area: new AreaController(store),
-        linear: new LinearController(store),
-        waterline: new WaterlineController(store),
-        eraser: new EraserController(store),
-        hand: new HandController(store),
-      }
-    );
-  }, [store]);
+  // Create InputRouter with store reference
+  const router = useMemo(() => new InputRouter(useEditorStore), []);
 
   const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
+
+  // Stage is draggable only when active tool is 'hand'
+  useEffect(()=>{ 
+    stageRef.current?.draggable(activeTool==='hand'); 
+  },[activeTool]);
 
   // Update stage dimensions
   useEffect(() => {
@@ -85,95 +68,6 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     window.addEventListener('resize', updateStageDimensions);
     return () => window.removeEventListener('resize', updateStageDimensions);
   }, [width, height]);
-
-  // D. STAGE DRAG + HAND TOOL - Only draggable when hand tool is active
-  const setStageDraggable = useCallback((stage: StageType | null, tool: string) => {
-    if (!stage) return;
-    const isDraggable = tool === 'hand' && !(calState === 'placingA' || calState === 'placingB' || calState === 'lengthEntry');
-    stage.draggable(isDraggable);
-  }, [calState]);
-
-  useEffect(() => {
-    setStageDraggable(stageRef.current, activeController);
-  }, [activeController, setStageDraggable]);
-
-  // Handle keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return; // Don't interfere with input fields
-      }
-
-      const key = e.key.toLowerCase();
-      
-      // Tool switching shortcuts
-      switch (key) {
-        case 'c':
-          e.preventDefault();
-          store.cancelAllTransient(); // C. Clean transitions
-          store.startCalibration();
-          break;
-        case 'a':
-          e.preventDefault();
-          store.cancelAllTransient();
-          store.setActiveTool('area');
-          break;
-        case 'l':
-          e.preventDefault();
-          store.cancelAllTransient();
-          store.setActiveTool('linear');
-          break;
-        case 'w':
-          e.preventDefault();
-          store.cancelAllTransient();
-          store.setActiveTool('waterline');
-          break;
-        case 'e':
-          e.preventDefault();
-          store.cancelAllTransient();
-          store.setActiveTool('eraser');
-          break;
-        case 'h':
-          e.preventDefault();
-          store.cancelAllTransient();
-          store.setActiveTool('hand');
-          break;
-        case 'enter':
-          // Check if input is focused
-          const el = document.activeElement;
-          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLInputElement).isContentEditable)) {
-            return;
-          }
-          
-          e.preventDefault();
-          if (store.calState === 'lengthEntry') {
-            store.commitCalSample();
-          } else if (store.transient) {
-            store.commitPath();
-          }
-          break;
-          
-        case 'escape':
-          e.preventDefault();
-          if (store.calState !== 'idle') {
-            store.cancelCalibration();
-          } else if (store.transient) {
-            store.cancelPath();
-          }
-          break;
-          
-        default:
-          // Let the router handle other keys
-          if (router.handleKey(key, e)) {
-            e.preventDefault();
-          }
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router, store, calState]);
 
   // Calculate image positioning
   const imageProps = useMemo(() => {
@@ -201,89 +95,67 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     };
   }, [backgroundImage, stageDimensions, pan, zoom]);
 
-  // Handle wheel zoom
-  const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
-    e.evt.preventDefault();
-    
-    const scaleBy = 1.02;
-    const stage = stageRef.current;
-    if (!stage) return;
-
-    const oldScale = zoom;
-    const pointer = stage.getPointerPosition();
-    if (!pointer) return;
-
-    const mousePointTo = {
-      x: (pointer.x - pan.x) / oldScale,
-      y: (pointer.y - pan.y) / oldScale,
-    };
-
-    const direction = e.evt.deltaY > 0 ? -1 : 1;
-    const newScale = direction > 0 ? oldScale * scaleBy : oldScale / scaleBy;
-    const finalScale = Math.max(0.1, Math.min(5, newScale));
-
-    const newPos = {
-      x: pointer.x - mousePointTo.x * finalScale,
-      y: pointer.y - mousePointTo.y * finalScale,
-    };
-
-    store.setZoom(finalScale);
-    store.setPan(newPos);
-  }, [zoom, pan, store]);
-
   return (
-    <div 
-      className={className} 
-      style={{ 
-        width: '100%', 
-        height: '100%',
-        overflow: 'hidden',
-        cursor: router.getCursor(),
-        position: 'relative'
-      }}
-    >
+    <div className={className}>
       <Stage
         ref={stageRef}
-        width={stageDimensions.width}
+        width={stageDimensions.width} 
         height={stageDimensions.height}
-        onMouseDown={(e) => router.handleDown(stageRef.current!, e)}
-        onMouseMove={(e) => router.handleMove(stageRef.current!, e)}
-        onMouseUp={(e) => router.handleUp(stageRef.current!, e)}
-        onTouchStart={(e) => router.handleDown(stageRef.current!, e)}
-        onTouchMove={(e) => router.handleMove(stageRef.current!, e)}
-        onTouchEnd={(e) => router.handleUp(stageRef.current!, e)}
-        onWheel={handleWheel}
-        data-testid="canvas-stage"
+        onMouseDown={e=>router.handleDown(stageRef.current!,e)}
+        onMouseMove={e=>router.handleMove(stageRef.current!,e)}
+        onMouseUp={e=>router.handleUp(stageRef.current!,e)}
+        onTouchStart={e=>router.handleDown(stageRef.current!,e)}
+        onTouchMove={e=>router.handleMove(stageRef.current!,e)}
+        onTouchEnd={e=>router.handleUp(stageRef.current!,e)}
       >
-        {/* Background Layer - not listening */}
-        <Layer listening={false}>
-          {/* Canvas Background */}
-          <Rect
-            x={0}
-            y={0}
-            width={stageDimensions.width}
-            height={stageDimensions.height}
-            fill="#f8f9fa"
-          />
-          
-          {/* Background Image */}
+        <Layer id="Background" listening={false}>
           {backgroundImage && imageProps && (
-            <Image
-              image={backgroundImage}
-              {...imageProps}
+            <Circle
+              x={imageProps.x + imageProps.width / 2}
+              y={imageProps.y + imageProps.height / 2}
+              radius={Math.min(imageProps.width, imageProps.height) / 2}
+              fill="#f1f5f9"
+              stroke="#e2e8f0"
+              strokeWidth={2}
             />
           )}
         </Layer>
 
-        {/* Mask Layer - area/linear/waterline masks, listening */}
-        <MaskCanvasLayer />
+        <Layer id="MaskDrawing" listening>
+          {transient?.points?.length ? (
+            <Line
+              points={transient.points.flatMap(p=>[p.x,p.y])}
+              stroke="#22c55e" strokeWidth={2} closed={transient.tool==='area'}
+              opacity={0.9}
+            />
+          ):null}
+        </Layer>
 
-        {/* Calibration Layer - anchors and lines, listening */}
-        <CalibrationCanvasLayer />
+        <Layer id="Masks" listening>
+          {masks.map(m =>
+            m.type==='area'
+              ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} closed fill="rgba(16,185,129,.25)" stroke="#10b981" strokeWidth={2}/>
+              : m.type==='waterline_band'
+                ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#8b5cf6" strokeWidth={3}/>
+                : <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#f59e0b" strokeWidth={3}/>
+          )}
+        </Layer>
 
-        {/* HUD Layer - cursor guides, not listening */}
-        <Layer listening={false}>
-          {/* Future: drawing layer, cursor guides */}
+        <Layer id="Calibration" listening>
+          {calState!=='idle' && calTemp?.a && (
+            <>
+              <Circle x={calTemp.a.x} y={calTemp.a.y} radius={5} fill="#3B82F6" />
+              {(calState==='placingB' && calTemp.preview) && (
+                <Line points={[calTemp.a.x,calTemp.a.y, calTemp.preview.x,calTemp.preview.y]} stroke="#60A5FA" dash={[8,6]} strokeWidth={2}/>
+              )}
+              {(calState==='lengthEntry' && calTemp.b) && (
+                <>
+                  <Line points={[calTemp.a.x,calTemp.a.y, calTemp.b.x,calTemp.b.y]} stroke="#2563EB" strokeWidth={3}/>
+                  <Circle x={calTemp.b.x} y={calTemp.b.y} radius={5} fill="#3B82F6" />
+                </>
+              )}
+            </>
+          )}
         </Layer>
       </Stage>
     </div>

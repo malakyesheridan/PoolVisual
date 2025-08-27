@@ -1,0 +1,323 @@
+You are a senior engineer. Perform a **reliable, testable overhaul** of the Canvas Editor input system and Calibration so tools and calibration work together without regressions. Do not add debug HUDs in the UI. Use **TypeScript strict**, **Konva**, **Zustand**, immutable updates, and minimal console banners for verification only.
+
+==============================================================================
+0) VERIFY WE ARE EDITING THE MOUNTED FILES (REQUIRED)
+==============================================================================
+- In the page that renders the editor route (e.g. `EditorPage.tsx`) add:
+  ```ts
+  console.info('[EditorPage] mounted from:', import.meta?.url || __filename);
+In the component that renders the Konva <Stage> (the one currently shown in preview), add:
+
+ts
+Copy
+Edit
+console.info('[CanvasStage] mounted from:', import.meta?.url || __filename);
+If these DO NOT show on a full reload, find the mounted files via router config and edit those. Remove stale duplicate Editor/Canvas files and fix imports.
+
+==============================================================================
+
+SINGLE SOURCE OF TRUTH — STORE TYPES & ACTIONS
+==============================================================================
+Unify the editor store (editorSlice.ts). Replace/extend with these minimal, canonical types and actions. No “ready” calibration state.
+
+ts
+Copy
+Edit
+// types
+export type Tool = 'hand'|'area'|'linear'|'waterline'|'eraser';
+export type CalState = 'idle'|'placingA'|'placingB'|'lengthEntry';
+export type Vec2 = { x:number; y:number };
+
+export type CalSample = { id:string; a:Vec2; b:Vec2; meters:number; ppm:number };
+
+export type MaskType = 'area'|'linear'|'waterline_band';
+export type Mask = {
+  id:string; photoId:string; type:MaskType;
+  path:{ points:Vec2[] }; bandHeightM?:number;
+  createdAt:string;
+};
+
+export interface EditorSlice {
+  photoId: string;
+  activeTool: Tool;
+  // Calibration
+  calState: CalState;
+  calTemp?: { a?:Vec2; b?:Vec2; preview?:Vec2; meters?:number };
+  calibration?: { ppm:number; samples:CalSample[] };
+
+  // Drawing
+  transient?: { tool:'area'|'linear'|'waterline'; points:Vec2[] };
+  masks: Mask[];
+
+  // Actions
+  setTool(t:Tool): void;
+
+  startCalibration(): void;
+  placeCalPoint(p:Vec2): void;
+  updateCalPreview(p:Vec2): void;
+  setCalMeters(m:number): void;
+  commitCalSample(): Promise<void>;
+  deleteCalSample(id:string): void;
+  cancelCalibration(): void;
+
+  startPath(tool:'area'|'linear'|'waterline', p:Vec2): void;
+  appendPoint(p:Vec2): void;
+  commitPath(): void;
+  cancelPath(): void;
+  cancelAllTransient(): void;
+}
+Implement actions exactly (immutably):
+
+ts
+Copy
+Edit
+const dist = (a:Vec2,b:Vec2)=>Math.hypot(b.x-a.x,b.y-a.y);
+
+setTool(t){ set(s=>{ if(s.activeTool!==t) return {activeTool:t, transient:undefined}; return s; }); }
+
+startCalibration(){ set(s=>({ calState:'placingA', calTemp:{}, transient:undefined })); }
+
+placeCalPoint(p){
+  const s=get();
+  if(s.calState==='placingA') set({ calTemp:{ a:p, preview:p }, calState:'placingB' });
+  else if(s.calState==='placingB') set({ calTemp:{ ...s.calTemp, b:p }, calState:'lengthEntry' });
+}
+
+updateCalPreview(p){ if(get().calState==='placingB') set(s=>({ calTemp:{ ...s.calTemp, preview:p } })); }
+
+setCalMeters(m){ if(get().calState==='lengthEntry') set(s=>({ calTemp:{ ...s.calTemp, meters:m } })); }
+
+commitCalSample: async ()=>{
+  const s=get(); const {a,b,meters}=s.calTemp || {};
+  if(!a||!b||!meters||meters<=0) return;
+  const px=dist(a,b); if(px<10) { console.warn('[Calibration] ref too short'); return; }
+  const ppm=px/meters;
+  const sample:CalSample={ id:crypto.randomUUID(), a,b,meters,ppm };
+  const samples=[...(s.calibration?.samples||[]), sample];
+
+  // Commit locally FIRST; calState back to idle so other tools work
+  set({ calibration:{ ppm, samples }, calState:'idle', calTemp:undefined });
+  console.info('[Calibration] committed ppm=', ppm.toFixed(4), 'samples=', samples.length);
+
+  // Persist async; never clear local ppm on failure
+  try {
+    await api.photos.setCalibration(s.photoId, { ppm, samples });
+  } catch(err){ console.error('[Calibration] persist failed', err); }
+},
+
+deleteCalSample(id){
+  const cur=get().calibration?.samples||[];
+  const samples=cur.filter(x=>x.id!==id);
+  if(!samples.length){ set({ calibration:undefined }); return; }
+  set({ calibration:{ ppm:samples[samples.length-1].ppm, samples }});
+},
+
+cancelCalibration(){ set({ calState:'idle', calTemp:undefined }); }
+
+startPath(tool,p){ set({ transient:{ tool, points:[p] } }); }
+appendPoint(p){ set(s=> s.transient ? ({ transient:{ ...s.transient, points:[...s.transient.points,p] } }) : ({})); }
+commitPath(){
+  const s=get(); const t=s.transient;
+  if(!t || t.points.length<2) { set({ transient:undefined }); return; }
+  const id=crypto.randomUUID();
+  const mask:Mask={
+    id, photoId:s.photoId,
+    type: t.tool==='waterline' ? 'waterline_band' : t.tool,
+    path:{ points: t.points.slice() },
+    createdAt: new Date().toISOString()
+  };
+  set({ masks:[...s.masks, mask], transient:undefined });
+  console.info('[Mask] commit', mask.type, 'count=', get().masks.length);
+  api.masks.upsert(mask).catch(e=>console.error('[Mask] persist failed', e));
+}
+cancelPath(){ set({ transient:undefined }); }
+cancelAllTransient(){ set({ transient:undefined }); }
+Invariant: committed masks are never cleared by tool changes or Enter/Esc. Only transient is cleared.
+
+==============================================================================
+2) INPUT ROUTER — ONLY CALIBRATION ACTIVE CAN CONSUME EVENTS
+Create/ensure InputRouter.ts:
+
+ts
+Copy
+Edit
+export const isCalActive = (s:any)=> s.calState==='placingA' || s.calState==='placingB' || s.calState==='lengthEntry';
+
+export class InputRouter {
+  constructor(private store:any){}
+  private getActive(): 'calibration'|'area'|'linear'|'waterline'|'eraser'|'hand' {
+    const s=this.store.getState();
+    return isCalActive(s) ? 'calibration' : s.activeTool;
+  }
+  private pt(stage:Konva.Stage){ const p=stage.getPointerPosition(); if(!p) return null; const t=stage.getAbsoluteTransform().copy().invert(); return t.point(p); }
+  handleDown(stage:Konva.Stage,e:any){ const pt=this.pt(stage); if(!pt) return;
+    const s=this.store.getState(); const tool=this.getActive();
+    if(tool==='calibration'){ this.store.getState().placeCalPoint(pt); e.cancelBubble=true; return; }
+    if(tool==='hand'){ /* stage dragging handles */ return; }
+    if(tool==='area'||tool==='linear'||tool==='waterline'){ this.store.getState().startPath(tool,pt); e.cancelBubble=true; return; }
+    if(tool==='eraser'){ /* optional */ }
+  }
+  handleMove(stage:Konva.Stage,e:any){ const pt=this.pt(stage); if(!pt) return;
+    const s=this.store.getState(); const tool=this.getActive();
+    if(tool==='calibration' && s.calState==='placingB'){ this.store.getState().updateCalPreview(pt); e.cancelBubble=true; return; }
+    if(s.transient){ this.store.getState().appendPoint(pt); e.cancelBubble=true; return; }
+  }
+  handleUp(stage:Konva.Stage,e:any){ /* noop for now */ }
+}
+==============================================================================
+3) CANVAS STAGE — ONE SET OF HANDLERS, CORRECT LAYER ORDER
+In CanvasStage.tsx:
+
+Ensure only the Stage has onMouseDown/Move/Up & touch equivalents, all routed through the InputRouter.
+
+Stage is draggable only when active tool is 'hand'.
+
+Layer order:
+
+Background (photo) — listening={false}
+
+MaskDrawing (transient) — listening
+
+Masks (committed) — listening
+
+Calibration (anchors + preview line) — listening
+
+HUD/Overlays if any — listening={false}
+
+Rendering snippets:
+
+tsx
+Copy
+Edit
+const { masks, transient, calState, calTemp, activeTool } = useEditorStore(s=>({
+  masks:s.masks, transient:s.transient, calState:s.calState, calTemp:s.calTemp, activeTool:s.activeTool
+}));
+
+useEffect(()=>{ stageRef.current?.draggable(activeTool==='hand'); },[activeTool]);
+
+<Stage
+  ref={stageRef}
+  width={w} height={h}
+  onMouseDown={e=>router.handleDown(stageRef.current!,e)}
+  onMouseMove={e=>router.handleMove(stageRef.current!,e)}
+  onMouseUp={e=>router.handleUp(stageRef.current!,e)}
+  onTouchStart={e=>router.handleDown(stageRef.current!,e)}
+  onTouchMove={e=>router.handleMove(stageRef.current!,e)}
+  onTouchEnd={e=>router.handleUp(stageRef.current!,e)}
+>
+  <Layer id="Background" listening={false}>{/* base photo */}</Layer>
+
+  <Layer id="MaskDrawing" listening>
+    {transient?.points?.length ? (
+      <Line
+        points={transient.points.flatMap(p=>[p.x,p.y])}
+        stroke="#22c55e" strokeWidth={2} closed={transient.tool==='area'}
+        opacity={0.9}
+      />
+    ):null}
+  </Layer>
+
+  <Layer id="Masks" listening>
+    {masks.map(m =>
+      m.type==='area'
+        ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} closed fill="rgba(16,185,129,.25)" stroke="#10b981" strokeWidth={2}/>
+        : m.type==='waterline_band'
+          ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#8b5cf6" strokeWidth={3}/>
+          : <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#f59e0b" strokeWidth={3}/>
+    )}
+  </Layer>
+
+  <Layer id="Calibration" listening>
+    {calState!=='idle' && calTemp?.a && (
+      <>
+        <Circle x={calTemp.a.x} y={calTemp.a.y} radius={5} fill="#3B82F6" />
+        {(calState==='placingB' && calTemp.preview) && (
+          <Line points={[calTemp.a.x,calTemp.a.y, calTemp.preview.x,calTemp.preview.y]} stroke="#60A5FA" dash={[8,6]} strokeWidth={2}/>
+        )}
+        {(calState==='lengthEntry' && calTemp.b) && (
+          <>
+            <Line points={[calTemp.a.x,calTemp.a.y, calTemp.b.x,calTemp.b.y]} stroke="#2563EB" strokeWidth={3}/>
+            <Circle x={calTemp.b.x} y={calTemp.b.y} radius={5} fill="#3B82F6" />
+          </>
+        )}
+      </>
+    )}
+  </Layer>
+</Stage>
+Important: no other handlers on layers/shapes; no stopPropagation() that blocks Stage events.
+
+==============================================================================
+4) KEYBOARD — CONTEXTUAL ENTER/ESC ONLY
+Global handler (once; avoid duplication):
+
+ts
+Copy
+Edit
+function isTyping(){ const el=document.activeElement as HTMLElement|null; return !!el && (el.tagName==='INPUT'||el.tagName==='TEXTAREA'||(el as any).isContentEditable); }
+
+useEffect(()=>{
+  const onKey=(e:KeyboardEvent)=>{
+    if(isTyping()) return;
+    const s=store.getState();
+    if(e.key==='Enter'){
+      if(s.calState==='lengthEntry'){ store.getState().commitCalSample(); }
+      else if(s.transient){ store.getState().commitPath(); }
+    }else if(e.key==='Escape'){
+      if(isCalActive(s)) store.getState().cancelCalibration();
+      else if(s.transient) store.getState().cancelPath();
+    }else if(e.key==='a'||e.key==='A'){ store.getState().setTool('area'); }
+    else if(e.key==='l'||e.key==='L'){ store.getState().setTool('linear'); }
+    else if(e.key==='w'||e.key==='W'){ store.getState().setTool('waterline'); }
+    else if(e.key==='e'||e.key==='E'){ store.getState().setTool('eraser'); }
+    else if(e.key==='h'||e.key==='H'){ store.getState().setTool('hand'); }
+    else if(e.key==='c'||e.key==='C'){ store.getState().startCalibration(); }
+  };
+  window.addEventListener('keydown', onKey);
+  return ()=>window.removeEventListener('keydown', onKey);
+},[]);
+==============================================================================
+5) CALIBRATION STATUS PILL & REQUIREMENTS
+UI pill uses !!calibration?.ppm to show “Calibrated”.
+
+Do not bind pill to calState.
+
+After commitCalSample(), ppm exists, calState returns to 'idle', and tools are free to work.
+
+==============================================================================
+6) CSS & HIT-TESTING
+Ensure no DOM overlay covers the Stage:
+
+css
+Copy
+Edit
+.editor-overlay { pointer-events:none; }
+.editor-overlay [data-interactive="true"] { pointer-events:auto; }
+Don’t set listening={false} on Mask layers; leave it only on Background and HUD.
+
+==============================================================================
+7) TESTS (SMOKE)
+Vitest unit:
+
+commitCalSample: ppm computed, calState becomes idle, samples array grows.
+
+startPath/appendPoint/commitPath: masks length increases; transient cleared; immutable arrays.
+
+Playwright:
+
+C → click A/B → enter meters → Enter → pill shows Calibrated; reload preserves ppm.
+
+A → draw polygon → Enter → stays visible; switch to L/W and back → polygon still visible.
+
+L → draw → Enter → visible; switch to A → both shapes visible.
+
+H → drag pans; switch back to A → Stage no longer draggable; drawing works.
+
+==============================================================================
+8) ACCEPTANCE
+Calibration line shows during placement; on Enter, ppm persists, calState resets to idle, and the app stays calibrated.
+
+Area/Linear/Waterline tools draw and stay visible across tool switches.
+
+Only in-progress strokes are cancelled on switch; committed masks are never cleared.
+
+Stage pans only in Hand; there are no console errors; the two console banners print.

@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/stores/editorSlice';
 import { CanvasStage } from '@/components/canvas/CanvasStage';
 import { Toolbar } from '@/components/editor/Toolbar';
 import { Sidebar } from '@/components/editor/Sidebar';
 import { ImageUpload } from '@/components/editor/ImageUpload';
+import { CalibrationDialog } from '@/components/editor/CalibrationDialog';
 
 export function CanvasEditorPage() {
   console.info('[EditorPage] route file:', import.meta?.url || 'CanvasEditorPage.tsx');
@@ -12,8 +13,43 @@ export function CanvasEditorPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibrationDialog, setShowCalibrationDialog] = useState(false);
 
-  const store = useEditorStore();
-  const { photo, loadImageFile } = store || {};
+  const photo = useEditorStore(s => s.photo);
+  const loadImageFile = useEditorStore(s => s.loadImageFile);
+  const {
+    calState,
+    transient,
+    commitCalSample,
+    commitPath,
+    cancelCalibration,
+    cancelPath,
+    setTool,
+    startCalibration
+  } = useEditorStore();
+
+  // Global keyboard handler exactly as specified
+  useEffect(()=>{
+    function isTyping(){ const el=document.activeElement as HTMLElement|null; return !!el && (el.tagName==='INPUT'||el.tagName==='TEXTAREA'||(el as any).isContentEditable); }
+    
+    const onKey=(e:KeyboardEvent)=>{
+      if(isTyping()) return;
+      const isCalActive = calState==='placingA' || calState==='placingB' || calState==='lengthEntry';
+      
+      if(e.key==='Enter'){
+        if(calState==='lengthEntry'){ commitCalSample(); }
+        else if(transient){ commitPath(); }
+      }else if(e.key==='Escape'){
+        if(isCalActive) cancelCalibration();
+        else if(transient) cancelPath();
+      }else if(e.key==='a'||e.key==='A'){ setTool('area'); }
+      else if(e.key==='l'||e.key==='L'){ setTool('linear'); }
+      else if(e.key==='w'||e.key==='W'){ setTool('waterline'); }
+      else if(e.key==='e'||e.key==='E'){ setTool('eraser'); }
+      else if(e.key==='h'||e.key==='H'){ setTool('hand'); }
+      else if(e.key==='c'||e.key==='C'){ startCalibration(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return ()=>window.removeEventListener('keydown', onKey);
+  },[calState, transient, commitCalSample, commitPath, cancelCalibration, cancelPath, setTool, startCalibration]);
 
   const handleImageLoad = (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
     if (loadImageFile) {
@@ -130,21 +166,8 @@ export function CanvasEditorPage() {
         onFullscreen={handleFullscreen}
       />
 
-      {/* Calibration Dialog - TODO: Implement when needed */}
-      {showCalibrationDialog && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white p-6 rounded-lg">
-            <h3 className="text-lg font-semibold mb-4">Calibration</h3>
-            <p className="text-sm text-gray-600 mb-4">Calibration dialog will be implemented here.</p>
-            <button 
-              onClick={() => setShowCalibrationDialog(false)}
-              className="px-4 py-2 bg-blue-600 text-white rounded"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Calibration Dialog */}
+      <CalibrationDialog />
     </div>
   );
 }

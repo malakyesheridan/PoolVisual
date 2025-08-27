@@ -1,73 +1,71 @@
 /**
- * Input Router - Central event dispatcher for all canvas tools
- * Ensures only the active tool consumes events, preventing tool conflicts
+ * Input Router - Reliable, Testable Implementation
+ * Only calibration active states consume events
  */
 
-import type { KonvaEventObject } from 'konva/lib/Node';
-import type { Stage } from 'konva/lib/Stage';
+import type Konva from 'konva';
 
-export interface ToolController {
-  name: 'calibration' | 'area' | 'linear' | 'waterline' | 'eraser' | 'hand';
-  onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean;
-  onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean;
-  onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean;
-  onCancel?(): void;
-  onKey?(code: string, e: KeyboardEvent): boolean;
-  getCursor?(): string;
-}
-
-export type ToolName = ToolController['name'];
+export const isCalActive = (s:any)=> s.calState==='placingA' || s.calState==='placingB' || s.calState==='lengthEntry';
 
 export class InputRouter {
-  constructor(
-    private getActive: () => ToolName,
-    private controllers: Record<ToolName, ToolController>
-  ) {}
-
-  handleDown(stage: Stage, e: KonvaEventObject<any>) {
-    const pt = getStagePoint(stage);
-    if (!pt) return;
-
-    const tool = this.controllers[this.getActive()];
-    if (tool?.onPointerDown(pt, e)) {
-      e.cancelBubble = true;
+  constructor(private store:any){}
+  
+  private getActive(): 'calibration'|'area'|'linear'|'waterline'|'eraser'|'hand' {
+    const s=this.store.getState();
+    return isCalActive(s) ? 'calibration' : s.activeTool;
+  }
+  
+  private pt(stage:Konva.Stage){ 
+    const p=stage.getPointerPosition(); 
+    if(!p) return null; 
+    const t=stage.getAbsoluteTransform().copy().invert(); 
+    return t.point(p); 
+  }
+  
+  handleDown(stage:Konva.Stage,e:any){ 
+    const pt=this.pt(stage); 
+    if(!pt) return;
+    const s=this.store.getState(); 
+    const tool=this.getActive();
+    
+    if(tool==='calibration'){ 
+      this.store.getState().placeCalPoint(pt); 
+      e.cancelBubble=true; 
+      return; 
+    }
+    if(tool==='hand'){ 
+      /* stage dragging handles */ 
+      return; 
+    }
+    if(tool==='area'||tool==='linear'||tool==='waterline'){ 
+      this.store.getState().startPath(tool,pt); 
+      e.cancelBubble=true; 
+      return; 
+    }
+    if(tool==='eraser'){ 
+      /* optional */ 
     }
   }
-
-  handleMove(stage: Stage, e: KonvaEventObject<any>) {
-    const pt = getStagePoint(stage);
-    if (!pt) return;
-
-    const tool = this.controllers[this.getActive()];
-    if (tool?.onPointerMove(pt, e)) {
-      e.cancelBubble = true;
+  
+  handleMove(stage:Konva.Stage,e:any){ 
+    const pt=this.pt(stage); 
+    if(!pt) return;
+    const s=this.store.getState(); 
+    const tool=this.getActive();
+    
+    if(tool==='calibration' && s.calState==='placingB'){ 
+      this.store.getState().updateCalPreview(pt); 
+      e.cancelBubble=true; 
+      return; 
+    }
+    if(s.transient){ 
+      this.store.getState().appendPoint(pt); 
+      e.cancelBubble=true; 
+      return; 
     }
   }
-
-  handleUp(stage: Stage, e: KonvaEventObject<any>) {
-    const pt = getStagePoint(stage);
-    if (!pt) return;
-
-    const tool = this.controllers[this.getActive()];
-    if (tool?.onPointerUp(pt, e)) {
-      e.cancelBubble = true;
-    }
+  
+  handleUp(stage:Konva.Stage,e:any){ 
+    /* noop for now */ 
   }
-
-  handleKey(code: string, e: KeyboardEvent): boolean {
-    const tool = this.controllers[this.getActive()];
-    return tool?.onKey?.(code, e) || false;
-  }
-
-  getCursor(): string {
-    const tool = this.controllers[this.getActive()];
-    return tool?.getCursor?.() || 'default';
-  }
-}
-
-export function getStagePoint(stage: Stage): { x: number; y: number } | null {
-  const p = stage.getPointerPosition();
-  if (!p) return null;
-  const t = stage.getAbsoluteTransform().copy().invert();
-  return t.point(p);
 }
