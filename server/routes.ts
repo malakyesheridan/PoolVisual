@@ -354,7 +354,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/photos/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const photo = await storage.getPhoto(req.params.id);
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
+      const photo = await storage.getPhoto(photoId);
       if (!photo) {
         return res.status(404).json({ message: "Photo not found" });
       }
@@ -380,6 +385,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/photos/:id/calibration", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
     try {
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
       // Support both V1 (legacy) and V2 (robust) calibration formats
       let calibrationData;
       
@@ -403,7 +413,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Verify photo access
-      const photo = await storage.getPhoto(req.params.id);
+      const photo = await storage.getPhoto(photoId);
       if (!photo) {
         return res.status(404).json({ message: "Photo not found" });
       }
@@ -422,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (calibrationData.samples) {
         // V2 format
-        const updatedPhoto = await storage.updatePhotoCalibrationV2(req.params.id, {
+        const updatedPhoto = await storage.updatePhotoCalibrationV2(photoId, {
           ppm: calibrationData.ppm,
           samples: calibrationData.samples,
           stdevPct: calibrationData.stdevPct
@@ -432,8 +442,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           updatedAt: new Date().toISOString()
         });
       } else {
-        // V1 format
-        const updatedPhoto = await storage.updatePhotoCalibration(req.params.id, calibrationData.pixelsPerMeter, calibrationData.meta);
+        // V1 format  
+        const updatedPhoto = await storage.updatePhotoCalibration(photoId, calibrationData.pixelsPerMeter, calibrationData.meta);
         res.json(updatedPhoto);
       }
     } catch (error) {

@@ -261,14 +261,13 @@ export const useEditorStore = create<EditorSlice>()(
       const photoId = `temp-${Date.now()}`;
       const photo: Photo = {
         id: photoId,
-        filename: file.name,
-        filesize: file.size,
+        jobId: get().jobId || 'temp-job',
+        originalUrl: imageUrl,
         width: dimensions.width,
         height: dimensions.height,
-        mimeType: file.type,
-        uploadUrl: imageUrl,
-        jobId: get().jobId || 'temp-job',
-        kind: 'existing',
+        exifJson: null,
+        calibrationPixelsPerMeter: null,
+        calibrationMetaJson: null,
         createdAt: new Date().toISOString()
       };
       
