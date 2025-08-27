@@ -226,7 +226,7 @@ export const useEditorStore = create<EditorSlice>()(
           masks: editorMasks,
           editorState: {
             ...defaultEditorState,
-            calibration
+            calibration: calibration || undefined
           },
           isLoading: false
         });
@@ -498,11 +498,38 @@ export const useEditorStore = create<EditorSlice>()(
     },
 
     detachMaterial: (maskId: string) => {
-      get().updateMask(maskId, { materialId: undefined });
+      const state = get();
+      const newMasks = state.masks.map(mask => {
+        if (mask.id === maskId) {
+          const { materialId, ...rest } = mask;
+          return { ...rest, updatedAt: new Date().toISOString() } as EditorMask;
+        }
+        return mask;
+      });
+      
+      set({ 
+        masks: newMasks,
+        isDirty: true
+      });
     },
 
-    selectMaterial: (materialId: string | null) => {
-      set({ selectedMaterialId: materialId, isDirty: true });
+    resetEditor: () => {
+      set({
+        photo: null,
+        photoId: null,
+        jobId: null,
+        masks: [],
+        currentDrawing: null,
+        selectedMaskId: null,
+        selectedMaterialId: null,
+        editorState: defaultEditorState,
+        undoRedoManager: new UndoRedoManager(),
+        isDirty: false,
+        lastSaved: null,
+        error: null,
+        compositeUrls: {},
+        isGeneratingComposite: false
+      });
     },
 
     setBandHeight: (maskId: string, heightM: number) => {
@@ -624,7 +651,7 @@ export const useEditorStore = create<EditorSlice>()(
           masks: previousState.masks,
           editorState: {
             ...state.editorState,
-            calibration: previousState.calibration
+            calibration: previousState.calibration || undefined
           },
           selectedMaskId: previousState.selectedMaskId,
           isDirty: true
@@ -641,7 +668,7 @@ export const useEditorStore = create<EditorSlice>()(
           masks: nextState.masks,
           editorState: {
             ...state.editorState,
-            calibration: nextState.calibration
+            calibration: nextState.calibration || undefined
           },
           selectedMaskId: nextState.selectedMaskId,
           isDirty: true

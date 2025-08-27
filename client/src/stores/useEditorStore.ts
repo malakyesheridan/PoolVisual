@@ -50,7 +50,7 @@ if (typeof window !== 'undefined') {
           break;
         case 'h':
           e.preventDefault();
-          store.setActiveTool('select');
+          store.setActiveTool('hand');
           break;
         case 'm':
           e.preventDefault();

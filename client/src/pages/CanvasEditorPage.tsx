@@ -171,9 +171,9 @@ export function CanvasEditorPage() {
           </div>
 
           {/* Canvas */}
-          <div className="flex-1 relative overflow-hidden">
+          <div className="flex-1 relative bg-gray-100">
             <CanvasStage
-              className="absolute inset-0"
+              className="w-full h-full"
               onStageRef={handleStageRef}
             />
           </div>

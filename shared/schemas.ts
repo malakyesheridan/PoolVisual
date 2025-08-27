@@ -211,6 +211,21 @@ export const CalibrationDataSchema = z.object({
   })
 });
 
+// Editor schemas
+export const ToolTypeSchema = z.enum(['area', 'linear', 'waterline', 'eraser', 'hand', 'select']);
+export const ViewModeSchema = z.enum(['before', 'after', 'sideBySide']);
+
+export const EditorStateSchema = z.object({
+  zoom: z.number().min(0.1).max(10).default(1),
+  pan: Vec2Schema.default({ x: 0, y: 0 }),
+  activeTool: ToolTypeSchema.default('area'),
+  brushSize: z.number().min(1).max(100).default(15),
+  mode: ViewModeSchema.default('before'),
+  calibration: CalibrationDataSchema.optional(),
+  isDirty: z.boolean().default(false),
+  lastSaved: z.string().optional()
+});
+
 export const AreaMaskSchema = z.object({
   id: z.string().uuid(),
   photoId: z.string().uuid(),
@@ -319,6 +334,9 @@ export type QuoteItem = z.infer<typeof QuoteItemSchema>;
 export type AddQuoteItem = z.infer<typeof AddQuoteItemSchema>;
 export type Vec2 = z.infer<typeof Vec2Schema>;
 export type CalibrationData = z.infer<typeof CalibrationDataSchema>;
+export type ToolType = z.infer<typeof ToolTypeSchema>;
+export type ViewMode = z.infer<typeof ViewModeSchema>;
+export type EditorState = z.infer<typeof EditorStateSchema>;
 export type AreaMask = z.infer<typeof AreaMaskSchema>;
 export type LinearMask = z.infer<typeof LinearMaskSchema>;
 export type WaterlineMask = z.infer<typeof WaterlineMaskSchema>;

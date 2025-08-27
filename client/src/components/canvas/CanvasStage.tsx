@@ -4,7 +4,7 @@
  */
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Stage, Layer, Image as KonvaImage, Group, Rect } from 'react-konva';
+import { Stage, Layer, Image as KonvaImage, Group, Rect, Line } from 'react-konva';
 import { Stage as StageType } from 'konva/lib/Stage';
 import { KonvaEventObject } from 'konva/lib/Node';
 import useImage from 'use-image';
@@ -247,7 +247,15 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
   })() : null;
 
   return (
-    <div className={className} style={{ width: '100%', height: '100%' }}>
+    <div 
+      className={className} 
+      style={{ 
+        width: '100%', 
+        height: '100%',
+        overflow: 'hidden',
+        cursor: editorState.activeTool === 'hand' ? 'grab' : 'crosshair'
+      }}
+    >
       <Stage
         ref={stageRef}
         width={stageDimensions.width}
@@ -283,7 +291,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
 
         {/* Masks Layer */}
         <Layer>
-          {imageProps && (
+          {imageProps && masks.length > 0 && (
             <Group
               x={imageProps.x}
               y={imageProps.y}
@@ -292,14 +300,59 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              {/* Masks will be rendered here - temporarily disabled */}
+              {/* Render all masks */}
+              {masks.map(mask => {
+                const isSelected = mask.id === selectedMaskId;
+                
+                if (mask.type === 'area') {
+                  return (
+                    <Line
+                      key={mask.id}
+                      points={mask.polygon.points.flatMap(p => [p.x, p.y])}
+                      stroke={isSelected ? "#f59e0b" : "#3b82f6"}
+                      strokeWidth={isSelected ? 3 : 2}
+                      fill={`rgba(59, 130, 246, ${isSelected ? 0.2 : 0.1})`}
+                      closed={true}
+                      onClick={() => selectMask(mask.id)}
+                      onTap={() => selectMask(mask.id)}
+                    />
+                  );
+                } else if (mask.type === 'linear') {
+                  return (
+                    <Line
+                      key={mask.id}
+                      points={mask.polyline.points.flatMap(p => [p.x, p.y])}
+                      stroke={isSelected ? "#f59e0b" : "#10b981"}
+                      strokeWidth={isSelected ? 4 : 3}
+                      lineCap="round"
+                      lineJoin="round"
+                      onClick={() => selectMask(mask.id)}
+                      onTap={() => selectMask(mask.id)}
+                    />
+                  );
+                } else if (mask.type === 'waterline_band') {
+                  return (
+                    <Line
+                      key={mask.id}
+                      points={mask.polyline.points.flatMap(p => [p.x, p.y])}
+                      stroke={isSelected ? "#f59e0b" : "#8b5cf6"}
+                      strokeWidth={isSelected ? 5 : 4}
+                      lineCap="round"
+                      lineJoin="round"
+                      onClick={() => selectMask(mask.id)}
+                      onTap={() => selectMask(mask.id)}
+                    />
+                  );
+                }
+                return null;
+              })}
             </Group>
           )}
         </Layer>
 
         {/* Drawing Layer */}
         <Layer>
-          {imageProps && currentDrawing && (
+          {imageProps && currentDrawing && currentDrawing.length > 0 && (
             <Group
               x={imageProps.x}
               y={imageProps.y}
@@ -308,7 +361,66 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
               offsetX={imageProps.offsetX}
               offsetY={imageProps.offsetY}
             >
-              {/* Drawing layer temporarily disabled */}
+              {/* Current drawing stroke */}
+              {editorState.activeTool === 'area' && currentDrawing.length > 2 && (
+                <>
+                  <Line
+                    points={currentDrawing.flatMap(p => [p.x, p.y])}
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fill="rgba(59, 130, 246, 0.1)"
+                    closed={true}
+                    dash={[5, 5]}
+                  />
+                  {/* Close line */}
+                  <Line
+                    points={[
+                      currentDrawing[currentDrawing.length - 1].x,
+                      currentDrawing[currentDrawing.length - 1].y,
+                      currentDrawing[0].x,
+                      currentDrawing[0].y
+                    ]}
+                    stroke="#3b82f6"
+                    strokeWidth={1}
+                    dash={[3, 3]}
+                    opacity={0.5}
+                  />
+                </>
+              )}
+              
+              {/* Linear drawing */}
+              {editorState.activeTool === 'linear' && currentDrawing.length > 1 && (
+                <Line
+                  points={currentDrawing.flatMap(p => [p.x, p.y])}
+                  stroke="#10b981"
+                  strokeWidth={3}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
+              
+              {/* Waterline drawing */}
+              {editorState.activeTool === 'waterline' && currentDrawing.length > 1 && (
+                <Line
+                  points={currentDrawing.flatMap(p => [p.x, p.y])}
+                  stroke="#8b5cf6"
+                  strokeWidth={4}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
+              
+              {/* Eraser visual */}
+              {editorState.activeTool === 'eraser' && currentDrawing.length > 0 && (
+                <Line
+                  points={currentDrawing.flatMap(p => [p.x, p.y])}
+                  stroke="#ef4444"
+                  strokeWidth={editorState.brushSize}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={0.7}
+                />
+              )}
             </Group>
           )}
         </Layer>
