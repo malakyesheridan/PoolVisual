@@ -117,21 +117,22 @@ export function Toolbar({ onExport, onFullscreen, className }: ToolbarProps) {
 
         <Separator orientation="vertical" className="h-6" />
 
-        {/* Calibration Status */}
+        {/* Calibration */}
         <div className="flex items-center space-x-2">
-          <Ruler className="w-4 h-4 text-slate-500" />
-          <Badge 
-            variant={calibration ? "default" : "secondary"}
+          <Button
+            variant={calibration ? "default" : "outline"}
+            size="sm"
+            onClick={() => startCalibration()}
+            title="Calibrate measurements (C)"
             className="text-xs"
+            data-testid="button-calibration"
           >
+            <Ruler className="w-4 h-4 mr-1" />
             {calibration 
               ? `${calibration.ppm.toFixed(1)} px/m` 
-              : 'Not Set'
+              : 'Calibrate'
             }
-          </Badge>
-          <span className="text-xs text-slate-500">
-            Press 'C' to calibrate
-          </span>
+          </Button>
         </div>
       </div>
 
