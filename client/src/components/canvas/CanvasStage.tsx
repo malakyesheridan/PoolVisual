@@ -22,6 +22,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
   const [isPanning, setIsPanning] = useState(false);
   const [lastPointerPosition, setLastPointerPosition] = useState<Vec2 | null>(null);
 
+  const store = useEditorStore();
   const {
     photo,
     editorState,
@@ -35,9 +36,9 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     finishDrawing,
     selectMask,
     eraseFromSelected
-  } = useEditorStore();
+  } = store || {};
 
-  const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
+  const [backgroundImage] = useImage(photo?.uploadUrl || '', 'anonymous');
 
   // Update stage dimensions
   useEffect(() => {
@@ -66,13 +67,13 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
           e.preventDefault();
           if (currentDrawing) {
             // Cancel current drawing
-            useEditorStore.getState().cancelDrawing();
+            store?.cancelDrawing?.();
           }
           break;
         case 'enter':
           e.preventDefault();
           if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
-            finishDrawing();
+            finishDrawing?.();
           }
           break;
       }

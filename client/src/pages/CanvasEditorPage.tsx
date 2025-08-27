@@ -18,19 +18,26 @@ export function CanvasEditorPage() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibrationDialog, setShowCalibrationDialog] = useState(false);
 
+  const store = useEditorStore();
   const {
     photo,
     editorState,
     loadImageFile,
     resetEditor
-  } = useEditorStore();
+  } = store || {};
 
   const handleImageLoad = (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
-    loadImageFile(file, imageUrl, dimensions);
+    if (loadImageFile) {
+      loadImageFile(file, imageUrl, dimensions);
+    } else {
+      console.error('loadImageFile function not available');
+    }
   };
 
   const handleImageClear = () => {
-    resetEditor();
+    if (resetEditor) {
+      resetEditor();
+    }
   };
 
   const handleExport = () => {
