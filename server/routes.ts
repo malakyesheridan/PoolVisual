@@ -19,6 +19,7 @@ import jwt from "jsonwebtoken";
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
+import express from "express";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-dev-secret';
 
@@ -88,6 +89,9 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
 };
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  
+  // Serve uploaded files statically
+  app.use('/uploads', express.static('uploads'));
   
   // Add health routes
   app.use("/api", healthRoutes);
