@@ -72,7 +72,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
           break;
         case 'enter':
           e.preventDefault();
-          if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
+          if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState?.activeTool || '')) {
             finishDrawing?.();
           }
           break;
@@ -162,7 +162,8 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
       case 'area':
       case 'linear':
       case 'waterline':
-        startDrawing(pos);
+      case 'calibration':
+        startDrawing?.(pos);
         break;
         
       case 'eraser':
@@ -200,14 +201,14 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     }
 
     // Handle drawing
-    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState.activeTool)) {
-      addPoint(pos);
+    if (currentDrawing && ['area', 'linear', 'waterline', 'calibration'].includes(editorState?.activeTool || '')) {
+      addPoint?.(pos);
     }
     
     // Handle eraser
-    if (editorState.activeTool === 'eraser' && selectedMaskId && 
+    if (editorState?.activeTool === 'eraser' && selectedMaskId && 
         ('buttons' in e.evt ? e.evt.buttons === 1 : true)) {
-      eraseFromSelected(pos, editorState.brushSize || 10);
+      eraseFromSelected?.(pos, editorState.brushSize || 10);
     }
   }, [
     isPanning,

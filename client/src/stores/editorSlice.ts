@@ -316,16 +316,20 @@ export const useEditorStore = create<EditorSlice>()(
       }
     },
 
-    finishDrawing: (type: 'area' | 'linear' | 'waterline_band' = 'area') => {
-      const { currentDrawing, photoId } = get();
+    finishDrawing: (type?: 'area' | 'linear' | 'waterline_band') => {
+      const { currentDrawing, photoId, editorState } = get();
       if (!currentDrawing || currentDrawing.length < 2 || !photoId) return;
+
+      // Auto-detect type based on active tool if not specified
+      const maskType = type || editorState.activeTool === 'linear' ? 'linear' : 
+                           editorState.activeTool === 'waterline' ? 'waterline_band' : 'area';
 
       const maskId = crypto.randomUUID();
       const now = new Date().toISOString();
       
       let newMask: EditorMask;
       
-      if (type === 'area') {
+      if (maskType === 'area') {
         newMask = {
           id: maskId,
           photoId,
@@ -337,7 +341,7 @@ export const useEditorStore = create<EditorSlice>()(
           createdAt: now,
           updatedAt: now
         } as AreaMask;
-      } else if (type === 'linear') {
+      } else if (maskType === 'linear') {
         newMask = {
           id: maskId,
           photoId,
