@@ -22,6 +22,7 @@ import { Stage as StageType } from 'konva/lib/Stage';
 import useImage from 'use-image';
 import { useEditorStore } from '@/stores/editorSlice';
 import { CalibrationCanvasLayer } from './CalibrationCanvasLayer';
+import { MaskCanvasLayer } from './MaskCanvasLayer';
 import { InputRouter } from '@/editor/input/InputRouter';
 import { CalibrationController } from '@/editor/input/controllers/CalibrationController';
 import { AreaController } from '@/editor/input/controllers/AreaController';
@@ -30,7 +31,6 @@ import { WaterlineController } from '@/editor/input/controllers/WaterlineControl
 import { EraserController } from '@/editor/input/controllers/EraserController';
 import { HandController } from '@/editor/input/controllers/HandController';
 import { isCalibrationActive } from '@/utils/calibrationHelpers';
-import { EventHud } from '@/components/dev/EventHud';
 import type { Vec2 } from '@shared/schema';
 
 interface CanvasStageProps {
@@ -214,8 +214,6 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         position: 'relative'
       }}
     >
-      {/* E. EVENT HUD - Development instrumentation */}
-      <EventHud />
       <Stage
         ref={stageRef}
         width={stageDimensions.width}
@@ -249,12 +247,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           )}
         </Layer>
 
+        {/* Mask Layer - area/linear/waterline masks, listening */}
+        <MaskCanvasLayer />
+
         {/* Calibration Layer - anchors and lines, listening */}
         <CalibrationCanvasLayer />
 
         {/* HUD Layer - cursor guides, not listening */}
         <Layer listening={false}>
-          {/* Future: drawing layer, masks layer, cursor guides */}
+          {/* Future: drawing layer, cursor guides */}
         </Layer>
       </Stage>
     </div>

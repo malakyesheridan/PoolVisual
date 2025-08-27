@@ -127,7 +127,7 @@ export function MaskRenderer({
       const point = linePoints[i];
       const nextPoint = linePoints[i + 1];
       
-      if (nextPoint) {
+      if (point && nextPoint) {
         // Calculate perpendicular offset
         const dx = nextPoint.x - point.x;
         const dy = nextPoint.y - point.y;
@@ -141,7 +141,7 @@ export function MaskRenderer({
         } else {
           bandPoints.push(point);
         }
-      } else {
+      } else if (point) {
         bandPoints.push(point);
       }
     }
@@ -151,7 +151,7 @@ export function MaskRenderer({
       const point = linePoints[i];
       const prevPoint = linePoints[i - 1];
       
-      if (prevPoint) {
+      if (point && prevPoint) {
         const dx = point.x - prevPoint.x;
         const dy = point.y - prevPoint.y;
         const length = Math.sqrt(dx * dx + dy * dy);
@@ -164,7 +164,7 @@ export function MaskRenderer({
         } else {
           bandPoints.push(point);
         }
-      } else {
+      } else if (point) {
         bandPoints.push(point);
       }
     }
