@@ -1,0 +1,43 @@
+==============================================================================
+NON-REGRESSION / PRESERVE EXISTING CANVAS FUNCTIONALITY
+==============================================================================
+- Do NOT remove or rename any existing editor features, files, routes, types, or state keys.
+- All changes must be **additive** and **backward-compatible** with the current Canvas Editor.
+- Keep these intact and working exactly as now:
+  - Calibration flow (draw line → meters → pixels_per_meter persisted)
+  - Area/Linear/Waterline masks (create, edit, select)
+  - Zoom/Pan/Hand tool, Before/After/Side-by-Side modes
+  - Export Image, Save Progress, Generate Quote
+  - Keyboard shortcuts already implemented (A/L/W/E/H, space, 0/1, etc.)
+
+Implementation guardrails:
+1) **State compatibility**
+   - Do not rename or remove properties in `editorSlice` or mask objects; only extend.
+   - History (undo/redo) format must remain compatible.
+2) **API compatibility**
+   - Do not modify existing endpoints’ request/response shapes.
+   - New endpoints only under `/api/materials`, `/api/import/*`.
+3) **DB migrations**
+   - Add columns/tables only; no drops or type changes. Defaults must keep existing rows valid.
+4) **Feature flags**
+   - Importer/scraper behind `ALLOW_SUPPLIER_SCRAPE`. If false, the app behaves exactly as today.
+5) **UI**
+   - Keep current layout and controls. New buttons (Upload Image, Materials tab) are added without altering existing ones.
+
+Tests (must pass):
+- `e2e/editor-preserve.spec.ts`
+  1) Open an existing photo → current masks render the same positions/areas as before (tolerance ±0.5%).
+  2) Draw a new Area mask → Save → Reload → mask identical.
+  3) Calibration change updates metrics without errors.
+  4) Undo/Redo for draw/edit/delete works and restores exact geometry.
+  5) Mode toggles (Before/After/Side-by-Side) still switch correctly.
+- `e2e/new-features.spec.ts`
+  1) Upload Image button: choose file → appears on canvas → persists on reload.
+  2) Eraser removes geometry for selected mask; undo restores it.
+  3) Materials tab: select material → attaches to selected mask → tiling scale honors calibration.
+- Unit tests confirm no breaking changes to existing math helpers.
+
+Acceptance criteria:
+- Zero console errors/warnings in editor paths.
+- Existing projects open and behave exactly as before (visual diff within ±0.5%).
+- All new features operate without altering original workflows.

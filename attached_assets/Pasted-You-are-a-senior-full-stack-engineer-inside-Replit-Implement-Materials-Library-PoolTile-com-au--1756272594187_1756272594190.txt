@@ -1,0 +1,172 @@
+You are a senior full-stack engineer inside Replit. Implement **Materials Library + PoolTile.com.au Importer + Canvas Integration** for PoolVisual Quotes. Ship production-ready code (TypeScript everywhere). No stubs, no TODOs.
+
+==============================================================================
+GOALS
+==============================================================================
+1) **Materials Library** (DB, API, admin UI) with accurate texture tiling & scale.
+2) **Supplier Importer** for PoolTile (pooltile.com.au): crawl categories, ingest products, download images, create **tileable textures**, map to units/prices, and store metadata.
+3) **Editor Integration**: After drawing a mask, select a material and see a physically accurate repeat (based on real tile/sheet size) with controls preserved in calc_meta_json.
+
+==============================================================================
+DATA MODEL (Supabase Postgres)
+==============================================================================
+-- Extend or create tables (SQL migration)
+Table: materials
+  id uuid pk
+  org_id uuid fk -> orgs null   -- null = global/shared
+  supplier text                  -- e.g., 'PoolTile'
+  source_url text                -- product page URL
+  name text
+  sku text
+  category text check in ('coping','waterline_tile','interior','paving','fencing')
+  unit text check in ('m2','lm','each')
+  color text
+  finish text                    -- matte/gloss/tumbled/etc.
+  tile_width_mm int null         -- single tile size; for mosaics, single chip
+  tile_height_mm int null
+  sheet_width_mm int null        -- mosaics sheet size (e.g., 300)
+  sheet_height_mm int null
+  thickness_mm int null
+  grout_width_mm int null
+  cost numeric null
+  price numeric null
+  wastage_pct numeric default 8
+  margin_pct numeric null
+  texture_url text               -- seamless 1024x1024 texture
+  thumbnail_url text
+  physical_repeat_m numeric null -- real-world meters represented by the texture tile (e.g., 0.3 for a 300mm sheet)
+  notes text
+  is_active boolean default true
+  created_at timestamptz default now()
+
+Table: import_runs
+  id uuid pk
+  supplier text
+  started_at timestamptz default now()
+  finished_at timestamptz
+  totals jsonb                   -- {found:..., created:..., updated:..., skipped:...}
+  log text
+
+Indexes: materials(supplier, sku), materials(category), materials(org_id)
+
+RLS: global materials (org_id null) are read-only to all org members; org materials full CRUD by org members.
+
+==============================================================================
+BACKEND ENDPOINTS (Fastify + Zod)
+==============================================================================
+GET    /api/materials?org_id=&category=&q=   → list (paged)
+POST   /api/materials                        → create (org-scoped)
+PATCH  /api/materials/:id                    → update (org-scoped or admin for global)
+DELETE /api/materials/:id
+POST   /api/import/pooltile                  → { categoryUrls?: string[] } start run, return run id
+GET    /api/import/:runId                    → status & summary
+
+All bodies/responses strictly validated. Transactions for multi-write ops.
+
+==============================================================================
+SUPPLIER IMPORTER (PoolTile.com.au)
+==============================================================================
+Implement a Playwright-based crawler in backend worker (or a /scripts task):
+- Input: list of category URLs (waterline tiles, mosaics, coping, etc.), or autodiscover from a seed.
+- For each product:
+  - Extract: name, SKU (if present), price, color/finish, sizes (chip + sheet), thickness, product URL, image URLs.
+  - Download primary product image; if there’s a sheet/swatch image use that; else fallback to main image.
+  - Generate a **seamless 1024x1024 texture** using sharp:
+    - If sheet size present (e.g., 300x300): set `physical_repeat_m = sheet_width_mm / 1000`.
+    - Build texture using “half-offset mirror” method to reduce seams:
+      1) Offset the image by 50% in both axes (like Photoshop Offset)
+      2) Apply a gentle seam blend (gaussian blur mask on the cross)
+      3) Optional: superimpose thin grout lines if `grout_width_mm` present and image lacks visible grout (parameterized)
+    - Ensure output square (1024x1024), sRGB, < 300KB, uploaded to Supabase Storage. Create 256x256 thumbnail.
+  - Category mapping rules:
+    - If page mentions “waterline” or “mosaic” → category='waterline_tile', unit='m2', sheet_* from product
+    - If “coping”/“bullnose”/“tumbled” → category='coping', unit='lm'
+    - If “paver”/“deck”/“travertine slab” → category='paving', unit='m2'
+    - Interior surfaces (pebblecrete/quartz/gelcoat) can be stored as color swatches (no texture) with a flat color chip; unit='m2'
+  - Upsert into `materials` by (supplier, sku) or (supplier, name+size). If exists, update fields that changed.
+- Respect robots.txt; throttle 1–2 req/s; set realistic UA.
+- Record results in import_runs.totals & log.
+
+Provide a fallback **CSV importer** (Admin UI → upload CSV with columns above) for cases where scraping is blocked; CSV rows map 1:1 to materials.
+
+==============================================================================
+TEXTURE SCALING IN THE EDITOR (ACCURACY)
+==============================================================================
+In canvas editor when a material attaches to a mask:
+- Get `photo.calibration_pixels_per_meter = ppm`.
+- Compute **texture pixels-per-meter**:
+  `texPx = 1024  // our texture edge`
+  `realMeters = material.physical_repeat_m ?? (material.sheet_width_mm ?? material.tile_width_mm)/1000`
+  `texturePxPerMeter = texPx / realMeters`
+- Initial repeat scale for overlay = (`texturePxPerMeter / ppm`) so one 1024 tile corresponds to the material’s real repeat size on the photo.
+- Store user adjustments (repeat scale, rotation, brightness/contrast) in mask.calc_meta_json; persist via /api/masks.
+- Special case “waterline_tile”: snap rotation to 0° or 90° and default repeat along perimeter; expose “grout color” slider to tint a 1–3mm line between chips.
+
+==============================================================================
+FRONTEND — MATERIALS UI
+==============================================================================
+Pages:
+- **/materials** (admin/library): paginated table + grid view, search, filters (category, supplier, active). Bulk import buttons: “Import from PoolTile”, “Upload CSV”.
+- **MaterialsTab** (in Sidebar of Editor):
+  - Tabs: Coping | Waterline Tiles | Interior | Paving | Fencing
+  - Search box
+  - Cards: thumbnail, name, size, unit price. “Select” button.
+  - Behavior: if a mask is selected → attach material immediately (POST /api/masks with material_id); else show toast “Select a mask first”.
+  - After attach, overlay the texture on mask with computed scale (above).
+
+==============================================================================
+IMAGE/ASSET STORAGE
+==============================================================================
+Supabase Storage buckets:
+- `materials/textures/{supplier}/{sku-or-slug}.jpg`  (1024)
+- `materials/thumbs/{supplier}/{sku-or-slug}.jpg`     (256)
+- Signed URLs for private; public CDN if allowed (config flag).
+
+==============================================================================
+CODE TASKS
+==============================================================================
+1) Migrations: add columns to `materials` + create `import_runs`.
+2) Backend:
+   - Material CRUD endpoints (Zod, RLS checks).
+   - Import controller `/api/import/pooltile` that enqueues a Playwright job per URL; worker processes and writes `import_runs`.
+   - Sharp texture pipeline: offset-mirror → seam blur → export 1024 + 256 thumbnails.
+   - Utility to parse dimensions from product copy (“25×25 mm”, “Sheet 300×300”) robustly.
+3) Frontend:
+   - `/materials` page (list + grid) + Import buttons (call importer; show progress).
+   - Sidebar `MaterialsTab` wired to editor selection; attach flow; computed scale; preview.
+   - MetricsBar shows **Material**, **Qty**, **Est. Cost** live.
+4) Editor overlay:
+   - When material changes, re-compute initial repeat scale via `physical_repeat_m` and photo ppm; allow user fine-tune via slider.
+   - Persist calc_meta_json with { repeatScale, rotationDeg, brightness, contrast }.
+5) CSV Import (fallback):
+   - `/api/import/csv` accepts CSV; parse & upsert; UI to map columns if header names differ.
+6) Tests:
+   - Unit: dimension parser; texture scale calc; CSV parser.
+   - E2E: import one material; attach to mask; verify correct repeat size relative to calibration.
+
+==============================================================================
+VALIDATION & GUARDRAILS
+==============================================================================
+- If a product has no reliable sheet/tile size → set `physical_repeat_m` null; default repeat scale = 1.0 and show “Adjust scale” hint.
+- If seamless generation fails → store non-seamless texture with `notes='nonseamless'` and allow manual fix; UI shows a ⚠︎ badge.
+- Prices: if PoolTile doesn’t show price, allow admin to set `price` and internal `cost`; importer leaves them null.
+- Respect supplier T&Cs. Add `.env` flag `ALLOW_SUPPLIER_SCRAPE=true` to enable importer.
+
+==============================================================================
+ENV KEYS
+==============================================================================
+ALLOW_SUPPLIER_SCRAPE=true
+SUPABASE_* (existing)
+PLAYWRIGHT_BYPASS_CSP=true
+TEXTURE_TILE_SIZE=1024
+
+==============================================================================
+ACCEPTANCE CRITERIA
+==============================================================================
+- I can click **Import from PoolTile**, provide 1+ category URLs, and see materials fill into the library with textures & metadata.
+- In the editor, after I draw a mask and select a material, the overlay **repeats at the correct physical size** out of the box, and I can tweak repeat/rotation/brightness/contrast.
+- Materials persist and are available across jobs/orgs (global by default).
+- CSV import works for manual/bulk corrections.
+- No console errors; strict TypeScript; endpoints validated; images load fast via CDN; tiling is seamless at practical zoom levels.
+
+Implement all of the above now.
