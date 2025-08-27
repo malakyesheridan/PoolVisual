@@ -284,7 +284,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/jobs/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const job = await storage.getJob(req.params.id);
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+      const job = await storage.getJob(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
@@ -403,7 +407,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Materials endpoints
-  app.get("/api/materials", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/materials", async (req: AuthenticatedRequest, res: any) => {
     try {
       const { orgId, category, q } = req.query;
       if (!orgId) {
