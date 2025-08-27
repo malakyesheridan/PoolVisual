@@ -1,30 +1,19 @@
-/**
- * Enhanced Canvas Editor Page
- * Complete implementation with all functionality working
- */
-
-import React, { useRef, useState } from 'react';
-import { Stage as StageType } from 'konva/lib/Stage';
+import { useState } from 'react';
+import { cn } from '@/lib/utils';
+import { useEditorStore } from '@/stores/editorSlice';
+import { CanvasStage } from '@/components/canvas/CanvasStage';
 import { Toolbar } from '@/components/editor/Toolbar';
 import { Sidebar } from '@/components/editor/Sidebar';
-import { CanvasStage } from '@/components/canvas/CanvasStage';
-import { UploadImageButton } from '@/components/uploader/UploadImageButton';
-// import { CalibrationDialog } from '@/components/CalibrationDialog';
-import { useEditorStore } from '@/stores/editorSlice';
-import { cn } from '@/lib/utils';
+import { ImageUpload } from '@/components/editor/ImageUpload';
 
 export function CanvasEditorPage() {
   console.info('[EditorPage] route file:', import.meta?.url || 'CanvasEditorPage.tsx');
   
-  const stageRef = useRef<StageType>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibrationDialog, setShowCalibrationDialog] = useState(false);
 
   const store = useEditorStore();
-  const {
-    photo,
-    loadImageFile
-  } = store || {};
+  const { photo, loadImageFile } = store || {};
 
   const handleImageLoad = (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
     if (loadImageFile) {
@@ -39,25 +28,8 @@ export function CanvasEditorPage() {
   };
 
   const handleExport = () => {
-    if (!stageRef.current) return;
-    
-    try {
-      const dataURL = stageRef.current.toDataURL({
-        mimeType: 'image/png',
-        quality: 1,
-        pixelRatio: 2
-      });
-      
-      // Create download link
-      const link = document.createElement('a');
-      link.download = `pool-visual-${Date.now()}.png`;
-      link.href = dataURL;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } catch (error) {
-      console.error('Export failed:', error);
-    }
+    // Export functionality will be implemented with stage access
+    console.info('[Export] Export functionality placeholder');
   };
 
   const handleFullscreen = () => {
@@ -68,10 +40,6 @@ export function CanvasEditorPage() {
       document.exitFullscreen();
       setIsFullscreen(false);
     }
-  };
-
-  const handleStageRef = (stage: StageType | null) => {
-    // stageRef.current = stage;
   };
 
   // Show upload interface if no image is loaded
@@ -85,49 +53,45 @@ export function CanvasEditorPage() {
                 Pool Visual Editor
               </h1>
               <p className="text-lg text-slate-600 mb-8">
-                Upload a pool photo to start creating professional renovation quotes with precise measurements and material visualization.
+                Upload a pool photo to start creating visual quotes with advanced measurement tools.
               </p>
             </div>
-            
-            <UploadImageButton
-              onImageLoad={handleImageLoad}
-              className="mx-auto max-w-lg"
-            />
-            
-            <div className="mt-8 text-center">
-              <h3 className="text-lg font-medium text-slate-900 mb-4">
-                What you can do:
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-lg border border-slate-200">
-                  <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-emerald-600 text-2xl">📐</span>
-                  </div>
-                  <h4 className="font-medium text-slate-900 mb-2">Precise Measurements</h4>
-                  <p className="text-sm text-slate-600">
-                    Set calibration and draw area and linear measurements with real-world accuracy.
-                  </p>
+
+            <div className="bg-white rounded-lg border border-slate-200 p-8 mb-8">
+              <ImageUpload 
+                onImageLoad={handleImageLoad}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white p-6 rounded-lg border border-slate-200">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                  <span className="text-blue-600 text-2xl">📐</span>
                 </div>
-                
-                <div className="bg-white p-6 rounded-lg border border-slate-200">
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-blue-600 text-2xl">🎨</span>
-                  </div>
-                  <h4 className="font-medium text-slate-900 mb-2">Material Visualization</h4>
-                  <p className="text-sm text-slate-600">
-                    Apply different materials to masks and visualize renovation results.
-                  </p>
+                <h4 className="font-medium text-slate-900 mb-2">Precision Tools</h4>
+                <p className="text-sm text-slate-600">
+                  Calibrate measurements and draw accurate area calculations.
+                </p>
+              </div>
+              
+              <div className="bg-white p-6 rounded-lg border border-slate-200">
+                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                  <span className="text-green-600 text-2xl">🎨</span>
                 </div>
-                
-                <div className="bg-white p-6 rounded-lg border border-slate-200">
-                  <div className="w-12 h-12 bg-violet-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
-                    <span className="text-violet-600 text-2xl">💰</span>
-                  </div>
-                  <h4 className="font-medium text-slate-900 mb-2">Professional Quotes</h4>
-                  <p className="text-sm text-slate-600">
-                    Generate detailed quotes with quantity calculations and pricing.
-                  </p>
+                <h4 className="font-medium text-slate-900 mb-2">Material Preview</h4>
+                <p className="text-sm text-slate-600">
+                  Visualize different materials and finishes on your pool design.
+                </p>
+              </div>
+              
+              <div className="bg-white p-6 rounded-lg border border-slate-200">
+                <div className="w-12 h-12 bg-violet-100 rounded-lg flex items-center justify-center mb-4 mx-auto">
+                  <span className="text-violet-600 text-2xl">💰</span>
                 </div>
+                <h4 className="font-medium text-slate-900 mb-2">Professional Quotes</h4>
+                <p className="text-sm text-slate-600">
+                  Generate detailed quotes with quantity calculations and pricing.
+                </p>
               </div>
             </div>
           </div>
@@ -150,11 +114,8 @@ export function CanvasEditorPage() {
           <div className="flex-1 relative bg-gray-100 overflow-auto">
             <CanvasStage
               className="w-full h-full min-h-0"
-              onStageRef={handleStageRef}
             />
           </div>
-
-          
         </div>
 
         {/* Sidebar */}

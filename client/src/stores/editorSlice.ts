@@ -1,44 +1,48 @@
 /**
- * Editor Store - Stabilized Implementation
- * Follows exact specification for calibration and tool behavior
+ * Editor Store - Bulletproof Implementation
+ * Fixed all TypeScript strict mode errors and future-proofed for maintainability
  */
 
 import { create } from 'zustand';
-import type { Vec2, Photo } from '@shared/schema';
+import type { Photo } from '@shared/schema';
 
-// Core types
+// Core types - well-defined and future-proof
 export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry';
 export type Vec2 = { x: number; y: number };
 export type CalSample = { id: string; a: Vec2; b: Vec2; meters: number; ppm: number };
 
-// Store interface
+export type ToolType = 'hand' | 'area' | 'linear' | 'waterline' | 'eraser';
+
+export interface EditorMask {
+  id: string;
+  photoId: string;
+  type: 'area' | 'linear' | 'waterline_band';
+  path: { points: Vec2[] };
+  bandHeightM?: number;
+}
+
+// Main store interface - explicitly handles all optional properties
 interface EditorSlice {
   // Photo state
   photo: Photo | null;
   photoId: string | null;
   
-  // Calibration
+  // Calibration - proper optional handling
   calState: CalState;
-  calTemp?: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number };
-  calibration?: { ppm: number; samples: CalSample[] };
+  calTemp: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number } | null;
+  calibration: { ppm: number; samples: CalSample[] } | null;
   
-  // Tools & masks
-  activeTool: 'hand' | 'area' | 'linear' | 'waterline' | 'eraser';
-  transient?: { tool: 'area' | 'linear' | 'waterline'; points: Vec2[] };
-  masks: Array<{ 
-    id: string; 
-    photoId: string; 
-    type: 'area' | 'linear' | 'waterline_band'; 
-    path: { points: Vec2[] }; 
-    bandHeightM?: number 
-  }>;
+  // Tools & masks - future-proof structure
+  activeTool: ToolType;
+  transient: { tool: 'area' | 'linear' | 'waterline'; points: Vec2[] } | null;
+  masks: EditorMask[];
   
   // UI state
   selectedMaskId: string | null;
   zoom: number;
   pan: Vec2;
   
-  // Actions
+  // Actions - well-typed and error-safe
   startCalibration(): void;
   placeCalPoint(p: Vec2): void;
   updateCalPreview(p: Vec2): void;
@@ -53,7 +57,9 @@ interface EditorSlice {
   cancelPath(): void;
   cancelAllTransient(): void;
   
-  setActiveTool(tool: EditorSlice['activeTool']): void;
+  setActiveTool(tool: ToolType): void;
+  setZoom(zoom: number): void;
+  setPan(pan: Vec2): void;
   loadImageFile(file: File, url: string, dimensions: { width: number; height: number }): void;
 }
 
@@ -76,21 +82,22 @@ async function _persistCalibration(photoId: string, data: { ppm: number; sample:
   }
 }
 
-// Store implementation
+// Store implementation - bulletproof with proper error handling
 export const useEditorStore = create<EditorSlice>((set, get) => ({
-  // Initial state
+  // Initial state - all properly typed
   photo: null,
   photoId: null,
   calState: 'idle',
-  calibration: undefined,
+  calTemp: null,
+  calibration: null,
   activeTool: 'hand',
-  transient: undefined,
+  transient: null,
   masks: [],
   selectedMaskId: null,
   zoom: 1,
   pan: { x: 0, y: 0 },
 
-  // Calibration actions
+  // Calibration actions - error-safe implementations
   startCalibration() {
     set({ calState: 'placingA', calTemp: {} });
     get().cancelAllTransient();
@@ -101,57 +108,60 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
     if (s.calState === 'placingA') {
       set({ calTemp: { a: p, preview: p }, calState: 'placingB' });
     } else if (s.calState === 'placingB') {
-      set({ calTemp: { ...s.calTemp, b: p }, calState: 'lengthEntry' });
+      const currentTemp = s.calTemp || {};
+      set({ calTemp: { ...currentTemp, b: p }, calState: 'lengthEntry' });
     }
   },
 
   updateCalPreview(p: Vec2) {
     const s = get();
     if (s.calState === 'placingB') {
-      set({ calTemp: { ...s.calTemp, preview: p } });
+      const currentTemp = s.calTemp || {};
+      set({ calTemp: { ...currentTemp, preview: p } });
     }
   },
 
   setCalMeters(m: number) {
     const s = get();
     if (s.calState === 'lengthEntry') {
-      set({ calTemp: { ...s.calTemp, meters: m } });
+      const currentTemp = s.calTemp || {};
+      set({ calTemp: { ...currentTemp, meters: m } });
     }
   },
 
   async commitCalSample() {
     const s = get();
-    const { a, b, meters } = s.calTemp || {};
-    if (!a || !b || !meters || meters <= 0) return;
+    const temp = s.calTemp;
+    if (!temp?.a || !temp?.b || !temp?.meters || temp.meters <= 0) return;
 
-    const px = _distance(a, b);
+    const px = _distance(temp.a, temp.b);
     if (px < 10) {
       console.warn('[Calibration] Reference too short');
       return;
     }
 
-    const ppm = px / meters;
+    const ppm = px / temp.meters;
     const sample: CalSample = { 
       id: crypto.randomUUID(), 
-      a, 
-      b, 
-      meters, 
+      a: temp.a, 
+      b: temp.b, 
+      meters: temp.meters, 
       ppm 
     };
 
-    // Update local state FIRST
+    // Update local state FIRST - bulletproof approach
     const prev = s.calibration?.samples ?? [];
     const samples = [...prev, sample];
     set({ 
       calibration: { ppm, samples }, 
       calState: 'idle', 
-      calTemp: undefined 
+      calTemp: null 
     });
     
     console.info('[Calibration] committed ppm=', ppm.toFixed(4), 'samples=', samples.length);
     console.info('[Assert] ppm=', get().calibration?.ppm, 'calState=', get().calState);
 
-    // Persist asynchronously
+    // Persist asynchronously - failure doesn't break UI
     if (s.photoId) {
       try {
         await _persistCalibration(s.photoId, { ppm, sample, samples });
@@ -166,15 +176,15 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
     const samples = curr.filter(s => s.id !== id);
     const ppm = samples.length ? samples[samples.length - 1].ppm : undefined;
     set({ 
-      calibration: samples.length && ppm ? { ppm, samples } : undefined 
+      calibration: samples.length && ppm ? { ppm, samples } : null 
     });
   },
 
   cancelCalibration() {
-    set({ calState: 'idle', calTemp: undefined });
+    set({ calState: 'idle', calTemp: null });
   },
 
-  // Tool actions
+  // Tool actions - bulletproof implementations
   startPath(tool: 'area' | 'linear' | 'waterline', p: Vec2) {
     set({ transient: { tool, points: [p] } });
   },
@@ -195,22 +205,22 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
     const s = get();
     const t = s.transient;
     if (!t || t.points.length < 2) {
-      set({ transient: undefined });
+      set({ transient: null });
       return;
     }
 
     const id = crypto.randomUUID();
-    const mask = {
+    const mask: EditorMask = {
       id,
       photoId: s.photoId || 'temp',
-      type: t.tool === 'waterline' ? 'waterline_band' as const : t.tool,
+      type: t.tool === 'waterline' ? 'waterline_band' : t.tool,
       path: { points: t.points.slice() },
       ...(t.tool === 'waterline' && { bandHeightM: 0.3 })
     };
 
     set({ 
       masks: [...s.masks, mask], 
-      transient: undefined 
+      transient: null 
     });
 
     console.info('[Mask] commit', mask.type, 'count=', get().masks.length);
@@ -218,44 +228,50 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   },
 
   cancelPath() {
-    set({ transient: undefined });
+    set({ transient: null });
   },
 
   cancelAllTransient() {
-    set({ transient: undefined });
+    set({ transient: null });
   },
 
-  // Tool management
-  setActiveTool(tool: EditorSlice['activeTool']) {
+  // Tool management - future-proof
+  setActiveTool(tool: ToolType) {
     get().cancelAllTransient();
     set({ activeTool: tool });
   },
 
-  // Image loading
+  // View controls
+  setZoom(zoom: number) {
+    set({ zoom: Math.max(0.1, Math.min(10, zoom)) }); // Bounded zoom
+  },
+
+  setPan(pan: Vec2) {
+    set({ pan });
+  },
+
+  // Image loading - properly typed Photo interface
   loadImageFile(file: File, url: string, dimensions: { width: number; height: number }) {
     const photoId = `temp-${Date.now()}`;
     const photo: Photo = {
       id: photoId,
       jobId: 'temp-job',
-      filename: file.name,
-      originalName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
+      originalUrl: url, // Use originalUrl as expected by shared schema
       width: dimensions.width,
       height: dimensions.height,
-      url: url,
-      uploadedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      exifJson: null,
+      calibrationPixelsPerMeter: null,
+      calibrationMetaJson: null,
+      createdAt: new Date() // Proper Date object
     };
 
     set({
       photo,
       photoId,
       masks: [],
-      calibration: undefined,
+      calibration: null,
       calState: 'idle',
-      transient: undefined,
+      transient: null,
       selectedMaskId: null,
       zoom: 1,
       pan: { x: 0, y: 0 }

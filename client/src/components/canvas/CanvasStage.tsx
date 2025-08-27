@@ -46,16 +46,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const [stageDimensions, setStageDimensions] = useState({ width, height });
 
   const store = useEditorStore();
-  const { photo } = store;
+  const { photo, zoom, pan, calState, activeTool } = store;
 
   // B. INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS  
   const getActive = () => {
-    const s = store;
-    return (s.calState === 'placingA' || s.calState === 'placingB' || s.calState === 'lengthEntry') 
+    return (calState === 'placingA' || calState === 'placingB' || calState === 'lengthEntry') 
       ? 'calibration' 
-      : s.activeTool;
+      : activeTool;
   };
-  const activeTool = getActive();
+  const activeController = getActive();
 
   // Create input router with tool controllers
   const router = useMemo(() => {
@@ -72,7 +71,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     );
   }, [store]);
 
-  const [backgroundImage] = useImage(photo?.url || '', 'anonymous');
+  const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
 
   // Update stage dimensions
   useEffect(() => {
@@ -90,13 +89,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   // D. STAGE DRAG + HAND TOOL - Only draggable when hand tool is active
   const setStageDraggable = useCallback((stage: StageType | null, tool: string) => {
     if (!stage) return;
-    const isDraggable = tool === 'hand' && !(store.calState === 'placingA' || store.calState === 'placingB' || store.calState === 'lengthEntry');
+    const isDraggable = tool === 'hand' && !(calState === 'placingA' || calState === 'placingB' || calState === 'lengthEntry');
     stage.draggable(isDraggable);
-  }, [editorState]);
+  }, [calState]);
 
   useEffect(() => {
-    setStageDraggable(stageRef.current, activeTool);
-  }, [activeTool, setStageDraggable]);
+    setStageDraggable(stageRef.current, activeController);
+  }, [activeController, setStageDraggable]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -174,7 +173,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router, store, editorState?.calState]);
+  }, [router, store, calState]);
 
   // Calculate image positioning
   const imageProps = useMemo(() => {
@@ -195,12 +194,12 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     return {
       width: imageWidth,
       height: imageHeight,
-      x: (stageDimensions.width - imageWidth) / 2 + (editorState?.pan?.x || 0),
-      y: (stageDimensions.height - imageHeight) / 2 + (editorState?.pan?.y || 0),
-      scaleX: editorState?.zoom || 1,
-      scaleY: editorState?.zoom || 1,
+      x: (stageDimensions.width - imageWidth) / 2 + pan.x,
+      y: (stageDimensions.height - imageHeight) / 2 + pan.y,
+      scaleX: zoom,
+      scaleY: zoom,
     };
-  }, [backgroundImage, stageDimensions, editorState?.pan, editorState?.zoom]);
+  }, [backgroundImage, stageDimensions, pan, zoom]);
 
   // Handle wheel zoom
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
@@ -210,13 +209,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     const stage = stageRef.current;
     if (!stage) return;
 
-    const oldScale = editorState?.zoom || 1;
+    const oldScale = zoom;
     const pointer = stage.getPointerPosition();
     if (!pointer) return;
 
     const mousePointTo = {
-      x: (pointer.x - (editorState?.pan?.x || 0)) / oldScale,
-      y: (pointer.y - (editorState?.pan?.y || 0)) / oldScale,
+      x: (pointer.x - pan.x) / oldScale,
+      y: (pointer.y - pan.y) / oldScale,
     };
 
     const direction = e.evt.deltaY > 0 ? -1 : 1;
@@ -228,9 +227,9 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
       y: pointer.y - mousePointTo.y * finalScale,
     };
 
-    setZoom?.(finalScale);
-    setPan?.(newPos);
-  }, [editorState?.zoom, editorState?.pan, setZoom, setPan]);
+    store.setZoom(finalScale);
+    store.setPan(newPos);
+  }, [zoom, pan, store]);
 
   return (
     <div 
