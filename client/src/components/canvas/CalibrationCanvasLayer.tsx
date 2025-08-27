@@ -1,211 +1,163 @@
 /**
  * Calibration Canvas Layer
- * Handles visual feedback for calibration state machine
+ * Handles visual feedback for robust calibration state machine
  */
 
-import React, { useEffect, useRef } from 'react';
-import { Stage, Layer, Circle, Line, Text, Group } from 'react-konva';
+import React from 'react';
+import { Layer, Circle, Line, Text } from 'react-konva';
 import { useEditorStore } from '@/stores/editorSlice';
-import { getPixelDistance } from '@/lib/calibration-v2';
-import type { Vec2 } from '@shared/schema';
 
-interface CalibrationCanvasLayerProps {
-  stageRef: React.RefObject<any>;
-  onPointPlace?: (point: Vec2) => void;
-}
-
-export function CalibrationCanvasLayer({ stageRef, onPointPlace }: CalibrationCanvasLayerProps) {
+export function CalibrationCanvasLayer() {
   const { editorState } = useEditorStore();
-  const { calibrationV2, calState, calTempPoints } = editorState;
-  
-  const layerRef = useRef<any>(null);
-  
-  // Handle click events for placing calibration points
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    
-    const handleStageClick = (e: any) => {
-      if (calState !== 'placingA' && calState !== 'placingB') return;
-      if (e.target !== stage) return; // Only respond to stage clicks, not shape clicks
-      
-      const pos = stage.getPointerPosition();
-      if (!pos) return;
-      
-      // Convert to stage coordinates (accounting for zoom/pan)
-      const transform = stage.getAbsoluteTransform().copy();
-      transform.invert();
-      const stagePos = transform.point(pos);
-      
-      onPointPlace?.(stagePos);
-    };
-    
-    stage.on('click', handleStageClick);
-    return () => stage.off('click', handleStageClick);
-  }, [calState, onPointPlace, stageRef]);
-  
-  const renderTemporaryPoints = () => {
-    const { a, b } = calTempPoints;
-    const elements = [];
-    
-    // Render point A
-    if (a) {
-      elements.push(
-        <Circle
-          key="cal-point-a"
-          x={a.x}
-          y={a.y}
-          radius={8}
-          fill="#3b82f6"
-          stroke="#1e40af"
-          strokeWidth={2}
-          draggable={calState === 'lengthEntry'}
-        />
-      );
-      
-      // Label for point A
-      elements.push(
-        <Text
-          key="cal-label-a"
-          x={a.x + 12}
-          y={a.y - 20}
-          text="A"
-          fontSize={12}
-          fill="#1e40af"
-          fontStyle="bold"
-        />
-      );
-    }
-    
-    // Render point B and line
-    if (a && b) {
-      elements.push(
-        <Circle
-          key="cal-point-b"
-          x={b.x}
-          y={b.y}
-          radius={8}
-          fill="#3b82f6"
-          stroke="#1e40af"
-          strokeWidth={2}
-          draggable={calState === 'lengthEntry'}
-        />
-      );
-      
-      // Label for point B
-      elements.push(
-        <Text
-          key="cal-label-b"
-          x={b.x + 12}
-          y={b.y - 20}
-          text="B"
-          fontSize={12}
-          fill="#1e40af"
-          fontStyle="bold"
-        />
-      );
-      
-      // Dashed line between points
-      elements.push(
-        <Line
-          key="cal-line"
-          points={[a.x, a.y, b.x, b.y]}
-          stroke="#3b82f6"
-          strokeWidth={2}
-          dash={[5, 5]}
-        />
-      );
-      
-      // Distance label at midpoint
-      const midX = (a.x + b.x) / 2;
-      const midY = (a.y + b.y) / 2;
-      const distance = getPixelDistance(a, b);
-      
-      elements.push(
-        <Group key="cal-distance-label">
-          <Circle
-            x={midX}
-            y={midY}
-            radius={20}
-            fill="white"
-            stroke="#3b82f6"
-            strokeWidth={1}
-            opacity={0.9}
-          />
-          <Text
-            x={midX}
-            y={midY - 6}
-            text={`${distance.toFixed(0)}px`}
-            fontSize={10}
-            fill="#1e40af"
-            align="center"
-            offsetX={15}
-          />
-        </Group>
-      );
-    }
-    
-    return elements;
-  };
-  
-  const renderCommittedSamples = () => {
-    if (!calibrationV2?.samples) return [];
-    
-    return calibrationV2.samples.map((sample, index) => {
-      const midX = (sample.a.x + sample.b.x) / 2;
-      const midY = (sample.a.y + sample.b.y) / 2;
-      
-      return (
-        <Group key={`sample-${sample.id}`}>
-          {/* Small reference points */}
-          <Circle
-            x={sample.a.x}
-            y={sample.a.y}
-            radius={3}
-            fill="#10b981"
-            opacity={0.7}
-          />
-          <Circle
-            x={sample.b.x}
-            y={sample.b.y}
-            radius={3}
-            fill="#10b981"
-            opacity={0.7}
-          />
-          
-          {/* Sample label */}
-          <Group>
-            <Circle
-              x={midX}
-              y={midY}
-              radius={12}
-              fill="#10b981"
-              opacity={0.8}
-            />
-            <Text
-              x={midX}
-              y={midY - 4}
-              text={`#${index + 1}`}
-              fontSize={8}
-              fill="white"
-              align="center"
-              offsetX={6}
-            />
-          </Group>
-        </Group>
-      );
-    });
-  };
-  
-  // Only render if we're in a calibration state or have committed samples
-  if (calState === 'idle' && !calibrationV2?.samples?.length) {
+  const { calState, calTemp, calibrationV2 } = editorState;
+
+  // Don't render if not in calibration mode
+  if (calState === 'idle') {
     return null;
   }
-  
+
+  const { a, b, preview } = calTemp;
+  const elements = [];
+
+  // Render point A (blue dot with label)
+  if (a) {
+    elements.push(
+      <Circle
+        key="cal-point-a"
+        x={a.x}
+        y={a.y}
+        radius={8}
+        fill="#3b82f6"
+        stroke="#1e40af"
+        strokeWidth={2}
+      />
+    );
+    
+    elements.push(
+      <Text
+        key="cal-label-a"
+        x={a.x + 12}
+        y={a.y - 20}
+        text="A"
+        fontSize={14}
+        fill="#1e40af"
+        fontStyle="bold"
+      />
+    );
+  }
+
+  // Render point B (green dot with label)
+  if (b) {
+    elements.push(
+      <Circle
+        key="cal-point-b"
+        x={b.x}
+        y={b.y}
+        radius={8}
+        fill="#10b981"
+        stroke="#059669"
+        strokeWidth={2}
+      />
+    );
+    
+    elements.push(
+      <Text
+        key="cal-label-b"
+        x={b.x + 12}
+        y={b.y - 20}
+        text="B"
+        fontSize={14}
+        fill="#059669"
+        fontStyle="bold"
+      />
+    );
+  }
+
+  // Render connecting line when both points are set
+  if (a && b) {
+    const distance = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+    const midX = (a.x + b.x) / 2;
+    const midY = (a.y + b.y) / 2;
+    
+    elements.push(
+      <Line
+        key="cal-line"
+        points={[a.x, a.y, b.x, b.y]}
+        stroke="#3b82f6"
+        strokeWidth={3}
+        dash={[5, 5]}
+      />
+    );
+    
+    // Distance label
+    elements.push(
+      <Text
+        key="cal-distance"
+        x={midX - 30}
+        y={midY - 30}
+        text={`${distance.toFixed(0)}px`}
+        fontSize={12}
+        fontStyle="bold"
+        padding={4}
+        fill="#ffffff"
+        stroke="#1e40af"
+        strokeWidth={1}
+      />
+    );
+  } else if (a && preview && calState === 'placingB') {
+    // Show live preview line from A to cursor
+    elements.push(
+      <Line
+        key="cal-preview-line"
+        points={[a.x, a.y, preview.x, preview.y]}
+        stroke="#60a5fa"
+        strokeWidth={2}
+        dash={[8, 4]}
+        opacity={0.7}
+      />
+    );
+  }
+
+  // Render existing calibration samples as small markers
+  if (calibrationV2?.samples) {
+    calibrationV2.samples.forEach((sample, index) => {
+      elements.push(
+        <Line
+          key={`cal-sample-${sample.id}`}
+          points={[sample.a.x, sample.a.y, sample.b.x, sample.b.y]}
+          stroke="#22c55e"
+          strokeWidth={2}
+          opacity={0.4}
+        />
+      );
+      
+      elements.push(
+        <Circle
+          key={`cal-sample-a-${sample.id}`}
+          x={sample.a.x}
+          y={sample.a.y}
+          radius={4}
+          fill="#22c55e"
+          opacity={0.6}
+        />
+      );
+      
+      elements.push(
+        <Circle
+          key={`cal-sample-b-${sample.id}`}
+          x={sample.b.x}
+          y={sample.b.y}
+          radius={4}
+          fill="#22c55e"
+          opacity={0.6}
+        />
+      );
+    });
+  }
+
   return (
-    <Layer ref={layerRef}>
-      {renderTemporaryPoints()}
-      {renderCommittedSamples()}
+    <Layer>
+      {elements}
     </Layer>
   );
 }

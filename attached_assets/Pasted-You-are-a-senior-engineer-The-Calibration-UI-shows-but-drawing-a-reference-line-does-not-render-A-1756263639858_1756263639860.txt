@@ -1,0 +1,199 @@
+You are a senior engineer. The Calibration UI shows, but drawing a reference line does not render. Audit and repair the calibration tool so it captures pointer events, draws anchors/line live, and commits correctly. TypeScript strict. Konva. Zustand. No regressions.
+
+==============================================================================
+AUDIT
+==============================================================================
+1) Find the **mounted** editor route (the one visible in preview) and the file that renders `<Stage>` (e.g., `src/components/editor/CanvasStage.tsx`). Print its path in a comment.
+2) Search for duplicates of `CanvasStage`, `EditorPage`, `Sidebar`. Delete unused duplicates; fix imports.
+3) Confirm there is **one** set of `onMouseDown/onMouseMove/onMouseUp` handlers bound to the Stage. If mask drawing handlers always run, ensure calibration can **short-circuit** them.
+
+==============================================================================
+STATE MACHINE (Zustand) — implement or fix
+==============================================================================
+In `editorSlice.ts`:
+
+```ts
+export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry' | 'ready';
+
+type Vec2 = { x:number; y:number };
+
+export interface CalibrationTemp {
+  a?: Vec2;
+  b?: Vec2;
+  preview?: Vec2;   // last pointer for live dashed line
+  meters?: number;
+}
+
+export interface EditorSlice {
+  calState: CalState;
+  calTemp: CalibrationTemp;
+  calibration?: { ppm: number };
+  startCalibration(): void;
+  cancelCalibration(): void;
+  placeCalPoint(p: Vec2): void;     // A then B
+  updateCalPreview(p: Vec2): void;  // while moving
+  setCalMeters(m: number): void;    // >0
+  commitCalSample(): Promise<void>; // computes ppm, persists, sets calState='ready'
+}
+Rules:
+
+startCalibration() → calState='placingA', clear calTemp.
+
+First click sets a and calState='placingB'.
+
+Move updates preview.
+
+Second click sets b and calState='lengthEntry'.
+
+setCalMeters(m>0) stores meters.
+
+commitCalSample() computes ppm = distPx(a,b)/meters, sets calibration, persists to POST /api/photos/:id/calibration, then calState='ready'.
+
+cancelCalibration() resets calState='idle' and clears calTemp.
+
+==============================================================================
+CANVAS WIRING — Calibration must intercept events
+In CanvasStage.tsx:
+
+Keep a single set of handlers on the Stage and branch early:
+
+tsx
+Copy
+Edit
+const stageRef = useRef<Konva.Stage>(null);
+const calState   = useStore(s => s.calState);
+const isCalOn    = calState !== 'idle';
+
+const onPointerDown = (e: Konva.KonvaEventObject<MouseEvent|TouchEvent>) => {
+  const stage = stageRef.current; if (!stage) return;
+  const pt = getStagePoint(stage); if (!pt) return;
+
+  if (isCalOn) { e.cancelBubble = true; useStore.getState().placeCalPoint(pt); return; }
+  // ... existing mask drawing start
+};
+const onPointerMove = (e: Konva.KonvaEventObject<MouseEvent|TouchEvent>) => {
+  const stage = stageRef.current; if (!stage) return;
+  const pt = getStagePoint(stage); if (!pt) return;
+
+  if (isCalOn) { e.cancelBubble = true; useStore.getState().updateCalPreview(pt); return; }
+  // ... existing mask drawing move
+};
+const onPointerUp = (e: Konva.KonvaEventObject<MouseEvent|TouchEvent>) => {
+  if (isCalOn) { e.cancelBubble = true; return; }
+  // ... existing mask drawing end
+};
+Don’t make the Stage draggable unless the hand tool is active; draggable stages swallow clicks.
+
+Coordinate helper (transform-safe):
+
+ts
+Copy
+Edit
+function getStagePoint(stage: Konva.Stage) {
+  const p = stage.getPointerPosition(); if (!p) return null;
+  const tr = stage.getAbsoluteTransform().copy().invert();
+  return tr.point(p);
+}
+==============================================================================
+CALIBRATION LAYER — visible anchors + dashed line
+Atop other layers, add a dedicated CalibrationLayer with listening={true}:
+
+tsx
+Copy
+Edit
+const { calState, calTemp } = useStore(s => ({ calState: s.calState, calTemp: s.calTemp }));
+
+<Layer id="CalibrationLayer" listening>
+  {calTemp.a && (
+    <Circle x={calTemp.a.x} y={calTemp.a.y} radius={6} fill="#3B82F6" stroke="#1D4ED8" strokeWidth={2} draggable
+      onDragMove={e => useStore.getState().placeCalPoint({ x: e.target.x(), y: e.target.y() })} />
+  )}
+  {/* Preview dashed line (A → pointer) while placingB */}
+  {calState === 'placingB' && calTemp.a && calTemp.preview && (
+    <Line
+      points={[calTemp.a.x, calTemp.a.y, calTemp.preview.x, calTemp.preview.y]}
+      stroke="#60A5FA" strokeWidth={2} dash={[8,6]} />
+  )}
+  {/* Final A→B line when in lengthEntry */}
+  {calState === 'lengthEntry' && calTemp.a && calTemp.b && (
+    <Line
+      points={[calTemp.a.x, calTemp.a.y, calTemp.b.x, calTemp.b.y]}
+      stroke="#2563EB" strokeWidth={3} />
+  )}
+  {calTemp.b && (
+    <Circle x={calTemp.b.x} y={calTemp.b.y} radius={6} fill="#3B82F6" stroke="#1D4ED8" strokeWidth={2} draggable
+      onDragMove={e => useStore.getState().placeCalPoint({ x: e.target.x(), y: e.target.y() })} />
+  )}
+</Layer>
+Keyboard:
+
+C → startCalibration()
+
+Enter (when lengthEntry and meters>0) → commitCalSample()
+
+Esc → cancelCalibration()
+
+==============================================================================
+SIDEBAR — meters input + commit
+In the calibration panel:
+
+When calState==='lengthEntry', show numeric input (step 0.01, min 0.01). On change call setCalMeters.
+
+Enable Commit button when meters>0; on click call commitCalSample().
+
+After commit, show status pill “Calibrated • 1m = ${ppm.toFixed(1)} px”.
+
+==============================================================================
+BACKEND — persist
+Implement or verify:
+POST /api/photos/:id/calibration
+Body:
+
+json
+Copy
+Edit
+{ "ppm": number, "meta": { "a": {x,y}, "b": {x,y}, "meters": number } }
+Effect: update photos.calibration_pixels_per_meter and photos.calibration_meta_json. Return updated row.
+
+==============================================================================
+CSS / HIT TESTING
+Ensure no overlay DOM covers the Stage:
+
+css
+Copy
+Edit
+.editor-overlay { pointer-events: none; }
+.editor-overlay [data-interactive="true"] { pointer-events: auto; }
+Calibration layer must render above the background and masks (z-order).
+
+==============================================================================
+GUARDS & TOASTS
+If meters <= 0 → disable commit, show inline error.
+
+If distancePx < 10 → show “Reference too short; choose a longer edge.”
+
+After commit → toast “Calibration saved”.
+
+==============================================================================
+TESTS
+Vitest:
+
+ppm = distPx(a,b)/meters
+
+Updating ppm recalculates area/perimeter conversions
+
+Playwright:
+
+Press C → click A then B → meters input appears.
+
+Enter meters → commit → status pill shows “Calibrated”.
+
+Reload → ppm restored; metrics update.
+
+==============================================================================
+ACCEPTANCE
+Clicking during calibration draws a dashed line from A to cursor; A/B anchors visible and draggable.
+
+Commit persists ppm and flips status to Calibrated; the app stops nagging for a reference.
+
+No console errors; mask tools still work when not calibrating.

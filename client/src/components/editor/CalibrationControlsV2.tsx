@@ -26,7 +26,7 @@ export function CalibrationControlsV2() {
   const { editorState, startCalibration, placeCalPoint, setCalMeters, commitCalSample, 
           deleteCalSample, cancelCalibration, persistCalibration, photoId } = store;
   
-  const { calibrationV2, calState, calTempPoints, calTempMeters } = editorState;
+  const { calibrationV2, calState, calTemp } = editorState;
   
   const isCalibrated = calibrationV2 && calibrationV2.samples.length > 0;
   const confidence = calibrationV2 ? getConfidenceLevel(calibrationV2.stdevPct) : 'low';
@@ -66,25 +66,19 @@ export function CalibrationControlsV2() {
   const handleMetersChange = useCallback((value: string) => {
     setInputMeters(value);
     const meters = parseFloat(value);
-    if (meters >= 0.25) {
+    if (meters >= 0.01) {
       setCalMeters(meters);
     }
   }, [setCalMeters]);
   
-  const handleCommitSample = useCallback(() => {
+  const handleCommitSample = useCallback(async () => {
     const meters = parseFloat(inputMeters);
-    if (meters >= 0.25) {
+    if (meters >= 0.01) {
       setCalMeters(meters);
-      commitCalSample();
-      
-      // Auto-persist
-      if (photoId) {
-        persistCalibration(photoId);
-      }
-      
+      await commitCalSample();
       setInputMeters('1.0');
     }
-  }, [inputMeters, setCalMeters, commitCalSample, persistCalibration, photoId]);
+  }, [inputMeters, setCalMeters, commitCalSample]);
   
   const handleDeleteSample = useCallback((sampleId: string) => {
     deleteCalSample(sampleId);
@@ -152,7 +146,7 @@ export function CalibrationControlsV2() {
   const renderLivePreview = () => {
     if (calState !== 'placingB' && calState !== 'lengthEntry') return null;
     
-    const { a, b } = calTempPoints;
+    const { a, b } = calTemp;
     if (!a || !b) return null;
     
     const distance = getPixelDistance(a, b);

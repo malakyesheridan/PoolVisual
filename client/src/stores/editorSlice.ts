@@ -38,7 +38,7 @@ import {
   pixelsToSquareMeters as pixelsToSquareMetersV2,
   isValidReferenceDistance
 } from '@/lib/calibration-v2';
-import type { CalState, CalSample, Calibration } from '@shared/schema';
+import type { CalState, CalSample, Calibration, CalibrationTemp } from '@shared/schema';
 
 export interface MaskMetrics {
   area_m2?: number;
@@ -121,8 +121,9 @@ export interface EditorSliceActions {
   // Calibration V2 (robust)
   startCalibration: () => void;
   placeCalPoint: (p: Vec2) => void;
+  updateCalPreview: (p: Vec2) => void;
   setCalMeters: (m: number) => void;
-  commitCalSample: () => void;
+  commitCalSample: () => Promise<void>;
   deleteCalSample: (id: string) => void;
   setActiveCalibrationSample: (id: string) => void;
   cancelCalibration: () => void;
@@ -194,8 +195,7 @@ const initialState: EditorSliceState = {
     calibration: null,
     calibrationV2: null,
     calState: 'idle' as CalState,
-    calTempPoints: {},
-    calTempMeters: 1.0,
+    calTemp: {} as CalibrationTemp,
     zoom: 1,
     pan: { x: 0, y: 0 },
     activeTool: 'hand' as ToolType,
@@ -327,8 +327,7 @@ export const useEditorStore = create<EditorSlice>()(
         editorState: {
           ...get().editorState,
           calState: 'placingA',
-          calTempPoints: {},
-          calTempMeters: 1.0,
+          calTemp: {},
           activeTool: 'calibration'
         }
       });
@@ -342,78 +341,108 @@ export const useEditorStore = create<EditorSlice>()(
           editorState: {
             ...state,
             calState: 'placingB',
-            calTempPoints: { a: p }
+            calTemp: { a: p }
           }
         });
       } else if (state.calState === 'placingB') {
-        const a = state.calTempPoints.a;
-        if (!a) return;
-        
-        if (!isValidReferenceDistance(a, p)) {
-          set({
-            editorState: {
-              ...state,
-              calState: 'placingA',
-              calTempPoints: {}
-            }
-          });
-          return;
-        }
-        
         set({
           editorState: {
             ...state,
             calState: 'lengthEntry',
-            calTempPoints: { a, b: p }
+            calTemp: { ...state.calTemp, b: p }
+          }
+        });
+      }
+    },
+
+    updateCalPreview: (p: Vec2) => {
+      const state = get().editorState;
+      if (state.calState === 'placingB') {
+        set({
+          editorState: {
+            ...state,
+            calTemp: { ...state.calTemp, preview: p }
           }
         });
       }
     },
 
     setCalMeters: (m: number) => {
-      if (m < 0.25) return;
+      if (m < 0.01) return;
       
       set({
         editorState: {
           ...get().editorState,
-          calTempMeters: m
+          calTemp: { ...get().editorState.calTemp, meters: m }
         }
       });
     },
 
-    commitCalSample: () => {
+    commitCalSample: async () => {
       const state = get().editorState;
-      const { a, b } = state.calTempPoints;
+      const { a, b, meters } = state.calTemp;
       
-      if (!a || !b || state.calTempMeters < 0.25) return;
+      if (!a || !b || !meters || meters < 0.01) return;
       
       try {
-        const newSample = createCalSample(a, b, state.calTempMeters);
+        // Calculate pixels per meter
+        const distPx = Math.sqrt(Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2));
+        if (distPx < 10) {
+          get().setError('Reference too short; choose a longer edge.');
+          return;
+        }
+        
+        const ppm = distPx / meters;
+        const newSample: CalSample = {
+          id: `cal-${Date.now()}`,
+          a, b, meters, ppm,
+          createdAt: new Date().toISOString()
+        };
+        
         const currentCal = state.calibrationV2;
         const samples = currentCal?.samples || [];
         
-        if (samples.length >= 5) {
+        if (samples.length >= 3) {
           samples.shift();
         }
         
         const updatedSamples = [...samples, newSample];
-        const newCalibration = computeGlobalCalibration(updatedSamples);
+        const avgPpm = updatedSamples.reduce((sum, s) => sum + s.ppm, 0) / updatedSamples.length;
+        
+        // Calculate standard deviation percentage
+        const variance = updatedSamples.reduce((sum, s) => sum + Math.pow(s.ppm - avgPpm, 2), 0) / updatedSamples.length;
+        const stdevPct = updatedSamples.length > 1 ? (Math.sqrt(variance) / avgPpm) * 100 : 0;
+        
+        const newCalibration: Calibration = {
+          ppm: avgPpm,
+          samples: updatedSamples,
+          stdevPct
+        };
         
         set({
           editorState: {
             ...state,
             calibrationV2: newCalibration,
             calState: 'ready',
-            calTempPoints: {}
+            calTemp: {},
+            activeTool: 'hand'
           },
           isDirty: true
         });
         
-        get().autoSave();
+        // Show success message
+        get().setError(null);
+        
+        // Persist to backend if photoId exists
+        if (get().photoId) {
+          await get().persistCalibration(get().photoId!);
+        }
+        
         get().recomputeFromSamples();
         
       } catch (error) {
         console.error('Failed to create calibration sample:', error);
+        get().setError('Failed to save calibration');
       }
     },
 
@@ -469,7 +498,7 @@ export const useEditorStore = create<EditorSlice>()(
         editorState: {
           ...get().editorState,
           calState: 'idle',
-          calTempPoints: {},
+          calTemp: {},
           activeTool: 'hand'
         }
       });

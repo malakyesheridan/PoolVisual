@@ -301,6 +301,13 @@ export type EditorMask = AreaMask | LinearMask | WaterlineMask;
 // New robust calibration system
 export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry' | 'ready';
 
+export interface CalibrationTemp {
+  a?: Vec2;
+  b?: Vec2;
+  preview?: Vec2;   // last pointer for live dashed line
+  meters?: number;
+}
+
 export interface CalSample {
   id: string;            // uuid
   a: Vec2;

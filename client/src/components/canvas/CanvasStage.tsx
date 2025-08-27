@@ -37,7 +37,11 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     finishDrawing,
     selectMask,
     eraseFromSelected,
-    placeCalPoint
+    placeCalPoint,
+    updateCalPreview,
+    commitCalSample,
+    cancelCalibration,
+    startCalibration
   } = store || {};
 
   const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
@@ -65,16 +69,24 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
       }
       
       switch (e.key.toLowerCase()) {
+        case 'c':
+          e.preventDefault();
+          startCalibration?.();
+          break;
         case 'escape':
           e.preventDefault();
-          if (currentDrawing) {
+          if (editorState?.calState !== 'idle') {
+            cancelCalibration?.();
+          } else if (currentDrawing) {
             // Cancel current drawing
             store?.cancelDrawing?.();
           }
           break;
         case 'enter':
           e.preventDefault();
-          if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState?.activeTool || '')) {
+          if (editorState?.calState === 'lengthEntry' && editorState?.calTemp?.meters && editorState.calTemp.meters > 0) {
+            commitCalSample?.();
+          } else if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState?.activeTool || '')) {
             finishDrawing?.();
           }
           break;
@@ -141,36 +153,51 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     };
   }, [imageProps, editorState.zoom]);
 
+  // Helper to get stage-relative coordinates  
+  const getStagePoint = useCallback((stage: StageType): Vec2 | null => {
+    const p = stage.getPointerPosition();
+    if (!p) return null;
+    const tr = stage.getAbsoluteTransform().copy().invert();
+    return tr.point(p);
+  }, []);
+
   const handlePointerDown = useCallback((e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     if (!stage || !backgroundImage) return;
 
-    const pos = getPointerPosition();
-    if (!pos) return;
+    const pt = getStagePoint(stage);
+    if (!pt) return;
+
+    // Calibration takes priority - intercept early
+    const isCalOn = editorState?.calState !== 'idle';
+    if (isCalOn) {
+      e.cancelBubble = true;
+      placeCalPoint?.(pt);
+      return;
+    }
 
     // Add temporary dot to prove interaction works (dev only)
     if (process.env.NODE_ENV === 'development') {
-      console.log('Canvas clicked at:', pos);
+      console.log('Canvas clicked at:', pt);
     }
 
-    // Handle different tools
-    switch (editorState.activeTool) {
+    // Handle different tools for mask drawing
+    switch (editorState?.activeTool) {
       case 'hand':
         setIsPanning(true);
-        setLastPointerPosition(pos);
+        setLastPointerPosition(pt);
         break;
         
       case 'area':
       case 'linear':
       case 'waterline':
-      case 'calibration':
-        startDrawing?.(pos);
+        startDrawing?.(pt);
         break;
         
       case 'eraser':
         if (selectedMaskId) {
-          eraseFromSelected?.([pos], editorState.brushSize || 10);
+          eraseFromSelected?.([pt], editorState.brushSize || 10);
         }
         break;
         
@@ -179,61 +206,80 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     }
   }, [
     backgroundImage,
-    editorState.activeTool,
-    getPointerPosition,
+    editorState?.activeTool,
+    editorState?.calState,
+    getStagePoint,
     startDrawing,
     selectedMaskId,
-    eraseFromSelected
+    eraseFromSelected,
+    placeCalPoint
   ]);
 
   const handlePointerMove = useCallback((e: KonvaEventObject<MouseEvent | TouchEvent>) => {
-    const pos = getPointerPosition();
-    if (!pos) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const pt = getStagePoint(stage);
+    if (!pt) return;
+
+    // Calibration takes priority - intercept early
+    const isCalOn = editorState?.calState !== 'idle';
+    if (isCalOn) {
+      e.cancelBubble = true;
+      updateCalPreview?.(pt);
+      return;
+    }
 
     // Handle panning
-    if (isPanning && lastPointerPosition && editorState.activeTool === 'hand') {
-      const dx = pos.x - lastPointerPosition.x;
-      const dy = pos.y - lastPointerPosition.y;
+    if (isPanning && lastPointerPosition && editorState?.activeTool === 'hand') {
+      const dx = pt.x - lastPointerPosition.x;
+      const dy = pt.y - lastPointerPosition.y;
       setPan({
         x: editorState.pan.x + dx,
         y: editorState.pan.y + dy
       });
-      setLastPointerPosition(pos);
+      setLastPointerPosition(pt);
       return;
     }
 
     // Handle drawing
-    if (currentDrawing && ['area', 'linear', 'waterline', 'calibration'].includes(editorState?.activeTool || '')) {
-      addPoint?.(pos);
+    if (currentDrawing && ['area', 'linear', 'waterline'].includes(editorState?.activeTool || '')) {
+      addPoint?.(pt);
     }
     
     // Handle eraser
     if (editorState?.activeTool === 'eraser' && selectedMaskId && 
         ('buttons' in e.evt ? e.evt.buttons === 1 : true)) {
-      eraseFromSelected?.([pos], editorState.brushSize || 10);
+      eraseFromSelected?.([pt], editorState.brushSize || 10);
     }
   }, [
     isPanning,
     lastPointerPosition,
     currentDrawing,
-    editorState.activeTool,
-    editorState.pan,
-    getPointerPosition,
+    editorState?.activeTool,
+    editorState?.calState,
+    editorState?.pan,
+    getStagePoint,
     setPan,
     addPoint,
     selectedMaskId,
-    eraseFromSelected
+    eraseFromSelected,
+    updateCalPreview
   ]);
 
   const handlePointerUp = useCallback(() => {
+    // Calibration takes priority
+    const isCalOn = editorState?.calState !== 'idle';
+    if (isCalOn) {
+      return; // Let calibration state machine handle this
+    }
+
     setIsPanning(false);
     setLastPointerPosition(null);
 
     // Finish drawing for area and linear tools on right-click or double-click
     // For now, just continue drawing until explicit finish
-  }, [
-    // Dependencies will be added as needed
-  ]);
+  }, [editorState?.calState]);
 
   const handleWheel = useCallback((e: KonvaEventObject<WheelEvent>) => {
     e.evt.preventDefault();
@@ -285,7 +331,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
         onTouchMove={handlePointerMove}
         onTouchEnd={handlePointerUp}
         onWheel={handleWheel}
-        draggable={editorState.activeTool === 'hand'}
+        draggable={editorState?.activeTool === 'hand' && editorState?.calState === 'idle'}
         data-testid="canvas-stage"
       >
         {/* Background Layer */}
