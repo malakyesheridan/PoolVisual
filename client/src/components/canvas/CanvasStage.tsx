@@ -34,17 +34,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
 
-  // Destructure state exactly as specified
-  const { masks, transient, calState, calTemp, activeTool, photo, zoom, pan } = useEditorStore(s=>({
-    masks:s.masks, 
-    transient:s.transient, 
-    calState:s.calState, 
-    calTemp:s.calTemp, 
-    activeTool:s.activeTool,
-    photo: s.photo,
-    zoom: s.zoom,
-    pan: s.pan
-  }));
+  // Destructure state - individual selectors to prevent infinite loops
+  const masks = useEditorStore(s => s.masks);
+  const transient = useEditorStore(s => s.transient);
+  const calState = useEditorStore(s => s.calState);
+  const calTemp = useEditorStore(s => s.calTemp);
+  const activeTool = useEditorStore(s => s.activeTool);
+  const photo = useEditorStore(s => s.photo);
+  const zoom = useEditorStore(s => s.zoom);
+  const pan = useEditorStore(s => s.pan);
 
   // Create InputRouter with store reference
   const router = useMemo(() => new InputRouter(useEditorStore), []);
