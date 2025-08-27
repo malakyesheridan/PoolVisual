@@ -149,28 +149,7 @@ export function CanvasEditorPage() {
             />
           </div>
 
-          {/* Canvas Header */}
-          <div className="bg-slate-50 border-t px-4 py-2 flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <h2 className="text-sm font-medium text-slate-700">
-                Canvas Editor
-              </h2>
-              {photo && (
-                <div className="text-xs text-slate-500">
-                  {photo.width} × {photo.height} pixels
-                </div>
-              )}
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <UploadImageButton
-                onImageLoad={handleImageLoad}
-                onClear={handleImageClear}
-                currentImage={photo?.originalUrl}
-                className="text-xs"
-              />
-            </div>
-          </div>
+          
         </div>
 
         {/* Sidebar */}
