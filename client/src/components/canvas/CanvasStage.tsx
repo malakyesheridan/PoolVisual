@@ -373,18 +373,20 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
                     dash={[5, 5]}
                   />
                   {/* Close line */}
-                  <Line
-                    points={[
-                      currentDrawing[currentDrawing.length - 1].x,
-                      currentDrawing[currentDrawing.length - 1].y,
-                      currentDrawing[0].x,
-                      currentDrawing[0].y
-                    ]}
-                    stroke="#3b82f6"
-                    strokeWidth={1}
-                    dash={[3, 3]}
-                    opacity={0.5}
-                  />
+                  {currentDrawing.length > 0 && currentDrawing[0] && currentDrawing[currentDrawing.length - 1] && (
+                    <Line
+                      points={[
+                        currentDrawing[currentDrawing.length - 1].x,
+                        currentDrawing[currentDrawing.length - 1].y,
+                        currentDrawing[0].x,
+                        currentDrawing[0].y
+                      ]}
+                      stroke="#3b82f6"
+                      strokeWidth={1}
+                      dash={[3, 3]}
+                      opacity={0.5}
+                    />
+                  )}
                 </>
               )}
               
