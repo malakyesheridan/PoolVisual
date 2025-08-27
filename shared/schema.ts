@@ -123,6 +123,7 @@ export const masks = pgTable("masks", {
   areaM2: numeric("area_m2", { precision: 10, scale: 2 }),
   perimeterM: numeric("perimeter_m", { precision: 10, scale: 2 }),
   materialId: uuid("material_id").references(() => materials.id),
+  calcMetaJson: jsonb("calc_meta_json"), // For per-mask override_ppm
   createdBy: uuid("created_by").references(() => orgMembers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -297,6 +298,25 @@ export interface WaterlineMask extends MaskBase {
 
 export type EditorMask = AreaMask | LinearMask | WaterlineMask;
 
+// New robust calibration system
+export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry' | 'ready';
+
+export interface CalSample {
+  id: string;            // uuid
+  a: Vec2;
+  b: Vec2;
+  meters: number;        // user input
+  ppm: number;           // derived
+  createdAt: string;
+}
+
+export interface Calibration {
+  ppm: number;                 // global average
+  samples: CalSample[];        // 1..3 recommended
+  stdevPct?: number;           // variation % among samples
+}
+
+// Legacy interface for backward compatibility
 export interface CalibrationData {
   pixelsPerMeter: number;
   a: Vec2;
@@ -331,7 +351,24 @@ export const PolylineSchema = z.object({
   points: z.array(Vec2Schema),
 });
 
+// New calibration schemas
+export const CalSampleSchema = z.object({
+  id: z.string().uuid(),
+  a: Vec2Schema,
+  b: Vec2Schema,
+  meters: z.number().min(0.25, "Reference length must be at least 0.25m"),
+  ppm: z.number().positive(),
+  createdAt: z.string(),
+});
+
 export const CalibrationSchema = z.object({
+  ppm: z.number().positive(),
+  samples: z.array(CalSampleSchema).min(1).max(5),
+  stdevPct: z.number().optional(),
+});
+
+// Legacy schema
+export const CalibrationDataSchema = z.object({
   pixelsPerMeter: z.number().positive(),
   a: Vec2Schema,
   b: Vec2Schema,

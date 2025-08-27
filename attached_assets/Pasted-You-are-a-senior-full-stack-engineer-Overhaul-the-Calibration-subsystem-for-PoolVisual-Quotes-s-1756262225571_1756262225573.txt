@@ -1,0 +1,226 @@
+You are a senior full-stack engineer. Overhaul the **Calibration** subsystem for PoolVisual Quotes so it is accurate, resilient, and user-friendly. Fix the bug where drawing a reference line never “sticks.” Implement:
+
+GOALS
+- Robust global calibration using one or more **reference lines** on the same plane → compute pixels_per_meter (ppm).
+- Optional **per-mask override** for a selected Linear mask (“Set actual length for this line only”).
+- Clear state machine, visual anchors, live readouts, and persistence.
+- Auto recompute all mask metrics on calibration changes.
+- No console errors. TypeScript strict. Zod-validated APIs. Tests included.
+
+==============================================================================
+AUDIT (do first)
+==============================================================================
+1) Locate the mounted editor route component and current calibration code path.
+2) Print (in code comments) the files that currently manage calibration (e.g., `CanvasStage.tsx`, `editorSlice.ts`, any `calibration.ts`).
+3) If multiple duplicates exist, delete unused ones and fix imports.
+
+==============================================================================
+DATA MODEL (frontend state + backend)
+==============================================================================
+Frontend (Zustand):
+```ts
+type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry' | 'ready';
+
+type CalSample = {
+  id: string;            // uuid
+  a: { x:number; y:number };
+  b: { x:number; y:number };
+  meters: number;        // user input
+  ppm: number;           // derived
+  createdAt: string;
+};
+
+type Calibration = {
+  ppm: number;                 // global average
+  samples: CalSample[];        // 1..3 recommended
+  stdevPct?: number;           // variation % among samples
+};
+Backend (no new tables required). Persist into photos:
+
+photos.calibration_pixels_per_meter (numeric)
+
+photos.calibration_meta_json with { samples: CalSample[], stdevPct }
+
+Extend masks persistence unchanged.
+
+==============================================================================
+STATE MACHINE + STORE API
+In editorSlice.ts, implement:
+
+ts
+Copy
+Edit
+startCalibration(): void                    // sets calState='placingA'
+placeCalPoint(p: Vec2): void                // A then B depending on state
+setCalMeters(m: number): void               // input > 0, then compute sample ppm
+commitCalSample(): void                     // add to samples, recompute global ppm + stdev, persist
+deleteCalSample(id: string): void
+setActiveCalibrationSample(id: string): void // for editing
+cancelCalibration(): void                   // revert to 'idle'
+recomputeFromSamples(): void                // avg & stdevPct
+persistCalibration(photoId: string): Promise<void>
+
+applyPerMaskLength(maskId: string, meters: number): void
+// For a selected Linear mask: compute mask-specific ppm = polylinePx / meters,
+// store it in mask.calc_meta_json.override_ppm (frontend + backend),
+// and use that ppm only for this mask's perimeter-based qty.
+Rules:
+
+Average ppm = mean(samples.ppm) ignoring outliers (> 2.5 stdev from mean).
+
+stdevPct = (sd / mean) * 100; show a confidence badge: High (<1.5%), Medium (1.5–3%), Low (>3%).
+
+Limit to max 5 samples; recommend 2–3 via UI.
+
+Min reference length threshold: 0.25m; warn if too short.
+
+All computations re-calculate mask metrics live.
+
+==============================================================================
+UI/UX — SIDEBAR & STAGE
+Add a “Calibration” panel with:
+
+Status pill: Not Set / Calibrated (ppm shown) / Calibrated (Low confidence).
+
+Button Draw Reference Line → enters placingA → placingB.
+
+After A & B placed, show numeric input Reference length (m) with step 0.01, min 0.01.
+
+Button Add sample (commitCalSample) → shows sample chips (A↔B meters, ppm).
+
+Tooltip: “Add 2–3 samples on the same plane for higher accuracy.”
+
+Chips list: each sample with ppm, delete icon.
+
+Readouts: “Global scale: 1 m = X px • Confidence: High/Med/Low”.
+
+Toggle: Per-mask override appears only if a Linear mask is selected → input “Actual length (m)” → applies to that mask only.
+
+On canvas:
+
+When placing points, render draggable anchors A & B (Konva.Circle) with a dashed line between them.
+
+Dragging either anchor updates the live pixel distance + ppm preview.
+
+After sample commit, anchors fade and a small label “Cal #n” appears at midpoint (click to edit).
+
+Keyboard:
+
+C start calibration
+
+Enter commits sample if meters > 0
+
+Esc cancels current sample
+
+==============================================================================
+COORDINATES & MATH
+Always convert pointer to stage space using inverted transform (zoom/pan safe).
+
+Distance px: sqrt((bx-ax)^2 + (by-ay)^2)
+
+Sample ppm: pxDistance / meters
+
+Global ppm = mean(validSamples)
+
+Mask metrics:
+
+Area mask: m² = polygonAreaPx / (ppm^2)
+
+Linear mask: lm = (override_ppm ?? ppm) applied to polyline length
+
+Waterline band area: perimeter_m × band_height_m (uses same ppm decision as above)
+
+==============================================================================
+BUG FIX (current behavior: keeps asking for reference)
+Identify where cal state never moves to ‘lengthEntry’ or ‘ready’. Fix transitions:
+
+startCalibration() → calState='placingA'
+
+First click → store A → calState='placingB'
+
+Second click → store B → calState='lengthEntry' (show meters input)
+
+On setCalMeters(m>0) → compute ppmPreview
+
+On commitCalSample() → push sample, recompute & persist → calState='ready'
+
+Ensure persistCalibration updates both photos.calibration_pixels_per_meter and photos.calibration_meta_json.
+
+After persist, update UI pill from “Not Set” to “Calibrated” and hide the “Draw Reference Line” nag.
+
+==============================================================================
+BACKEND ENDPOINTS (implement or verify)
+POST /api/photos/:id/calibration
+Body: { samples: CalSample[], ppm: number, stdevPct?: number }
+Effect: update photos.calibration_pixels_per_meter and photos.calibration_meta_json
+Return: same payload + timestamps
+
+Mask persists unchanged; server recomputes area_m2 / perimeter_m using the selected ppm for that calculation (global unless a mask override is present).
+
+Zod schemas strict; reject meters <= 0; reject samples with pxDistance < 10px (too small).
+
+==============================================================================
+PER-MASK OVERRIDE (Linear only)
+In Mask Properties (when Linear mask selected):
+
+Input: Actual length (m); helper: “Overrides global calibration for this mask only.”
+
+On change:
+
+Compute override_ppm = polylinePx / meters
+
+Store in mask.calc_meta_json.override_ppm (persist via masks endpoint)
+
+Recompute perimeter_m & dependent costs
+
+UI shows a badge “Override active” with reset icon.
+
+==============================================================================
+VISUAL FEEDBACK & GUARDRAILS
+If no calibration: show ⚠️ next to metrics and disable “Generate Quote” (tooltip: “Calibrate scale first”).
+
+If stdevPct > 3% show orange warning: “Low confidence. Add more samples or re-place anchors.”
+
+If user tries to add a second sample far from the same plane (obvious outlier), allow but mark as outlier (excluded from mean). Provide “Include anyway” toggle.
+
+==============================================================================
+PERSISTENCE & AUTOSAVE
+Debounced persistCalibration after commit or sample delete (800ms).
+
+On editor mount, fetch photos/:id and hydrate calibration from calibration_meta_json + calibration_pixels_per_meter.
+
+Recompute all masks immediately after hydration.
+
+==============================================================================
+TESTS
+Vitest:
+
+compute ppm from two points + meters
+
+average ppm with outlier exclusion and stdevPct calc
+
+area m² and perimeter m conversions using ppm
+
+Per-mask override correctness
+
+Playwright:
+
+Start calibration → place A/B → enter meters → commit → status pill becomes “Calibrated”
+
+Add a 2nd sample → ppm recomputed; confidence updates
+
+Draw linear mask → set Actual length (m) → override applied; global masks unaffected
+
+Reload → samples, ppm, overrides, and metrics persist
+
+==============================================================================
+ACCEPTANCE CRITERIA
+After placing a reference and entering meters, the app does not ask again; status shows Calibrated with ppm value.
+
+Adding/deleting samples updates ppm and confidence without page reload.
+
+Mask metrics update instantly when calibration or overrides change.
+
+Quote generation remains disabled until calibrated; enabled after.
+
+No console warnings/errors; all tests pass.

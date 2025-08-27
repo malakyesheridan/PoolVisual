@@ -29,6 +29,16 @@ import {
   validateCalibration,
   computePixelsPerMeter
 } from '@/lib/calibration';
+import {
+  createCalSample,
+  computeGlobalCalibration,
+  validateCalibration as validateCalibrationV2,
+  getConfidenceLevel,
+  pixelsToMeters as pixelsToMetersV2,
+  pixelsToSquareMeters as pixelsToSquareMetersV2,
+  isValidReferenceDistance
+} from '@/lib/calibration-v2';
+import type { CalState, CalSample, Calibration } from '@shared/schema';
 
 export interface MaskMetrics {
   area_m2?: number;
@@ -48,6 +58,10 @@ export interface MaskMaterialSettings {
 
 export interface EditorState {
   calibration: CalibrationData | null;
+  calibrationV2: Calibration | null;
+  calState: CalState;
+  calTempPoints: { a?: Vec2; b?: Vec2 };
+  calTempMeters: number;
   zoom: number;
   pan: Vec2;
   activeTool: ToolType;
@@ -63,6 +77,9 @@ export interface EditorSliceState {
   
   // Editor state
   editorState: EditorState;
+  
+  // Per-mask overrides
+  maskOverrides: Record<string, { override_ppm?: number }>;
   
   // Masks and drawing
   masks: EditorMask[];
@@ -96,10 +113,22 @@ export interface EditorSliceActions {
   setPhoto: (photo: Photo) => void;
   loadImageFile: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
   
-  // Calibration
+  // Calibration V1 (legacy)
   setCalibration: (calibration: CalibrationData) => void;
   setCalibrationMode: (enabled: boolean) => void;
   clearCalibration: () => void;
+  
+  // Calibration V2 (robust)
+  startCalibration: () => void;
+  placeCalPoint: (p: Vec2) => void;
+  setCalMeters: (m: number) => void;
+  commitCalSample: () => void;
+  deleteCalSample: (id: string) => void;
+  setActiveCalibrationSample: (id: string) => void;
+  cancelCalibration: () => void;
+  recomputeFromSamples: () => void;
+  persistCalibration: (photoId: string) => Promise<void>;
+  applyPerMaskLength: (maskId: string, meters: number) => void;
   
   // Drawing tools
   setActiveTool: (tool: ToolType) => void;
@@ -163,12 +192,19 @@ const initialState: EditorSliceState = {
   // Editor state
   editorState: {
     calibration: null,
+    calibrationV2: null,
+    calState: 'idle' as CalState,
+    calTempPoints: {},
+    calTempMeters: 1.0,
     zoom: 1,
     pan: { x: 0, y: 0 },
     activeTool: 'hand' as ToolType,
     brushSize: 20,
     mode: 'before' as ViewMode
   },
+  
+  // Per-mask overrides
+  maskOverrides: {},
   
   // Masks and drawing
   masks: [],
@@ -284,6 +320,241 @@ export const useEditorStore = create<EditorSlice>()(
         editorState: newEditorState,
         isDirty: true 
       });
+    },
+
+    // Calibration V2 - Robust State Machine
+    startCalibration: () => {
+      set({
+        editorState: {
+          ...get().editorState,
+          calState: 'placingA',
+          calTempPoints: {},
+          calTempMeters: 1.0,
+          activeTool: 'calibration'
+        }
+      });
+    },
+
+    placeCalPoint: (p: Vec2) => {
+      const state = get().editorState;
+      
+      if (state.calState === 'placingA') {
+        set({
+          editorState: {
+            ...state,
+            calState: 'placingB',
+            calTempPoints: { a: p }
+          }
+        });
+      } else if (state.calState === 'placingB') {
+        const a = state.calTempPoints.a;
+        if (!a) return;
+        
+        if (!isValidReferenceDistance(a, p)) {
+          set({
+            editorState: {
+              ...state,
+              calState: 'placingA',
+              calTempPoints: {}
+            }
+          });
+          return;
+        }
+        
+        set({
+          editorState: {
+            ...state,
+            calState: 'lengthEntry',
+            calTempPoints: { a, b: p }
+          }
+        });
+      }
+    },
+
+    setCalMeters: (m: number) => {
+      if (m < 0.25) return;
+      
+      set({
+        editorState: {
+          ...get().editorState,
+          calTempMeters: m
+        }
+      });
+    },
+
+    commitCalSample: () => {
+      const state = get().editorState;
+      const { a, b } = state.calTempPoints;
+      
+      if (!a || !b || state.calTempMeters < 0.25) return;
+      
+      try {
+        const newSample = createCalSample(a, b, state.calTempMeters);
+        const currentCal = state.calibrationV2;
+        const samples = currentCal?.samples || [];
+        
+        if (samples.length >= 5) {
+          samples.shift();
+        }
+        
+        const updatedSamples = [...samples, newSample];
+        const newCalibration = computeGlobalCalibration(updatedSamples);
+        
+        set({
+          editorState: {
+            ...state,
+            calibrationV2: newCalibration,
+            calState: 'ready',
+            calTempPoints: {}
+          },
+          isDirty: true
+        });
+        
+        get().autoSave();
+        get().recomputeFromSamples();
+        
+      } catch (error) {
+        console.error('Failed to create calibration sample:', error);
+      }
+    },
+
+    deleteCalSample: (id: string) => {
+      const state = get().editorState;
+      const currentCal = state.calibrationV2;
+      
+      if (!currentCal) return;
+      
+      const updatedSamples = currentCal.samples.filter(s => s.id !== id);
+      
+      if (updatedSamples.length === 0) {
+        set({
+          editorState: {
+            ...state,
+            calibrationV2: null,
+            calState: 'idle'
+          },
+          isDirty: true
+        });
+      } else {
+        const newCalibration = computeGlobalCalibration(updatedSamples);
+        set({
+          editorState: {
+            ...state,
+            calibrationV2: newCalibration
+          },
+          isDirty: true
+        });
+        
+        get().recomputeFromSamples();
+      }
+    },
+
+    setActiveCalibrationSample: (id: string) => {
+      const state = get().editorState;
+      const sample = state.calibrationV2?.samples.find(s => s.id === id);
+      
+      if (!sample) return;
+      
+      set({
+        editorState: {
+          ...state,
+          calState: 'lengthEntry',
+          calTempPoints: { a: sample.a, b: sample.b },
+          calTempMeters: sample.meters
+        }
+      });
+    },
+
+    cancelCalibration: () => {
+      set({
+        editorState: {
+          ...get().editorState,
+          calState: 'idle',
+          calTempPoints: {},
+          activeTool: 'hand'
+        }
+      });
+    },
+
+    recomputeFromSamples: () => {
+      const { editorState, masks } = get();
+      const cal = editorState.calibrationV2;
+      
+      if (!cal) return;
+      
+      const updatedMasks = masks.map(mask => {
+        const metrics = get().computeMetrics(mask.id);
+        
+        if (mask.type === 'area') {
+          return { ...mask, area_m2: metrics.area_m2 };
+        } else if (mask.type === 'linear') {
+          return { ...mask, perimeter_m: metrics.perimeter_m };
+        } else if (mask.type === 'waterline_band') {
+          return { 
+            ...mask, 
+            perimeter_m: metrics.perimeter_m,
+            area_m2: metrics.band_area_m2
+          };
+        }
+        
+        return mask;
+      });
+      
+      set({ masks: updatedMasks, isDirty: true });
+    },
+
+    persistCalibration: async (photoId: string) => {
+      const cal = get().editorState.calibrationV2;
+      
+      if (!cal) return;
+      
+      try {
+        const response = await fetch(`/api/photos/${photoId}/calibration`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cal)
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to persist calibration');
+        }
+        
+      } catch (error) {
+        console.error('Failed to persist calibration:', error);
+        get().setError('Failed to save calibration');
+      }
+    },
+
+    applyPerMaskLength: (maskId: string, meters: number) => {
+      const mask = get().masks.find(m => m.id === maskId);
+      
+      if (!mask || mask.type !== 'linear') return;
+      
+      try {
+        const polylineLength = polylineLengthPx(mask.polyline);
+        const override_ppm = polylineLength / meters;
+        
+        set({
+          maskOverrides: {
+            ...get().maskOverrides,
+            [maskId]: { override_ppm }
+          },
+          isDirty: true
+        });
+        
+        const updatedMasks = get().masks.map(m => {
+          if (m.id === maskId) {
+            const metrics = get().computeMetrics(maskId);
+            return { ...m, perimeter_m: metrics.perimeter_m };
+          }
+          return m;
+        });
+        
+        set({ masks: updatedMasks });
+        
+      } catch (error) {
+        console.error('Failed to apply per-mask length:', error);
+      }
     },
 
     // Drawing tools
@@ -506,39 +777,57 @@ export const useEditorStore = create<EditorSlice>()(
       const state = get();
       const mask = state.masks.find(m => m.id === maskId);
       const calibration = state.editorState.calibration;
+      const calibrationV2 = state.editorState.calibrationV2;
+      const maskOverride = state.maskOverrides[maskId];
       const materialSettings = state.maskMaterials[maskId];
       
       if (!mask) return {};
       
       const metrics: MaskMetrics = {};
       
-      if (calibration && validateCalibration(calibration)) {
-        try {
-          if (mask.type === 'area' && 'polygon' in mask) {
-            const area = polygonAreaPx(mask.polygon.points);
-            metrics.area_m2 = pixelsToSquareMeters(area, calibration);
-            metrics.qty_effective = metrics.area_m2;
-          } else if (mask.type === 'linear' && 'polyline' in mask) {
-            const length = polylineLengthPx(mask.polyline.points);
-            metrics.perimeter_m = pixelsToMeters(length, calibration);
-            metrics.qty_effective = metrics.perimeter_m;
-          } else if (mask.type === 'waterline_band' && 'polyline' in mask) {
-            const length = polylineLengthPx(mask.polyline.points);
-            metrics.perimeter_m = pixelsToMeters(length, calibration);
-            const bandHeightM = mask.band_height_m || 0.3;
-            metrics.band_area_m2 = metrics.perimeter_m * bandHeightM;
-            metrics.qty_effective = metrics.band_area_m2;
-          }
-          
-          // Add wastage and calculate cost if material is assigned
-          if (materialSettings?.materialId && metrics.qty_effective) {
-            // Apply standard 10% wastage
-            const wastage = 0.10;
-            metrics.qty_effective = metrics.qty_effective * (1 + wastage);
-          }
-        } catch (error) {
-          console.error('Metrics calculation failed:', error);
+      // Determine which PPM to use
+      let ppm: number | undefined;
+      
+      if (maskOverride?.override_ppm) {
+        // Use per-mask override
+        ppm = maskOverride.override_ppm;
+      } else if (calibrationV2) {
+        // Use V2 calibration
+        ppm = calibrationV2.ppm;
+      } else if (calibration && validateCalibration(calibration)) {
+        // Fallback to legacy calibration
+        ppm = calibration.pixelsPerMeter;
+      }
+      
+      if (!ppm) {
+        return {};
+      }
+      
+      try {
+        if (mask.type === 'area' && 'polygon' in mask) {
+          const area = polygonAreaPx(mask.polygon.points);
+          metrics.area_m2 = pixelsToSquareMetersV2(area, ppm);
+          metrics.qty_effective = metrics.area_m2;
+        } else if (mask.type === 'linear' && 'polyline' in mask) {
+          const length = polylineLengthPx(mask.polyline.points);
+          metrics.perimeter_m = pixelsToMetersV2(length, ppm);
+          metrics.qty_effective = metrics.perimeter_m;
+        } else if (mask.type === 'waterline_band' && 'polyline' in mask) {
+          const length = polylineLengthPx(mask.polyline.points);
+          metrics.perimeter_m = pixelsToMetersV2(length, ppm);
+          const bandHeightM = mask.band_height_m || 0.3;
+          metrics.band_area_m2 = metrics.perimeter_m * bandHeightM;
+          metrics.qty_effective = metrics.band_area_m2;
         }
+        
+        // Add wastage and calculate cost if material is assigned
+        if (materialSettings?.materialId && metrics.qty_effective) {
+          // Apply standard 10% wastage
+          const wastage = 0.10;
+          metrics.qty_effective = metrics.qty_effective * (1 + wastage);
+        }
+      } catch (error) {
+        console.error('Metrics calculation failed:', error);
       }
       
       return metrics;

@@ -10,7 +10,8 @@ import {
   insertMaterialSchema,
   insertMaskSchema,
   insertQuoteSchema,
-  insertQuoteItemSchema
+  insertQuoteItemSchema,
+  CalibrationSchema
 } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
@@ -375,10 +376,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/photos/:id/calibration", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { pixelsPerMeter, meta } = req.body;
+      // Support both V1 (legacy) and V2 (robust) calibration formats
+      let calibrationData;
       
-      if (!pixelsPerMeter || pixelsPerMeter <= 0) {
-        return res.status(400).json({ message: "Valid pixelsPerMeter value required" });
+      if (req.body.samples && Array.isArray(req.body.samples)) {
+        // V2 format - validate with Zod
+        const validation = CalibrationSchema.safeParse(req.body);
+        if (!validation.success) {
+          return res.status(400).json({ 
+            message: "Invalid calibration data",
+            errors: validation.error.format()
+          });
+        }
+        calibrationData = validation.data;
+      } else {
+        // V1 format - legacy support
+        const { pixelsPerMeter, meta } = req.body;
+        if (!pixelsPerMeter || pixelsPerMeter <= 0) {
+          return res.status(400).json({ message: "Valid pixelsPerMeter value required" });
+        }
+        calibrationData = { pixelsPerMeter, meta };
       }
 
       // Verify photo access
@@ -399,8 +416,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const updatedPhoto = await storage.updatePhotoCalibration(req.params.id, pixelsPerMeter, meta);
-      res.json(updatedPhoto);
+      if (calibrationData.samples) {
+        // V2 format
+        const updatedPhoto = await storage.updatePhotoCalibrationV2(req.params.id, {
+          ppm: calibrationData.ppm,
+          samples: calibrationData.samples,
+          stdevPct: calibrationData.stdevPct
+        });
+        res.json({
+          ...calibrationData,
+          updatedAt: new Date().toISOString()
+        });
+      } else {
+        // V1 format
+        const updatedPhoto = await storage.updatePhotoCalibration(req.params.id, calibrationData.pixelsPerMeter, calibrationData.meta);
+        res.json(updatedPhoto);
+      }
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

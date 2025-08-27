@@ -60,6 +60,8 @@ export interface IStorage {
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   getPhoto(id: string): Promise<Photo | undefined>;
   updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: any): Promise<Photo>;
+  updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: any[]; stdevPct?: number }): Promise<Photo>;
+  getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: any[]; stdevPct?: number } | null>;
   
   // Materials
   getMaterials(orgId: string, category?: string): Promise<Material[]>;
@@ -169,6 +171,59 @@ export class PostgresStorage implements IStorage {
       .where(eq(photos.id, id))
       .returning();
     return photo;
+  }
+
+  async updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: any[]; stdevPct?: number }): Promise<Photo> {
+    const [photo] = await db
+      .update(photos)
+      .set({
+        calibrationPixelsPerMeter: calibration.ppm.toString(),
+        calibrationMetaJson: {
+          samples: calibration.samples,
+          stdevPct: calibration.stdevPct
+        }
+      })
+      .where(eq(photos.id, photoId))
+      .returning();
+    
+    if (!photo) {
+      throw new Error('Photo not found');
+    }
+    
+    return photo;
+  }
+
+  async getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: any[]; stdevPct?: number } | null> {
+    const [photo] = await db.select({
+      calibrationPixelsPerMeter: photos.calibrationPixelsPerMeter,
+      calibrationMetaJson: photos.calibrationMetaJson
+    })
+      .from(photos)
+      .where(eq(photos.id, photoId))
+      .limit(1);
+    
+    if (!photo || !photo.calibrationPixelsPerMeter) {
+      return null;
+    }
+    
+    const ppm = parseFloat(photo.calibrationPixelsPerMeter);
+    const meta = photo.calibrationMetaJson as any;
+    
+    if (meta?.samples) {
+      // V2 format
+      return {
+        ppm,
+        samples: meta.samples,
+        stdevPct: meta.stdevPct
+      };
+    } else {
+      // Legacy V1 format - return empty for now since we can't reconstruct samples
+      return {
+        ppm,
+        samples: [],
+        stdevPct: 0
+      };
+    }
   }
 
   async getMaterials(orgId: string, category?: string): Promise<Material[]> {

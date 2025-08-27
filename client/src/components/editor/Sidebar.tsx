@@ -26,7 +26,7 @@ import { useEditorStore } from '@/stores/editorSlice';
 import { Material, EditorMask } from '@shared/schema';
 import { cn } from '@/lib/utils';
 import { MaskProperties } from './MaskProperties';
-import { CalibrationControls } from './CalibrationControls';
+import { CalibrationControlsV2 } from './CalibrationControlsV2';
 import { QuoteGenerator } from './QuoteGenerator';
 import { Material3DViewer } from '../3d/Material3DViewer';
 
@@ -365,7 +365,7 @@ export function Sidebar({ materials, onMaterialSelect, className }: SidebarProps
 
         <TabsContent value="properties" className="flex-1 p-0 m-0">
           <div className="p-4 space-y-4">
-            <CalibrationControls />
+            <CalibrationControlsV2 />
             <QuoteGenerator />
           </div>
           <div className="border-t">

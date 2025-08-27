@@ -10,6 +10,7 @@ import { KonvaEventObject } from 'konva/lib/Node';
 import useImage from 'use-image';
 import { Vec2 } from '@shared/schema';
 import { useEditorStore } from '@/stores/editorSlice';
+import { CalibrationCanvasLayer } from './CalibrationCanvasLayer';
 
 interface CanvasStageProps {
   className?: string;
@@ -35,10 +36,11 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     addPoint,
     finishDrawing,
     selectMask,
-    eraseFromSelected
+    eraseFromSelected,
+    placeCalPoint
   } = store || {};
 
-  const [backgroundImage] = useImage(photo?.uploadUrl || '', 'anonymous');
+  const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
 
   // Update stage dimensions
   useEffect(() => {
@@ -168,7 +170,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
         
       case 'eraser':
         if (selectedMaskId) {
-          eraseFromSelected(pos, editorState.brushSize || 10);
+          eraseFromSelected?.([pos], editorState.brushSize || 10);
         }
         break;
         
@@ -208,7 +210,7 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
     // Handle eraser
     if (editorState?.activeTool === 'eraser' && selectedMaskId && 
         ('buttons' in e.evt ? e.evt.buttons === 1 : true)) {
-      eraseFromSelected?.(pos, editorState.brushSize || 10);
+      eraseFromSelected?.([pos], editorState.brushSize || 10);
     }
   }, [
     isPanning,
@@ -442,31 +444,11 @@ export function CanvasStage({ className, onStageRef }: CanvasStageProps) {
           )}
         </Layer>
 
-        {/* Calibration Layer */}
-        <Layer>
-          {imageProps && editorState.calibration && 'a' in editorState.calibration && 'b' in editorState.calibration && (
-            <Group
-              x={imageProps.x}
-              y={imageProps.y}
-              scaleX={editorState.zoom}
-              scaleY={editorState.zoom}
-            >
-              <Line
-                points={[
-                  editorState.calibration.a.x,
-                  editorState.calibration.a.y,
-                  editorState.calibration.b.x,
-                  editorState.calibration.b.y
-                ]}
-                stroke="#ef4444"
-                strokeWidth={3}
-                lineCap="round"
-                dash={[10, 5]}
-                listening={false}
-              />
-            </Group>
-          )}
-        </Layer>
+        {/* Calibration V2 Layer */}
+        <CalibrationCanvasLayer 
+          stageRef={stageRef}
+          onPointPlace={placeCalPoint}
+        />
         
         {/* Debug Layer - Shows interaction works */}
         {process.env.NODE_ENV === 'development' && (
