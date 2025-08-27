@@ -13,61 +13,19 @@ export class HandController implements ToolController {
   private isPanning = false;
   private lastPointerPosition: { x: number; y: number } | null = null;
 
-  constructor(private store: EditorSlice) {}
+  constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
-    
-    // Only handle if hand tool is active and not in calibration
-    if (editorState.activeTool !== 'hand' || editorState.calState !== 'idle') {
-      return false;
-    }
-
-    // Start panning
-    this.isPanning = true;
-    this.lastPointerPosition = pt;
-    
-    return true;
+    // F. CONTROLLER CONTRACTS - Hand returns false; Stage pan is handled by draggable stage
+    return false;
   }
 
   onPointerMove(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
-    
-    // Only handle if hand tool is active and panning
-    if (editorState.activeTool !== 'hand' || 
-        editorState.calState !== 'idle' || 
-        !this.isPanning || 
-        !this.lastPointerPosition) {
-      return false;
-    }
-
-    // Calculate pan delta
-    const dx = pt.x - this.lastPointerPosition.x;
-    const dy = pt.y - this.lastPointerPosition.y;
-    
-    // Update pan
-    this.store.setPan({
-      x: editorState.pan.x + dx,
-      y: editorState.pan.y + dy
-    });
-    
-    this.lastPointerPosition = pt;
-    return true;
+    return false;
   }
 
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
-    
-    // Only handle if hand tool is active
-    if (editorState.activeTool !== 'hand' || editorState.calState !== 'idle') {
-      return false;
-    }
-
-    // Stop panning
-    this.isPanning = false;
-    this.lastPointerPosition = null;
-    
-    return true;
+    return false;
   }
 
   onCancel(): void {

@@ -15,8 +15,12 @@ export class CalibrationController implements ToolController {
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
     const { editorState } = this.store;
     
-    // Only handle events during calibration states
-    if (editorState.calState === 'idle') {
+    // F. CONTROLLER CONTRACTS - Only handle during active calibration states
+    const isActive = editorState?.calState === 'placingA' || 
+                    editorState?.calState === 'placingB' || 
+                    editorState?.calState === 'lengthEntry';
+    
+    if (!isActive) {
       return false;
     }
 
@@ -33,7 +37,7 @@ export class CalibrationController implements ToolController {
     const { editorState } = this.store;
     
     // Show preview line when placing second point
-    if (editorState.calState === 'placingB') {
+    if (editorState?.calState === 'placingB') {
       this.store.updateCalPreview(pt);
       return true;
     }
@@ -44,8 +48,12 @@ export class CalibrationController implements ToolController {
   onPointerUp(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
     const { editorState } = this.store;
     
-    // Calibration handles its own state transitions
-    return editorState.calState !== 'idle';
+    // Return true only during active calibration states
+    const isActive = editorState?.calState === 'placingA' || 
+                    editorState?.calState === 'placingB' || 
+                    editorState?.calState === 'lengthEntry';
+    
+    return isActive;
   }
 
   onCancel(): void {
@@ -57,15 +65,15 @@ export class CalibrationController implements ToolController {
     
     switch (code) {
       case 'Escape':
-        if (editorState.calState !== 'idle') {
+        if (editorState?.calState !== 'idle' && editorState?.calState !== 'ready') {
           this.onCancel();
           return true;
         }
         break;
         
       case 'Enter':
-        if (editorState.calState === 'lengthEntry' && 
-            editorState.calTemp?.meters && 
+        if (editorState?.calState === 'lengthEntry' && 
+            editorState?.calTemp?.meters && 
             editorState.calTemp.meters > 0) {
           this.store.commitCalSample();
           return true;
@@ -79,7 +87,7 @@ export class CalibrationController implements ToolController {
   getCursor(): string {
     const { editorState } = this.store;
     
-    switch (editorState.calState) {
+    switch (editorState?.calState) {
       case 'placingA':
       case 'placingB':
         return 'crosshair';

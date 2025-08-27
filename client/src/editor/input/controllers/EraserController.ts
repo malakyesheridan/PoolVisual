@@ -10,7 +10,7 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class EraserController implements ToolController {
   name = 'eraser' as const;
 
-  constructor(private store: EditorSlice) {}
+  constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
     const { editorState, selectedMaskId } = this.store;

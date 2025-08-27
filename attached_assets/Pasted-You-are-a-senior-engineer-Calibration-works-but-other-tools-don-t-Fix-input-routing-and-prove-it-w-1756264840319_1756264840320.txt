@@ -1,0 +1,182 @@
+You are a senior engineer. Calibration works but other tools don’t. Fix input routing and prove it with visible instrumentation.
+
+==============================================================================
+A. AUDIT THE MOUNTED CANVAS
+==============================================================================
+1) Print a console banner **from the mounted Canvas component file** at render time:
+   - Exact relative file path
+   - Build timestamp
+   - A random short id
+   Put this banner at the top of the file that renders <Stage>. If the banner does NOT appear in the console, you’re editing the wrong file — find and replace the mounted one.
+
+2) Remove duplicate Canvas/Editor components. Keep ONLY the versions used by the router page. Update all imports.
+
+==============================================================================
+B. REPAIR ROUTER SELECTION LOGIC
+==============================================================================
+Problem: the router routes to 'calibration' for any calState !== 'idle'. If calState stays 'ready', calibration hijacks all events.
+
+Fix:
+- Treat **only** these as “calibration active”: 'placingA' | 'placingB' | 'lengthEntry'.
+- 'ready' means calibrated but NOT active; router must return the user’s chosen tool.
+
+Implement helper:
+
+```ts
+export type CalState = 'idle'|'placingA'|'placingB'|'lengthEntry'|'ready';
+
+export const isCalibrationActive = (s: { calState: CalState }) =>
+  s.calState === 'placingA' || s.calState === 'placingB' || s.calState === 'lengthEntry';
+In the InputRouter getActive():
+
+ts
+Copy
+Edit
+const getActive = () => {
+  const s = useStore.getState();
+  return isCalibrationActive(s) ? 'calibration' : s.activeTool;
+};
+==============================================================================
+C. RESET CALIBRATION MODE CORRECTLY
+After commitCalSample() or cancelCalibration(), set calState='idle'. Keep the ppm in calibration.ppm.
+
+Add a separate status pill derived from the presence of ppm (e.g., “Calibrated • 1m = X px”). Do not leave calState='ready' if you’re not actively editing.
+
+When entering calibration (startCalibration()), call cancelAllTransient() to end other tools’ draws.
+
+==============================================================================
+D. STAGE DRAG + HAND TOOL
+Stage is draggable(true) only when active tool is 'hand'.
+
+On tool switch, toggle stage.draggable accordingly.
+
+Do not call stopPropagation() in shape-level handlers; all Stage events must reach the router.
+
+==============================================================================
+E. EVENT HUD (PROVE WHO CONSUMES EVENTS)
+Create client/src/components/dev/EventHud.tsx:
+
+tsx
+Copy
+Edit
+import React from 'react';
+import { useEditorStore } from '@/stores/editorSlice';
+
+export function EventHud() {
+  const s = useEditorStore();
+  const data = {
+    tool: s.activeTool,
+    calState: s.calState,
+    ppm: s.calibration?.ppm ?? null,
+    consumed: s.__debug?.lastConsumer ?? 'none',
+    down: s.__debug?.down ?? 0,
+    move: s.__debug?.move ?? 0,
+    up: s.__debug?.up ?? 0,
+  };
+  return (
+    <div style={{
+      position:'absolute', top:12, left:12, background:'rgba(0,0,0,.65)',
+      color:'#fff', padding:'8px 10px', borderRadius:8, fontSize:12, zIndex:10, pointerEvents:'none'
+    }}>
+      <div>tool: {data.tool}</div>
+      <div>calState: {data.calState}</div>
+      <div>ppm: {data.ppm ?? '—'}</div>
+      <div>last: {data.consumed}</div>
+      <div>down/move/up: {data.down}/{data.move}/{data.up}</div>
+    </div>
+  );
+}
+In the editor store, add a tiny debug slice:
+
+ts
+Copy
+Edit
+__debug?: { lastConsumer?: string; down?: number; move?: number; up?: number };
+setDebug(e: Partial<EditorSlice['__debug']>): void;
+In InputRouter.handleDown/Move/Up, after a controller returns true, call:
+
+ts
+Copy
+Edit
+useStore.getState().setDebug({ lastConsumer: tool.name, down: (useStore.getState().__debug?.down ?? 0)+1 });
+(similar for move/up). Render <EventHud /> positioned above the Stage (dev only).
+
+==============================================================================
+F. CONTROLLER CONTRACTS — ENSURE THEY RETURN TRUE WHEN ACTIVE
+Verify each controller returns true when it actually handles the event, false otherwise:
+
+CalibrationController: returns true during placingA/B/lengthEntry; false when idle/ready.
+
+Area/Linear/Waterline: return true while drawing or when starting a draw; false when not applicable.
+
+Hand: return false; Stage pan is handled by draggable stage (router sets it).
+
+Eraser: return true only when it deletes a point/mask.
+
+==============================================================================
+G. SINGLE ATTACHMENT OF STAGE EVENTS
+Ensure ONLY the router is attached to Stage events:
+
+tsx
+Copy
+Edit
+<Stage
+  ref={stageRef}
+  onMouseDown={e => router.handleDown(stageRef.current!, e)}
+  onMouseMove={e => router.handleMove(stageRef.current!, e)}
+  onMouseUp={e => router.handleUp(stageRef.current!, e)}
+  onTouchStart={e => router.handleDown(stageRef.current!, e)}
+  onTouchMove={e => router.handleMove(stageRef.current!, e)}
+  onTouchEnd={e => router.handleUp(stageRef.current!, e)}
+/>
+Remove any legacy on* handlers on layers/shapes that conflict.
+
+==============================================================================
+H. LAYER HIT-TESTING
+Order:
+
+BackgroundImageLayer (listening:false)
+
+MaskDrawingLayer (listening:true)
+
+MasksLayer (listening:true) // for selection
+
+CalibrationLayer (listening:true)
+
+HUDLayer (listening:false)
+
+Ensure no DOM overlay covers the Stage (pointer-events:none on outer overlays).
+
+==============================================================================
+I. KEYBOARD SHORTCUTS
+A/L/W/E/H set activeTool. C calls startCalibration().
+
+Esc calls active controller’s onCancel(). If calibration is active, cancelCalibration() and calState='idle'.
+
+==============================================================================
+J. TESTS (minimal but real)
+Playwright smoke (headless ok):
+
+Press C, click A and B, enter meters, commit → HUD shows calState: idle, ppm > 0.
+
+Press A, click-drag to draw polygon, double-click to close → polygon exists; HUD last=area.
+
+Press L, draw polyline → HUD last=linear.
+
+Press H, drag to pan → stage position changed; switch back to A → stage not draggable.
+
+Reload → calibration + masks persist.
+
+Vitest:
+
+isCalibrationActive returns true only for placing states.
+
+Router uses 'calibration' only when isCalibrationActive is true.
+
+==============================================================================
+ACCEPTANCE
+After committing calibration, HUD shows calState: idle, tool: <your current tool>, and events consumed by that tool.
+
+All tools interact with the editor immediately after calibration without reload.
+
+No console errors; router banner from the mounted Canvas file appears.

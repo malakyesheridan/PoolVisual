@@ -10,18 +10,18 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class LinearController implements ToolController {
   name = 'linear' as const;
 
-  constructor(private store: EditorSlice) {}
+  constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
-    const { editorState } = this.store;
+    const { editorState, currentDrawing } = this.store;
     
-    // Only handle if linear tool is active and not in calibration
-    if (editorState.activeTool !== 'linear' || editorState.calState !== 'idle') {
+    // F. CONTROLLER CONTRACTS - Only handle if linear tool is active
+    if (editorState?.activeTool !== 'linear') {
       return false;
     }
 
     // Start new drawing or add point to existing
-    if (!this.store.currentDrawing) {
+    if (!currentDrawing) {
       this.store.startDrawing(pt);
     } else {
       this.store.addPoint(pt);

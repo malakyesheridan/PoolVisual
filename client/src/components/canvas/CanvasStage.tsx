@@ -4,6 +4,18 @@
  */
 
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+
+// A. AUDIT BANNER - Console banner to verify this is the mounted Canvas
+const BUILD_TIMESTAMP = new Date().toISOString();
+const RANDOM_ID = Math.random().toString(36).substring(2, 8);
+console.log(`
+🎯 MOUNTED CANVAS AUDIT
+======================
+File: client/src/components/canvas/CanvasStage.tsx
+Build: ${BUILD_TIMESTAMP}
+ID: ${RANDOM_ID}
+======================
+`);
 import { Stage, Layer, Rect, Image } from 'react-konva';
 import { KonvaEventObject } from 'konva/lib/Node';
 import { Stage as StageType } from 'konva/lib/Stage';
@@ -17,6 +29,8 @@ import { LinearController } from '@/editor/input/controllers/LinearController';
 import { WaterlineController } from '@/editor/input/controllers/WaterlineController';
 import { EraserController } from '@/editor/input/controllers/EraserController';
 import { HandController } from '@/editor/input/controllers/HandController';
+import { isCalibrationActive } from '@/utils/calibrationHelpers';
+import { EventHud } from '@/components/dev/EventHud';
 import type { Vec2 } from '@shared/schema';
 
 interface CanvasStageProps {
@@ -32,8 +46,10 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const store = useEditorStore();
   const { photo, editorState, setZoom, setPan } = store;
 
-  // Determine active tool - force calibration if calState is not idle
-  const activeTool = editorState?.calState !== 'idle' ? 'calibration' : editorState?.activeTool || 'hand';
+  // B. ROUTER SELECTION LOGIC - Only route to calibration when actively placing/measuring
+  const activeTool = isCalibrationActive(editorState || { calState: 'idle' }) 
+    ? 'calibration' 
+    : editorState?.activeTool || 'hand';
 
   // Create input router with tool controllers
   const router = useMemo(() => {
@@ -46,7 +62,8 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         waterline: new WaterlineController(store),
         eraser: new EraserController(store),
         hand: new HandController(store),
-      }
+      },
+      store // Pass store for debug instrumentation
     );
   }, [activeTool, store]);
 
@@ -65,11 +82,12 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     return () => window.removeEventListener('resize', updateStageDimensions);
   }, [width, height]);
 
-  // Set stage draggable only for hand tool
+  // D. STAGE DRAG + HAND TOOL - Only draggable when hand tool is active
   const setStageDraggable = useCallback((stage: StageType | null, tool: string) => {
     if (!stage) return;
-    stage.draggable(tool === 'hand' && editorState?.calState === 'idle');
-  }, [editorState?.calState]);
+    const isDraggable = tool === 'hand' && !isCalibrationActive(editorState || { calState: 'idle' });
+    stage.draggable(isDraggable);
+  }, [editorState]);
 
   useEffect(() => {
     setStageDraggable(stageRef.current, activeTool);
@@ -87,10 +105,9 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
       // Tool switching shortcuts
       switch (key) {
         case 'c':
-          if (editorState?.calState === 'idle') {
-            e.preventDefault();
-            store.startCalibration();
-          }
+          e.preventDefault();
+          store.cancelAllTransient(); // C. Clean transitions
+          store.startCalibration();
           break;
         case 'a':
           e.preventDefault();
@@ -193,9 +210,12 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         width: '100%', 
         height: '100%',
         overflow: 'hidden',
-        cursor: router.getCursor()
+        cursor: router.getCursor(),
+        position: 'relative'
       }}
     >
+      {/* E. EVENT HUD - Development instrumentation */}
+      <EventHud />
       <Stage
         ref={stageRef}
         width={stageDimensions.width}

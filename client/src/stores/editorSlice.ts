@@ -173,6 +173,10 @@ export interface EditorSliceActions {
   // Tool coordination
   cancelAllTransient: () => void;
   
+  // Debug instrumentation
+  __debug?: { lastConsumer?: string; down?: number; move?: number; up?: number };
+  setDebug: (e: Partial<EditorSlice['__debug']>) => void;
+  
   // Composites
   generateComposite: (type: 'after' | 'sideBySide') => Promise<void>;
   clearComposites: () => void;
@@ -426,7 +430,7 @@ export const useEditorStore = create<EditorSlice>()(
           editorState: {
             ...state,
             calibrationV2: newCalibration,
-            calState: 'ready',
+            calState: 'idle', // C. RESET CALIBRATION MODE CORRECTLY
             calTemp: {},
             activeTool: 'hand'
           },
@@ -975,6 +979,13 @@ export const useEditorStore = create<EditorSlice>()(
       
       // Clear any hover highlights or temporary states
       // This ensures clean transitions between tools
+    },
+
+    setDebug: (e: Partial<EditorSlice['__debug']>) => {
+      const state = get();
+      set({
+        __debug: { ...state.__debug, ...e }
+      });
     }
   }))
 );

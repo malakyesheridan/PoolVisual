@@ -10,7 +10,7 @@ import type { EditorSlice } from '@/stores/editorSlice';
 export class WaterlineController implements ToolController {
   name = 'waterline' as const;
 
-  constructor(private store: EditorSlice) {}
+  constructor(private store: any) {}
 
   onPointerDown(pt: { x: number; y: number }, e: KonvaEventObject<any>): boolean {
     const { editorState } = this.store;
