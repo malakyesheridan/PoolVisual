@@ -1,1002 +1,264 @@
 /**
- * Enhanced Canvas Editor Store with comprehensive state management
+ * Editor Store - Stabilized Implementation
+ * Follows exact specification for calibration and tool behavior
  */
 
 import { create } from 'zustand';
-import { subscribeWithSelector } from 'zustand/middleware';
-import { 
-  Vec2, 
-  EditorMask, 
-  AreaMask, 
-  LinearMask, 
-  WaterlineMask,
-  CalibrationData, 
-  ToolType,
-  ViewMode,
-  Photo
-} from '@shared/schema';
-import { UndoRedoManager } from '@/lib/undoRedo';
-import { 
-  polygonAreaPx, 
-  polylineLengthPx, 
-  smoothFreehand,
-  isPolygonValid,
-  generateWaterlineBand
-} from '@/lib/geometry';
-import { 
-  pixelsToMeters, 
-  pixelsToSquareMeters, 
-  validateCalibration,
-  computePixelsPerMeter
-} from '@/lib/calibration';
-import {
-  createCalSample,
-  computeGlobalCalibration,
-  validateCalibration as validateCalibrationV2,
-  getConfidenceLevel,
-  pixelsToMeters as pixelsToMetersV2,
-  pixelsToSquareMeters as pixelsToSquareMetersV2,
-  isValidReferenceDistance
-} from '@/lib/calibration-v2';
-import type { CalState, CalSample, Calibration, CalibrationTemp } from '@shared/schema';
+import type { Vec2, Photo } from '@shared/schema';
 
-export interface MaskMetrics {
-  area_m2?: number;
-  perimeter_m?: number;
-  band_area_m2?: number;
-  qty_effective?: number;
-  estimatedCost?: number;
-}
+// Core types
+export type CalState = 'idle' | 'placingA' | 'placingB' | 'lengthEntry';
+export type Vec2 = { x: number; y: number };
+export type CalSample = { id: string; a: Vec2; b: Vec2; meters: number; ppm: number };
 
-export interface MaskMaterialSettings {
-  materialId: string;
-  repeatScale: number;
-  rotationDeg: number;
-  brightness: number;
-  contrast: number;
-}
-
-export interface EditorState {
-  calibration: { ppm?: number } | null;
-  calibrationV2: Calibration | null;
-  calState: CalState;
-  calTemp: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number };
-  zoom: number;
-  pan: Vec2;
-  activeTool: ToolType;
-  brushSize: number;
-  mode: ViewMode;
-}
-
-export interface EditorSliceState {
-  // Photo and basic state
+// Store interface
+interface EditorSlice {
+  // Photo state
   photo: Photo | null;
   photoId: string | null;
-  jobId: string | null;
   
-  // Editor state
-  editorState: EditorState;
+  // Calibration
+  calState: CalState;
+  calTemp?: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number };
+  calibration?: { ppm: number; samples: CalSample[] };
   
-  // Per-mask overrides
-  maskOverrides: Record<string, { override_ppm?: number }>;
-  
-  // D. TOOL COMMIT PATHS MUST CREATE NEW MASK OBJECTS (IMMUTABLE!)
-  masks: EditorMask[];
-  transient: { tool?: 'area' | 'linear' | 'waterline_band'; points: Vec2[] } | null;
-  selectedMaskId: string | null;
-  
-  // Materials and settings
-  selectedMaterialId: string | null;
-  maskMaterials: Record<string, MaskMaterialSettings>;
-  
-  // History
-  undoRedoManager: UndoRedoManager;
+  // Tools & masks
+  activeTool: 'hand' | 'area' | 'linear' | 'waterline' | 'eraser';
+  transient?: { tool: 'area' | 'linear' | 'waterline'; points: Vec2[] };
+  masks: Array<{ 
+    id: string; 
+    photoId: string; 
+    type: 'area' | 'linear' | 'waterline_band'; 
+    path: { points: Vec2[] }; 
+    bandHeightM?: number 
+  }>;
   
   // UI state
-  isLoading: boolean;
-  isDirty: boolean;
-  lastSaved: string | null;
-  error: string | null;
+  selectedMaskId: string | null;
+  zoom: number;
+  pan: Vec2;
   
-  // Composite rendering
-  compositeUrls: {
-    after?: string;
-    sideBySide?: string;
-  };
-  isGeneratingComposite: boolean;
+  // Actions
+  startCalibration(): void;
+  placeCalPoint(p: Vec2): void;
+  updateCalPreview(p: Vec2): void;
+  setCalMeters(m: number): void;
+  commitCalSample(): Promise<void>;
+  deleteCalSample(id: string): void;
+  cancelCalibration(): void;
+  
+  startPath(tool: 'area' | 'linear' | 'waterline', p: Vec2): void;
+  appendPoint(p: Vec2): void;
+  commitPath(): void;
+  cancelPath(): void;
+  cancelAllTransient(): void;
+  
+  setActiveTool(tool: EditorSlice['activeTool']): void;
+  loadImageFile(file: File, url: string, dimensions: { width: number; height: number }): void;
 }
 
-export interface EditorSliceActions {
-  // Photo management
-  loadPhoto: (photoId: string, jobId: string) => Promise<void>;
-  setPhoto: (photo: Photo) => void;
-  loadImageFile: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
-  
-  // Calibration V1 (legacy)
-  setCalibration: (calibration: CalibrationData) => void;
-  setCalibrationMode: (enabled: boolean) => void;
-  clearCalibration: () => void;
-  
-  // Calibration V2 (robust)
-  startCalibration: () => void;
-  placeCalPoint: (p: Vec2) => void;
-  updateCalPreview: (p: Vec2) => void;
-  setCalMeters: (m: number) => void;
-  commitCalSample: () => Promise<void>;
-  deleteCalSample: (id: string) => void;
-  setActiveCalibrationSample: (id: string) => void;
-  cancelCalibration: () => void;
-  recomputeFromSamples: () => void;
-  persistCalibration: (photoId: string) => Promise<void>;
-  applyPerMaskLength: (maskId: string, meters: number) => void;
-  
-  // Drawing tools - new immutable mask system
-  setActiveTool: (tool: ToolType) => void;
-  setBrushSize: (size: number) => void;
-  startPath: (tool: 'area' | 'linear' | 'waterline_band', p: Vec2) => void;
-  appendPoint: (p: Vec2) => void;
-  commitPath: () => void;
-  cancelPath: () => void;
-  
-  // Mask management
-  selectMask: (maskId: string | null) => void;
-  setSelectedMaterialId: (materialId: string | null) => void;
-  deleteMask: (maskId: string) => void;
-  updateMask: (maskId: string, updates: Partial<EditorMask>) => void;
-  attachMaterial: (maskId: string, materialId: string) => void;
-  detachMaterial: (maskId: string) => void;
-  eraseFromSelected: (points: Vec2[], brushSize: number) => void;
-  updateMaterialSettings: (maskId: string, settings: Partial<MaskMaterialSettings>) => void;
-  
-  // Waterline specific
-  setBandHeight: (maskId: string, heightM: number) => void;
-  
-  // View and navigation
-  setZoom: (zoom: number) => void;
-  setPan: (pan: Vec2) => void;
-  setViewMode: (mode: ViewMode) => void;
-  resetView: () => void;
-  
-  // Metrics
-  computeMetrics: (maskId: string) => MaskMetrics;
-  
-  // History
-  undo: () => void;
-  redo: () => void;
-  canUndo: () => boolean;
-  canRedo: () => boolean;
-  getUndoAction: () => string | null;
-  getRedoAction: () => string | null;
-  resetEditor: () => void;
-  
-  // Tool coordination
-  cancelAllTransient: () => void;
-  
-  // Debug instrumentation
-  __debug?: { lastConsumer?: string; down?: number; move?: number; up?: number };
-  setDebug: (e: Partial<EditorSlice['__debug']>) => void;
-  
-  // Composites
-  generateComposite: (type: 'after' | 'sideBySide') => Promise<void>;
-  clearComposites: () => void;
-  
-  // Persistence and autosave
-  saveProgress: () => Promise<void>;
-  loadPhotoState: (photoId: string) => Promise<void>;
-  generateQuote: (jobId: string, photoId: string) => Promise<void>;
-  autoSave: () => void;
-  setError: (error: string | null) => void;
+// Helper functions
+function _distance(a: Vec2, b: Vec2): number {
+  return Math.hypot(b.x - a.x, b.y - a.y);
 }
 
-export type EditorSlice = EditorSliceState & EditorSliceActions;
+async function _persistCalibration(photoId: string, data: { ppm: number; sample: CalSample; samples: CalSample[] }) {
+  try {
+    const response = await fetch(`/api/photos/${photoId}/calibration`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ppm: data.ppm, samples: data.samples })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  } catch (error) {
+    console.error('[Calibration] persist failed:', error);
+    throw error;
+  }
+}
 
-const initialState: EditorSliceState = {
-  // Photo and basic state
+// Store implementation
+export const useEditorStore = create<EditorSlice>((set, get) => ({
+  // Initial state
   photo: null,
   photoId: null,
-  jobId: null,
-  
-  // Editor state
-  editorState: {
-    calibration: null,
-    calibrationV2: null,
-    calState: 'idle' as CalState,
-    calTemp: {} as CalibrationTemp,
-    zoom: 1,
-    pan: { x: 0, y: 0 },
-    activeTool: 'hand' as ToolType,
-    brushSize: 20,
-    mode: 'before' as ViewMode
-  },
-  
-  // Per-mask overrides
-  maskOverrides: {},
-  
-  // Masks and drawing
+  calState: 'idle',
+  calibration: undefined,
+  activeTool: 'hand',
+  transient: undefined,
   masks: [],
-  currentDrawing: null,
   selectedMaskId: null,
-  
-  // Materials and settings
-  selectedMaterialId: null,
-  maskMaterials: {},
-  
-  // History
-  undoRedoManager: new UndoRedoManager(),
-  
-  // UI state
-  isLoading: false,
-  isDirty: false,
-  lastSaved: null,
-  error: null,
-  
-  // Composite rendering
-  compositeUrls: {},
-  isGeneratingComposite: false,
-};
+  zoom: 1,
+  pan: { x: 0, y: 0 },
 
-export const useEditorStore = create<EditorSlice>()(
-  subscribeWithSelector((set, get) => ({
-    ...initialState,
+  // Calibration actions
+  startCalibration() {
+    set({ calState: 'placingA', calTemp: {} });
+    get().cancelAllTransient();
+  },
 
-    // Photo management
-    loadPhoto: async (photoId: string, jobId: string) => {
-      set({ isLoading: true, photoId, jobId });
+  placeCalPoint(p: Vec2) {
+    const s = get();
+    if (s.calState === 'placingA') {
+      set({ calTemp: { a: p, preview: p }, calState: 'placingB' });
+    } else if (s.calState === 'placingB') {
+      set({ calTemp: { ...s.calTemp, b: p }, calState: 'lengthEntry' });
+    }
+  },
+
+  updateCalPreview(p: Vec2) {
+    const s = get();
+    if (s.calState === 'placingB') {
+      set({ calTemp: { ...s.calTemp, preview: p } });
+    }
+  },
+
+  setCalMeters(m: number) {
+    const s = get();
+    if (s.calState === 'lengthEntry') {
+      set({ calTemp: { ...s.calTemp, meters: m } });
+    }
+  },
+
+  async commitCalSample() {
+    const s = get();
+    const { a, b, meters } = s.calTemp || {};
+    if (!a || !b || !meters || meters <= 0) return;
+
+    const px = _distance(a, b);
+    if (px < 10) {
+      console.warn('[Calibration] Reference too short');
+      return;
+    }
+
+    const ppm = px / meters;
+    const sample: CalSample = { 
+      id: crypto.randomUUID(), 
+      a, 
+      b, 
+      meters, 
+      ppm 
+    };
+
+    // Update local state FIRST
+    const prev = s.calibration?.samples ?? [];
+    const samples = [...prev, sample];
+    set({ 
+      calibration: { ppm, samples }, 
+      calState: 'idle', 
+      calTemp: undefined 
+    });
+    
+    console.info('[Calibration] committed ppm=', ppm.toFixed(4), 'samples=', samples.length);
+    console.info('[Assert] ppm=', get().calibration?.ppm, 'calState=', get().calState);
+
+    // Persist asynchronously
+    if (s.photoId) {
       try {
-        // TODO: Load actual photo data from API
-        set({ isLoading: false });
+        await _persistCalibration(s.photoId, { ppm, sample, samples });
       } catch (error) {
-        console.error('Failed to load photo:', error);
-        set({ error: 'Failed to load photo', isLoading: false });
+        console.error('[Calibration] persist failed, keeping local state');
       }
-    },
+    }
+  },
 
-    setPhoto: (photo: Photo) => {
+  deleteCalSample(id: string) {
+    const curr = get().calibration?.samples ?? [];
+    const samples = curr.filter(s => s.id !== id);
+    const ppm = samples.length ? samples[samples.length - 1].ppm : undefined;
+    set({ 
+      calibration: samples.length && ppm ? { ppm, samples } : undefined 
+    });
+  },
+
+  cancelCalibration() {
+    set({ calState: 'idle', calTemp: undefined });
+  },
+
+  // Tool actions
+  startPath(tool: 'area' | 'linear' | 'waterline', p: Vec2) {
+    set({ transient: { tool, points: [p] } });
+  },
+
+  appendPoint(p: Vec2) {
+    const s = get();
+    if (s.transient) {
       set({ 
-        photo,
-        photoId: photo.id,
-        editorState: {
-          ...get().editorState,
-          zoom: 1,
-          pan: { x: 0, y: 0 }
-        }
-      });
-    },
-
-    loadImageFile: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
-      const photoId = `temp-${Date.now()}`;
-      const photo: Photo = {
-        id: photoId,
-        jobId: get().jobId || 'temp-job',
-        originalUrl: imageUrl,
-        width: dimensions.width,
-        height: dimensions.height,
-        exifJson: null,
-        calibrationPixelsPerMeter: null,
-        calibrationMetaJson: null,
-        createdAt: new Date().toISOString()
-      };
-      
-      set({ 
-        photo,
-        photoId,
-        masks: [],
-        selectedMaskId: null,
-        editorState: {
-          ...get().editorState,
-          calibration: null,
-          zoom: 1,
-          pan: { x: 0, y: 0 }
-        }
-      });
-    },
-
-    // Calibration
-    setCalibration: (calibration: CalibrationData) => {
-      const newEditorState = {
-        ...get().editorState,
-        calibration
-      };
-      
-      set({
-        editorState: newEditorState,
-        isDirty: true 
-      });
-    },
-
-    setCalibrationMode: (enabled: boolean) => {
-      if (enabled) {
-        set({
-          editorState: {
-            ...get().editorState,
-            activeTool: 'calibration'
-          }
-        });
-      }
-    },
-
-    clearCalibration: () => {
-      const newEditorState = {
-        ...get().editorState,
-        calibration: null
-      };
-      
-      set({
-        editorState: newEditorState,
-        isDirty: true 
-      });
-    },
-
-    // Calibration V2 - Robust State Machine
-    startCalibration: () => {
-      set(state => ({
-        editorState: {
-          ...state.editorState,
-          calState: 'placingA',
-          calTemp: {}
-        }
-      }));
-    },
-
-    placeCalPoint: (p: Vec2) => {
-      set(s => {
-        if (s.editorState.calState === 'placingA') {
-          return {
-            editorState: {
-              ...s.editorState,
-              calTemp: { a: p, preview: p },
-              calState: 'placingB'
-            }
-          };
-        }
-        if (s.editorState.calState === 'placingB') {
-          return {
-            editorState: {
-              ...s.editorState,
-              calTemp: { ...s.editorState.calTemp, b: p },
-              calState: 'lengthEntry'
-            }
-          };
-        }
-        return {};
-      });
-    },
-
-    updateCalPreview: (p: Vec2) => {
-      set(s => s.editorState.calState === 'placingB' ? {
-        editorState: {
-          ...s.editorState,
-          calTemp: { ...s.editorState.calTemp, preview: p }
-        }
-      } : {});
-    },
-
-    setCalMeters: (m: number) => {
-      set(s => s.editorState.calState === 'lengthEntry' ? {
-        editorState: {
-          ...s.editorState,
-          calTemp: { ...s.editorState.calTemp, meters: m }
-        }
-      } : {});
-    },
-
-    commitCalSample: async () => {
-      const s = get();
-      const { a, b, meters } = s.editorState.calTemp || {};
-      if (!a || !b || !meters || meters <= 0) return;
-      
-      const dx = b.x - a.x, dy = b.y - a.y;
-      const px = Math.hypot(dx, dy);
-      if (px < 10) { 
-        console.warn('Reference too short');
-        return; 
-      }
-      const ppm = px / meters;
-
-      // Set ppm locally first - MUST GO TO IDLE
-      set({ 
-        editorState: {
-          ...s.editorState,
-          calibration: { ppm }, 
-          calState: 'idle', 
-          calTemp: {} 
-        }
-      });
-      console.info('[Calibration] committed ppm=', ppm);
-      console.info('[Assert] ppm set =', get().editorState.calibration?.ppm);
-
-      // Persist to backend - handle failure by keeping local ppm
-      try {
-        const res = await fetch(`/api/photos/${s.photoId}/calibration`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ppm, meta: { a, b, meters } })
-        });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        if (!data?.ppm) throw new Error('Calibration persist failed');
-      } catch (err) {
-        console.error('[Calibration] persist failed', err);
-        // Keep local calibration but don't show error to user
-      }
-    },
-
-    deleteCalSample: (id: string) => {
-      const state = get().editorState;
-      const currentCal = state.calibrationV2;
-      
-      if (!currentCal) return;
-      
-      const updatedSamples = currentCal.samples.filter(s => s.id !== id);
-      
-      if (updatedSamples.length === 0) {
-        set({
-          editorState: {
-            ...state,
-            calibrationV2: null,
-            calState: 'idle'
-          },
-          isDirty: true
-        });
-      } else {
-        const newCalibration = computeGlobalCalibration(updatedSamples);
-        set({
-          editorState: {
-            ...state,
-            calibrationV2: newCalibration
-          },
-          isDirty: true
-        });
-        
-        get().recomputeFromSamples();
-      }
-    },
-
-    setActiveCalibrationSample: (id: string) => {
-      const state = get().editorState;
-      const sample = state.calibrationV2?.samples.find(s => s.id === id);
-      
-      if (!sample) return;
-      
-      set({
-        editorState: {
-          ...state,
-          calState: 'lengthEntry',
-          calTempPoints: { a: sample.a, b: sample.b },
-          calTempMeters: sample.meters
-        }
-      });
-    },
-
-    cancelCalibration: () => {
-      set(state => ({
-        editorState: {
-          ...state.editorState,
-          calState: 'idle',
-          calTemp: {}
-        }
-      }));
-    },
-
-    recomputeFromSamples: () => {
-      const { editorState, masks } = get();
-      const cal = editorState.calibrationV2;
-      
-      if (!cal) return;
-      
-      const updatedMasks = masks.map(mask => {
-        const metrics = get().computeMetrics(mask.id);
-        
-        if (mask.type === 'area') {
-          return { ...mask, area_m2: metrics.area_m2 };
-        } else if (mask.type === 'linear') {
-          return { ...mask, perimeter_m: metrics.perimeter_m };
-        } else if (mask.type === 'waterline_band') {
-          return { 
-            ...mask, 
-            perimeter_m: metrics.perimeter_m,
-            area_m2: metrics.band_area_m2
-          };
-        }
-        
-        return mask;
-      });
-      
-      set({ masks: updatedMasks, isDirty: true });
-    },
-
-    persistCalibration: async (photoId: string) => {
-      const cal = get().editorState.calibrationV2;
-      
-      if (!cal) return;
-      
-      try {
-        const response = await fetch(`/api/photos/${photoId}/calibration`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(cal)
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to persist calibration');
-        }
-        
-      } catch (error) {
-        console.error('Failed to persist calibration:', error);
-        get().setError('Failed to save calibration');
-      }
-    },
-
-    applyPerMaskLength: (maskId: string, meters: number) => {
-      const mask = get().masks.find(m => m.id === maskId);
-      
-      if (!mask || mask.type !== 'linear') return;
-      
-      try {
-        const polylineLength = polylineLengthPx(mask.polyline);
-        const override_ppm = polylineLength / meters;
-        
-        set({
-          maskOverrides: {
-            ...get().maskOverrides,
-            [maskId]: { override_ppm }
-          },
-          isDirty: true
-        });
-        
-        const updatedMasks = get().masks.map(m => {
-          if (m.id === maskId) {
-            const metrics = get().computeMetrics(maskId);
-            return { ...m, perimeter_m: metrics.perimeter_m };
-          }
-          return m;
-        });
-        
-        set({ masks: updatedMasks });
-        
-      } catch (error) {
-        console.error('Failed to apply per-mask length:', error);
-      }
-    },
-
-    // Drawing tools
-    setActiveTool: (tool: ToolType) => {
-      set({
-        editorState: {
-          ...get().editorState,
-          activeTool: tool
-        }
-      });
-    },
-
-    setBrushSize: (size: number) => {
-      set({
-        editorState: {
-          ...get().editorState,
-          brushSize: size
-        }
-      });
-    },
-
-    // D. IMMUTABLE MASK CREATION SYSTEM
-    startPath: (tool: 'area' | 'linear' | 'waterline_band', p: Vec2) => {
-      set({ transient: { tool, points: [p] } });
-    },
-
-    appendPoint: (p: Vec2) => {
-      set(s => s.transient ? { 
         transient: { 
           ...s.transient, 
           points: [...s.transient.points, p] 
         } 
-      } : {});
-    },
-
-    commitPath: () => {
-      const s = get();
-      if (!s.transient || s.transient.points.length < 2) { 
-        set({ transient: undefined }); 
-        return; 
-      }
-      
-      const id = crypto.randomUUID();
-      const mask: EditorMask = {
-        id,
-        photoId: s.photoId || 'temp',
-        type: s.transient.tool! as any,
-        path: { points: s.transient.points.slice() },
-        createdAt: new Date().toISOString()
-      };
-      
-      set({ 
-        masks: [...s.masks, mask], 
-        transient: undefined, 
-        selectedMaskId: id 
       });
-      console.info('[Mask] committed', mask.type, 'count=', get().masks.length);
-      console.info('[Assert] masks length =', get().masks.length);
+    }
+  },
 
-      // Async persist (do not block UI)
-      // TODO: api.masks.upsert(mask).catch(e => console.error('persist mask failed', e));
-    },
-
-    cancelPath: () => {
+  commitPath() {
+    const s = get();
+    const t = s.transient;
+    if (!t || t.points.length < 2) {
       set({ transient: undefined });
-    },
-
-    // Legacy drawing functions (keep for compatibility)
-    startDrawing: (point: Vec2) => {
-      get().startPath('area', point);
-    },
-
-    addPoint: (point: Vec2) => {
-      get().appendPoint(point);
-    },
-
-    finishDrawing: () => {
-      get().commitPath();
-      
-      if (maskType === 'area') {
-        newMask = {
-          id: maskId,
-          photoId,
-          type: 'area',
-          polygon: {
-            points: currentDrawing
-          },
-          createdBy: 'current-user',
-          createdAt: now,
-          updatedAt: now
-        } as AreaMask;
-      } else if (maskType === 'linear') {
-        newMask = {
-          id: maskId,
-          photoId,
-          type: 'linear',
-          polyline: {
-            points: currentDrawing
-          },
-          createdBy: 'current-user',
-          createdAt: now,
-          updatedAt: now
-        } as LinearMask;
-      } else {
-        newMask = {
-          id: maskId,
-          photoId,
-          type: 'waterline_band',
-          polyline: {
-            points: currentDrawing
-          },
-          band_height_m: 0.3,
-          createdBy: 'current-user',
-          createdAt: now,
-          updatedAt: now
-        } as WaterlineMask;
-      }
-
-      const newMasks = [...get().masks, newMask];
-      set({
-        masks: newMasks,
-        currentDrawing: null,
-        selectedMaskId: maskId,
-        isDirty: true
-      });
-
-      console.log('Saving masks:', newMasks);
-    },
-
-    cancelDrawing: () => {
-      get().cancelPath();
-    },
-
-    // Mask management
-    selectMask: (maskId: string | null) => {
-      set({ selectedMaskId: maskId });
-    },
-
-    setSelectedMaterialId: (materialId: string | null) => {
-      set({ selectedMaterialId: materialId });
-    },
-
-    deleteMask: (maskId: string) => {
-      const newMasks = get().masks.filter(m => m.id !== maskId);
-      set({
-        masks: newMasks,
-        selectedMaskId: get().selectedMaskId === maskId ? null : get().selectedMaskId,
-        isDirty: true
-      });
-    },
-
-    updateMask: (maskId: string, updates: Partial<EditorMask>) => {
-      const newMasks = get().masks.map(mask => 
-        mask.id === maskId ? { ...mask, ...updates, updatedAt: new Date().toISOString() } : mask
-      );
-      
-      set({
-        masks: newMasks,
-        isDirty: true
-      });
-    },
-
-    attachMaterial: (maskId: string, materialId: string) => {
-      const defaultSettings: MaskMaterialSettings = {
-        materialId,
-        repeatScale: 1.0,
-        rotationDeg: 0,
-        brightness: 0,
-        contrast: 1.0
-      };
-      
-      set({
-        maskMaterials: {
-          ...get().maskMaterials,
-          [maskId]: defaultSettings
-        },
-        isDirty: true
-      });
-    },
-
-    detachMaterial: (maskId: string) => {
-      const { [maskId]: removed, ...rest } = get().maskMaterials;
-      set({
-        maskMaterials: rest,
-        isDirty: true
-      });
-    },
-
-    updateMaterialSettings: (maskId: string, settings: Partial<MaskMaterialSettings>) => {
-      const currentSettings = get().maskMaterials[maskId];
-      if (currentSettings) {
-        set({
-          maskMaterials: {
-            ...get().maskMaterials,
-            [maskId]: { ...currentSettings, ...settings }
-          },
-          isDirty: true
-        });
-      }
-    },
-
-    eraseFromSelected: (points: Vec2[], brushSize: number) => {
-      // TODO: Implement erasing logic
-    },
-
-    // Waterline specific
-    setBandHeight: (maskId: string, heightM: number) => {
-      const mask = get().masks.find(m => m.id === maskId);
-      if (mask && mask.type === 'waterline_band') {
-        get().updateMask(maskId, { band_height_m: heightM });
-      }
-    },
-
-    // View and navigation
-    setZoom: (zoom: number) => {
-      set({
-        editorState: {
-          ...get().editorState,
-          zoom: Math.max(0.1, Math.min(10, zoom))
-        }
-      });
-    },
-
-    setPan: (pan: Vec2) => {
-      set({
-        editorState: {
-          ...get().editorState,
-          pan
-        }
-      });
-    },
-
-    setViewMode: (mode: ViewMode) => {
-      set({
-        editorState: {
-          ...get().editorState,
-          mode
-        }
-      });
-    },
-
-    resetView: () => {
-      set({
-        editorState: {
-          ...get().editorState,
-          zoom: 1,
-          pan: { x: 0, y: 0 }
-        }
-      });
-    },
-
-    // Metrics computation
-    computeMetrics: (maskId: string) => {
-      const state = get();
-      const mask = state.masks.find(m => m.id === maskId);
-      const calibration = state.editorState.calibration;
-      const calibrationV2 = state.editorState.calibrationV2;
-      const maskOverride = state.maskOverrides[maskId];
-      const materialSettings = state.maskMaterials[maskId];
-      
-      if (!mask) return {};
-      
-      const metrics: MaskMetrics = {};
-      
-      // Determine which PPM to use
-      let ppm: number | undefined;
-      
-      if (maskOverride?.override_ppm) {
-        // Use per-mask override
-        ppm = maskOverride.override_ppm;
-      } else if (calibrationV2) {
-        // Use V2 calibration
-        ppm = calibrationV2.ppm;
-      } else if (calibration && validateCalibration(calibration)) {
-        // Fallback to legacy calibration
-        ppm = calibration.pixelsPerMeter;
-      }
-      
-      if (!ppm) {
-        return {};
-      }
-      
-      try {
-        if (mask.type === 'area' && 'polygon' in mask) {
-          const area = polygonAreaPx(mask.polygon.points);
-          metrics.area_m2 = pixelsToSquareMetersV2(area, ppm);
-          metrics.qty_effective = metrics.area_m2;
-        } else if (mask.type === 'linear' && 'polyline' in mask) {
-          const length = polylineLengthPx(mask.polyline.points);
-          metrics.perimeter_m = pixelsToMetersV2(length, ppm);
-          metrics.qty_effective = metrics.perimeter_m;
-        } else if (mask.type === 'waterline_band' && 'polyline' in mask) {
-          const length = polylineLengthPx(mask.polyline.points);
-          metrics.perimeter_m = pixelsToMetersV2(length, ppm);
-          const bandHeightM = mask.band_height_m || 0.3;
-          metrics.band_area_m2 = metrics.perimeter_m * bandHeightM;
-          metrics.qty_effective = metrics.band_area_m2;
-        }
-        
-        // Add wastage and calculate cost if material is assigned
-        if (materialSettings?.materialId && metrics.qty_effective) {
-          // Apply standard 10% wastage
-          const wastage = 0.10;
-          metrics.qty_effective = metrics.qty_effective * (1 + wastage);
-        }
-      } catch (error) {
-        console.error('Metrics calculation failed:', error);
-      }
-      
-      return metrics;
-    },
-
-    // History
-    undo: () => {
-      // TODO: Implement undo
-    },
-
-    redo: () => {
-      // TODO: Implement redo
-    },
-
-    canUndo: () => false,
-    canRedo: () => false,
-    getUndoAction: () => null,
-    getRedoAction: () => null,
-
-    resetEditor: () => {
-      set({
-        ...initialState,
-        undoRedoManager: new UndoRedoManager()
-      });
-    },
-
-    // Composites
-    generateComposite: async (type: 'after' | 'sideBySide') => {
-      set({ isGeneratingComposite: true });
-      try {
-        // TODO: Implement composite generation
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        set({
-          compositeUrls: {
-            ...get().compositeUrls,
-            [type]: 'mock-composite-url'
-          },
-          isGeneratingComposite: false
-        });
-      } catch (error) {
-        console.error('Composite generation failed:', error);
-        set({ isGeneratingComposite: false });
-      }
-    },
-
-    clearComposites: () => {
-      set({ compositeUrls: {} });
-    },
-
-    // Persistence and autosave
-    saveProgress: async () => {
-      const state = get();
-      if (!state.isDirty) return;
-      
-      try {
-        // TODO: Implement actual API calls for saving masks and calibration
-        // await apiClient.saveMasks(state.photoId, state.masks);
-        // await apiClient.saveCalibration(state.photoId, state.editorState.calibration);
-        
-        set({ isDirty: false, lastSaved: new Date().toISOString() });
-      } catch (error) {
-        console.error('Save failed:', error);
-        set({ error: 'Failed to save progress' });
-      }
-    },
-    
-    loadPhotoState: async (photoId: string) => {
-      set({ isLoading: true });
-      try {
-        // TODO: Implement actual API calls
-        set({ isLoading: false });
-      } catch (error) {
-        console.error('Load failed:', error);
-        set({ error: 'Failed to load photo state', isLoading: false });
-      }
-    },
-    
-    generateQuote: async (jobId: string, photoId: string) => {
-      try {
-        // TODO: Implement quote generation
-        console.log('Quote generation not yet implemented');
-      } catch (error) {
-        console.error('Quote generation failed:', error);
-        set({ error: 'Failed to generate quote' });
-      }
-    },
-
-    autoSave: () => {
-      const state = get();
-      if (state.isDirty && !state.isLoading) {
-        // Debounced auto-save
-        clearTimeout((window as any).autoSaveTimeout);
-        (window as any).autoSaveTimeout = setTimeout(() => {
-          get().saveProgress();
-        }, 1200);
-      }
-    },
-
-    setError: (error: string | null) => {
-      set({ error });
-    },
-
-    cancelAllTransient: () => {
-      const state = get();
-      
-      // Cancel any ongoing drawing
-      if (state.currentDrawing) {
-        set({
-          currentDrawing: null,
-          isDirty: true
-        });
-      }
-      
-      // Clear any hover highlights or temporary states
-      // This ensures clean transitions between tools
-    },
-
-    setDebug: (e: Partial<EditorSlice['__debug']>) => {
-      const state = get();
-      set({
-        __debug: { ...state.__debug, ...e }
-      });
+      return;
     }
-  }))
-);
 
-// Subscribe to isDirty changes for auto-save
-useEditorStore.subscribe(
-  (state) => state.isDirty,
-  (isDirty) => {
-    if (isDirty) {
-      useEditorStore.getState().autoSave();
-    }
+    const id = crypto.randomUUID();
+    const mask = {
+      id,
+      photoId: s.photoId || 'temp',
+      type: t.tool === 'waterline' ? 'waterline_band' as const : t.tool,
+      path: { points: t.points.slice() },
+      ...(t.tool === 'waterline' && { bandHeightM: 0.3 })
+    };
+
+    set({ 
+      masks: [...s.masks, mask], 
+      transient: undefined 
+    });
+
+    console.info('[Mask] commit', mask.type, 'count=', get().masks.length);
+    console.info('[Assert] masks count=', get().masks.length);
+  },
+
+  cancelPath() {
+    set({ transient: undefined });
+  },
+
+  cancelAllTransient() {
+    set({ transient: undefined });
+  },
+
+  // Tool management
+  setActiveTool(tool: EditorSlice['activeTool']) {
+    get().cancelAllTransient();
+    set({ activeTool: tool });
+  },
+
+  // Image loading
+  loadImageFile(file: File, url: string, dimensions: { width: number; height: number }) {
+    const photoId = `temp-${Date.now()}`;
+    const photo: Photo = {
+      id: photoId,
+      jobId: 'temp-job',
+      filename: file.name,
+      originalName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      width: dimensions.width,
+      height: dimensions.height,
+      url: url,
+      uploadedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    set({
+      photo,
+      photoId,
+      masks: [],
+      calibration: undefined,
+      calState: 'idle',
+      transient: undefined,
+      selectedMaskId: null,
+      zoom: 1,
+      pan: { x: 0, y: 0 }
+    });
   }
-);
+}));

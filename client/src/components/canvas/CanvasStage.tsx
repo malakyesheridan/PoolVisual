@@ -46,12 +46,14 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const [stageDimensions, setStageDimensions] = useState({ width, height });
 
   const store = useEditorStore();
-  const { photo, editorState, setZoom, setPan } = store;
+  const { photo } = store;
 
-  // B. INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS
+  // B. INPUT ROUTER: ONLY CALIBRATION-ACTIVE STATES TAKE EVENTS  
   const getActive = () => {
-    const s = editorState || { calState: 'idle' };
-    return isCalibrationActive(s) ? 'calibration' : s.activeTool || 'hand';
+    const s = store;
+    return (s.calState === 'placingA' || s.calState === 'placingB' || s.calState === 'lengthEntry') 
+      ? 'calibration' 
+      : s.activeTool;
   };
   const activeTool = getActive();
 
@@ -70,7 +72,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     );
   }, [store]);
 
-  const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
+  const [backgroundImage] = useImage(photo?.url || '', 'anonymous');
 
   // Update stage dimensions
   useEffect(() => {
@@ -88,7 +90,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   // D. STAGE DRAG + HAND TOOL - Only draggable when hand tool is active
   const setStageDraggable = useCallback((stage: StageType | null, tool: string) => {
     if (!stage) return;
-    const isDraggable = tool === 'hand' && !isCalibrationActive(editorState || { calState: 'idle' });
+    const isDraggable = tool === 'hand' && !(store.calState === 'placingA' || store.calState === 'placingB' || store.calState === 'lengthEntry');
     stage.draggable(isDraggable);
   }, [editorState]);
 
@@ -137,6 +139,30 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           store.cancelAllTransient();
           store.setActiveTool('hand');
           break;
+        case 'enter':
+          // Check if input is focused
+          const el = document.activeElement;
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLInputElement).isContentEditable)) {
+            return;
+          }
+          
+          e.preventDefault();
+          if (store.calState === 'lengthEntry') {
+            store.commitCalSample();
+          } else if (store.transient) {
+            store.commitPath();
+          }
+          break;
+          
+        case 'escape':
+          e.preventDefault();
+          if (store.calState !== 'idle') {
+            store.cancelCalibration();
+          } else if (store.transient) {
+            store.cancelPath();
+          }
+          break;
+          
         default:
           // Let the router handle other keys
           if (router.handleKey(key, e)) {

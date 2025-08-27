@@ -1,0 +1,233 @@
+You are a senior engineer. The editor needs a stabilization pass. Fix these issues **without** removing working features:
+
+- Calibration: pressing **Enter** must persist ppm and stay calibrated; the sample line should remain visible until the user clears samples.
+- Tool switching: switching between Area/Linear/Waterline must never delete or hide committed masks.
+- Transients: only the current tool’s in-progress path is cleared on switch; committed masks remain.
+- Keyboard: Enter commits the current context (drawing vs calibration) only if no text input is focused.
+
+TypeScript strict; Konva; Zustand. Print short console banners (one-liners) the first time each fixed path runs.
+
+==============================================================================
+1) VERIFY WE'RE EDITING THE MOUNTED FILES
+==============================================================================
+- In the **actual** Canvas file that renders <Stage>, add once:
+  `console.info('[CanvasStage] using', import.meta?.url || __filename)`
+- In the Editor route file, add:
+  `console.info('[EditorPage] using', import.meta?.url || __filename)`
+If these don’t show on reload, locate and replace the mounted files. Delete duplicates.
+
+==============================================================================
+2) STORE INVARIANTS (editorSlice.ts)
+==============================================================================
+Add these types and fields if missing:
+
+```ts
+export type CalState = 'idle'|'placingA'|'placingB'|'lengthEntry'; // no 'ready' state
+export type Vec2 = {x:number;y:number};
+
+export type CalSample = { id: string; a: Vec2; b: Vec2; meters: number; ppm: number };
+
+interface EditorSlice {
+  // Calibration
+  calState: CalState;
+  calTemp?: { a?: Vec2; b?: Vec2; preview?: Vec2; meters?: number };
+  calibration?: { ppm: number; samples: CalSample[] };
+  startCalibration(): void;
+  placeCalPoint(p: Vec2): void;
+  updateCalPreview(p: Vec2): void;
+  setCalMeters(m: number): void;
+  commitCalSample(): Promise<void>;
+  deleteCalSample(id: string): void;
+  cancelCalibration(): void;
+
+  // Tools & masks
+  activeTool: 'hand'|'area'|'linear'|'waterline'|'eraser';
+  transient?: { tool: 'area'|'linear'|'waterline'; points: Vec2[] };
+  masks: Array<{ id: string; photoId: string; type: 'area'|'linear'|'waterline_band'; path: { points: Vec2[] }; bandHeightM?: number }>;
+  startPath(tool: 'area'|'linear'|'waterline', p: Vec2): void;
+  appendPoint(p: Vec2): void;
+  commitPath(): void;
+  cancelPath(): void;
+  cancelAllTransient(): void; // cancels only transients; never touches masks
+}
+Implement calibration actions exactly:
+
+ts
+Copy
+Edit
+startCalibration() {
+  set({ calState: 'placingA', calTemp: {} });
+  get().cancelAllTransient(); // do not clear masks
+}
+
+placeCalPoint(p) {
+  const s = get();
+  if (s.calState === 'placingA') set({ calTemp: { a: p, preview: p }, calState: 'placingB' });
+  else if (s.calState === 'placingB') set({ calTemp: { ...s.calTemp, b: p }, calState: 'lengthEntry' });
+}
+
+updateCalPreview(p) {
+  if (get().calState === 'placingB') set(s => ({ calTemp: { ...s.calTemp, preview: p } }));
+}
+
+setCalMeters(m) {
+  if (get().calState === 'lengthEntry') set(s => ({ calTemp: { ...s.calTemp, meters: m } }));
+}
+
+// Helper
+function _distance(a: Vec2, b: Vec2) { return Math.hypot(b.x - a.x, b.y - a.y); }
+
+async function _persistCalibration(photoId: string, data: { ppm: number; sample: CalSample; samples: CalSample[] }) {
+  await api.photos.setCalibration(photoId, { ppm: data.ppm, samples: data.samples });
+}
+
+commitCalSample: async () => {
+  const s = get();
+  const { a, b, meters } = s.calTemp || {};
+  if (!a || !b || !meters || meters <= 0) return;
+
+  const px = _distance(a, b);
+  if (px < 10) { toast.warn('Reference too short'); return; }
+
+  const ppm = px / meters;
+  const sample: CalSample = { id: crypto.randomUUID(), a, b, meters, ppm };
+
+  // Update local state FIRST; keep calibrated even if network fails
+  const prev = s.calibration?.samples ?? [];
+  const samples = [...prev, sample];
+  set({ calibration: { ppm, samples }, calState: 'idle', calTemp: undefined });
+  console.info('[Calibration] committed ppm=', ppm.toFixed(4), 'samples=', samples.length);
+
+  // Persist asynchronously; if it fails, keep local ppm and samples
+  _persistCalibration(s.photoId, { ppm, sample, samples }).catch(err => {
+    console.error('[Calibration] persist failed', err);
+    toast.error('Calibration saved locally (sync failed).');
+  });
+},
+
+deleteCalSample(id) {
+  const curr = get().calibration?.samples ?? [];
+  const samples = curr.filter(s => s.id !== id);
+  const ppm = samples.length ? samples[samples.length - 1].ppm : (get().calibration?.ppm ?? undefined);
+  set({ calibration: samples.length ? { ppm: ppm!, samples } : undefined });
+},
+
+cancelCalibration() { set({ calState: 'idle', calTemp: undefined }); }
+Important: There is no 'ready' calibration state. The app is either capturing (placingA/B/lengthEntry) or idle. The “Calibrated” pill should read from calibration?.ppm, not calState.
+
+Implement tool actions immutably:
+
+ts
+Copy
+Edit
+startPath(tool, p) { set({ transient: { tool, points: [p] } }); }
+appendPoint(p) { set(s => s.transient ? ({ transient: { ...s.transient, points: [...s.transient.points, p] } }) : ({})); }
+commitPath() {
+  const s = get();
+  const t = s.transient;
+  if (!t || t.points.length < 2) return set({ transient: undefined });
+  const id = crypto.randomUUID();
+  const mask = { id, photoId: s.photoId, type: t.tool === 'waterline' ? 'waterline_band' : t.tool, path: { points: t.points.slice() } };
+  set({ masks: [...s.masks, mask], transient: undefined });
+  api.masks.upsert(mask).catch(e => console.error('persist mask failed', e));
+  console.info('[Mask] commit', mask.type, 'count=', get().masks.length);
+}
+cancelPath() { set({ transient: undefined }); }
+
+// Crucial: DO NOT clear masks on tool switch
+cancelAllTransient() { set({ transient: undefined }); }
+==============================================================================
+3) INPUT ROUTING (InputRouter.ts)
+Calibration should only intercept events while active:
+
+ts
+Copy
+Edit
+const isCalActive = (s: any) =>
+  s.calState === 'placingA' || s.calState === 'placingB' || s.calState === 'lengthEntry';
+
+const getActive = () => {
+  const s = store.getState();
+  return isCalActive(s) ? 'calibration' : s.activeTool; // never route to calibration when idle
+};
+On tool change, call cancelAllTransient() but do not touch masks or calibration.
+
+==============================================================================
+4) KEYBOARD BEHAVIOR (no accidental clears)
+Enter:
+
+if calState==='lengthEntry' → commitCalSample().
+
+else if transient exists → commitPath().
+
+ignore when a text input is focused:
+
+ts
+Copy
+Edit
+const el = document.activeElement;
+if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLInputElement).isContentEditable)) return;
+Esc:
+
+if calibration active → cancelCalibration()
+
+else if transient → cancelPath()
+
+No global “reset” on keypress.
+
+==============================================================================
+5) CANVAS LAYERS: NEVER FILTER OUT COMMITTED MASKS
+In CanvasStage.tsx ensure Masks layer maps all masks:
+
+tsx
+Copy
+Edit
+const { masks, transient, calState, calTemp } = useEditorStore(s => ({
+  masks: s.masks, transient: s.transient, calState: s.calState, calTemp: s.calTemp
+}));
+
+<Layer id="Masks" listening>
+  {masks.map(m =>
+    m.type === 'area'
+      ? <Line key={m.id} points={m.path.points.flatMap(p => [p.x,p.y])} closed fill="rgba(16,185,129,.25)" stroke="#10b981" strokeWidth={2}/>
+      : m.type === 'waterline_band'
+        ? <Line key={m.id} points={m.path.points.flatMap(p => [p.x,p.y])} stroke="#8b5cf6" strokeWidth={3}/>
+        : <Line key={m.id} points={m.path.points.flatMap(p => [p.x,p.y])} stroke="#f59e0b" strokeWidth={3}/>
+  )}
+</Layer>
+Make sure you are not filtering by active tool here. Only the transient path is tool-specific.
+
+==============================================================================
+6) SIDEBAR PILL AND REQUIREMENTS
+The “Calibration: Required” indicator must read: !calibration?.ppm (not calState).
+
+After commitCalSample(), the pill should flip to green without requiring a page reload.
+
+==============================================================================
+7) REGRESSIONS TO REMOVE
+Any function named resetEditor, clearEditor, or similar that:
+
+wipes masks, or
+
+resets calibration, or
+
+runs on route change or tool change.
+Replace with cancelAllTransient() only.
+
+==============================================================================
+8) QUICK ASSERTIONS (temporary console)
+After calibration Enter:
+console.info('[Assert] ppm=', get().calibration?.ppm, 'calState=', get().calState); // expect number + 'idle'
+
+After switching Area→Linear:
+console.info('[Assert] masks count=', get().masks.length); // must stay >= previous
+
+==============================================================================
+9) ACCEPTANCE
+Press C → click A/B → enter meters → Enter: line stays (as a saved sample), pill shows Calibrated, ppm retained; editor returns to idle.
+
+Draw Area → press Enter; shape remains. Switch to Linear and back; Area shape remains.
+
+Switching tools never deletes committed masks; only in-progress strokes are canceled.
+
+No console errors; the two console banners show the mounted file paths.

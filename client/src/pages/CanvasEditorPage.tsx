@@ -23,9 +23,7 @@ export function CanvasEditorPage() {
   const store = useEditorStore();
   const {
     photo,
-    editorState,
-    loadImageFile,
-    resetEditor
+    loadImageFile
   } = store || {};
 
   const handleImageLoad = (file: File, imageUrl: string, dimensions: { width: number; height: number }) => {
@@ -37,9 +35,7 @@ export function CanvasEditorPage() {
   };
 
   const handleImageClear = () => {
-    if (resetEditor) {
-      resetEditor();
-    }
+    // Clear functionality handled by individual components
   };
 
   const handleExport = () => {

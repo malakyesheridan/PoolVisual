@@ -7,7 +7,7 @@ import { Layer, Line } from 'react-konva';
 import { useEditorStore } from '@/stores/editorSlice';
 
 export function MaskCanvasLayer() {
-  const { masks, transient, selectedMaskId, selectMask, photo, editorState } = useEditorStore();
+  const { masks, transient, photo, activeTool } = useEditorStore();
 
   if (!photo) {
     return <Layer listening={false} />;
@@ -26,7 +26,7 @@ export function MaskCanvasLayer() {
             points={transient.points.flatMap(p => [p.x, p.y])}
             stroke="#34d399"
             strokeWidth={2}
-            closed={editorState?.activeTool === 'area'}
+            closed={activeTool === 'area'}
             opacity={0.9}
           />
         ) : null}
@@ -42,14 +42,14 @@ export function MaskCanvasLayer() {
                 fill="rgba(52,211,153,.25)" 
                 stroke="#10b981" 
                 strokeWidth={2}
-                onClick={() => selectMask(m.id)}
+                onClick={() => {}}
               />
             : <Line 
                 key={m.id} 
                 points={m.path.points.flatMap(p => [p.x, p.y])} 
                 stroke="#f59e0b" 
                 strokeWidth={3}
-                onClick={() => selectMask(m.id)}
+                onClick={() => {}}
               />
         ))}
       </Layer>
