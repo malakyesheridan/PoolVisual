@@ -100,15 +100,15 @@ export default function Materials() {
     mutationFn: async (data: any) => {
       console.log('[materials] Creating material:', data);
       
-      // Use bulletproof API function
-      const { createMaterialApi } = await import('@/lib/materials-api');
+      // Use V2 API for bulletproof persistence
+      const { createMaterialV2 } = await import('@/lib/materialsApiV2');
       const payload = {
         ...data,
         orgId: selectedOrgId,
         imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
       };
       
-      const result = await createMaterialApi(payload);
+      const result = await createMaterialV2(payload);
       console.log('[materials] Created material response:', result);
       return result;
     },

@@ -102,6 +102,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerMaterialRoutes(app);
   registerMaterialRoutesV2(app); // Bulletproof materials endpoint
   
+  // Register V2 materials routes
+  const { materialsV2Routes } = await import('./routes/materialsV2');
+  materialsV2Routes(app);
+  
   // Register import routes (manual import turbo)
   const { registerImportRoutes } = await import('./importRoutes');
   registerImportRoutes(app);

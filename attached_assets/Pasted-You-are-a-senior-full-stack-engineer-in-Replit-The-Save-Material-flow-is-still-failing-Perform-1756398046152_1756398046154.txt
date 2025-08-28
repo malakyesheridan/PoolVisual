@@ -1,0 +1,418 @@
+You are a senior full-stack engineer in Replit. The **Save Material** flow is still failing. Perform a **clean vertical-slice overhaul** that guarantees end-to-end persistence with explicit instrumentation, zero ambiguity, and NO regressions elsewhere. Ship a **new, isolated API v2** for materials, wire the UI to it behind a flag, and prove the save loop by an in-app probe. TypeScript everywhere. Do not rename/remove existing keys; all changes are additive.
+
+================================================================================
+OBJECTIVE
+================================================================================
+- New API: **/api/v2/materials** that always returns **201 + JSON with id** on create.
+- DB: auto-migrate (create table if not exists), works on Neon PG.
+- Frontend: Save button calls v2, awaits response, **upserts store**, item appears instantly in Library & Editor Sidebar.
+- Instrumentation: logs at each hop; built-in **/api/v2/_probe** and UI **Test Save** button.
+- Safety: desktop & editor features unchanged; old API untouched. Toggle via `USE_MATERIALS_API_V2=true`.
+
+================================================================================
+ENV & FEATURE FLAG
+================================================================================
+Add to `.env` (frontend and backend as needed):
+USE_MATERIALS_API_V2=true
+DATABASE_URL=postgres://USER:PASSWORD@HOST:PORT/DB
+
+markdown
+Copy code
+
+================================================================================
+BACKEND — MATERIALS V2 (DRIZZLE + ZOD)  [ADD, DO NOT MODIFY OLD ROUTES]
+================================================================================
+1) Install & init Drizzle (or use existing pg client if Drizzle unavailable; below assumes Drizzle).
+```bash
+npm i drizzle-orm pg zod
+Create schema server/db/materialsV2.schema.ts
+
+ts
+Copy code
+import { pgTable, text, numeric, boolean, timestamp, uuid, integer } from 'drizzle-orm/pg-core';
+
+export const materialsV2 = pgTable('materials', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  name: text('name').notNull(),
+  sku: text('sku'),
+  category: text('category').notNull(),          // 'coping'|'waterline_tile'|'interior'|'paving'|'fencing'
+  unit: text('unit').notNull(),                  // 'm2'|'lm'|'each'
+  price: numeric('price'),
+  cost: numeric('cost'),
+  wastage_pct: numeric('wastage_pct'),
+  margin_pct: numeric('margin_pct'),
+  tile_width_mm: integer('tile_width_mm'),
+  tile_height_mm: integer('tile_height_mm'),
+  sheet_width_mm: integer('sheet_width_mm'),
+  sheet_height_mm: integer('sheet_height_mm'),
+  grout_width_mm: integer('grout_width_mm'),
+  thickness_mm: integer('thickness_mm'),
+  finish: text('finish'),
+  texture_url: text('texture_url'),
+  thumbnail_url: text('thumbnail_url'),
+  physical_repeat_m: numeric('physical_repeat_m'),
+  supplier: text('supplier'),
+  source_url: text('source_url'),
+  notes: text('notes'),
+  org_id: uuid('org_id'),
+  is_active: boolean('is_active').default(true).notNull(),
+  created_at: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+});
+Drizzle client server/db/index.ts
+
+ts
+Copy code
+import { drizzle } from 'drizzle-orm/node-postgres';
+import pkg from 'pg';
+const { Pool } = pkg;
+
+export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+export const db = drizzle(pool);
+Zod DTO and route server/routes/materialsV2.ts
+
+ts
+Copy code
+import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { db } from '../db';
+import { materialsV2 } from '../db/materialsV2.schema';
+import { eq, desc } from 'drizzle-orm';
+
+const coNum = z.coerce.number().refine(v => !Number.isNaN(v), 'NaN').optional().nullable();
+const strOpt = z.string().trim().optional().nullable();
+
+const CreateDto = z.object({
+  name: z.string().min(1),
+  category: z.enum(['coping','waterline_tile','interior','paving','fencing']),
+  unit: z.enum(['m2','lm','each']),
+  // accept both snake & camel from UI
+  sku: strOpt,
+  price: coNum, priceAmount: coNum,
+  cost: coNum,
+  wastage_pct: coNum, wastagePct: coNum,
+  margin_pct: coNum, marginPct: coNum,
+  tile_width_mm: coNum, tileWidthMm: coNum,
+  tile_height_mm: coNum, tileHeightMm: coNum,
+  sheet_width_mm: coNum, sheetWidthMm: coNum,
+  sheet_height_mm: coNum, sheetHeightMm: coNum,
+  grout_width_mm: coNum, groutWidthMm: coNum,
+  thickness_mm: coNum, thicknessMm: coNum,
+  finish: strOpt,
+  texture_url: strOpt, textureUrl: strOpt,
+  thumbnail_url: strOpt, thumbnailUrl: strOpt,
+  supplier: strOpt,
+  source_url: strOpt, sourceUrl: strOpt,
+  notes: strOpt,
+  org_id: strOpt, orgId: strOpt
+}).transform((b: any) => ({
+  name: b.name,
+  sku: b.sku ?? null,
+  category: b.category,
+  unit: b.unit,
+  price: b.price ?? b.priceAmount ?? null,
+  cost: b.cost ?? null,
+  wastage_pct: b.wastage_pct ?? b.wastagePct ?? null,
+  margin_pct: b.margin_pct ?? b.marginPct ?? null,
+  tile_width_mm: b.tile_width_mm ?? b.tileWidthMm ?? null,
+  tile_height_mm: b.tile_height_mm ?? b.tileHeightMm ?? null,
+  sheet_width_mm: b.sheet_width_mm ?? b.sheetWidthMm ?? null,
+  sheet_height_mm: b.sheet_height_mm ?? b.sheetHeightMm ?? null,
+  grout_width_mm: b.grout_width_mm ?? b.groutWidthMm ?? null,
+  thickness_mm: b.thickness_mm ?? b.thicknessMm ?? null,
+  finish: b.finish ?? null,
+  texture_url: b.texture_url ?? b.textureUrl ?? null,
+  thumbnail_url: b.thumbnail_url ?? b.thumbnailUrl ?? null,
+  supplier: b.supplier ?? 'PoolTile',
+  source_url: b.source_url ?? b.sourceUrl ?? null,
+  notes: b.notes ?? null,
+  org_id: b.org_id ?? b.orgId ?? null
+}));
+
+export async function materialsV2Routes(app: FastifyInstance) {
+  // Probe and Echo
+  app.get('/api/v2/_probe', async () => ({ ok: true, ts: Date.now() }));
+  app.post('/api/v2/_echo', async (req) => ({ got: req.body }));
+
+  // Create
+  app.post('/api/v2/materials', async (req, reply) => {
+    app.log.info({ body: req.body }, '[v2/materials] POST body');
+    const parsed = CreateDto.safeParse(req.body);
+    if (!parsed.success) {
+      app.log.warn({ zod: parsed.error.flatten() }, '[v2/materials] invalid');
+      return reply.code(400).send({ error: 'INVALID_INPUT', details: parsed.error.flatten() });
+    }
+    const b = parsed.data;
+
+    const physical_repeat_m =
+      (b.sheet_width_mm ? Number(b.sheet_width_mm) / 1000 :
+       b.tile_width_mm ? Number(b.tile_width_mm) / 1000 : null);
+
+    try {
+      const [row] = await db.insert(materialsV2).values({
+        name: b.name, sku: b.sku ?? null, category: b.category, unit: b.unit,
+        price: b.price as any, cost: b.cost as any,
+        wastage_pct: b.wastage_pct as any, margin_pct: b.margin_pct as any,
+        tile_width_mm: b.tile_width_mm as any, tile_height_mm: b.tile_height_mm as any,
+        sheet_width_mm: b.sheet_width_mm as any, sheet_height_mm: b.sheet_height_mm as any,
+        grout_width_mm: b.grout_width_mm as any, thickness_mm: b.thickness_mm as any,
+        finish: b.finish ?? null,
+        texture_url: b.texture_url ?? null, thumbnail_url: b.thumbnail_url ?? null,
+        physical_repeat_m: physical_repeat_m as any,
+        supplier: b.supplier ?? 'PoolTile', source_url: b.source_url ?? null,
+        notes: b.notes ?? null, org_id: (b.org_id ?? null) as any,
+        is_active: true
+      }).returning();
+
+      app.log.info({ id: row.id }, '[v2/materials] created');
+      return reply.code(201).send(row);
+    } catch (err: any) {
+      app.log.error({ err }, '[v2/materials] DB_INSERT_FAILED');
+      return reply.code(500).send({ error: 'DB_INSERT_FAILED', message: err.message });
+    }
+  });
+
+  // List (for hydration)
+  app.get('/api/v2/materials', async (_req, reply) => {
+    const rows = await db.select().from(materialsV2).orderBy(desc(materialsV2.created_at)).limit(500);
+    reply.send({ items: rows });
+  });
+}
+Register routes early, before notFound/static. server/index.ts
+
+ts
+Copy code
+import fastifyCors from '@fastify/cors';
+import { materialsV2Routes } from './routes/materialsV2';
+
+app.register(fastifyCors, { origin: true, credentials: true, methods: ['GET','POST','PATCH','DELETE','OPTIONS'] });
+app.register(materialsV2Routes);
+Safety migration on boot (idempotent) server/db/bootstrap.ts
+
+ts
+Copy code
+import { pool } from './index';
+export async function ensureMaterialsTable() {
+  await pool.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS materials (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      name text NOT NULL,
+      sku text,
+      category text NOT NULL,
+      unit text NOT NULL,
+      price numeric,
+      cost numeric,
+      wastage_pct numeric,
+      margin_pct numeric,
+      tile_width_mm int,
+      tile_height_mm int,
+      sheet_width_mm int,
+      sheet_height_mm int,
+      grout_width_mm int,
+      thickness_mm int,
+      finish text,
+      texture_url text,
+      thumbnail_url text,
+      physical_repeat_m numeric,
+      supplier text,
+      source_url text,
+      notes text,
+      org_id uuid,
+      is_active boolean NOT NULL DEFAULT true,
+      created_at timestamptz NOT NULL DEFAULT now()
+    );
+  `);
+}
+Call ensureMaterialsTable() on server start before registering routes.
+
+================================================================================
+FRONTEND — WIRE TO V2 WITH HARD FEEDBACK & INSTANT UPSERT
+API client client/src/lib/materialsApiV2.ts
+
+ts
+Copy code
+const API = import.meta.env.VITE_API_BASE_URL || '';
+
+export async function createMaterialV2(input: any) {
+  const num = (v: any) => (v === '' || v === undefined || v === null ? null : Number(v));
+  const payload = {
+    name: input.name,
+    sku: input.sku ?? null,
+    category: input.category,
+    unit: input.unit,
+    price: num(input.price ?? input.priceAmount),
+    cost: num(input.cost),
+    wastage_pct: num(input.wastage_pct ?? input.wastagePct),
+    margin_pct: num(input.margin_pct ?? input.marginPct),
+    tile_width_mm: num(input.tile_width_mm ?? input.tileWidthMm),
+    tile_height_mm: num(input.tile_height_mm ?? input.tileHeightMm),
+    sheet_width_mm: num(input.sheet_width_mm ?? input.sheetWidthMm),
+    sheet_height_mm: num(input.sheet_height_mm ?? input.sheetHeightMm),
+    grout_width_mm: num(input.grout_width_mm ?? input.groutWidthMm),
+    thickness_mm: num(input.thickness_mm ?? input.thicknessMm),
+    finish: input.finish ?? null,
+    texture_url: input.texture_url ?? input.textureUrl ?? null,
+    thumbnail_url: input.thumbnail_url ?? input.thumbnailUrl ?? null,
+    supplier: input.supplier ?? 'PoolTile',
+    source_url: input.source_url ?? input.sourceUrl ?? null,
+    notes: input.notes ?? null,
+    org_id: input.org_id ?? input.orgId ?? null
+  };
+
+  const res = await fetch(`${API}/api/v2/materials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload)
+  });
+
+  const text = await res.text();
+  let data: any; try { data = text ? JSON.parse(text) : null; } catch { data = { raw: text }; }
+  if (!res.ok) throw new Error(data?.error || data?.message || `Create failed ${res.status}`);
+  return data;
+}
+
+export async function listMaterialsV2() {
+  const res = await fetch(`${API}/api/v2/materials`, { credentials: 'include' });
+  if (!res.ok) throw new Error(`List failed ${res.status}`);
+  return res.json();
+}
+Single materials store used by Library & Sidebar client/src/state/materialsStore.ts
+
+ts
+Copy code
+import create from 'zustand';
+export type Material = { id: string; name: string; category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing'; unit:'m2'|'lm'|'each'; price?: number|null; texture_url?: string|null; physical_repeat_m?: number|null; sheet_width_mm?: number|null; tile_width_mm?: number|null; };
+type S = { items: Record<string, Material>; upsert:(m:Material)=>void; hydrate:(arr:Material[])=>void; byCategory:(c:Material['category'])=>Material[]; list:()=>Material[]; };
+export const useMaterialsStore = create<S>((set, get) => ({
+  items: {},
+  upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+  hydrate: (arr) => set(() => ({ items: Object.fromEntries(arr.map(m => [m.id, m])) })),
+  byCategory: (c) => Object.values(get().items).filter(x => x.category === c),
+  list: () => Object.values(get().items)
+}));
+Hydration on Materials page mount client/src/pages/materials.tsx
+
+tsx
+Copy code
+import { useEffect } from 'react';
+import { listMaterialsV2 } from '../lib/materialsApiV2';
+import { useMaterialsStore } from '../state/materialsStore';
+
+export function MaterialsPage() {
+  const hydrate = useMaterialsStore(s => s.hydrate);
+  useEffect(() => {
+    listMaterialsV2().then(d => hydrate(d.items || [])).catch(e => console.error('[v2/materials] list', e));
+  }, [hydrate]);
+  // render grid from store...
+}
+Save button (drawer/modal) uses v2 and upserts client/src/components/materials/AddMaterialDrawer.tsx
+
+tsx
+Copy code
+import { useState } from 'react';
+import { createMaterialV2 } from '../../lib/materialsApiV2';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { toast } from 'sonner';
+
+export function AddMaterialDrawer({ onClose }: { onClose: () => void }) {
+  const upsert = useMaterialsStore(s => s.upsert);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ name:'', category:'waterline_tile', unit:'m2', price:'' });
+
+  const onSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!form.name || !form.category || !form.unit) { toast.error('Name, Category, Unit are required'); return; }
+    setSaving(true);
+    try {
+      const created = await createMaterialV2(form);
+      upsert(created);
+      toast.success(`Saved “${created.name}”`);
+      onClose();
+    } catch (err:any) {
+      console.error('[v2/materials] save', err);
+      toast.error(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={onSave} className="p-4 space-y-4">
+      {/* inputs bound to form */}
+      <div className="flex gap-2">
+        <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="btn" onClick={onClose}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+Editor Sidebar must read from the same store:
+
+tsx
+Copy code
+const mats = useMaterialsStore(s => s.byCategory(activeCategory));
+================================================================================
+IN-APP PROBE & TEST SAVE (VISIBLE, THEN REMOVE)
+Add a tiny dev panel on Materials page footer to prove end-to-end:
+
+client/src/components/materials/MaterialsProbe.tsx
+
+tsx
+Copy code
+import { useState } from 'react';
+import { createMaterialV2 } from '../../lib/materialsApiV2';
+import { useMaterialsStore } from '../../state/materialsStore';
+
+export function MaterialsProbe() {
+  const upsert = useMaterialsStore(s => s.upsert);
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mt-6 p-3 rounded bg-zinc-900/40 text-xs">
+      <button disabled={busy} className="btn btn-sm" onClick={async () => {
+        setBusy(true);
+        try {
+          const created = await createMaterialV2({ name:`Probe ${Date.now()}`, category:'waterline_tile', unit:'m2', price: '123.45' });
+          upsert(created);
+          alert(`Created: ${created.id}`);
+        } catch (e:any) {
+          alert(`Create failed: ${e.message}`);
+        } finally {
+          setBusy(false);
+        }
+      }}>Test Save (v2)</button>
+      <a className="ml-3 underline" href="/api/v2/_probe" target="_blank" rel="noreferrer">API Probe</a>
+    </div>
+  );
+}
+Import <MaterialsProbe /> at the bottom of MaterialsPage (development only; guard behind import.meta.env.MODE !== 'production').
+
+================================================================================
+ATTACH TO MASK — UNCHANGED, BUT ENSURE INSTANT USABILITY
+On select material → compute default scale from physical_repeat_m (or sheet/tile mm) and PATCH mask. This logic remains as you have it; the only change is that newly saved v2 materials are present in the shared store immediately.
+
+================================================================================
+PLAYWRIGHT SMOKE (OPTIONAL BUT STRONGLY RECOMMENDED)
+Add a basic e2e that:
+
+visits /api/v2/_probe → 200
+
+opens Add Material → fills name/category/unit → Save → waits for toast
+
+asserts new card appears in grid
+
+navigates to Editor → selects material from sidebar → attaches to mask
+
+================================================================================
+ACCEPTANCE CRITERIA
+GET /api/v2/_probe returns { ok: true }.
+
+Clicking Save calls POST /api/v2/materials → 201 + JSON with id.
+
+New material appears instantly in Materials Library and Editor Sidebar (same store).
+
+Material attaches to mask and renders at sensible default scale.
+
+No console errors; old endpoints untouched; desktop/editor features unchanged.
+
+Implement everything above now. After it passes, keep v2 as the default behind USE_MATERIALS_API_V2=true; you may later retire v1 after verification.
