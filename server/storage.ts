@@ -243,6 +243,8 @@ export class PostgresStorage implements IStorage {
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
     const [material] = await db.insert(materials).values(insertMaterial).returning();
+    if (!material) throw new Error('Failed to create material');
+    console.log('[materials] created id=' + material.id + ' name=' + material.name);
     return material;
   }
 
@@ -252,6 +254,7 @@ export class PostgresStorage implements IStorage {
       .set(updates)
       .where(eq(materials.id, id))
       .returning();
+    if (!material) throw new Error('Failed to update material');
     return material;
   }
 

@@ -156,12 +156,12 @@ export function registerMaterialRoutes(app: Express) {
         thumbnailUrl: textureResult?.thumbnailUrl || null,
         physicalRepeatM: textureResult?.physicalRepeatM?.toString() || (() => {
           const sizes = {
-            sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : undefined,
-            sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : undefined,
-            tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : undefined,
-            tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : undefined,
-            grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : undefined,
-            thickness: data.thicknessMm ? parseInt(data.thicknessMm) : undefined
+            sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : 0,
+            sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : 0,
+            tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : 0,
+            tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : 0,
+            grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : 0,
+            thickness: data.thicknessMm ? parseInt(data.thicknessMm) : 0
           };
           return ImportService.calculatePhysicalRepeat(sizes).toString();
         })()
@@ -184,7 +184,7 @@ export function registerMaterialRoutes(app: Express) {
 
       // Get materials - for now without strict org filtering
       const materials = await storage.getMaterials(
-        orgId as string || null, 
+        orgId as string || "default", 
         category as string || undefined
       );
 
@@ -233,11 +233,11 @@ export function registerMaterialRoutes(app: Express) {
         if (filePath) {
           try {
             const textureResult = await textureProcessor.processTexture(filePath, {
-              tileWidthMm: updates.tileWidthMm ? parseInt(updates.tileWidthMm) : undefined,
-              tileHeightMm: updates.tileHeightMm ? parseInt(updates.tileHeightMm) : undefined,
-              sheetWidthMm: updates.sheetWidthMm ? parseInt(updates.sheetWidthMm) : undefined,
-              sheetHeightMm: updates.sheetHeightMm ? parseInt(updates.sheetHeightMm) : undefined,
-              groutWidthMm: updates.groutWidthMm ? parseInt(updates.groutWidthMm) : undefined,
+              tileWidthMm: updates.tileWidthMm ? parseInt(updates.tileWidthMm) : 0,
+              tileHeightMm: updates.tileHeightMm ? parseInt(updates.tileHeightMm) : 0,
+              sheetWidthMm: updates.sheetWidthMm ? parseInt(updates.sheetWidthMm) : 0,
+              sheetHeightMm: updates.sheetHeightMm ? parseInt(updates.sheetHeightMm) : 0,
+              groutWidthMm: updates.groutWidthMm ? parseInt(updates.groutWidthMm) : 0,
               makeSeamless: updates.makeSeamless !== false
             });
 
@@ -254,7 +254,7 @@ export function registerMaterialRoutes(app: Express) {
         }
       }
 
-      const material = await storage.updateMaterial(id, updates);
+      const material = await storage.updateMaterial(id as string, updates);
       res.json(material);
 
     } catch (error) {

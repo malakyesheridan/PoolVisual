@@ -97,13 +97,18 @@ export default function Materials() {
 
   const createMaterialMutation = useMutation({
     mutationFn: async (data: any) => {
+      console.log('[materials] Creating material:', data);
+      
       // If we have a preview image but no texture_url, include imageUrlFallback
       const payload = {
         ...data,
+        orgId: selectedOrgId,
         imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
       };
       
-      return apiClient.createMaterial(payload);
+      const result = await apiClient.createMaterial(payload);
+      console.log('[materials] Created material response:', result);
+      return result;
     },
     onSuccess: (material: any) => {
       // Update materials store immediately

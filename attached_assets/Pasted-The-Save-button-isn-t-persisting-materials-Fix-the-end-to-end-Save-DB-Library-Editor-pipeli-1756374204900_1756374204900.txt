@@ -1,0 +1,139 @@
+The Save button isn’t persisting materials. Fix the end-to-end “Save → DB → Library → Editor” pipeline now. Keep all existing features unchanged. TypeScript everywhere.
+
+==============================================================================
+1) BACKEND — CREATE MATERIAL (Fastify + Neon Postgres)
+==============================================================================
+- Ensure DB prerequisites:
+  - Run: `CREATE EXTENSION IF NOT EXISTS pgcrypto;`  // for gen_random_uuid()
+  - Confirm table `materials` exists with columns mentioned below (name, category, unit at minimum).
+
+- Add/verify route:
+  POST /api/materials
+  - Zod body schema (required+optional):
+    {
+      name: string,
+      sku?: string,
+      category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing',
+      unit: 'm2'|'lm'|'each',
+      price?: number|null,
+      cost?: number|null,
+      wastage_pct?: number|null,
+      margin_pct?: number|null,
+      tile_width_mm?: number|null,
+      tile_height_mm?: number|null,
+      sheet_width_mm?: number|null,
+      sheet_height_mm?: number|null,
+      grout_width_mm?: number|null,
+      thickness_mm?: number|null,
+      finish?: string|null,
+      texture_url?: string|null,
+      thumbnail_url?: string|null,
+      supplier?: string|null,
+      source_url?: string|null,
+      notes?: string|null
+    }
+
+  - Compute `physical_repeat_m` if not provided:
+      physical_repeat_m = sheet_width_mm/1000 || tile_width_mm/1000 || null
+
+  - Insert and return the full row:
+    SQL example (adapt ORM as needed):
+    INSERT INTO materials(
+      id, name, sku, category, unit, price, cost, wastage_pct, margin_pct,
+      tile_width_mm, tile_height_mm, sheet_width_mm, sheet_height_mm,
+      grout_width_mm, thickness_mm, finish,
+      texture_url, thumbnail_url, physical_repeat_m,
+      supplier, source_url, notes, is_active, created_at
+    ) VALUES (
+      gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,$8,
+      $9,$10,$11,$12,
+      $13,$14,$15,
+      $16,$17,$18,
+      COALESCE($19,'PoolTile'), $20, $21, true, now()
+    )
+    RETURNING *;
+
+  - Response: 201 with JSON of the inserted material (id, name, category, unit, price, texture_url, physical_repeat_m, etc).
+  - Add clear error messages (400 on Zod fail; 500 with safe message).
+  - Log payload + material.id on success for debug.
+
+- CORS/JSON:
+  - Ensure Fastify is parsing JSON (default) and CORS allows the frontend origin.
+  - Set `reply.code(201).send(materialRow)`.
+
+==============================================================================
+2) FRONTEND — API CLIENT & FORM WIRE
+==============================================================================
+- Create/verify client:
+  async function createMaterial(input: CreateMaterialInput): Promise<Material> {
+    const res = await fetch(`${API_BASE_URL}/api/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+- Hook Save button (Add Material drawer):
+  - Gather form state (including texture_url/thumbnail_url if already generated).
+  - Ensure `category` and `unit` are set (guard the button).
+  - Await `createMaterial(payload)`.
+  - On success:
+    - Toast “Saved”.
+    - materialsSlice.upsert(material)  // see section 3
+    - If “Save & Add Next”: clear fields except sticky category/unit.
+    - If an editor mask is selected, show CTA “Attach to current mask” → calls attach flow.
+
+- Disable Save while pending; show inline errors from server.
+
+==============================================================================
+3) MATERIALS STATE & LIBRARY
+==============================================================================
+- Implement materialsSlice with:
+  - items: Record<string, Material>
+  - upsert(m: Material)
+  - listByCategory(category): Material[]
+- After Save, the newly created material appears immediately in:
+  - /materials page (list refresh or optimistic add),
+  - Editor Sidebar → Materials tab (by category), without reload.
+
+==============================================================================
+4) EDITOR ATTACH (LINK MATERIAL → MASK)
+==============================================================================
+On selecting a material card in the sidebar:
+- Compute initial repeat scale:
+  const ppm = photo.calibration_pixels_per_meter;
+  const repeat_m = material.physical_repeat_m
+                ?? (material.sheet_width_mm ? material.sheet_width_mm/1000 : null)
+                ?? (material.tile_width_mm ? material.tile_width_mm/1000 : null)
+                ?? 0.30;
+  const initialScale = (1024 / repeat_m) / ppm;
+
+- Persist to mask:
+  PATCH /api/masks/:id  { material_id: material.id, calc_meta_json: { repeatScale: initialScale, rotationDeg: 0, brightness: 0, contrast: 0 } }
+- Update editor state and history; render texture overlay.
+
+==============================================================================
+5) QUICK DIAGNOSTICS (ADD TEMP LOGGING)
+==============================================================================
+- Frontend: log when Save clicked and when response returns (id, name).
+- Network tab should show POST /api/materials → 201 and response JSON with id.
+- Backend logs: “[materials] created id=… name=…”.
+- If request fails, surface full error toast with server message.
+
+==============================================================================
+6) E2E ACCEPTANCE (must pass)
+==============================================================================
+1) Prefill the example URL, correct price manually, click **Save**:
+   - 201 response with material.id
+   - Material shows in /materials and the Editor Sidebar.
+2) In editor: draw a mask → select the new material → overlay renders; undo/redo works.
+3) Refresh the page: the material remains in the library (DB persisted).
+
+==============================================================================
+DON’T CHANGE (non-regression)
+==============================================================================
+- Do not rename or remove existing editor state keys, routes, or DB columns outside materials.
+- Keep existing canvas features and quoting untouched.
