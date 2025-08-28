@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Materials from "@/pages/materials";
+import MaterialsNew from "@/pages/MaterialsNew";
 import Jobs from "@/pages/jobs";
 import JobDetail from "@/pages/job-detail";
 import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
@@ -44,6 +45,12 @@ function Router() {
       <Route path="/dashboard">
         <ProtectedRoute>
           <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/materials-new">
+        <ProtectedRoute>
+          <MaterialsNew />
         </ProtectedRoute>
       </Route>
       

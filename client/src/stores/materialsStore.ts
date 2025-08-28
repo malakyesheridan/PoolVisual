@@ -32,13 +32,18 @@ type MaterialsState = {
   items: Record<string, Material>;
   upsert: (material: Material) => void;
   remove: (id: string) => void;
-  byCategory: (category: Material['category']) => Material[];
+  hydrate: (materials: Material[]) => void;
+  byCategory: (category: Material['category'] | 'all') => Material[];
   getAll: () => Material[];
+  all: () => Material[];
   clear: () => void;
+  lastError?: string | null;
+  setError: (error: string | null) => void;
 };
 
 export const useMaterialsStore = create<MaterialsState>((set, get) => ({
   items: {},
+  lastError: null,
   
   upsert: (material) => set((state) => ({
     items: { ...state.items, [material.id]: material }
@@ -50,10 +55,19 @@ export const useMaterialsStore = create<MaterialsState>((set, get) => ({
     return { items: newItems };
   }),
   
+  hydrate: (materials) => set(() => ({
+    items: Object.fromEntries(materials.map(m => [m.id, m]))
+  })),
+  
   byCategory: (category) => 
-    Object.values(get().items).filter(item => item.category === category),
+    category === 'all' 
+      ? Object.values(get().items)
+      : Object.values(get().items).filter(item => item.category === category),
   
   getAll: () => Object.values(get().items),
+  all: () => Object.values(get().items),
   
-  clear: () => set({ items: {} })
+  clear: () => set({ items: {} }),
+  
+  setError: (error) => set(() => ({ lastError: error }))
 }));

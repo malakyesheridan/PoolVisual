@@ -1,0 +1,525 @@
+You are a senior full-stack engineer in Replit. **Do a full rework and redesign of the Materials page** so it is elegant, fast, and — most importantly — the **Save** flow works 100% of the time. Keep the existing **Prefill** importer (it’s useful) but make the page robust even if the backend varies between `/api/v2/materials`, `/api/materials`, or `/api/materials/_force`. All changes are **additive**; do not break desktop or the editor.
+
+TECH STACK ASSUMPTIONS
+- React + TypeScript + Tailwind.
+- State: Zustand (or minimal internal state if Zustand not present).
+- Backend: Fastify + Postgres (Neon). Some environments expose `/api/v2/materials`, others `/api/materials`, and some have `_force`.
+- We **must not** depend on any single endpoint; instead **resolve the first working endpoint at runtime** and cache it.
+
+================================================================================
+SCOPE (WHAT YOU WILL DELIVER)
+================================================================================
+1) **New Materials Page UI** (`/materials`) that feels native on mobile and clean on desktop:
+   - Header with search, category filter, and **Add Material** primary button.
+   - Empty-state card with CTA when no items.
+   - Grid/list that renders from a **single shared store** (also used by Editor Sidebar).
+   - Footer “Diagnostics” strip shown only in dev (exposes resolved API, last error, and a test insert).
+
+2) **Add/Edit Material Sheet** (full-screen on mobile, drawer on desktop):
+   - Tabs: **Details** | **Prefill** | **Texture**.
+   - Prefill panel (URL + import): fills name/sku/category/unit/size/price and proposes texture.
+   - Texture picker (URL upload, file upload, thumbnail preview).
+   - **Save** button that:
+     - Validates required fields (name, category, unit).
+     - Coerces numbers.
+     - Calls **materials client** that **auto-resolves** to the first working endpoint (v2 → v1 → _force).
+     - Optimistically upserts into the shared store on success.
+     - Emits toasts and clears the form (or stays open on “Save & Add Next”).
+
+3) **Materials Data Client** with endpoint resolver + hard error surfaces:
+   - Tries `/api/v2/materials` (POST), falls back to `/api/materials`, then `/api/materials/_force`.
+   - Caches the working strategy per session.
+   - Coerces camelCase → snake_case and number strings → numbers.
+   - Always returns `{ id, name, … }` row shape.
+
+4) **Shared Store** (Zustand) used by Materials Page **and** Editor Sidebar.
+   - `hydrate(items)`, `upsert(material)`, `byCategory(category)`, `all()`.
+
+5) **Acceptance tests (lightweight)**: in-page test button does a synthetic create and verifies the grid updates.
+
+================================================================================
+FILES TO CREATE / MODIFY
+================================================================================
+
+1) `client/src/state/materialsStore.ts`
+```ts
+import create from 'zustand';
+
+export type Material = {
+  id: string;
+  name: string;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number|null;
+  cost?: number|null;
+  texture_url?: string|null;
+  physical_repeat_m?: number|null;
+  sheet_width_mm?: number|null;
+  sheet_height_mm?: number|null;
+  tile_width_mm?: number|null;
+  tile_height_mm?: number|null;
+  created_at?: string;
+};
+
+type S = {
+  items: Record<string, Material>;
+  hydrate: (arr: Material[]) => void;
+  upsert: (m: Material) => void;
+  byCategory: (c: Material['category']| 'all') => Material[];
+  all: () => Material[];
+  lastError?: string|null;
+  setError: (e: string|null) => void;
+};
+
+export const useMaterialsStore = create<S>((set, get) => ({
+  items: {},
+  hydrate: (arr) => set(() => ({ items: Object.fromEntries(arr.map(m => [m.id, m])) })),
+  upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+  byCategory: (c) => c === 'all' ? Object.values(get().items) : Object.values(get().items).filter(i => i.category === c),
+  all: () => Object.values(get().items),
+  lastError: null,
+  setError: (e) => set(() => ({ lastError: e })),
+}));
+client/src/lib/materialsClient.ts — endpoint resolver + save/list with fallbacks
+
+ts
+Copy code
+type Row = Record<string, any>;
+const API = import.meta.env.VITE_API_BASE_URL || '';
+
+type EndpointKind = 'v2'|'v1'|'force'|null;
+let resolved: EndpointKind = null;
+
+function snakeify(obj: any) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out: any = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const s = k.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`);
+    out[s] = (typeof v === 'string' && v.trim() === '') ? null : v;
+  }
+  return out;
+}
+
+function num(v: any) {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function normalizeInput(input: any) {
+  const base = {
+    name: input.name,
+    sku: input.sku ?? null,
+    category: input.category,
+    unit: input.unit,
+    price: num(input.price ?? input.priceAmount),
+    cost: num(input.cost),
+    wastage_pct: num(input.wastage_pct ?? input.wastagePct),
+    margin_pct: num(input.margin_pct ?? input.marginPct),
+    tile_width_mm: num(input.tile_width_mm ?? input.tileWidthMm),
+    tile_height_mm: num(input.tile_height_mm ?? input.tileHeightMm),
+    sheet_width_mm: num(input.sheet_width_mm ?? input.sheetWidthMm),
+    sheet_height_mm: num(input.sheet_height_mm ?? input.sheetHeightMm),
+    grout_width_mm: num(input.grout_width_mm ?? input.groutWidthMm),
+    thickness_mm: num(input.thickness_mm ?? input.thicknessMm),
+    finish: input.finish ?? null,
+    texture_url: input.texture_url ?? input.textureUrl ?? null,
+    thumbnail_url: input.thumbnail_url ?? input.thumbnailUrl ?? null,
+    supplier: input.supplier ?? 'PoolTile',
+    source_url: input.source_url ?? input.sourceUrl ?? null,
+    notes: input.notes ?? null,
+  };
+  return snakeify(base);
+}
+
+async function tryPost(path: string, body: any) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let json: Row|undefined;
+  try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
+  if (!res.ok) throw new Error(json?.message || json?.error || `${res.status} ${res.statusText}`);
+  return json as Row;
+}
+
+async function tryGet(path: string) {
+  const res = await fetch(`${API}${path}`, { credentials: 'include' });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json?.message || json?.error || `${res.status}`);
+  return json;
+}
+
+export async function resolveEndpoint(): Promise<EndpointKind> {
+  if (resolved) return resolved;
+  try { await tryGet('/api/v2/materials'); resolved = 'v2'; return resolved; } catch {}
+  try { await tryGet('/api/materials');   resolved = 'v1'; return resolved; } catch {}
+  // do not probe force read; just allow write fallback
+  resolved = 'force';
+  return resolved;
+}
+
+export async function listMaterials(): Promise<Row[]> {
+  const kind = await resolveEndpoint();
+  if (kind === 'v2') {
+    const { items } = await tryGet('/api/v2/materials');
+    return items || [];
+  }
+  if (kind === 'v1') {
+    const data = await tryGet('/api/materials');
+    return data?.items || data; // tolerate either shape
+  }
+  // force mode: no list route assumed → attempt v1 list, then empty
+  try { const data = await tryGet('/api/materials'); return data?.items || data || []; } catch { return []; }
+}
+
+export async function createMaterial(input: any): Promise<Row> {
+  const body = normalizeInput(input);
+  const kind = await resolveEndpoint();
+
+  // Primary
+  if (kind === 'v2') {
+    try { return await tryPost('/api/v2/materials', body); } catch (e) { /* fall-through */ }
+  }
+  if (kind === 'v1') {
+    try { return await tryPost('/api/materials', body); } catch (e) { /* fall-through */ }
+  }
+  // Final fallback — force insert with the fields server is guaranteed to accept
+  const forceBody = {
+    name: body.name,
+    category: body.category,
+    unit: body.unit,
+    price: body.price ?? null,
+    sheet_width_mm: body.sheet_width_mm ?? null,
+    sheet_height_mm: body.sheet_height_mm ?? null,
+    tile_width_mm: body.tile_width_mm ?? null,
+    tile_height_mm: body.tile_height_mm ?? null,
+    texture_url: body.texture_url ?? null,
+    thumbnail_url: body.thumbnail_url ?? null,
+    supplier: body.supplier ?? 'PoolTile',
+    source_url: body.source_url ?? null,
+    notes: body.notes ?? null
+  };
+  const row = await tryPost('/api/materials/_force', forceBody);
+  return row;
+}
+client/src/components/materials/AddEditMaterialSheet.tsx — sheet with Prefill + Save
+
+tsx
+Copy code
+import { useState, useMemo } from 'react';
+import { createMaterial } from '../../lib/materialsClient';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { PrefillPanel } from './PrefillPanel'; // reuse your existing one or stub
+import { toast } from 'sonner';
+
+type Props = { open: boolean; onClose: () => void; initial?: any };
+
+export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
+  const upsert = useMaterialsStore(s => s.upsert);
+  const setError = useMaterialsStore(s => s.setError);
+
+  const [tab, setTab] = useState<'details'|'prefill'|'texture'>('details');
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<any>({
+    name: initial?.name || '',
+    sku: initial?.sku || '',
+    category: initial?.category || 'waterline_tile',
+    unit: initial?.unit || 'm2',
+    price: initial?.price ?? '',
+    cost: initial?.cost ?? '',
+    wastage_pct: initial?.wastage_pct ?? '8',
+    margin_pct: initial?.margin_pct ?? '',
+    sheet_width_mm: initial?.sheet_width_mm ?? '',
+    sheet_height_mm: initial?.sheet_height_mm ?? '',
+    tile_width_mm: initial?.tile_width_mm ?? '',
+    tile_height_mm: initial?.tile_height_mm ?? '',
+    grout_width_mm: initial?.grout_width_mm ?? '',
+    thickness_mm: initial?.thickness_mm ?? '',
+    finish: initial?.finish ?? '',
+    texture_url: initial?.texture_url ?? '',
+    thumbnail_url: initial?.thumbnail_url ?? '',
+    supplier: initial?.supplier ?? 'PoolTile',
+    source_url: initial?.source_url ?? '',
+    notes: initial?.notes ?? ''
+  });
+
+  const requiredOk = useMemo(() => !!form.name && !!form.category && !!form.unit, [form]);
+
+  async function onSave(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (!requiredOk) { toast.error('Name, Category, Unit are required'); return; }
+    setSaving(true);
+    setError(null);
+    try {
+      const row = await createMaterial(form);
+      if (!row?.id) throw new Error('No id returned from server');
+      upsert(row);
+      toast.success(`Saved “${row.name}”`);
+      onClose();
+    } catch (err: any) {
+      console.error('[materials] save failed', err);
+      setError(err.message || 'Save failed');
+      toast.error(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose}/>
+      <div className="relative bg-white dark:bg-zinc-900 w-full h-full md:max-w-4xl md:h-[85vh] md:rounded-2xl shadow-xl flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b">
+          <div className="font-semibold">Add Material</div>
+          <button className="btn btn-sm" onClick={onClose}>Close</button>
+        </div>
+
+        <div className="px-4 pt-2 flex gap-2 text-sm">
+          <button className={`tab ${tab==='details'?'tab-active':''}`} onClick={()=>setTab('details')}>Details</button>
+          <button className={`tab ${tab==='prefill'?'tab-active':''}`} onClick={()=>setTab('prefill')}>Prefill</button>
+          <button className={`tab ${tab==='texture'?'tab-active':''}`} onClick={()=>setTab('texture')}>Texture</button>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4 space-y-4">
+          {tab==='prefill' && (
+            <PrefillPanel
+              value={form}
+              onChange={(patch)=> setForm((f:any)=> ({ ...f, ...patch }))}
+            />
+          )}
+          {tab==='details' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div><label className="lbl">Name</label><input className="inp" value={form.name} onChange={e=>setForm({...form, name: e.target.value})}/></div>
+              <div><label className="lbl">SKU</label><input className="inp" value={form.sku} onChange={e=>setForm({...form, sku: e.target.value})}/></div>
+              <div><label className="lbl">Category</label>
+                <select className="inp" value={form.category} onChange={e=>setForm({...form, category:e.target.value})}>
+                  <option value="waterline_tile">Waterline Tile</option>
+                  <option value="interior">Interior</option>
+                  <option value="coping">Coping</option>
+                  <option value="paving">Paving</option>
+                  <option value="fencing">Fencing</option>
+                </select>
+              </div>
+              <div><label className="lbl">Unit</label>
+                <select className="inp" value={form.unit} onChange={e=>setForm({...form, unit:e.target.value})}>
+                  <option value="m2">Square Meters (m²)</option>
+                  <option value="lm">Linear Meters (lm)</option>
+                  <option value="each">Each</option>
+                </select>
+              </div>
+              <div><label className="lbl">Price</label><input className="inp" inputMode="decimal" value={form.price} onChange={e=>setForm({...form, price:e.target.value})}/></div>
+              <div><label className="lbl">Cost</label><input className="inp" inputMode="decimal" value={form.cost} onChange={e=>setForm({...form, cost:e.target.value})}/></div>
+
+              <div><label className="lbl">Sheet Width (mm)</label><input className="inp" inputMode="numeric" value={form.sheet_width_mm} onChange={e=>setForm({...form, sheet_width_mm:e.target.value})}/></div>
+              <div><label className="lbl">Sheet Height (mm)</label><input className="inp" inputMode="numeric" value={form.sheet_height_mm} onChange={e=>setForm({...form, sheet_height_mm:e.target.value})}/></div>
+              <div><label className="lbl">Tile Width (mm)</label><input className="inp" inputMode="numeric" value={form.tile_width_mm} onChange={e=>setForm({...form, tile_width_mm:e.target.value})}/></div>
+              <div><label className="lbl">Tile Height (mm)</label><input className="inp" inputMode="numeric" value={form.tile_height_mm} onChange={e=>setForm({...form, tile_height_mm:e.target.value})}/></div>
+
+              <div className="md:col-span-2"><label className="lbl">Notes</label><textarea className="inp" rows={3} value={form.notes} onChange={e=>setForm({...form, notes:e.target.value})}/></div>
+            </div>
+          )}
+          {tab==='texture' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div><label className="lbl">Texture URL</label><input className="inp" value={form.texture_url} onChange={e=>setForm({...form, texture_url:e.target.value})}/></div>
+              <div><label className="lbl">Thumbnail URL</label><input className="inp" value={form.thumbnail_url} onChange={e=>setForm({...form, thumbnail_url:e.target.value})}/></div>
+              <div className="text-xs opacity-70 md:col-span-2">Tip: paste image from clipboard or use Prefill to auto-pick the best texture.</div>
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t flex gap-2">
+          <button className="btn btn-primary" disabled={!requiredOk || saving} onClick={onSave}>{saving ? 'Saving…' : 'Save'}</button>
+          <button className="btn" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+client/src/components/materials/PrefillPanel.tsx — keep your existing logic; this is a thin wrapper that merges output into the form.
+
+tsx
+Copy code
+type PrefillPanelProps = { value: any; onChange: (patch: any) => void };
+export function PrefillPanel({ value, onChange }: PrefillPanelProps) {
+  // Assume you already have /api/import/prefill?url=…
+  async function onPrefill(url: string) {
+    const res = await fetch(`/api/import/prefill?url=${encodeURIComponent(url)}`);
+    const data = await res.json();
+    onChange({
+      name: data.name ?? value.name,
+      sku: data.sku ?? value.sku,
+      category: data.categoryHint ?? value.category,
+      unit: data.unit ?? value.unit,
+      price: data.price ?? value.price,
+      sheet_width_mm: data.sizes?.sheetW ?? value.sheet_width_mm,
+      sheet_height_mm: data.sizes?.sheetH ?? value.sheet_height_mm,
+      tile_width_mm: data.sizes?.tileW ?? value.tile_width_mm,
+      tile_height_mm: data.sizes?.tileH ?? value.tile_height_mm,
+      texture_url: data.imageUrl ?? value.texture_url,
+      thumbnail_url: data.imageUrl ?? value.thumbnail_url,
+      source_url: data.source_url ?? value.source_url,
+      supplier: data.supplier ?? value.supplier
+    });
+  }
+
+  let urlInput = '';
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input className="inp flex-1" placeholder="Paste supplier product URL…" onChange={e => (urlInput = e.target.value)} />
+        <button className="btn" onClick={() => onPrefill(urlInput)}>Prefill</button>
+      </div>
+      <div className="text-xs opacity-70">After prefill, review details and press Save.</div>
+    </div>
+  );
+}
+client/src/pages/MaterialsPage.tsx — complete redesign + diagnostics
+
+tsx
+Copy code
+import { useEffect, useState } from 'react';
+import { useMaterialsStore } from '../state/materialsStore';
+import { listMaterials } from '../lib/materialsClient';
+import { AddEditMaterialSheet } from '../components/materials/AddEditMaterialSheet';
+
+export default function MaterialsPage() {
+  const hydrate = useMaterialsStore(s => s.hydrate);
+  const mats = useMaterialsStore(s => s.all());
+  const lastError = useMaterialsStore(s => s.lastError);
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState<'all'|'waterline_tile'|'interior'|'coping'|'paving'|'fencing'>('all');
+  const [open, setOpen] = useState(false);
+  const [diag, setDiag] = useState<{endpoint?: string; lastCheck?: string}>({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = await listMaterials();
+        hydrate(items || []);
+        setDiag(d => ({ ...d, lastCheck: new Date().toLocaleTimeString() }));
+      } catch (e: any) {
+        console.error('[materials] list failed', e);
+      }
+    })();
+  }, [hydrate]);
+
+  const filtered = mats.filter(m =>
+    (cat === 'all' || m.category === cat) &&
+    (!q || (m.name?.toLowerCase().includes(q.toLowerCase()) || m.sku?.toLowerCase().includes(q.toLowerCase())))
+  );
+
+  return (
+    <div className="p-4 space-y-4">
+      <div className="flex flex-col md:flex-row md:items-center gap-3">
+        <h1 className="text-xl font-semibold flex-1">Materials Library</h1>
+        <div className="flex gap-2 w-full md:w-auto">
+          <input className="inp flex-1" placeholder="Search materials…" value={q} onChange={e=>setQ(e.target.value)} />
+          <select className="inp" value={cat} onChange={e=>setCat(e.target.value as any)}>
+            <option value="all">All Categories</option>
+            <option value="waterline_tile">Waterline Tile</option>
+            <option value="interior">Interior</option>
+            <option value="coping">Coping</option>
+            <option value="paving">Paving</option>
+            <option value="fencing">Fencing</option>
+          </select>
+          <button className="btn btn-primary" onClick={()=>setOpen(true)}>Add Material</button>
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="border rounded-xl p-10 text-center text-sm text-zinc-500">
+          <div className="mb-2 text-zinc-400">No materials found</div>
+          <button className="btn" onClick={()=>setOpen(true)}>Add Your First Material</button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {filtered.map(m => (
+            <div key={m.id} className="border rounded-xl p-3 flex flex-col">
+              <div className="aspect-[4/3] rounded-lg bg-zinc-100 overflow-hidden mb-2">
+                {m.texture_url ? <img src={m.texture_url} alt="" className="w-full h-full object-cover"/> : <div className="w-full h-full grid place-items-center text-xs text-zinc-400">No image</div>}
+              </div>
+              <div className="font-medium">{m.name}</div>
+              <div className="text-xs text-zinc-500">{m.category} · {m.unit}</div>
+              {m.price != null && <div className="text-sm mt-1">${m.price} / {m.unit}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Diagnostics (dev only) */}
+      {import.meta.env.MODE !== 'production' && (
+        <div className="border rounded-xl p-3 text-xs space-y-2">
+          <div className="font-medium">Diagnostics</div>
+          <div>Last Error: {lastError || '—'}</div>
+          <div>Last Check: {diag.lastCheck || '—'}</div>
+          <div className="flex gap-2">
+            <button
+              className="btn btn-sm"
+              onClick={async () => {
+                try {
+                  // Minimal synthetic create to prove the loop
+                  const resp = await fetch('/api/materials/_force', {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name:`Probe ${Date.now()}`, category:'waterline_tile', unit:'m2', price: 123.45 })
+                  });
+                  const row = await resp.json();
+                  if (!resp.ok) throw new Error(row?.message || row?.error || 'force failed');
+                  useMaterialsStore.getState().upsert(row);
+                  alert(`Inserted: ${row.id}`);
+                } catch (e: any) {
+                  alert(`Test insert failed: ${e.message}`);
+                }
+              }}
+            >Test Insert (Force)</button>
+            <a className="btn btn-sm" href="/api/_materials/debug" target="_blank">Debug JSON</a>
+            <a className="btn btn-sm" href="/api/_materials/last" target="_blank">Recent Rows</a>
+          </div>
+        </div>
+      )}
+
+      <AddEditMaterialSheet open={open} onClose={()=>setOpen(false)} />
+    </div>
+  );
+}
+Tailwind shorthands (optional): add small utilities for inputs and tabs if not present:
+
+css
+Copy code
+/* tailwind.css or globals.css */
+.inp { @apply w-full h-10 px-3 rounded-lg border border-zinc-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 dark:bg-zinc-900 dark:border-zinc-700; }
+.lbl { @apply block text-sm mb-1 text-zinc-600 dark:text-zinc-300; }
+.btn { @apply inline-flex items-center justify-center px-3 py-2 rounded-lg border border-transparent bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700; }
+.btn-primary { @apply bg-sky-600 text-white hover:bg-sky-700; }
+.btn-sm { @apply px-2 py-1 text-xs rounded-md; }
+.tab { @apply px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800; }
+.tab-active { @apply bg-zinc-200 dark:bg-zinc-700 font-medium; }
+================================================================================
+HOW THIS FIXES “SAVE IS NOT WORKING”
+The materialsClient resolves a functioning endpoint at runtime (v2 → v1 → _force) and caches it. No more guessing which backend route exists.
+
+The client coerces numbers and snakeifies keys so Zod/SQL validation passes.
+
+The sheet awaits the create call, asserts an id in the response, and upserts the result into the shared store used by both the Materials grid and the Editor Sidebar.
+
+A visible Diagnostics strip allows one-click force insert and links to debug JSON so you can see DB state instantly.
+
+================================================================================
+ACCEPTANCE CRITERIA
+Open Materials → click Add Material → fill Name/Category/Unit → Save → the new card appears immediately.
+
+DevTools shows a single successful POST to one of: /api/v2/materials or /api/materials or /api/materials/_force, returning JSON with id.
+
+Reload the page → the new material still appears (list API/hydration works).
+
+Editor Sidebar (which must read from the same store) shows the new material and can attach it to a mask.
+
+In Diagnostics, Test Insert (Force) creates a probe row and immediately adds it to the grid.
+
+Implement all of the above exactly. This is a page-level rework that isolates the UX, stabilizes the data path with intelligent fallbacks, and surfaces errors explicitly so Save becomes deterministic.
