@@ -151,7 +151,6 @@ export function registerMaterialRoutes(app: Express) {
         sheetWidthMm: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : null,
         sheetHeightMm: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : null,
         groutWidthMm: data.groutWidthMm ? parseInt(data.groutWidthMm) : null,
-        thicknessMm: data.thicknessMm ? parseInt(data.thicknessMm) : null,
         notes: data.notes || null,
         textureUrl: textureResult?.textureUrl || null,
         thumbnailUrl: textureResult?.thumbnailUrl || null,

@@ -1,0 +1,155 @@
+You are a senior full-stack engineer in Replit. Implement the **Save Material → Library → Editor** pipeline so that materials created via Prefill/manual entry are **saved to the DB**, **visible in the Materials Library & Sidebar**, and **attach to masks** with correct scaling. Keep everything backward-compatible. TypeScript everywhere.
+
+==============================================================================
+NON-REGRESSION
+==============================================================================
+- Do not rename/remove existing routes, types, or state keys.
+- Existing editor features keep working exactly as now.
+- Prefill can remain imperfect for price; Save must persist whatever the user enters.
+
+==============================================================================
+BACKEND — MATERIAL SAVE API (FASTIFY + ZOD)
+==============================================================================
+Add/confirm endpoints (Neon Postgres):
+1) **POST /api/materials**
+   - Body (Zod):
+     ```
+     {
+       name: string,
+       sku?: string,
+       category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing',
+       unit: 'm2'|'lm'|'each',
+       price?: number|null,
+       cost?: number|null,
+       wastage_pct?: number|null,
+       margin_pct?: number|null,
+       // sizing
+       tile_width_mm?: number|null,
+       tile_height_mm?: number|null,
+       sheet_width_mm?: number|null,
+       sheet_height_mm?: number|null,
+       grout_width_mm?: number|null,
+       thickness_mm?: number|null,
+       finish?: string|null,
+       // media
+       texture_url?: string|null,
+       thumbnail_url?: string|null,
+       imageUrlFallback?: string|null, // optional: if provided and texture_url empty, process it
+       // metadata
+       supplier?: string|null,
+       source_url?: string|null,
+       notes?: string|null,
+     }
+     ```
+   - Behavior:
+     - If `texture_url` is empty and `imageUrlFallback` provided → call existing **upload-texture-from-url** → set `texture_url`,`thumbnail_url`.
+     - Compute **physical_repeat_m** if missing:
+       `sheet_width_mm/1000 || tile_width_mm/1000 || null`.
+     - Insert row; return full material record (id, everything needed by editor/sidebar).
+
+2) **PATCH /api/materials/:id**
+   - Same body, partial update. Recompute `physical_repeat_m` if sizes changed.
+
+3) **GET /api/materials**
+   - Supports `?category=&q=&page=&pageSize=`. Returns `{ items, total }`.
+   - Each item includes: id, name, category, unit, price, wastage_pct, texture_url, thumbnail_url, physical_repeat_m, sheet/tile sizes.
+
+All write ops use transactions; numeric fields validated; return 400 on bad input; never throw raw DB errors.
+
+==============================================================================
+FRONTEND — SAVE FLOW (ADD MATERIAL DRAWER)
+==============================================================================
+In the existing Add Material drawer:
+- Ensure the **Save** and **Save & Add Next** buttons call a single action:
+  - If a preview image exists but **no** `texture_url` yet (we only have `imageUrl`) → first call `POST /api/materials/upload-texture-from-url` and set the returned URLs in form state.
+  - Submit **POST /api/materials** with the final payload.
+  - On success:
+    - Toast “Saved”.
+    - **Update local library state** immediately (no full reload) via `materialsSlice.upsert(item)`.
+    - Offer CTA: **“Attach to current mask”** (if an editor photo + selected mask exist).
+    - If Save & Add Next: clear fields except sticky `category` and `unit`; keep focus on Product URL.
+
+Form guards:
+- Require: `name`, `category`, `unit`.
+- Allow empty `price` (user can set later).
+- Show a small “Will scale to **{physical_repeat_m||‘adjust manually’}** m” hint beneath sizes.
+
+==============================================================================
+MATERIALS STATE & SIDEBAR
+==============================================================================
+- Add `materialsSlice`:
+  - `load(params)` → GET /api/materials (paged)
+  - `upsert(material)` → add/update in memory
+  - `byCategory` selector for sidebar tabs
+- Sidebar **Materials** tab:
+  - Renders from `materialsSlice`.
+  - On **Select**:
+    - If a mask is selected: call **attach** flow (below).
+    - Else toast “Select a mask first”.
+
+==============================================================================
+EDITOR ATTACH FLOW (LINK MATERIAL → MASK)
+==============================================================================
+When user selects a material card:
+1) Compute initial repeat scale:
+const ppm = photo.calibration_pixels_per_meter; // pixels per meter on the photo
+const repeat_m = material.physical_repeat_m
+?? (material.sheet_width_mm ? material.sheet_width_mm/1000 : null)
+?? (material.tile_width_mm ? material.tile_width_mm/1000 : null)
+?? 0.30; // fallback 30cm
+const texturePxPerMeter = 1024 / repeat_m; // our texture tile is 1024px
+const initialScale = texturePxPerMeter / ppm;
+
+go
+Copy code
+2) Build default `calc_meta_json`:
+{ repeatScale: initialScale, rotationDeg: (mask.type==='waterline_band'?0:0),
+brightness: 0, contrast: 0 }
+
+markdown
+Copy code
+3) Persist:
+- `PATCH /api/masks/:id` (or POST upsert) with `{ material_id: material.id, calc_meta_json }`.
+- Server should recompute mask `area_m2` / `perimeter_m` if calibration exists (unchanged behavior).
+4) Update editor state immediately; render texture via existing overlay with feathering/shading.
+
+Undo/Redo:
+- Pushing a history snapshot is required when:
+- attaching/removing material,
+- changing repeat/rotation/brightness/contrast.
+- Undo restores previous material/controls; Redo reapplies.
+
+==============================================================================
+LIBRARY VISIBILITY (AFTER SAVE)
+==============================================================================
+- New material should appear:
+- in **/materials** page (top of list or by search),
+- in **Editor Sidebar → Materials** tab under its category (without reload).
+- If the drawer was opened from the editor context, show the **“Attach to current mask”** inline CTA; clicking it runs the attach flow and closes the drawer.
+
+==============================================================================
+ERROR HANDLING
+==============================================================================
+- If texture processing fails (bad image URL), allow Save without `texture_url`; show banner “Texture missing — upload later”; material still usable as a color swatch (render solid fill).
+- If price parsing was wrong, persist the manually entered `price` & `unit` as source of truth.
+
+==============================================================================
+TESTS (CRITICAL)
+==============================================================================
+Unit:
+- `physical_repeat_m` computed correctly from sizes.
+- Initial `repeatScale` formula returns expected values for ppm=500, repeat_m=0.3 (assert tolerance).
+E2E (Playwright):
+1) Prefill the example URL → **manually correct price** → **Save**:
+- Material appears in library grid and sidebar.
+- Texture preview exists (non-logo).
+2) In editor: draw mask → select the saved material → overlay appears, sensible scale, controls work.
+3) Undo attach → mask returns to previous state; Redo re-attaches.
+4) Save & Add Next leaves drawer open and keeps category/unit sticky.
+
+==============================================================================
+ACCEPTANCE CRITERIA
+==============================================================================
+- Clicking **Save** persists all fields (including sizes, price, notes, texture URLs) and updates both the Library and Editor sidebar immediately.
+- From the sidebar I can **attach** the saved material to a selected mask and it renders at a realistic default scale using calibration.
+- No console errors; strict TypeScript; all existing editor features remain unchanged.

@@ -26,6 +26,7 @@ import {
   Download,
   Check
 } from "lucide-react";
+import { useMaterialsStore } from "@/stores/materialsSlice";
 
 const materialCategories = [
   { value: 'coping', label: 'Coping' },
@@ -95,30 +96,41 @@ export default function Materials() {
   });
 
   const createMaterialMutation = useMutation({
-    mutationFn: (data: any) => apiClient.createMaterial(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/materials'] });
-      setShowAddForm(false);
-      setFormData({
-        name: '',
-        sku: '',
-        category: '',
-        unit: '',
-        cost: '',
-        price: '',
-        defaultWastagePct: '10',
-        defaultMarginPct: '30',
-        notes: '',
-      });
-      toast({
-        title: "Material created",
-        description: "The material has been added successfully.",
-      });
+    mutationFn: async (data: any) => {
+      // If we have a preview image but no texture_url, include imageUrlFallback
+      const payload = {
+        ...data,
+        imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
+      };
+      
+      return apiClient.createMaterial(payload);
     },
-    onError: (error) => {
+    onSuccess: (material: any) => {
+      // Update materials store immediately
+      if (useMaterialsStore.getState) {
+        useMaterialsStore.getState().upsert(material);
+      }
+      
+      queryClient.invalidateQueries({ queryKey: ['/api/materials'] });
+      
+      toast({
+        title: "Material saved",
+        description: `${material.name} has been added to your library.`,
+      });
+      
+      // Handle form state based on save type
+      if (!saveAndNext) {
+        setShowAddForm(false);
+        resetForm();
+      } else {
+        resetFormForNext();
+        setSaveAndNext(false);
+      }
+    },
+    onError: (error: any) => {
       toast({
         title: "Error creating material",
-        description: error.message,
+        description: error?.response?.data?.error || error.message,
         variant: "destructive",
       });
     },
@@ -137,24 +149,42 @@ export default function Materials() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Validate required fields
+    if (!formData.name || !formData.category || !formData.unit) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in Name, Category, and Unit fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     const materialData = {
-      ...formData,
-      orgId: selectedOrgId,
+      name: formData.name,
+      sku: formData.sku || null,
+      category: formData.category,
+      unit: formData.unit,
+      supplier: formData.supplier || "PoolTile",
+      source_url: formData.sourceUrl || null,
+      finish: formData.finish || null,
       cost: formData.cost ? parseFloat(formData.cost) : null,
       price: formData.price ? parseFloat(formData.price) : null,
-      wastagePct: parseFloat(formData.wastagePct),
-      marginPct: parseFloat(formData.marginPct),
-      fileKey: fileKey
+      wastage_pct: formData.wastagePct ? parseFloat(formData.wastagePct) : 8,
+      margin_pct: formData.marginPct ? parseFloat(formData.marginPct) : null,
+      tile_width_mm: formData.tileWidthMm ? parseInt(formData.tileWidthMm) : null,
+      tile_height_mm: formData.tileHeightMm ? parseInt(formData.tileHeightMm) : null,
+      sheet_width_mm: formData.sheetWidthMm ? parseInt(formData.sheetWidthMm) : null,
+      sheet_height_mm: formData.sheetHeightMm ? parseInt(formData.sheetHeightMm) : null,
+      grout_width_mm: formData.groutWidthMm ? parseInt(formData.groutWidthMm) : null,
+      thickness_mm: formData.thicknessMm ? parseInt(formData.thicknessMm) : null,
+      notes: formData.notes || null,
+      texture_url: texture?.textureUrl || null,
+      thumbnail_url: texture?.thumbnailUrl || null,
+      fileKey: fileKey,
+      orgId: selectedOrgId
     };
 
     createMaterialMutation.mutate(materialData);
-    
-    // Handle Save & Add Next
-    if (saveAndNext) {
-      setSaveAndNext(false);
-      resetFormForNext();
-      // Keep form open for next material
-    }
   };
 
   const handleInputChange = (field: string, value: string) => {

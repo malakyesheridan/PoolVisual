@@ -162,8 +162,8 @@ export class TextureProcessor {
       create: {
         width: size,
         height: size,
-        channels: 1,
-        background: 128 // 50% gray
+        channels: 3,
+        background: { r: 128, g: 128, b: 128 } // 50% gray
       }
     });
 
