@@ -159,7 +159,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
               key={t}
               className={`px-4 py-2 rounded-t-lg capitalize transition-colors ${
                 tab === t 
-                  ? 'bg-orange-100 text-orange-700 border-b-2 border-orange-500' 
+                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' 
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
               onClick={() => setTab(t)}
@@ -366,7 +366,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
             <Button 
               onClick={onSave} 
               disabled={saving || !requiredOk}
-              className="bg-orange-600 hover:bg-orange-700"
+              className="bg-blue-600 hover:bg-blue-700"
             >
               {saving ? 'Saving...' : 'Save Material'}
             </Button>

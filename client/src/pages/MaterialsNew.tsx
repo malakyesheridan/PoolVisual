@@ -94,7 +94,7 @@ export default function MaterialsNew() {
             
             <Button 
               onClick={() => setShowAddSheet(true)}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
               data-testid="button-add-material"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -166,7 +166,7 @@ export default function MaterialsNew() {
             </p>
             <Button 
               onClick={() => setShowAddSheet(true)}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
+              className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Your First Material
@@ -225,7 +225,7 @@ export default function MaterialsNew() {
                     <div>
                       {material.price && (
                         <p className="font-semibold text-green-600">
-                          ${material.price.toFixed(2)}
+                          ${typeof material.price === 'number' ? material.price.toFixed(2) : parseFloat(material.price.toString()).toFixed(2)}
                         </p>
                       )}
                       <p className="text-xs text-gray-500">per {material.unit}</p>
