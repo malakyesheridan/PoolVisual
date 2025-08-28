@@ -26,7 +26,7 @@ import {
   Download,
   Check
 } from "lucide-react";
-import { useMaterialsStore } from "@/stores/materialsSlice";
+import { useMaterialsStore } from "@/stores/materialsStore";
 
 const materialCategories = [
   { value: 'coping', label: 'Coping' },
@@ -111,10 +111,8 @@ export default function Materials() {
       return result;
     },
     onSuccess: (material: any) => {
-      // Update materials store immediately
-      if (useMaterialsStore.getState) {
-        useMaterialsStore.getState().upsert(material);
-      }
+      // Update materials store immediately for instant UI updates
+      useMaterialsStore.getState().upsert(material);
       
       queryClient.invalidateQueries({ queryKey: ['/api/materials'] });
       

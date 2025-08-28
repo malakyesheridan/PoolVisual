@@ -30,25 +30,38 @@ const upload = multer({
 
 const createMaterialSchema = z.object({
   name: z.string().min(1),
-  sku: z.string().optional(),
+  sku: z.string().optional().nullable(),
   category: z.enum(['coping', 'waterline_tile', 'interior', 'paving', 'fencing']),
   unit: z.enum(['m2', 'lm', 'each']),
-  price: z.string().optional(),
-  cost: z.string().optional(),
+  price: z.coerce.number().optional().nullable(),
+  cost: z.coerce.number().optional().nullable(),
+  wastage_pct: z.coerce.number().optional().nullable(),
+  margin_pct: z.coerce.number().optional().nullable(),
+  supplier: z.string().optional().nullable(),
+  color: z.string().optional().nullable(),
+  finish: z.string().optional().nullable(),
+  tile_width_mm: z.coerce.number().optional().nullable(),
+  tile_height_mm: z.coerce.number().optional().nullable(),
+  sheet_width_mm: z.coerce.number().optional().nullable(),
+  sheet_height_mm: z.coerce.number().optional().nullable(),
+  grout_width_mm: z.coerce.number().optional().nullable(),
+  thickness_mm: z.coerce.number().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  texture_url: z.string().url().optional().nullable(),
+  thumbnail_url: z.string().url().optional().nullable(),
+  source_url: z.string().url().optional().nullable(),
+  org_id: z.string().uuid().optional().nullable(),
+  fileKey: z.string().optional(),
+  makeSeamless: z.boolean().optional(),
+  // Support both camelCase (frontend) and snake_case (backend) for compatibility
   wastagePct: z.string().optional(),
   marginPct: z.string().optional(),
-  supplier: z.string().optional(),
-  color: z.string().optional(),
-  finish: z.string().optional(),
   tileWidthMm: z.string().optional(),
   tileHeightMm: z.string().optional(),
   sheetWidthMm: z.string().optional(),
   sheetHeightMm: z.string().optional(),
   groutWidthMm: z.string().optional(),
-  thicknessMm: z.string().optional(),
-  notes: z.string().optional(),
-  fileKey: z.string().optional(),
-  makeSeamless: z.boolean().optional()
+  thicknessMm: z.string().optional()
 });
 
 // Temporary file storage for upload process
@@ -132,36 +145,50 @@ export function registerMaterialRoutes(app: Express) {
         }
       }
 
+      // Helper function to safely parse numbers
+      const safeNumber = (val: any, fallback: number | null = null) => {
+        if (val === null || val === undefined || val === '') return fallback;
+        const parsed = typeof val === 'string' ? parseFloat(val) : val;
+        return isNaN(parsed) ? fallback : parsed;
+      };
+
+      // Support both camelCase and snake_case inputs for compatibility
+      const getValue = (snakeKey: string, camelKey: string) => {
+        return (data as any)[snakeKey] ?? (data as any)[camelKey];
+      };
+
       // Prepare material data
       const materialData = {
-        orgId: null, // Will be set when auth is integrated
+        orgId: data.org_id || null,
         name: data.name,
         sku: data.sku || null,
         category: data.category,
         unit: data.unit,
-        price: data.price || null,
-        cost: data.cost || null,
-        wastagePct: data.wastagePct || "8",
-        marginPct: data.marginPct || null,
-        supplier: data.supplier || null,
+        price: safeNumber(data.price),
+        cost: safeNumber(data.cost),
+        wastagePct: safeNumber(getValue('wastage_pct', 'wastagePct'), 8),
+        marginPct: safeNumber(getValue('margin_pct', 'marginPct')),
+        supplier: data.supplier || 'PoolTile',
         color: data.color || null,
         finish: data.finish || null,
-        tileWidthMm: data.tileWidthMm ? parseInt(data.tileWidthMm) : null,
-        tileHeightMm: data.tileHeightMm ? parseInt(data.tileHeightMm) : null,
-        sheetWidthMm: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : null,
-        sheetHeightMm: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : null,
-        groutWidthMm: data.groutWidthMm ? parseInt(data.groutWidthMm) : null,
+        tileWidthMm: safeNumber(getValue('tile_width_mm', 'tileWidthMm')),
+        tileHeightMm: safeNumber(getValue('tile_height_mm', 'tileHeightMm')),
+        sheetWidthMm: safeNumber(getValue('sheet_width_mm', 'sheetWidthMm')),
+        sheetHeightMm: safeNumber(getValue('sheet_height_mm', 'sheetHeightMm')),
+        groutWidthMm: safeNumber(getValue('grout_width_mm', 'groutWidthMm')),
+        thicknessMm: safeNumber(getValue('thickness_mm', 'thicknessMm')),
         notes: data.notes || null,
-        textureUrl: textureResult?.textureUrl || null,
-        thumbnailUrl: textureResult?.thumbnailUrl || null,
+        textureUrl: textureResult?.textureUrl || data.texture_url || null,
+        thumbnailUrl: textureResult?.thumbnailUrl || data.thumbnail_url || null,
+        sourceUrl: data.source_url || null,
         physicalRepeatM: textureResult?.physicalRepeatM?.toString() || (() => {
           const sizes = {
-            sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : 0,
-            sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : 0,
-            tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : 0,
-            tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : 0,
-            grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : 0,
-            thickness: data.thicknessMm ? parseInt(data.thicknessMm) : 0
+            sheetW: safeNumber(getValue('sheet_width_mm', 'sheetWidthMm'), 0),
+            sheetH: safeNumber(getValue('sheet_height_mm', 'sheetHeightMm'), 0),
+            tileW: safeNumber(getValue('tile_width_mm', 'tileWidthMm'), 0),
+            tileH: safeNumber(getValue('tile_height_mm', 'tileHeightMm'), 0),
+            grout: safeNumber(getValue('grout_width_mm', 'groutWidthMm'), 0),
+            thickness: safeNumber(getValue('thickness_mm', 'thicknessMm'), 0)
           };
           return ImportService.calculatePhysicalRepeat(sizes).toString();
         })()

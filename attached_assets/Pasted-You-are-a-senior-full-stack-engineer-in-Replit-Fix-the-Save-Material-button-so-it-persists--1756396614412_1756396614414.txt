@@ -1,0 +1,380 @@
+You are a senior full-stack engineer in Replit. **Fix the “Save Material” button** so it **persists the material + specs to the database**, immediately appears in the **Materials Library & Editor Sidebar**, and can be **attached to masks**. Keep **all current features** working (non-regression). Use **TypeScript** everywhere. Do **not** rename/remove existing routes/state keys. All changes are **additive**.
+
+================================================================================
+ROOT-CAUSE CHECKLIST (APPLY ALL FIXES)
+================================================================================
+Common reasons “Save” fails in this stack:
+1) **Route mismatch**: frontend calls `/materials` but backend exposes `/api/materials` (or vice-versa).
+2) **CORS/credentials**: `fetch` missing `credentials:'include'` or server CORS blocks POST.
+3) **Zod type mismatch**: numeric fields come as **strings** from inputs; schema expects numbers → 400. Use **`z.coerce.number()`**.
+4) **DB NOT NULL** constraints**:** missing `unit/category/is_active/created_at/org_id`.
+5) **Snake vs camel case**: backend expects `sheet_width_mm` but UI posts `sheetWidthMm`.
+6) **Response handling**: API returns 201, but UI never **updates state**; list not refreshed.
+7) **Unhandled error**: server throws raw SQL error; UI swallows; no toast/log.
+
+**Implement all patches below** so Save succeeds deterministically.
+
+================================================================================
+BACKEND — POST /api/materials (CREATE) WITH SAFE COERCION
+================================================================================
+File: `apps/backend/src/routes/materials.ts`
+```ts
+import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { sql } from '../db'; // your pg client helper
+
+// Coerce numbers (accept "149.00" from form), allow nullables:
+const MaterialCreateSchema = z.object({
+  name: z.string().min(1),
+  sku: z.string().trim().optional().nullable(),
+  category: z.enum(['coping','waterline_tile','interior','paving','fencing']),
+  unit: z.enum(['m2','lm','each']),
+  price: z.coerce.number().optional().nullable(),
+  cost: z.coerce.number().optional().nullable(),
+  wastage_pct: z.coerce.number().optional().nullable(),
+  margin_pct: z.coerce.number().optional().nullable(),
+  tile_width_mm: z.coerce.number().optional().nullable(),
+  tile_height_mm: z.coerce.number().optional().nullable(),
+  sheet_width_mm: z.coerce.number().optional().nullable(),
+  sheet_height_mm: z.coerce.number().optional().nullable(),
+  grout_width_mm: z.coerce.number().optional().nullable(),
+  thickness_mm: z.coerce.number().optional().nullable(),
+  finish: z.string().optional().nullable(),
+  texture_url: z.string().url().optional().nullable(),
+  thumbnail_url: z.string().url().optional().nullable(),
+  supplier: z.string().optional().nullable(),
+  source_url: z.string().url().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  org_id: z.string().uuid().optional().nullable() // if you scope by org
+});
+
+export async function materialsRoutes(app: FastifyInstance) {
+  app.post('/api/materials', async (req, reply) => {
+    const parsed = MaterialCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      reply.code(400).send({ error: 'INVALID_INPUT', details: parsed.error.flatten() });
+      return;
+    }
+    const b = parsed.data;
+
+    // Compute physical repeat (meters) if sizes provided
+    const physical_repeat_m =
+      (b.sheet_width_mm && b.sheet_width_mm > 0 ? b.sheet_width_mm / 1000 :
+       b.tile_width_mm && b.tile_width_mm > 0 ? b.tile_width_mm / 1000 : null);
+
+    // Defaults
+    const supplier = b.supplier ?? 'PoolTile';
+    const is_active = true;
+
+    // Insert; RETURNING full row
+    const q = `
+      INSERT INTO materials (
+        id, name, sku, category, unit, price, cost, wastage_pct, margin_pct,
+        tile_width_mm, tile_height_mm, sheet_width_mm, sheet_height_mm,
+        grout_width_mm, thickness_mm, finish,
+        texture_url, thumbnail_url, physical_repeat_m,
+        supplier, source_url, notes, org_id, is_active, created_at
+      )
+      VALUES (
+        gen_random_uuid(), $1,$2,$3,$4,$5,$6,$7,$8,
+        $9,$10,$11,$12,
+        $13,$14,$15,
+        $16,$17,$18,
+        $19,$20,$21,$22, $23, now()
+      )
+      RETURNING *
+    `;
+    const params = [
+      b.name, b.sku ?? null, b.category, b.unit, b.price ?? null, b.cost ?? null, b.wastage_pct ?? null, b.margin_pct ?? null,
+      b.tile_width_mm ?? null, b.tile_height_mm ?? null, b.sheet_width_mm ?? null, b.sheet_height_mm ?? null,
+      b.grout_width_mm ?? null, b.thickness_mm ?? null, b.finish ?? null,
+      b.texture_url ?? null, b.thumbnail_url ?? null, physical_repeat_m,
+      supplier, b.source_url ?? null, b.notes ?? null, b.org_id ?? null, is_active
+    ];
+    try {
+      const { rows } = await sql.query(q, params);
+      reply.code(201).send(rows[0]);
+    } catch (err: any) {
+      app.log.error({ err }, '[materials] insert failed');
+      reply.code(500).send({ error: 'DB_INSERT_FAILED' });
+    }
+  });
+
+  // (Optional) GET /api/materials list endpoint here if missing
+}
+Ensure route is registered in your main server:
+
+ts
+Copy code
+import { materialsRoutes } from './routes/materials';
+app.register(materialsRoutes);
+CORS (if frontend is a different origin):
+
+ts
+Copy code
+// apps/backend/src/server.ts
+import fastifyCors from '@fastify/cors';
+app.register(fastifyCors, {
+  origin: true,
+  credentials: true,
+  methods: ['GET','POST','PATCH','DELETE','OPTIONS']
+});
+================================================================================
+DB SAFETY — MIGRATIONS (NEON)
+Ensure required defaults exist:
+
+sql
+Copy code
+ALTER TABLE materials
+  ALTER COLUMN is_active SET DEFAULT true,
+  ALTER COLUMN created_at SET DEFAULT now();
+
+-- If org_id must be nullable (recommended for global materials)
+ALTER TABLE materials ALTER COLUMN org_id DROP NOT NULL;
+If gen_random_uuid() not available:
+
+sql
+Copy code
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+================================================================================
+FRONTEND — API CLIENT (COERCION + CREDENTIALS)
+File: apps/frontend/src/api/materials.ts
+
+ts
+Copy code
+export type CreateMaterialInput = {
+  name: string;
+  sku?: string | null;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number | null;
+  cost?: number | null;
+  wastage_pct?: number | null;
+  margin_pct?: number | null;
+  tile_width_mm?: number | null;
+  tile_height_mm?: number | null;
+  sheet_width_mm?: number | null;
+  sheet_height_mm?: number | null;
+  grout_width_mm?: number | null;
+  thickness_mm?: number | null;
+  finish?: string | null;
+  texture_url?: string | null;
+  thumbnail_url?: string | null;
+  supplier?: string | null;
+  source_url?: string | null;
+  notes?: string | null;
+  org_id?: string | null;
+};
+
+export async function createMaterial(input: CreateMaterialInput) {
+  // Ensure numbers (string inputs → numbers)
+  const num = (v: any) => (v === '' || v === undefined || v === null ? null : Number(v));
+  const payload = {
+    ...input,
+    price: num(input.price),
+    cost: num(input.cost),
+    wastage_pct: num(input.wastage_pct),
+    margin_pct: num(input.margin_pct),
+    tile_width_mm: num(input.tile_width_mm),
+    tile_height_mm: num(input.tile_height_mm),
+    sheet_width_mm: num(input.sheet_width_mm),
+    sheet_height_mm: num(input.sheet_height_mm),
+    grout_width_mm: num(input.grout_width_mm),
+    thickness_mm: num(input.thickness_mm),
+  };
+
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/materials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Create material failed: ${res.status}`);
+  }
+  return res.json();
+}
+================================================================================
+FRONTEND — WIRE SAVE BUTTON (DRAWER/MODAL)
+File: apps/frontend/src/components/materials/AddMaterialDrawer.tsx
+
+tsx
+Copy code
+import { useState } from 'react';
+import { createMaterial } from '../../api/materials';
+import { useMaterialsSlice } from '../../state/materialsSlice';
+import { toast } from 'sonner'; // or your toast lib
+
+export function AddMaterialDrawer({ onClose }: { onClose: () => void }) {
+  const upsert = useMaterialsSlice(s => s.upsert);
+  const [saving, setSaving] = useState(false);
+
+  // form state (controlled inputs) — ensure category & unit are set
+  const [form, setForm] = useState({
+    name: '',
+    sku: '',
+    category: 'waterline_tile' as const,
+    unit: 'm2' as const,
+    price: '',
+    cost: '',
+    wastage_pct: '8',
+    margin_pct: '',
+    tile_width_mm: '',
+    tile_height_mm: '',
+    sheet_width_mm: '',
+    sheet_height_mm: '',
+    grout_width_mm: '',
+    thickness_mm: '',
+    finish: '',
+    texture_url: '',
+    thumbnail_url: '',
+    supplier: 'PoolTile',
+    source_url: '',
+    notes: ''
+  });
+
+  const onSave = async () => {
+    if (!form.name || !form.category || !form.unit) {
+      toast.error('Name, Category and Unit are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        name: form.name,
+        sku: form.sku || null,
+        category: form.category,
+        unit: form.unit,
+        price: form.price,
+        cost: form.cost,
+        wastage_pct: form.wastage_pct,
+        margin_pct: form.margin_pct,
+        tile_width_mm: form.tile_width_mm,
+        tile_height_mm: form.tile_height_mm,
+        sheet_width_mm: form.sheet_width_mm,
+        sheet_height_mm: form.sheet_height_mm,
+        grout_width_mm: form.grout_width_mm,
+        thickness_mm: form.thickness_mm,
+        finish: form.finish || null,
+        texture_url: form.texture_url || null,
+        thumbnail_url: form.thumbnail_url || null,
+        supplier: form.supplier || null,
+        source_url: form.source_url || null,
+        notes: form.notes || null,
+        org_id: null // or current org id if applicable
+      } as any;
+
+      const created = await createMaterial(payload);
+      upsert(created); // optimistic update materials store
+      toast.success(`Saved “${created.name}”`);
+      onClose();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="p-4">
+      {/* form controls here ... */}
+      <button className="btn btn-primary" disabled={saving} onClick={onSave}>
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+    </div>
+  );
+}
+================================================================================
+STATE — MATERIALS SLICE (UPsert & SELECTORS)
+File: apps/frontend/src/state/materialsSlice.ts
+
+ts
+Copy code
+import create from 'zustand';
+
+type Material = {
+  id: string;
+  name: string;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number|null;
+  texture_url?: string|null;
+  physical_repeat_m?: number|null;
+  // ... other fields as returned by backend
+};
+
+type MaterialsState = {
+  items: Record<string, Material>;
+  upsert: (m: Material) => void;
+  byCategory: (cat: Material['category']) => Material[];
+};
+
+export const useMaterialsSlice = create<MaterialsState>((set, get) => ({
+  items: {},
+  upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+  byCategory: (cat) => Object.values(get().items).filter(i => i.category === cat)
+}));
+Editor Sidebar should read from useMaterialsSlice().byCategory(category) so the newly saved material appears instantly without full reload.
+
+================================================================================
+ATTACH TO MASK — IMMEDIATE USABILITY IN EDITOR
+When selecting a material card:
+
+ts
+Copy code
+const ppm = photo.calibration_pixels_per_meter || 500; // fallback to avoid NaN
+const repeat_m = material.physical_repeat_m
+  ?? (material.sheet_width_mm ? material.sheet_width_mm/1000 : null)
+  ?? (material.tile_width_mm ? material.tile_width_mm/1000 : null)
+  ?? 0.30;
+
+const initialScale = (1024 / repeat_m) / ppm;
+
+await fetch(`/api/masks/${selectedMaskId}`, {
+  method: 'PATCH',
+  headers: { 'Content-Type': 'application/json' },
+  credentials: 'include',
+  body: JSON.stringify({ material_id: material.id, calc_meta_json: { repeatScale: initialScale, rotationDeg: 0, brightness: 0, contrast: 0 } })
+});
+// update local editor state + history; re-render overlay
+================================================================================
+DIAGNOSTICS — TEMP LOGS (REMOVE AFTER PASS)
+Frontend (on Save click):
+
+ts
+Copy code
+console.log('[materials] save click', payload);
+Network tab must show:
+
+POST /api/materials → 201 with JSON including id.
+
+Backend:
+
+ts
+Copy code
+app.log.info({ name: b.name }, '[materials] insert attempt');
+app.log.info({ id: rows[0].id }, '[materials] created');
+If still failing, print Zod errors:
+
+ts
+Copy code
+if (!parsed.success) app.log.warn({ err: parsed.error.flatten() }, 'zod invalid');
+================================================================================
+E2E (PLAYWRIGHT) — QUICK CONFIRM
+Open Add Material → fill name, category, unit, price → Save → toast “Saved …” → material visible in /materials & editor sidebar.
+
+Editor: draw mask → choose new material → overlay renders; Undo/Redo works.
+
+Refresh both pages → material persists (DB).
+
+================================================================================
+ACCEPTANCE CRITERIA
+Clicking Save persists the material + specs to DB (201 response, row with id).
+
+The new material appears immediately in the Materials Library and Editor Sidebar.
+
+The material can be attached to a mask and renders with correct default scale.
+
+No console errors; desktop remains unchanged.

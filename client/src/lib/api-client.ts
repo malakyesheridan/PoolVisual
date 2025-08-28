@@ -155,7 +155,7 @@ class ApiClient {
   }
 
   async createMaterial(data: any) {
-    return this.request<any>('/materials', {
+    return this.request<any>('/api/materials', {
       method: 'POST',
       body: JSON.stringify(data),
     });
