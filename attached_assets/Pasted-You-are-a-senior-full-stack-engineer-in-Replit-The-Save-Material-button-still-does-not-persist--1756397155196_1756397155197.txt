@@ -1,0 +1,370 @@
+You are a senior full-stack engineer in Replit. The **Save Material** button still does not persist materials. Perform a **surgical, end-to-end fix** so clicking **Save** reliably inserts the material into Postgres, returns `201` with JSON, updates the Materials Library & Editor Sidebar instantly, and makes the material immediately attachable to masks. **Do not rename or remove** existing keys/routes; all changes are **additive**. TypeScript everywhere.
+
+================================================================================
+0) DIAGNOSIS GOAL (NO GUESSWORK)
+================================================================================
+Find and fix the real failure by instrumenting each hop:
+- UI: onClick/onSubmit → API client → network request (URL, method, body)  
+- Server: route hit, Zod parsing & coercion, SQL insert result  
+- DB: row visible via a quick SELECT  
+- UI store: upsert to in-memory store used by Library & Sidebar
+
+If any step fails, **log & surface** the error to the user (toast). Remove logs after pass.
+
+================================================================================
+1) BACKEND — HARDEN POST /api/materials
+================================================================================
+File: `server/materialRoutes.ts` (or your equivalent). Ensure:
+- Path is exactly `/api/materials`
+- CORS enabled with `credentials: true`
+- Zod schema **coerces numbers** and accepts both camelCase & snake_case
+- Insert returns `201` + full row
+- Clear error response on 400/500
+
+Patch:
+```ts
+import { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { sql } from '../db'; // your pg client
+import { randomUUID } from 'crypto';
+
+const coNum = z.coerce.number().refine(v => !Number.isNaN(v), 'not a number');
+const strOpt = z.string().trim().optional().nullable();
+
+const MaterialCreateSchema = z.object({
+  name: z.string().min(1),
+
+  // snake or camel accepted:
+  sku: strOpt,
+  category: z.enum(['coping','waterline_tile','interior','paving','fencing']),
+  unit: z.enum(['m2','lm','each']),
+
+  price: coNum.optional().nullable(),
+  cost: coNum.optional().nullable(),
+  wastage_pct: coNum.optional().nullable(),
+  margin_pct: coNum.optional().nullable(),
+
+  tile_width_mm: coNum.optional().nullable(),
+  tile_height_mm: coNum.optional().nullable(),
+  sheet_width_mm: coNum.optional().nullable(),
+  sheet_height_mm: coNum.optional().nullable(),
+  grout_width_mm: coNum.optional().nullable(),
+  thickness_mm: coNum.optional().nullable(),
+
+  finish: strOpt,
+  texture_url: strOpt,
+  thumbnail_url: strOpt,
+  supplier: strOpt,
+  source_url: strOpt,
+  notes: strOpt,
+  org_id: strOpt
+})
+// accept camelCase as well, map → snake
+.transform((b: any) => {
+  const mapNum = (v: any) => (v === '' || v === undefined || v === null ? null : Number(v));
+  const o = {
+    name: b.name,
+    sku: b.sku ?? null,
+    category: b.category,
+    unit: b.unit,
+    price: mapNum(b.price ?? b.priceAmount),
+    cost: mapNum(b.cost),
+    wastage_pct: mapNum(b.wastage_pct ?? b.wastagePct),
+    margin_pct: mapNum(b.margin_pct ?? b.marginPct),
+    tile_width_mm: mapNum(b.tile_width_mm ?? b.tileWidthMm),
+    tile_height_mm: mapNum(b.tile_height_mm ?? b.tileHeightMm),
+    sheet_width_mm: mapNum(b.sheet_width_mm ?? b.sheetWidthMm),
+    sheet_height_mm: mapNum(b.sheet_height_mm ?? b.sheetHeightMm),
+    grout_width_mm: mapNum(b.grout_width_mm ?? b.groutWidthMm),
+    thickness_mm: mapNum(b.thickness_mm ?? b.thicknessMm),
+    finish: b.finish ?? null,
+    texture_url: b.texture_url ?? b.textureUrl ?? null,
+    thumbnail_url: b.thumbnail_url ?? b.thumbnailUrl ?? null,
+    supplier: b.supplier ?? 'PoolTile',
+    source_url: b.source_url ?? b.sourceUrl ?? null,
+    notes: b.notes ?? null,
+    org_id: b.org_id ?? b.orgId ?? null
+  };
+  return o;
+});
+
+export async function materialsRoutes(app: FastifyInstance) {
+  app.post('/api/materials', async (req, reply) => {
+    const parsed = MaterialCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      app.log.warn({ zod: parsed.error.flatten(), body: req.body }, '[materials] invalid input');
+      return reply.code(400).send({ error: 'INVALID_INPUT', details: parsed.error.flatten() });
+    }
+    const b = parsed.data;
+
+    const physical_repeat_m =
+      (b.sheet_width_mm && b.sheet_width_mm > 0 ? b.sheet_width_mm / 1000 :
+       b.tile_width_mm && b.tile_width_mm > 0 ? b.tile_width_mm / 1000 : null);
+
+    const id = randomUUID();
+    const q = `
+      INSERT INTO materials (
+        id, name, sku, category, unit, price, cost, wastage_pct, margin_pct,
+        tile_width_mm, tile_height_mm, sheet_width_mm, sheet_height_mm,
+        grout_width_mm, thickness_mm, finish,
+        texture_url, thumbnail_url, physical_repeat_m,
+        supplier, source_url, notes, org_id, is_active, created_at
+      ) VALUES (
+        $1, $2,$3,$4,$5,$6,$7,$8,$9,
+        $10,$11,$12,$13,
+        $14,$15,$16,
+        $17,$18,$19,
+        $20,$21,$22,$23, true, now()
+      )
+      RETURNING *
+    `;
+    const params = [
+      id, b.name, b.sku, b.category, b.unit, b.price, b.cost, b.wastage_pct, b.margin_pct,
+      b.tile_width_mm, b.tile_height_mm, b.sheet_width_mm, b.sheet_height_mm,
+      b.grout_width_mm, b.thickness_mm, b.finish,
+      b.texture_url, b.thumbnail_url, physical_repeat_m,
+      b.supplier, b.source_url, b.notes, b.org_id
+    ];
+
+    try {
+      const { rows } = await sql.query(q, params);
+      const row = rows[0];
+      app.log.info({ id: row.id, name: row.name }, '[materials] created');
+      return reply.code(201).send(row);
+    } catch (err: any) {
+      app.log.error({ err, body: b }, '[materials] insert failed');
+      return reply.code(500).send({ error: 'DB_INSERT_FAILED' });
+    }
+  });
+}
+Enable CORS (if FE/BE on different origins):
+
+ts
+Copy code
+import fastifyCors from '@fastify/cors';
+app.register(fastifyCors, { origin: true, credentials: true, methods: ['GET','POST','PATCH','DELETE','OPTIONS'] });
+DB defaults (Neon):
+
+sql
+Copy code
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+ALTER TABLE materials ALTER COLUMN is_active SET DEFAULT true;
+ALTER TABLE materials ALTER COLUMN created_at SET DEFAULT now();
+================================================================================
+2) FRONTEND — SINGLE SOURCE OF TRUTH FOR CREATE CALL
+File: client/src/lib/api-client.ts (or similar). Ensure:
+
+URL is exactly /api/materials
+
+credentials:'include'
+
+Numbers coerced
+
+Throws on non-2xx with server message
+
+ts
+Copy code
+export async function createMaterialApi(input: any) {
+  const num = (v: any) => (v === '' || v === undefined || v === null ? null : Number(v));
+  const payload = {
+    name: input.name,
+    sku: input.sku ?? null,
+    category: input.category,
+    unit: input.unit,
+    price: num(input.price),
+    cost: num(input.cost),
+    wastage_pct: num(input.wastage_pct ?? input.wastagePct),
+    margin_pct: num(input.margin_pct ?? input.marginPct),
+    tile_width_mm: num(input.tile_width_mm ?? input.tileWidthMm),
+    tile_height_mm: num(input.tile_height_mm ?? input.tileHeightMm),
+    sheet_width_mm: num(input.sheet_width_mm ?? input.sheetWidthMm),
+    sheet_height_mm: num(input.sheet_height_mm ?? input.sheetHeightMm),
+    grout_width_mm: num(input.grout_width_mm ?? input.groutWidthMm),
+    thickness_mm: num(input.thickness_mm ?? input.thicknessMm),
+    finish: input.finish ?? null,
+    texture_url: input.texture_url ?? input.textureUrl ?? null,
+    thumbnail_url: input.thumbnail_url ?? input.thumbnailUrl ?? null,
+    supplier: input.supplier ?? 'PoolTile',
+    source_url: input.source_url ?? input.sourceUrl ?? null,
+    notes: input.notes ?? null,
+    org_id: input.org_id ?? input.orgId ?? null
+  };
+
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || ''}/api/materials`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Create material failed: ${res.status}`);
+  }
+  return res.json();
+}
+================================================================================
+3) FRONTEND — SAVE BUTTON WIRED TO AWAIT & STORE UPSERT
+File: client/src/components/materials/AddMaterialDrawer.tsx:
+
+tsx
+Copy code
+import { useState } from 'react';
+import { createMaterialApi } from '../../lib/api-client';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { toast } from 'sonner';
+
+export function AddMaterialDrawer({ onClose }: { onClose: () => void }) {
+  const upsert = useMaterialsStore(s => s.upsert);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    category: 'waterline_tile',
+    unit: 'm2',
+    price: '',
+    // ... other fields
+  });
+
+  const onSubmit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!form.name || !form.category || !form.unit) {
+      toast.error('Name, Category, and Unit are required');
+      return;
+    }
+    setSaving(true);
+    try {
+      const created = await createMaterialApi(form);
+      upsert(created); // make visible instantly in Library & Sidebar
+      toast.success(`Saved “${created.name}”`);
+      onClose();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={onSubmit} className="p-4 space-y-4">
+      {/* inputs bound to `form` ... */}
+      <div className="flex gap-2">
+        <button type="submit" disabled={saving} className="btn btn-primary">{saving ? 'Saving…' : 'Save'}</button>
+        <button type="button" className="btn" onClick={onClose}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+Critical: Ensure the button is either type="submit" inside a <form onSubmit={...}> or uses onClick={onSubmit} explicitly — not both firing or neither firing.
+
+================================================================================
+4) STATE — ONE STORE USED BY LIBRARY & SIDEBAR
+File: client/src/state/materialsStore.ts:
+
+ts
+Copy code
+import create from 'zustand';
+
+export type Material = {
+  id: string; name: string;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number|null;
+  texture_url?: string|null;
+  physical_repeat_m?: number|null;
+  sheet_width_mm?: number|null;
+  tile_width_mm?: number|null;
+  // ...
+};
+
+type MaterialsState = {
+  items: Record<string, Material>;
+  upsert: (m: Material) => void;
+  byCategory: (c: Material['category']) => Material[];
+  all: () => Material[];
+};
+
+export const useMaterialsStore = create<MaterialsState>((set, get) => ({
+  items: {},
+  upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+  byCategory: (c) => Object.values(get().items).filter(i => i.category === c),
+  all: () => Object.values(get().items)
+}));
+Ensure both /materials page and the Editor Sidebar read from this same store:
+
+ts
+Copy code
+const items = useMaterialsStore(s => s.byCategory(activeCategory));
+If the Sidebar uses a different source, refactor it to use this store (no breaking changes—just a selector swap).
+
+================================================================================
+5) QUICK SERVER ECHO (TEMPORARY DEBUG)
+Add a temporary debug endpoint to confirm the request body matches expectations (delete after pass):
+
+ts
+Copy code
+app.post('/api/_debug/materials-echo', async (req, reply) => {
+  reply.send({ received: req.body });
+});
+From the browser console:
+
+js
+Copy code
+fetch('/api/_debug/materials-echo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'X',category:'waterline_tile',unit:'m2',price:'149.00'})}).then(r=>r.json()).then(console.log)
+Verify the FE payload matches the schema (snake vs camel, numbers coerced).
+
+================================================================================
+6) CURL SMOKE TEST (BY-PASSES UI)
+Run against your backend to isolate FE issues:
+
+bash
+Copy code
+curl -i -X POST http://localhost:3000/api/materials \
+  -H "Content-Type: application/json" \
+  --data '{
+    "name":"Test Mosaic 23mm",
+    "category":"waterline_tile",
+    "unit":"m2",
+    "price":149.00,
+    "sheet_width_mm":300,
+    "sheet_height_mm":300,
+    "texture_url":"https://example.com/tex.jpg",
+    "thumbnail_url":"https://example.com/thumb.jpg",
+    "supplier":"PoolTile",
+    "source_url":"https://www.pooltile.com.au/product/cmc555-white-wavy-23mm/"
+  }'
+Expected: HTTP/1.1 201 Created + JSON with id.
+
+================================================================================
+7) ACCEPTANCE — WHAT MUST BE TRUE AFTER THIS PATCH
+Clicking Save:
+
+Hits POST /api/materials, returns 201 with JSON (including id).
+
+Material appears instantly in Materials Library & Editor Sidebar (same store).
+
+Can be immediately attached to a selected mask and renders correctly.
+
+Network tab shows the POST body with numeric fields coerced (no string-number mismatches).
+
+Server logs: [materials] created id=….
+
+DB: row exists (SELECT name FROM materials ORDER BY created_at DESC LIMIT 5;).
+
+No console errors. Desktop behavior unchanged.
+
+================================================================================
+8) IF STILL FAILS — LIKELY STRAGGLERS (FIX THESE)
+Wrong path: FE posting to /materials instead of /api/materials. Align.
+
+Missing credentials: Add credentials:'include' to fetch; enable CORS on server.
+
+Form not calling handler: ensure type="submit" inside a <form onSubmit={...}> or explicit onClick.
+
+Store mismatch: Library & Sidebar read a different store/query; wire both to useMaterialsStore.
+
+DB constraint: a NOT NULL constraint on org_id or unit failing — make nullable or supply value; Zod error reveals it.
+
+Proxy interfering: Vite proxy path rewriting off; use full ${VITE_API_BASE_URL}/api/materials.
+
+Ship all patches now. Remove _debug echo route after Save works.
