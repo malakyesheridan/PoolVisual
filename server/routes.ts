@@ -21,6 +21,7 @@ import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
 import { registerMaterialRoutes } from "./materialRoutes";
+import { registerMaterialRoutesV2 } from "./routes/materials";
 
 const JWT_SECRET = process.env.JWT_SECRET || 'default-dev-secret';
 
@@ -99,6 +100,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register material routes (texture system)
   registerMaterialRoutes(app);
+  registerMaterialRoutesV2(app); // Bulletproof materials endpoint
   
   // Register import routes (manual import turbo)
   const { registerImportRoutes } = await import('./importRoutes');

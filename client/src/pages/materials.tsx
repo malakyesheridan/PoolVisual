@@ -100,14 +100,15 @@ export default function Materials() {
     mutationFn: async (data: any) => {
       console.log('[materials] Creating material:', data);
       
-      // If we have a preview image but no texture_url, include imageUrlFallback
+      // Use bulletproof API function
+      const { createMaterialApi } = await import('@/lib/materials-api');
       const payload = {
         ...data,
         orgId: selectedOrgId,
         imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
       };
       
-      const result = await apiClient.createMaterial(payload);
+      const result = await createMaterialApi(payload);
       console.log('[materials] Created material response:', result);
       return result;
     },
