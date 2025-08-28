@@ -27,6 +27,7 @@ import {
   Check
 } from "lucide-react";
 import { useMaterialsStore } from "@/stores/materialsStore";
+import { MaterialsProbe } from "../components/materials/MaterialsProbe";
 
 const materialCategories = [
   { value: 'coping', label: 'Coping' },
@@ -100,15 +101,15 @@ export default function Materials() {
     mutationFn: async (data: any) => {
       console.log('[materials] Creating material:', data);
       
-      // Use V2 API for bulletproof persistence
-      const { createMaterialV2 } = await import('@/lib/materialsApiV2');
+      // Use Force API for guaranteed persistence
+      const { createMaterialForce } = await import('@/lib/materialsForceApi');
       const payload = {
         ...data,
         orgId: selectedOrgId,
         imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
       };
       
-      const result = await createMaterialV2(payload);
+      const result = await createMaterialForce(payload);
       console.log('[materials] Created material response:', result);
       return result;
     },
@@ -1133,6 +1134,13 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
           )}
         </div>
       </div>
+      
+      {/* Add probe for debugging */}
+      {import.meta.env.MODE !== 'production' && (
+        <div className="container mx-auto px-4 pb-8">
+          <MaterialsProbe />
+        </div>
+      )}
     </div>
   );
 }

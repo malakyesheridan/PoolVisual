@@ -106,6 +106,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { materialsV2Routes } = await import('./routes/materialsV2');
   materialsV2Routes(app);
   
+  // Register force materials routes for debugging
+  const { materialsForceRoutes } = await import('./routes/materialsForce');
+  materialsForceRoutes(app);
+  
   // Register import routes (manual import turbo)
   const { registerImportRoutes } = await import('./importRoutes');
   registerImportRoutes(app);
