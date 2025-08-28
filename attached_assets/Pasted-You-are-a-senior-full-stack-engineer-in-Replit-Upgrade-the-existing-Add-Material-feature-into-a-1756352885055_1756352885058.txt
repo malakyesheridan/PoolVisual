@@ -1,0 +1,118 @@
+You are a senior full-stack engineer in Replit. Upgrade the existing **Add Material** feature into a **Manual Import Turbo** workflow optimized for hand-adding PoolTile items (no CSV). All changes are additive and must not break the editor.
+
+==============================================================================
+GOALS
+==============================================================================
+1) **URL Prefill**: paste a PoolTile product URL → fetch page → extract name, SKU, sizes, price, finish, main image URL → prefill form.
+2) **Smart Paste**: paste arbitrary product text (copied from the page) → parse sizes/prices with regex and prefill.
+3) **Image From URL / Clipboard**: in addition to file upload, support:
+   - paste image from clipboard (Ctrl/Cmd+V)
+   - paste image URL → backend downloads & runs the seamless texture pipeline → returns texture + thumb
+4) **Auto Scale & Price**:
+   - compute `physical_repeat_m` from sheet or tile mm
+   - normalize price to correct unit (m²/lm/each); derive per-m² if a “per sheet/box” price is detected
+5) **Fast Entry UX**: “Save & Add Next” button, keyboard shortcuts, sticky last category/unit.
+
+==============================================================================
+UI CHANGES (FRONTEND)
+==============================================================================
+Update the existing Add Material drawer with new sections:
+
+A) **Quick Import**
+- `Product URL` [ input ] [ Prefill ]  ← calls backend `/api/import/prefill?url=...`
+- `Paste Specs` [ multiline textarea ]  ← on blur, run client parser to fill sizes/price/finish
+- Show “Detected:” chips (Sheet 300×300, Tile 25×25, $149/m², Finish: Tumbled…)
+
+B) **Texture**
+- [ Upload Texture ]  [ Paste Image ]  [ Use Image URL ]
+- Live 256px preview; note if “Seamless ✓ (generated)” after processing
+
+C) **Core Fields** (keep your existing ones, add size fields)
+- Name, SKU, Category, Unit
+- Price ($), Cost ($), Wastage (%), Margin (%)
+- Sizes: Tile (W×H mm), Sheet (W×H mm), Grout (mm), Thickness (mm)
+- Finish (matte/gloss/tumbled/etc.)
+- Notes
+
+D) **Actions**
+- [ Save ]  [ **Save & Add Next** ]  [ Cancel ]
+- On Save: close with toast; on Save & Add Next: keep drawer open, clear fields except Category/Unit (sticky)
+
+Keyboard:
+- Enter = Save, Cmd/Ctrl+Enter = Save & Add Next, Esc = Cancel
+
+==============================================================================
+BACKEND ENDPOINTS (FASTIFY + ZOD)
+==============================================================================
+1) `GET /api/import/prefill?url=...`
+   - Server fetches HTML (axios + got), parses via cheerio with selector/regex rules:
+     - name, sku, price text, primary image, description block
+     - run regex set:
+       - mmPair: `/(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/i`
+       - sheet: `/(sheet|sheet size)\s*[:\-]?\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/i`
+       - tile:  `/(tile|chip)\s*[:\-]?\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/i`
+       - thickness: `/(thickness)\s*[:\-]?\s*(\d{1,2})\s*mm/i`
+       - grout: `/(grout)\s*[:\-]?\s*(\d{1,2})\s*mm/i`
+       - price per m²: `/\$?\s*([\d\.,]+)\s*\/\s*m²/i`
+       - per sheet: `/\$?\s*([\d\.,]+)\s*(per|\/)\s*sheet/i`
+       - per box: `/\$?\s*([\d\.,]+)\s*(per|\/)\s*box/i`
+     - returns JSON { name, sku, priceRaw, imageUrl, sizes:{sheetW, sheetH, tileW, tileH, thickness, grout}, finish, source_url }
+
+2) `POST /api/materials/upload-texture-from-url`
+   - Body: { imageUrl: string }
+   - Server downloads the image, normalizes EXIF, processes to seamless 1024/2048 using the existing sharp pipeline, stores to storage, returns { texture_url, thumbnail_url }
+
+3) `POST /api/materials` (extend existing)
+   - Accept optional `imageUrl` OR `fileKey` OR clipboard upload; if `imageUrl` present and no fileKey, call (2) internally.
+   - Compute:
+     - `physical_repeat_m` = sheetW/1000 || tileW/1000 || null
+     - Normalize price:
+        - if priceRaw has per-m² → unit='m2', price=val
+        - if per sheet and sheet size → price_m2 = price_sheet / ((sheetW*sheetH)/1e6)
+        - ‘coping’ category → unit='lm' if not explicitly set
+   - Insert material; return full row.
+
+==============================================================================
+CLIENT HELPERS (FRONTEND)
+==============================================================================
+- Smart-Paste parser for `Paste Specs` textarea uses the same regex set client-side to prefill fields.
+- Image inputs:
+  - Paste image (clipboard): capture `paste` event → convert to File → use existing upload route.
+  - Use Image URL: call `/api/materials/upload-texture-from-url`, then set `texture_url`.
+
+- Category / Unit auto-suggest:
+  - If URL or name contains: “waterline”, “mosaic” → category='waterline_tile', unit='m2'
+  - “coping”, “bullnose” → category='coping', unit='lm'
+  - “paver”, “deck” → category='paving', unit='m2'
+  - Allow manual override.
+
+- After Save:
+  - Add to library grid.
+  - If an editor mask is selected, show “Attach to current mask?” button → on click, PATCH mask.material_id + compute initial repeatScale from `physical_repeat_m` + ppm.
+
+==============================================================================
+ACCURATE RENDERING (NO TACKY OVERLAYS)
+==============================================================================
+- Continue to use your shader/overlay:
+  - Use `physical_repeat_m` to set initial repeat:  
+    `initialScale = (1024 / repeat_m) / ppm`
+  - Feather mask edges 8–16px.
+  - Keep brightness/contrast controls and soft-light shading over base photo.
+
+==============================================================================
+UX POLISH & SPEED
+==============================================================================
+- Sticky Category & Unit: remember last chosen in local state.
+- Autofocus workflow: URL → Prefill → cursor jumps to Price → Save & Add Next.
+- Toast results: “Created: Travertine Silver • $149/m² • Sheet 300×300”.
+
+==============================================================================
+TESTS
+==============================================================================
+- Unit: parser extracts sizes/price from sample strings; repeat scale calc
+- E2E:
+  1) Paste URL → prefill works → click “Use Image URL” → texture generated → Save & Add Next.
+  2) Paste copied text into “Paste Specs” → sizes/price detected → Save.
+  3) Attach new material to a mask → correct scale; undo/redo restores.
+
+Ship this now. Keep the editor untouched except for material attach flow.

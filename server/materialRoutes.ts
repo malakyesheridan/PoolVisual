@@ -3,6 +3,7 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import path from "path";
 import { textureProcessor } from "./textureProcessor";
+import { ImportService } from "./importService";
 import { storage } from "./storage";
 import { z } from "zod";
 
@@ -44,6 +45,7 @@ const createMaterialSchema = z.object({
   sheetWidthMm: z.string().optional(),
   sheetHeightMm: z.string().optional(),
   groutWidthMm: z.string().optional(),
+  thicknessMm: z.string().optional(),
   notes: z.string().optional(),
   fileKey: z.string().optional(),
   makeSeamless: z.boolean().optional()
@@ -146,10 +148,18 @@ export function registerMaterialRoutes(app: Express) {
         sheetWidthMm: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : null,
         sheetHeightMm: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : null,
         groutWidthMm: data.groutWidthMm ? parseInt(data.groutWidthMm) : null,
+        thicknessMm: data.thicknessMm ? parseInt(data.thicknessMm) : null,
         notes: data.notes || null,
         textureUrl: textureResult?.textureUrl || null,
         thumbnailUrl: textureResult?.thumbnailUrl || null,
-        physicalRepeatM: textureResult?.physicalRepeatM?.toString() || null
+        physicalRepeatM: textureResult?.physicalRepeatM?.toString() || ImportService.calculatePhysicalRepeat({
+          sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : undefined,
+          sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : undefined,
+          tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : undefined,
+          tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : undefined,
+          grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : undefined,
+          thickness: data.thicknessMm ? parseInt(data.thicknessMm) : undefined
+        }).toString()
       };
 
       const material = await storage.createMaterial(materialData);

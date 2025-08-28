@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,12 @@ import {
   Package,
   Filter,
   Image,
-  X
+  X,
+  Link2,
+  FileText,
+  Zap,
+  Download,
+  Check
 } from "lucide-react";
 
 const materialCategories = [
@@ -45,6 +50,13 @@ export default function Materials() {
   const [texturePreview, setTexturePreview] = useState<string | null>(null);
   const [fileKey, setFileKey] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [productUrl, setProductUrl] = useState('');
+  const [pasteSpecs, setPasteSpecs] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [detectedSpecs, setDetectedSpecs] = useState<any>(null);
+  const [saveAndNext, setSaveAndNext] = useState(false);
+  const pasteAreaRef = useRef<HTMLTextAreaElement>(null);
   const [formData, setFormData] = useState({
     name: '',
     sku: '',
@@ -62,6 +74,7 @@ export default function Materials() {
     sheetWidthMm: '',
     sheetHeightMm: '',
     groutWidthMm: '',
+    thicknessMm: '',
     notes: '',
     makeSeamless: true
   });
@@ -133,6 +146,13 @@ export default function Materials() {
     };
 
     createMaterialMutation.mutate(materialData);
+    
+    // Handle Save & Add Next
+    if (saveAndNext) {
+      setSaveAndNext(false);
+      resetFormForNext();
+      // Keep form open for next material
+    }
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -216,6 +236,229 @@ export default function Materials() {
     setSelectedFile(null);
     setTexturePreview(null);
     setFileKey(null);
+  };
+
+  // Prefill from URL
+  const handlePrefillFromUrl = async () => {
+    if (!productUrl.trim()) {
+      toast({
+        title: "URL required",
+        description: "Please enter a valid product URL.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const response = await fetch(`/api/import/prefill?url=${encodeURIComponent(productUrl)}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch product data');
+      }
+      
+      const data = await response.json();
+      
+      // Prefill form data
+      setFormData(prev => ({
+        ...prev,
+        name: data.name || prev.name,
+        sku: data.sku || prev.sku,
+        category: data.category || prev.category,
+        unit: data.unit || prev.unit,
+        price: data.normalizedPrice?.toString() || prev.price,
+        finish: data.finish || prev.finish,
+        tileWidthMm: data.sizes.tileW?.toString() || prev.tileWidthMm,
+        tileHeightMm: data.sizes.tileH?.toString() || prev.tileHeightMm,
+        sheetWidthMm: data.sizes.sheetW?.toString() || prev.sheetWidthMm,
+        sheetHeightMm: data.sizes.sheetH?.toString() || prev.sheetHeightMm,
+        groutWidthMm: data.sizes.grout?.toString() || prev.groutWidthMm,
+        thicknessMm: data.sizes.thickness?.toString() || prev.thicknessMm
+      }));
+      
+      // Set image URL if available
+      if (data.imageUrl) {
+        setImageUrl(data.imageUrl);
+      }
+      
+      toast({
+        title: "Product data loaded",
+        description: "Form has been prefilled with product information."
+      });
+      
+    } catch (error) {
+      console.error('Prefill error:', error);
+      toast({
+        title: "Prefill failed",
+        description: "Could not fetch product data from URL.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Parse specs text
+  const handleSpecsParse = async () => {
+    if (!pasteSpecs.trim()) return;
+    
+    try {
+      const response = await fetch('/api/import/parse-text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: pasteSpecs })
+      });
+      
+      if (!response.ok) throw new Error('Parse failed');
+      
+      const data = await response.json();
+      setDetectedSpecs(data);
+      
+      // Auto-fill detected specs
+      setFormData(prev => ({
+        ...prev,
+        category: data.category || prev.category,
+        unit: data.unit || prev.unit,
+        price: data.normalizedPrice?.toString() || prev.price,
+        finish: data.finish || prev.finish,
+        tileWidthMm: data.tileW?.toString() || prev.tileWidthMm,
+        tileHeightMm: data.tileH?.toString() || prev.tileHeightMm,
+        sheetWidthMm: data.sheetW?.toString() || prev.sheetWidthMm,
+        sheetHeightMm: data.sheetH?.toString() || prev.sheetHeightMm,
+        groutWidthMm: data.grout?.toString() || prev.groutWidthMm,
+        thicknessMm: data.thickness?.toString() || prev.thicknessMm
+      }));
+      
+    } catch (error) {
+      console.error('Parse error:', error);
+    }
+  };
+
+  // Auto-parse on blur
+  useEffect(() => {
+    if (pasteSpecs.trim() && pasteSpecs.length > 10) {
+      const timeoutId = setTimeout(handleSpecsParse, 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [pasteSpecs]);
+
+  // Handle image from URL
+  const handleImageFromUrl = async () => {
+    if (!imageUrl.trim()) {
+      toast({
+        title: "URL required",
+        description: "Please enter a valid image URL.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsUploading(true);
+    try {
+      const response = await fetch('/api/materials/upload-texture-from-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ imageUrl })
+      });
+      
+      if (!response.ok) throw new Error('Upload failed');
+      
+      const data = await response.json();
+      setTexturePreview(data.thumbnailUrl);
+      setFileKey(data.textureUrl); // Use texture URL as file key for this case
+      
+      toast({
+        title: "Image processed",
+        description: "Texture has been processed and is ready to use."
+      });
+      
+    } catch (error) {
+      console.error('Image URL error:', error);
+      toast({
+        title: "Image processing failed",
+        description: "Could not process image from URL.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  // Handle clipboard paste for images
+  const handlePaste = useCallback(async (e: ClipboardEvent) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItem = items.find(item => item.type.startsWith('image/'));
+    
+    if (imageItem) {
+      e.preventDefault();
+      const file = imageItem.getAsFile();
+      if (file) {
+        handleFileSelect(file);
+      }
+    }
+  }, [handleFileSelect]);
+
+  // Add clipboard listener
+  useEffect(() => {
+    if (showAddForm) {
+      document.addEventListener('paste', handlePaste);
+      return () => document.removeEventListener('paste', handlePaste);
+    }
+  }, [showAddForm, handlePaste]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!showAddForm) return;
+      
+      if (e.key === 'Escape') {
+        setShowAddForm(false);
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setSaveAndNext(true);
+        handleSubmit(e as any);
+      } else if (e.key === 'Enter' && !e.shiftKey && e.target instanceof HTMLInputElement) {
+        e.preventDefault();
+        handleSubmit(e as any);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showAddForm]);
+
+  // Reset form for "Save & Add Next"
+  const resetFormForNext = () => {
+    const stickyCategory = formData.category;
+    const stickyUnit = formData.unit;
+    
+    setFormData({
+      name: '',
+      sku: '',
+      category: stickyCategory, // Keep category sticky
+      unit: stickyUnit, // Keep unit sticky
+      cost: '',
+      price: '',
+      wastagePct: '10',
+      marginPct: '30',
+      supplier: '',
+      color: '',
+      finish: '',
+      tileWidthMm: '',
+      tileHeightMm: '',
+      sheetWidthMm: '',
+      sheetHeightMm: '',
+      groutWidthMm: '',
+      thicknessMm: '',
+      notes: '',
+      makeSeamless: true
+    });
+    
+    // Clear import fields
+    setProductUrl('');
+    setPasteSpecs('');
+    setImageUrl('');
+    setDetectedSpecs(null);
+    clearTexture();
   };
 
   return (
@@ -345,10 +588,125 @@ export default function Materials() {
             <div className="lg:col-span-1">
               <Card className="sticky top-6">
                 <CardHeader>
-                  <CardTitle className="text-lg font-semibold">Add New Material</CardTitle>
+                  <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                    <Zap className="w-5 h-5 text-blue-600" />
+                    Manual Import Turbo
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleSubmit} className="space-y-4">
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    
+                    {/* Quick Import Section */}
+                    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex items-center gap-2">
+                        <Link2 className="w-4 h-4 text-blue-600" />
+                        <Label className="font-medium text-blue-900">Quick Import</Label>
+                      </div>
+                      
+                      {/* Product URL */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Paste PoolTile product URL..."
+                          value={productUrl}
+                          onChange={(e) => setProductUrl(e.target.value)}
+                          className="flex-1"
+                          data-testid="input-product-url"
+                        />
+                        <Button
+                          type="button"
+                          onClick={handlePrefillFromUrl}
+                          disabled={isProcessing || !productUrl.trim()}
+                          size="sm"
+                          data-testid="button-prefill"
+                        >
+                          {isProcessing ? (
+                            <Download className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>Prefill</>
+                          )}
+                        </Button>
+                      </div>
+                      
+                      {/* Paste Specs */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium">Paste Specs</Label>
+                        <Textarea
+                          ref={pasteAreaRef}
+                          placeholder="Paste product specifications text...
+e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
+                          value={pasteSpecs}
+                          onChange={(e) => setPasteSpecs(e.target.value)}
+                          rows={3}
+                          className="text-sm"
+                          data-testid="textarea-paste-specs"
+                        />
+                        
+                        {/* Detected Specs */}
+                        {detectedSpecs && (
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {detectedSpecs.sheetW && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                                <Check className="w-3 h-3" />
+                                Sheet {detectedSpecs.sheetW}×{detectedSpecs.sheetH}mm
+                              </span>
+                            )}
+                            {detectedSpecs.tileW && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                                <Check className="w-3 h-3" />
+                                Tile {detectedSpecs.tileW}×{detectedSpecs.tileH}mm
+                              </span>
+                            )}
+                            {detectedSpecs.normalizedPrice && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                                <Check className="w-3 h-3" />
+                                ${detectedSpecs.normalizedPrice.toFixed(2)}/{detectedSpecs.priceUnit}
+                              </span>
+                            )}
+                            {detectedSpecs.finish && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs rounded">
+                                <Check className="w-3 h-3" />
+                                {detectedSpecs.finish}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Texture Section */}
+                    <div className="space-y-4 p-4 bg-amber-50 rounded-lg border border-amber-200">
+                      <div className="flex items-center gap-2">
+                        <Image className="w-4 h-4 text-amber-600" />
+                        <Label className="font-medium text-amber-900">Texture</Label>
+                      </div>
+                      
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Image URL..."
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          className="flex-1"
+                          data-testid="input-image-url"
+                        />
+                        <Button
+                          type="button"
+                          onClick={handleImageFromUrl}
+                          disabled={isUploading || !imageUrl.trim()}
+                          size="sm"
+                          data-testid="button-use-image-url"
+                        >
+                          {isUploading ? (
+                            <Download className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>Use URL</>
+                          )}
+                        </Button>
+                      </div>
+                      
+                      <div className="text-sm text-amber-700">
+                        💡 Tip: Paste images from clipboard with Ctrl/Cmd+V or upload files below
+                      </div>
+                    </div>
                     <div>
                       <Label htmlFor="name">Material Name</Label>
                       <Input
@@ -573,10 +931,16 @@ export default function Materials() {
                             data-testid="input-grout-width"
                           />
                         </div>
-                        <div className="flex items-end">
-                          <div className="text-xs text-slate-600">
-                            <strong>Calculated Repeat:</strong> {calculateRepeatM()} m
-                          </div>
+                        <div>
+                          <Label htmlFor="thicknessMm" className="text-xs">Thickness (mm)</Label>
+                          <Input
+                            id="thicknessMm"
+                            type="number"
+                            value={formData.thicknessMm}
+                            onChange={(e) => handleInputChange('thicknessMm', e.target.value)}
+                            placeholder="6"
+                            data-testid="input-thickness"
+                          />
                         </div>
                       </div>
                     </div>
@@ -593,24 +957,38 @@ export default function Materials() {
                       />
                     </div>
                     
-                    <div className="flex space-x-3 pt-4">
+                    <div className="space-y-2 pt-4">
+                      <div className="flex gap-2">
+                        <Button 
+                          type="submit" 
+                          className="flex-1"
+                          disabled={createMaterialMutation.isPending}
+                          data-testid="button-save-material"
+                        >
+                          {createMaterialMutation.isPending ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button 
+                          type="submit" 
+                          onClick={() => setSaveAndNext(true)}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          disabled={createMaterialMutation.isPending}
+                          data-testid="button-save-and-next"
+                        >
+                          Save & Add Next
+                        </Button>
+                      </div>
                       <Button 
                         type="button" 
                         variant="outline" 
                         onClick={() => setShowAddForm(false)}
-                        className="flex-1"
+                        className="w-full"
                         data-testid="button-cancel-material"
                       >
-                        Cancel
+                        Cancel (Esc)
                       </Button>
-                      <Button 
-                        type="submit" 
-                        className="flex-1"
-                        disabled={createMaterialMutation.isPending}
-                        data-testid="button-save-material"
-                      >
-                        {createMaterialMutation.isPending ? 'Saving...' : 'Save'}
-                      </Button>
+                      <div className="text-xs text-slate-500 text-center">
+                        💡 Enter = Save • Cmd/Ctrl+Enter = Save & Add Next • Esc = Cancel
+                      </div>
                     </div>
                   </form>
                 </CardContent>

@@ -100,6 +100,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register material routes (texture system)
   registerMaterialRoutes(app);
   
+  // Register import routes (manual import turbo)
+  const { registerImportRoutes } = await import('./importRoutes');
+  registerImportRoutes(app);
+  
   // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
     try {
