@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Plus, Camera, Image } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { normalizeImage } from '../../lib/normalizeImage';
 
 interface FabUploadProps {
   onFileSelect: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
@@ -14,7 +15,7 @@ export function FabUpload({ onFileSelect, className, disabled = false }: FabUplo
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -24,17 +25,22 @@ export function FabUpload({ onFileSelect, className, disabled = false }: FabUplo
       return;
     }
 
-    // Create image URL and get dimensions
-    const img = new Image();
-    const imageUrl = URL.createObjectURL(file);
-    
-    img.onload = () => {
-      const dimensions = { width: img.width, height: img.height };
-      onFileSelect(file, imageUrl, dimensions);
+    try {
+      // Normalize image with EXIF correction and proper scaling
+      const { blob, width, height } = await normalizeImage(file, 3000);
+      
+      // Create object URL from normalized blob
+      const imageUrl = URL.createObjectURL(blob);
+      
+      // Create File object from blob for compatibility
+      const normalizedFile = new File([blob], file.name, { type: 'image/jpeg' });
+      
+      onFileSelect(normalizedFile, imageUrl, { width, height });
       setShowOptions(false);
-    };
-    
-    img.src = imageUrl;
+    } catch (error) {
+      console.error('Error normalizing image:', error);
+      alert('Error processing image. Please try again.');
+    }
 
     // Reset input
     event.target.value = '';

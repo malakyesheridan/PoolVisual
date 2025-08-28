@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Upload, Image as ImageIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { normalizeImage } from '../../lib/normalizeImage';
 
 interface ImageUploadProps {
   onImageLoad: (file: File, imageUrl: string, dimensions: { width: number; height: number }) => void;
@@ -29,28 +30,22 @@ export function ImageUpload({ onImageLoad, onClear, currentImage, className }: I
     setIsLoading(true);
     
     try {
-      // Create object URL for immediate display
-      const imageUrl = URL.createObjectURL(file);
+      // Normalize image with EXIF correction and proper scaling
+      const { blob, width, height } = await normalizeImage(file, 3000);
       
-      // Load image to get dimensions
-      const img = new Image();
-      img.onload = () => {
-        onImageLoad(file, imageUrl, {
-          width: img.naturalWidth,
-          height: img.naturalHeight
-        });
-        setIsLoading(false);
-      };
-      img.onerror = () => {
-        console.error('Failed to load image');
-        URL.revokeObjectURL(imageUrl);
-        setIsLoading(false);
-      };
-      img.src = imageUrl;
+      // Create object URL from normalized blob
+      const imageUrl = URL.createObjectURL(blob);
+      
+      // Create File object from blob for compatibility
+      const normalizedFile = new File([blob], file.name, { type: 'image/jpeg' });
+      
+      onImageLoad(normalizedFile, imageUrl, { width, height });
+      setIsLoading(false);
       
     } catch (error) {
       console.error('Error processing image:', error);
       setIsLoading(false);
+      alert('Error processing image. Please try again with a different photo.');
     }
   };
 

@@ -4,7 +4,7 @@
  */
 
 import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { Stage, Layer, Line, Circle, Image } from 'react-konva';
+import { Stage, Layer, Line, Circle, Image as KonvaImage } from 'react-konva';
 import { Stage as StageType } from 'konva/lib/Stage';
 import useImage from 'use-image';
 import { useEditorStore } from '@/stores/editorSlice';
@@ -108,7 +108,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
       >
         <Layer id="Background" listening={false}>
           {backgroundImage && imageProps && (
-            <Image
+            <KonvaImage
               image={backgroundImage}
               x={imageProps.x}
               y={imageProps.y}

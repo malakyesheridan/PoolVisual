@@ -1,0 +1,358 @@
+You are a senior full-stack engineer in Replit. **Fix mobile image uploads** so they work flawlessly on iOS/Android and render correctly in the Canvas Editor without skewing. Also remove the crash:
+
+> [plugin:runtime-error-plugin] Object is not a constructor (evaluating 'new Image()')
+
+Deliverables: crash-free uploads, correct EXIF orientation, uniform scaling, centered fit-to-stage, and smooth interactions — with ZERO regressions to desktop. Use TypeScript everywhere. Do not rename or remove existing routes/state keys/files. All changes are additive.
+
+================================================================================
+GLOBAL PATCH: “new Image()” CRASH (IDENTIFIER SHADOWING)
+================================================================================
+1) Alias React-Konva Image component everywhere:
+```ts
+import { Image as KonvaImage } from 'react-konva';
+Replace all DOM image constructions:
+
+ts
+Copy code
+const img = new window.Image();
+Search/replace repo-wide: new Image( → new window.Image(.
+
+(Optional) ESLint guard in .eslintrc:
+
+json
+Copy code
+{
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      { "selector": "NewExpression[callee.name='Image']", "message": "Use new window.Image() to avoid shadowing." }
+    ]
+  }
+}
+================================================================================
+DEPENDENCIES (ADD)
+EXIF parsing (for iOS fallback when createImageBitmap is unavailable):
+
+bash
+Copy code
+npm i exifr
+================================================================================
+UTILS — ROBUST MOBILE IMAGE LOADING & NORMALIZATION
+Create apps/frontend/src/lib/loadHtmlImage.ts:
+
+ts
+Copy code
+export async function loadHtmlImage(src: string, crossOrigin: 'anonymous' | '' = 'anonymous'): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    if (crossOrigin) img.crossOrigin = crossOrigin as any; // keep canvas untainted for CORS-safe URLs
+    img.decoding = 'async';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error(`Image load failed: ${src}`));
+    img.src = src;
+  });
+}
+Create apps/frontend/src/lib/normalizeImage.ts:
+
+ts
+Copy code
+import * as exifr from 'exifr';
+import { loadHtmlImage } from './loadHtmlImage';
+
+/**
+ * Normalize camera images from mobile:
+ * - Correct EXIF orientation (via createImageBitmap or exifr fallback)
+ * - Downscale to maxEdge (default 3000px) preserving aspect ratio
+ * - Output JPEG Blob and final dimensions
+ */
+export async function normalizeImage(fileOrBlob: File | Blob, maxEdge = 3000): Promise<{ blob: Blob; width: number; height: number }> {
+  const srcBlob = fileOrBlob instanceof Blob ? fileOrBlob : new Blob([await fileOrBlob.arrayBuffer()], { type: fileOrBlob.type });
+
+  // Path A: modern browsers — honor EXIF using createImageBitmap options
+  if ('createImageBitmap' in window) {
+    try {
+      // @ts-ignore: TS DOM lib may not include options
+      const bmp = await createImageBitmap(srcBlob, { imageOrientation: 'from-image' });
+      const { blob, width, height } = await drawToBlob(bmp, maxEdge);
+      return { blob, width, height };
+    } catch {
+      // fall through
+    }
+  }
+
+  // Path B: fallback — read EXIF orientation and rotate manually
+  let orientation: number | undefined;
+  try {
+    const exif = await exifr.parse(srcBlob, { tiff: true, ifd0: true, translateValues: false });
+    orientation = (exif && (exif.Orientation as number)) || 1;
+  } catch {
+    orientation = 1;
+  }
+
+  const objUrl = URL.createObjectURL(srcBlob);
+  const htmlImg = await loadHtmlImage(objUrl, '');
+  URL.revokeObjectURL(objUrl);
+
+  const { canvas, ctx, targetW, targetH } = createCanvasForImage(htmlImg.naturalWidth, htmlImg.naturalHeight, orientation, maxEdge);
+  applyOrientationDraw(ctx, htmlImg, orientation, targetW, targetH);
+
+  const outBlob = await new Promise<Blob>((res) => (canvas as HTMLCanvasElement).toBlob(b => res(b!), 'image/jpeg', 0.9));
+  const finalDims = getFinalDims(targetW, targetH, orientation);
+  return { blob: outBlob, width: finalDims.width, height: finalDims.height };
+}
+
+async function drawToBlob(bmp: ImageBitmap, maxEdge: number): Promise<{ blob: Blob; width: number; height: number }> {
+  const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+  const tw = Math.round(bmp.width * scale);
+  const th = Math.round(bmp.height * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = tw; canvas.height = th;
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(bmp, 0, 0, tw, th);
+  const blob = await new Promise<Blob>((res) => canvas.toBlob(b => res(b!), 'image/jpeg', 0.9));
+  return { blob, width: tw, height: th };
+}
+
+function createCanvasForImage(srcW: number, srcH: number, orientation: number, maxEdge: number) {
+  const rotated = orientation === 5 || orientation === 6 || orientation === 7 || orientation === 8;
+  const baseW = rotated ? srcH : srcW;
+  const baseH = rotated ? srcW : srcH;
+  const scale = Math.min(1, maxEdge / Math.max(baseW, baseH));
+  const targetW = Math.round(baseW * scale);
+  const targetH = Math.round(baseH * scale);
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d')!;
+  return { canvas, ctx, targetW, targetH };
+}
+
+function applyOrientationDraw(ctx: CanvasRenderingContext2D, img: HTMLImageElement, orientation: number, targetW: number, targetH: number) {
+  // Map EXIF orientation to canvas transforms
+  switch (orientation) {
+    case 2: // horizontal flip
+      ctx.translate(targetW, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      break;
+    case 3: // 180°
+      ctx.translate(targetW, targetH);
+      ctx.rotate(Math.PI);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      break;
+    case 4: // vertical flip
+      ctx.translate(0, targetH);
+      ctx.scale(1, -1);
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+      break;
+    case 5: // vertical flip + 90° CW
+      ctx.rotate(0.5 * Math.PI);
+      ctx.scale(1, -1);
+      ctx.drawImage(img, 0, -targetH, targetW, targetH);
+      break;
+    case 6: // 90° CW
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(0, -targetW);
+      ctx.drawImage(img, 0, 0, targetH, targetW);
+      break;
+    case 7: // horizontal flip + 90° CW
+      ctx.rotate(0.5 * Math.PI);
+      ctx.translate(targetH, -targetW);
+      ctx.scale(-1, 1);
+      ctx.drawImage(img, 0, 0, targetH, targetW);
+      break;
+    case 8: // 90° CCW
+      ctx.rotate(-0.5 * Math.PI);
+      ctx.translate(-targetH, 0);
+      ctx.drawImage(img, 0, 0, targetH, targetW);
+      break;
+    case 1:
+    default:
+      ctx.drawImage(img, 0, 0, targetW, targetH);
+  }
+}
+
+function getFinalDims(targetW: number, targetH: number, orientation: number) {
+  const rotated = orientation === 5 || orientation === 6 || orientation === 7 || orientation === 8;
+  return rotated ? { width: targetH, height: targetW } : { width: targetW, height: targetH };
+}
+================================================================================
+MOBILE UPLOAD INPUT & HANDLER (CAMERA/LIBRARY)
+Update (or create) apps/frontend/src/components/uploader/MobileUpload.tsx:
+
+tsx
+Copy code
+import React, { useRef } from 'react';
+import { normalizeImage } from '../../lib/normalizeImage';
+
+type Props = { onUpload: (blob: Blob) => Promise<void> };
+
+export function MobileUpload({ onUpload }: Props) {
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <div>
+      <button className="btn btn-primary" onClick={() => ref.current?.click()}>Take/Choose Photo</button>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          try {
+            const { blob } = await normalizeImage(file, 3000);
+            await onUpload(blob);
+          } catch (err) {
+            console.error(err);
+            alert('Upload failed. Please try again with a different photo.');
+          } finally {
+            e.currentTarget.value = '';
+          }
+        }}
+      />
+    </div>
+  );
+}
+================================================================================
+UPLOAD TO BACKEND & STAGE INSERT (NO SKEW, PERFECT FIT)
+Add helper apps/frontend/src/lib/uploadPhoto.ts:
+
+ts
+Copy code
+// Replace these with your real API calls
+async function requestSignedUpload(jobId: string): Promise<{ uploadUrl: string; publicUrl: string; photoId: string }> {
+  const res = await fetch(`/api/photos?jobId=${encodeURIComponent(jobId)}`, { method: 'POST', credentials: 'include' });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+async function putBlob(uploadUrl: string, blob: Blob): Promise<void> {
+  const put = await fetch(uploadUrl, { method: 'PUT', body: blob, headers: { 'Content-Type': 'image/jpeg' } });
+  if (!put.ok) throw new Error(`Upload failed: ${put.status}`);
+}
+
+export async function uploadNormalizedPhoto(jobId: string, blob: Blob) {
+  const { uploadUrl, publicUrl, photoId } = await requestSignedUpload(jobId);
+  await putBlob(uploadUrl, blob);
+  return { publicUrl, photoId };
+}
+Update editor page apps/frontend/src/pages/EditorPage.tsx (or your equivalent) to place the image into the stage:
+
+tsx
+Copy code
+import { Stage, Layer } from 'react-konva';
+import { Image as KonvaImage } from 'react-konva';
+import { loadHtmlImage } from '../lib/loadHtmlImage';
+
+function fitAndCenterImage(htmlImg: HTMLImageElement, stage: any, layer: any) {
+  const iw = htmlImg.naturalWidth, ih = htmlImg.naturalHeight;
+  const sw = stage.width(), sh = stage.height();
+  const scale = Math.min(sw / iw, sh / ih); // uniform scale preserves aspect ratio
+  const x = (sw - iw * scale) / 2;
+  const y = (sh - ih * scale) / 2;
+
+  // Remove previous base image (keep one base)
+  layer.destroyChildren();
+
+  const node = new KonvaImage({
+    image: htmlImg,
+    width: iw,
+    height: ih,
+    x, y,
+    scaleX: scale,
+    scaleY: scale,
+    listening: false
+  });
+
+  layer.add(node);
+  layer.batchDraw();
+}
+
+async function addPhotoToStage(publicUrl: string, stage: any, backgroundLayer: any) {
+  const img = await loadHtmlImage(publicUrl);
+  fitAndCenterImage(img, stage, backgroundLayer);
+}
+Wire the mobile upload to backend + stage:
+
+tsx
+Copy code
+import { MobileUpload } from '../components/uploader/MobileUpload';
+import { uploadNormalizedPhoto } from '../lib/uploadPhoto';
+
+export function EditorUploadControls({ jobId, stageRef, backgroundLayerRef }: { jobId: string; stageRef: any; backgroundLayerRef: any }) {
+  return (
+    <MobileUpload
+      onUpload={async (blob) => {
+        const { publicUrl } = await uploadNormalizedPhoto(jobId, blob);
+        await addPhotoToStage(publicUrl, stageRef.current, backgroundLayerRef.current);
+        // Optional: persist photo row and navigate to photo editor route if needed
+      }}
+    />
+  );
+}
+================================================================================
+GESTURE & ZOOM SANITY (PREVENT SKEW)
+Ensure zoom is uniform and centered:
+
+ts
+Copy code
+function setZoom(stage: any, newScale: number, centerX?: number, centerY?: number) {
+  const oldScale = stage.scaleX();
+  const pointer = { x: centerX ?? stage.width() / 2, y: centerY ?? stage.height() / 2 };
+  const mousePointTo = {
+    x: (pointer.x - stage.x()) / oldScale,
+    y: (pointer.y - stage.y()) / oldScale,
+  };
+  stage.scale({ x: newScale, y: newScale }); // uniform scaling
+  const newPos = {
+    x: pointer.x - mousePointTo.x * newScale,
+    y: pointer.y - mousePointTo.y * newScale,
+  };
+  stage.position(newPos);
+  stage.batchDraw();
+}
+Clamp scale to [0.25, 4] and never set different scaleX/scaleY.
+
+================================================================================
+CORS & CANVAS SAFETY
+Serve uploaded images from same origin or with Access-Control-Allow-Origin: *.
+
+In loadHtmlImage, set crossOrigin='anonymous' when using absolute URLs.
+
+================================================================================
+ERROR HANDLING
+Wrap upload/normalize calls in try/catch, show user-friendly toasts.
+
+Reset file input after each attempt (input.value = '') to allow re-selecting the same photo.
+
+================================================================================
+ACCEPTANCE TESTS (PLAYWRIGHT MOBILE)
+iPhone 12 & Pixel 7 profiles:
+
+Tap “Take/Choose Photo” → select camera/library image → upload succeeds.
+
+Image renders centered, correct orientation, no skew, fits stage.
+
+Pinch zoom:
+
+Image scales uniformly; no stretching on one axis.
+
+Rotate device:
+
+Stage recalculates fit; image remains centered and not skewed.
+
+Regression:
+
+Desktop upload path unchanged; no console errors.
+
+================================================================================
+DONE
+The crash from new Image() shadowing is eliminated.
+
+Mobile uploads normalize orientation and downscale properly.
+
+Images render with uniform scale, centered fit, and no skew on the canvas.
+
+Desktop behavior remains unchanged.
