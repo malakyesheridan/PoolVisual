@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { debugMaterials, createMaterialForce } from '../../lib/materialsForceApi';
+import { debugMaterials, createMaterialForce, listMaterialsForce } from '../../lib/materialsForceApi';
 import { useMaterialsStore } from '../../stores/materialsStore';
 import { Button } from '../ui/button';
 

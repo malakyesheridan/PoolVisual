@@ -47,3 +47,16 @@ export async function debugMaterials() {
   console.log('[force] ← debug response:', data);
   return data;
 }
+
+export async function listMaterialsForce() {
+  console.log('[force] → GET /api/_materials/list');
+  const res = await fetch('/api/_materials/list', { 
+    credentials: 'include' 
+  });
+  if (!res.ok) {
+    throw new Error(`List failed ${res.status}`);
+  }
+  const data = await res.json();
+  console.log('[force] ← list response:', data);
+  return data; // Should be {items: [...]}
+}

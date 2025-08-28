@@ -30,7 +30,7 @@ import {
 } from "@shared/schema";
 import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 if (!process.env.DATABASE_URL) {
@@ -226,11 +226,20 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getMaterials(orgId: string, category?: string): Promise<Material[]> {
-    const conditions = [
-      eq(materials.isActive, true),
-      sql`(${materials.orgId} = ${orgId} OR ${materials.orgId} IS NULL)`
-    ];
+  async getAllMaterials(): Promise<Material[]> {
+    // Get ALL materials without org filtering for debugging
+    return await db.select().from(materials)
+      .where(eq(materials.isActive, true))
+      .orderBy(desc(materials.createdAt));
+  }
+
+  async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
+    const conditions = [eq(materials.isActive, true)];
+
+    // Handle org filtering - if no orgId provided, get all materials
+    if (orgId) {
+      conditions.push(or(eq(materials.orgId, orgId), eq(materials.orgId, null)));
+    }
 
     if (category) {
       conditions.push(eq(materials.category, category as any));
@@ -238,7 +247,7 @@ export class PostgresStorage implements IStorage {
 
     return await db.select().from(materials)
       .where(and(...conditions))
-      .orderBy(materials.name);
+      .orderBy(desc(materials.createdAt));
   }
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
