@@ -53,6 +53,8 @@ export default function Materials() {
   const [productUrl, setProductUrl] = useState('');
   const [pasteSpecs, setPasteSpecs] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [allImageUrls, setAllImageUrls] = useState<string[]>([]);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedSpecs, setDetectedSpecs] = useState<any>(null);
   const [saveAndNext, setSaveAndNext] = useState(false);
@@ -263,9 +265,9 @@ export default function Materials() {
         ...prev,
         name: data.name || prev.name,
         sku: data.sku || prev.sku,
-        category: data.category || prev.category,
+        category: data.categoryHint || prev.category,
         unit: data.unit || prev.unit,
-        price: data.normalizedPrice?.toString() || prev.price,
+        price: data.normalizedPrice?.toString() || data.price?.toString() || prev.price,
         finish: data.finish || prev.finish,
         tileWidthMm: data.sizes.tileW?.toString() || prev.tileWidthMm,
         tileHeightMm: data.sizes.tileH?.toString() || prev.tileHeightMm,
@@ -275,9 +277,20 @@ export default function Materials() {
         thicknessMm: data.sizes.thickness?.toString() || prev.thicknessMm
       }));
       
-      // Set image URL if available
-      if (data.imageUrl) {
+      // Set image URLs if available
+      if (data.allImageUrls && data.allImageUrls.length > 0) {
+        setAllImageUrls(data.allImageUrls);
+        setImageUrl(data.allImageUrls[0]);
+        setSelectedImageIndex(0);
+        
+        // Auto-process the first image
+        await handleImageFromUrl(data.allImageUrls[0]);
+      } else if (data.imageUrl) {
         setImageUrl(data.imageUrl);
+        setAllImageUrls([data.imageUrl]);
+        
+        // Auto-process the image
+        await handleImageFromUrl(data.imageUrl);
       }
       
       toast({
@@ -342,8 +355,9 @@ export default function Materials() {
   }, [pasteSpecs]);
 
   // Handle image from URL
-  const handleImageFromUrl = async () => {
-    if (!imageUrl.trim()) {
+  const handleImageFromUrl = async (urlToProcess?: string) => {
+    const urlToUse = urlToProcess || imageUrl;
+    if (!urlToUse.trim()) {
       toast({
         title: "URL required",
         description: "Please enter a valid image URL.",
@@ -357,7 +371,7 @@ export default function Materials() {
       const response = await fetch('/api/materials/upload-texture-from-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imageUrl })
+        body: JSON.stringify({ imageUrl: urlToUse })
       });
       
       if (!response.ok) throw new Error('Upload failed');
@@ -457,6 +471,8 @@ export default function Materials() {
     setProductUrl('');
     setPasteSpecs('');
     setImageUrl('');
+    setAllImageUrls([]);
+    setSelectedImageIndex(0);
     setDetectedSpecs(null);
     clearTexture();
   };
@@ -702,6 +718,49 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
                           )}
                         </Button>
                       </div>
+                      
+                      {/* Image Picker for Multiple Detected Images */}
+                      {allImageUrls.length > 1 && (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium">Detected Images ({allImageUrls.length})</Label>
+                          <div className="flex gap-2 overflow-x-auto">
+                            {allImageUrls.map((imgUrl, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedImageIndex(index);
+                                  setImageUrl(imgUrl);
+                                }}
+                                className={`relative flex-shrink-0 w-16 h-16 border-2 rounded overflow-hidden ${
+                                  selectedImageIndex === index 
+                                    ? 'border-blue-500 ring-2 ring-blue-200' 
+                                    : 'border-gray-300 hover:border-gray-400'
+                                }`}
+                                data-testid={`image-option-${index}`}
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt={`Option ${index + 1}`}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none';
+                                    e.currentTarget.nextElementSibling?.removeAttribute('style');
+                                  }}
+                                />
+                                <div className="absolute inset-0 bg-gray-200 flex items-center justify-center text-xs text-gray-500" style={{ display: 'none' }}>
+                                  No preview
+                                </div>
+                                {selectedImageIndex === index && (
+                                  <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">
+                                    ✓
+                                  </div>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="text-sm text-amber-700">
                         💡 Tip: Paste images from clipboard with Ctrl/Cmd+V or upload files below

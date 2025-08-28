@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { z } from 'zod';
+import { chromium } from 'playwright';
 
 // Parsing schemas
 const ImportPrefillSchema = z.object({
@@ -21,36 +22,46 @@ export interface ParsedSizes {
   grout?: number;
 }
 
+export interface ImageCandidate {
+  url: string;
+  width?: number;
+  height?: number;
+  source: string; // 'data-large_image' | 'srcset' | 'src'
+}
+
 export interface ParsedProduct {
   name?: string;
   sku?: string;
+  price?: number;
   priceRaw?: string;
   imageUrl?: string;
+  allImageUrls?: string[];
   sizes: ParsedSizes;
   finish?: string;
   source_url?: string;
-  category?: string;
+  categoryHint?: string;
   unit?: string;
   normalizedPrice?: number;
   priceUnit?: string;
+  physical_repeat_m?: number;
+  priceSource?: string;
 }
 
-// Regex patterns for parsing
+// Enhanced regex patterns for WooCommerce parsing
 const REGEX_PATTERNS = {
   // Size patterns
   mmPair: /(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/gi,
   sheet: /(sheet|sheet size)\s*[:\-]?\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/gi,
-  tile: /(tile|chip|piece)\s*[:\-]?\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/gi,
-  thickness: /(thickness|thick)\s*[:\-]?\s*(\d{1,2})\s*mm/gi,
-  grout: /(grout|gap)\s*[:\-]?\s*(\d{1,2})\s*mm/gi,
+  tile: /(tile|chip|mosaic|piece)\s*[:\-]?\s*(\d{1,3})\s*[x×]\s*(\d{1,3})\s*mm/gi,
+  thickness: /(thickness)\s*[:\-]?\s*(\d{1,2})\s*mm/gi,
+  grout: /(grout)\s*[:\-]?\s*(\d{1,2})\s*mm/gi,
   
   // Price patterns
-  priceM2: /\$?\s*([\d\.,]+)\s*\/\s*m[²2]/gi,
-  pricePerM2: /\$?\s*([\d\.,]+)\s*(per|\/)\s*m[²2]/gi,
-  priceSheet: /\$?\s*([\d\.,]+)\s*(per|\/)\s*sheet/gi,
-  priceBox: /\$?\s*([\d\.,]+)\s*(per|\/)\s*box/gi,
-  priceLm: /\$?\s*([\d\.,]+)\s*\/\s*l?m/gi,
-  priceEach: /\$?\s*([\d\.,]+)\s*(per|\/)\s*(piece|each)/gi,
+  perM2: /\$?\s*([\d\.,]+)\s*(\/|\s+per\s+)m²/gi,
+  perLM: /\$?\s*([\d\.,]+)\s*(\/|\s+per\s+)lm/gi,
+  perSheet: /\$?\s*([\d\.,]+)\s*(per|\/)\s*sheet/gi,
+  perBox: /\$?\s*([\d\.,]+)\s*(per|\/)\s*box/gi,
+  covers: /(covers|box covers)\s*([\d\.,]+)\s*m²/gi,
   
   // Category detection
   waterline: /(waterline|mosaic|glass|border|trim)/i,
@@ -66,12 +77,279 @@ const REGEX_PATTERNS = {
 export class ImportService {
   
   /**
+   * Fetch HTML with Playwright fallback for WooCommerce sites
+   */
+  static async fetchHtml(url: string): Promise<string> {
+    try {
+      // Try axios first with proper headers
+      const response = await axios.get(url, {
+        timeout: 10000,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept-Language': 'en-AU,en;q=0.9',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+        }
+      });
+      
+      const $ = cheerio.load(response.data);
+      
+      // Check if we have WooCommerce selectors
+      const hasWooGallery = $('.woocommerce-product-gallery').length > 0;
+      const hasWooPrice = $('.summary .price').length > 0;
+      
+      if (hasWooGallery || hasWooPrice) {
+        return response.data;
+      }
+      
+      console.log('WooCommerce selectors not found, trying Playwright fallback...');
+      
+    } catch (error: any) {
+      console.log('Axios failed, trying Playwright fallback...', error?.message);
+    }
+    
+    // Playwright fallback
+    try {
+      const browser = await chromium.launch({ headless: true });
+      const page = await browser.newPage();
+      
+      await page.setExtraHTTPHeaders({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+      });
+      await page.goto(url, { waitUntil: 'domcontentloaded' });
+      
+      // Wait for product title to ensure page is loaded
+      await page.waitForSelector('h1.product_title, .product_title, h1.product-title', { timeout: 5000 });
+      
+      const content = await page.content();
+      await browser.close();
+      
+      return content;
+      
+    } catch (error: any) {
+      throw new Error(`Failed to fetch page content: ${error?.message}`);
+    }
+  }
+  
+  /**
+   * Parse JSON-LD structured data
+   */
+  static parseJsonLD($: cheerio.CheerioAPI): Partial<ParsedProduct> {
+    const result: Partial<ParsedProduct> = {};
+    
+    $('script[type="application/ld+json"]').each((_, script) => {
+      try {
+        const data = JSON.parse($(script).html() || '{}');
+        
+        if (data['@type'] === 'Product') {
+          if (data.name) result.name = data.name;
+          if (data.sku) result.sku = data.sku;
+          
+          // Extract price from offers
+          if (data.offers && data.offers.price) {
+            result.price = parseFloat(data.offers.price);
+            result.priceSource = 'jsonld';
+          }
+          
+          // Extract images
+          if (data.image) {
+            const images = Array.isArray(data.image) ? data.image : [data.image];
+            const imageUrls = images.map((img: any) => typeof img === 'string' ? img : img?.url).filter(Boolean);
+            if (imageUrls.length > 0) {
+              result.allImageUrls = imageUrls;
+              result.imageUrl = imageUrls[0];
+            }
+          }
+        }
+      } catch (e) {
+        // Ignore invalid JSON-LD
+      }
+    });
+    
+    return result;
+  }
+  
+  /**
+   * Filter and rank product images
+   */
+  static filterProductImages($: cheerio.CheerioAPI): ImageCandidate[] {
+    const candidates: ImageCandidate[] = [];
+    
+    // WooCommerce gallery selectors
+    const gallerySelectors = [
+      '#woocommerce-product-gallery img',
+      '.woocommerce-product-gallery__image img',
+      '.wp-post-image',
+      '.product-image img',
+      '.product-gallery img'
+    ];
+    
+    gallerySelectors.forEach(selector => {
+      $(selector).each((_, img) => {
+        const $img = $(img);
+        
+        // Get image URLs from various attributes
+        const dataLarge = $img.attr('data-large_image');
+        const srcset = $img.attr('srcset');
+        const src = $img.attr('src');
+        
+        // Parse srcset to find largest image
+        let bestSrcsetUrl = '';
+        let bestWidth = 0;
+        
+        if (srcset) {
+          const srcsetEntries = srcset.split(',').map(entry => {
+            const [url, widthStr] = entry.trim().split(' ');
+            const width = parseInt(widthStr?.replace('w', '') || '0');
+            return { url: url.trim(), width };
+          });
+          
+          const largest = srcsetEntries.reduce((best, current) => 
+            current.width > best.width ? current : best, 
+            { url: '', width: 0 }
+          );
+          
+          if (largest.width > bestWidth) {
+            bestSrcsetUrl = largest.url;
+            bestWidth = largest.width;
+          }
+        }
+        
+        // Determine best URL and source
+        let imageUrl = '';
+        let source = '';
+        let width = 0;
+        
+        if (dataLarge && !this.isLogoOrPlaceholder(dataLarge)) {
+          imageUrl = dataLarge;
+          source = 'data-large_image';
+          width = 1000; // Assume large images are high quality
+        } else if (bestSrcsetUrl && !this.isLogoOrPlaceholder(bestSrcsetUrl)) {
+          imageUrl = bestSrcsetUrl;
+          source = 'srcset';
+          width = bestWidth;
+        } else if (src && !this.isLogoOrPlaceholder(src)) {
+          imageUrl = src;
+          source = 'src';
+          width = 500; // Default assumption
+        }
+        
+        if (imageUrl && width >= 300) {
+          // Note: Relative URLs will be made absolute in the main parsing function
+          
+          candidates.push({ url: imageUrl, width, source });
+        }
+      });
+    });
+    
+    // Remove duplicates and sort by width descending
+    const uniqueCandidates = candidates.filter((candidate, index, arr) => 
+      arr.findIndex(c => c.url === candidate.url) === index
+    );
+    
+    return uniqueCandidates.sort((a, b) => (b.width || 0) - (a.width || 0));
+  }
+  
+  /**
+   * Check if image is likely a logo or placeholder
+   */
+  static isLogoOrPlaceholder(url: string): boolean {
+    const filename = url.toLowerCase();
+    return filename.includes('logo') || 
+           filename.includes('placeholder') || 
+           filename.includes('icon') ||
+           filename.endsWith('.svg') ||
+           filename.includes('woocommerce-placeholder');
+  }
+  
+  /**
+   * Parse WooCommerce price with better handling
+   */
+  static parseWooPrice($: cheerio.CheerioAPI, fullText: string): {
+    price?: number;
+    priceRaw?: string;
+    unit?: string;
+    priceSource?: string;
+  } {
+    // Extract all amounts from price section
+    const amounts: number[] = [];
+    $('.summary .price .amount, .price .woocommerce-Price-amount').each((_, el) => {
+      const text = $(el).text().replace(/[^\d.,]/g, '');
+      const num = parseFloat(text.replace(/,/g, ''));
+      if (!isNaN(num)) amounts.push(num);
+    });
+    
+    // Use the maximum amount (for variation ranges)
+    const wooPrice = amounts.length > 0 ? Math.max(...amounts) : null;
+    
+    // Check for unit indicators in price area
+    const priceContext = $('.summary .price, .product_meta').text();
+    
+    // Look for specific price patterns in full text
+    let price = wooPrice;
+    let priceRaw = wooPrice?.toString();
+    let unit = '';
+    let priceSource = 'woo';
+    
+    // Per m² patterns
+    REGEX_PATTERNS.perM2.lastIndex = 0;
+    const perM2Match = REGEX_PATTERNS.perM2.exec(fullText);
+    if (perM2Match) {
+      price = parseFloat(perM2Match[1].replace(/,/g, ''));
+      priceRaw = perM2Match[0];
+      unit = 'm2';
+      priceSource = 'per-m2';
+      return { price, priceRaw, unit, priceSource };
+    }
+    
+    // Per lm patterns
+    REGEX_PATTERNS.perLM.lastIndex = 0;
+    const perLMMatch = REGEX_PATTERNS.perLM.exec(fullText);
+    if (perLMMatch) {
+      price = parseFloat(perLMMatch[1].replace(/,/g, ''));
+      priceRaw = perLMMatch[0];
+      unit = 'lm';
+      priceSource = 'per-lm';
+      return { price, priceRaw, unit, priceSource };
+    }
+    
+    // Per sheet patterns (will convert to m² later)
+    REGEX_PATTERNS.perSheet.lastIndex = 0;
+    const perSheetMatch = REGEX_PATTERNS.perSheet.exec(fullText);
+    if (perSheetMatch) {
+      price = parseFloat(perSheetMatch[1].replace(/,/g, ''));
+      priceRaw = perSheetMatch[0];
+      unit = 'sheet';
+      priceSource = 'per-sheet';
+      return { price, priceRaw, unit, priceSource };
+    }
+    
+    // Per box with coverage
+    REGEX_PATTERNS.perBox.lastIndex = 0;
+    const perBoxMatch = REGEX_PATTERNS.perBox.exec(fullText);
+    if (perBoxMatch) {
+      REGEX_PATTERNS.covers.lastIndex = 0;
+      const coversMatch = REGEX_PATTERNS.covers.exec(fullText);
+      if (coversMatch) {
+        const boxPrice = parseFloat(perBoxMatch[1].replace(/,/g, ''));
+        const coverage = parseFloat(coversMatch[2].replace(/,/g, ''));
+        price = boxPrice / coverage;
+        priceRaw = `${perBoxMatch[0]} (covers ${coverage}m²)`;
+        unit = 'm2';
+        priceSource = 'per-box-coverage';
+        return { price, priceRaw, unit, priceSource };
+      }
+    }
+    
+    return { price: wooPrice, priceRaw: wooPrice?.toString(), unit, priceSource };
+  }
+  
+  /**
    * Parse text content to extract product specifications
    */
   static parseProductText(text: string): ParsedSizes & { 
     priceRaw?: string; 
     finish?: string; 
-    category?: string; 
+    categoryHint?: string; 
     unit?: string;
     normalizedPrice?: number;
     priceUnit?: string;
@@ -79,7 +357,7 @@ export class ImportService {
     const result: ParsedSizes & { 
       priceRaw?: string; 
       finish?: string; 
-      category?: string; 
+      categoryHint?: string; 
       unit?: string;
       normalizedPrice?: number;
       priceUnit?: string;
@@ -138,65 +416,6 @@ export class ImportService {
       result.grout = parseInt(groutMatch[2]);
     }
     
-    // Extract prices
-    REGEX_PATTERNS.priceM2.lastIndex = 0;
-    const priceM2Match = REGEX_PATTERNS.priceM2.exec(text);
-    if (priceM2Match && priceM2Match[1]) {
-      result.priceRaw = priceM2Match[1];
-      result.normalizedPrice = parseFloat(priceM2Match[1].replace(/,/g, ''));
-      result.priceUnit = 'm2';
-      result.unit = 'm2';
-    }
-    
-    if (!result.priceRaw) {
-      REGEX_PATTERNS.pricePerM2.lastIndex = 0;
-      const perM2Match = REGEX_PATTERNS.pricePerM2.exec(text);
-      if (perM2Match && perM2Match[1]) {
-        result.priceRaw = perM2Match[1];
-        result.normalizedPrice = parseFloat(perM2Match[1].replace(/,/g, ''));
-        result.priceUnit = 'm2';
-        result.unit = 'm2';
-      }
-    }
-    
-    if (!result.priceRaw) {
-      REGEX_PATTERNS.priceSheet.lastIndex = 0;
-      const sheetMatch = REGEX_PATTERNS.priceSheet.exec(text);
-      if (sheetMatch && sheetMatch[1]) {
-        result.priceRaw = `${sheetMatch[1]} per sheet`;
-        const sheetPrice = parseFloat(sheetMatch[1].replace(/,/g, ''));
-        // Convert to m² if we have sheet dimensions
-        if (result.sheetW && result.sheetH) {
-          const sheetAreaM2 = (result.sheetW * result.sheetH) / 1000000;
-          result.normalizedPrice = sheetPrice / sheetAreaM2;
-          result.priceUnit = 'm2';
-          result.unit = 'm2';
-        }
-      }
-    }
-    
-    if (!result.priceRaw) {
-      REGEX_PATTERNS.priceLm.lastIndex = 0;
-      const lmMatch = REGEX_PATTERNS.priceLm.exec(text);
-      if (lmMatch && lmMatch[1]) {
-        result.priceRaw = lmMatch[1];
-        result.normalizedPrice = parseFloat(lmMatch[1].replace(/,/g, ''));
-        result.priceUnit = 'lm';
-        result.unit = 'lm';
-      }
-    }
-    
-    if (!result.priceRaw) {
-      REGEX_PATTERNS.priceEach.lastIndex = 0;
-      const eachMatch = REGEX_PATTERNS.priceEach.exec(text);
-      if (eachMatch && eachMatch[1]) {
-        result.priceRaw = `${eachMatch[1]} each`;
-        result.normalizedPrice = parseFloat(eachMatch[1].replace(/,/g, ''));
-        result.priceUnit = 'each';
-        result.unit = 'each';
-      }
-    }
-    
     // Extract finish
     REGEX_PATTERNS.finish.lastIndex = 0;
     const finishMatch = REGEX_PATTERNS.finish.exec(text);
@@ -206,19 +425,19 @@ export class ImportService {
     
     // Detect category
     if (REGEX_PATTERNS.waterline.test(text)) {
-      result.category = 'waterline_tile';
+      result.categoryHint = 'waterline_tile';
       result.unit = result.unit || 'm2';
     } else if (REGEX_PATTERNS.coping.test(text)) {
-      result.category = 'coping';
+      result.categoryHint = 'coping';
       result.unit = result.unit || 'lm';
     } else if (REGEX_PATTERNS.paving.test(text)) {
-      result.category = 'paving';
+      result.categoryHint = 'paving';
       result.unit = result.unit || 'm2';
     } else if (REGEX_PATTERNS.interior.test(text)) {
-      result.category = 'interior';
+      result.categoryHint = 'interior';
       result.unit = result.unit || 'm2';
     } else if (REGEX_PATTERNS.fencing.test(text)) {
-      result.category = 'fencing';
+      result.categoryHint = 'fencing';
       result.unit = result.unit || 'each';
     }
     
@@ -226,85 +445,118 @@ export class ImportService {
   }
   
   /**
-   * Fetch and parse a product URL
+   * Fetch and parse a product URL with enhanced WooCommerce support
    */
   static async prefillFromUrl(url: string): Promise<ParsedProduct> {
     try {
-      // Fetch the page
-      const response = await axios.get(url, {
-        timeout: 10000,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-      });
+      // Fetch the page with fallback
+      const html = await this.fetchHtml(url);
+      const $ = cheerio.load(html);
       
-      const $ = cheerio.load(response.data);
-      const fullText = $.text();
+      // Try JSON-LD first
+      const jsonLDData = this.parseJsonLD($);
       
-      // Extract basic product info
-      let name = $('h1').first().text().trim();
+      // Extract basic product info with WooCommerce selectors
+      let name = jsonLDData.name || '';
       if (!name) {
-        name = $('title').text().trim();
-      }
-      
-      // Try to find SKU
-      let sku = '';
-      const skuSelectors = ['[data-sku]', '.sku', '.product-code', '.item-code'];
-      for (const selector of skuSelectors) {
-        const skuEl = $(selector).first();
-        if (skuEl.length) {
-          sku = skuEl.text().trim();
-          break;
-        }
-      }
-      
-      // Extract main image
-      let imageUrl = '';
-      const imgSelectors = [
-        '.product-image img',
-        '.main-image img', 
-        '.hero-image img',
-        'img[data-main]',
-        '.gallery img:first',
-        'img'
-      ];
-      for (const selector of imgSelectors) {
-        const img = $(selector).first();
-        if (img.length) {
-          let src = img.attr('src') || img.attr('data-src') || img.attr('data-lazy');
-          if (src) {
-            if (src.startsWith('/')) {
-              const urlObj = new URL(url);
-              src = `${urlObj.protocol}//${urlObj.host}${src}`;
-            }
-            imageUrl = src;
+        const nameSelectors = ['h1.product_title', '.product_title', 'h1.product-title', 'h1.entry-title'];
+        for (const selector of nameSelectors) {
+          const nameEl = $(selector).first();
+          if (nameEl.length) {
+            name = nameEl.text().trim();
             break;
           }
         }
       }
       
-      // Parse the full text for specifications
-      const parsed = this.parseProductText(fullText);
+      // Try to find SKU
+      let sku = jsonLDData.sku || '';
+      if (!sku) {
+        const skuSelectors = ['span.sku', '.product_meta .sku', '.sku'];
+        for (const selector of skuSelectors) {
+          const skuEl = $(selector).first();
+          if (skuEl.length) {
+            sku = skuEl.text().trim();
+            break;
+          }
+        }
+      }
+      
+      // Extract description/specs text
+      const specsText = [
+        $('.woocommerce-Tabs-panel').text(),
+        $('.product-short-description').text(),
+        $('.woocommerce-product-details__short-description').text(),
+        $('.product_meta').text(),
+        $('table.woocommerce-product-attributes').text()
+      ].join(' ');
+      
+      const fullText = $('body').text();
+      
+      // Parse price with WooCommerce awareness
+      const priceData = this.parseWooPrice($, fullText + ' ' + specsText);
+      
+      // Parse specs from combined text
+      const parsed = this.parseProductText(fullText + ' ' + specsText);
+      
+      // Filter and rank product images
+      const imageCandidates = this.filterProductImages($);
+      const allImageUrls = imageCandidates.map(c => c.url);
+      const primaryImage = allImageUrls[0] || jsonLDData.imageUrl;
+      
+      // Special handling for PoolTile 23mm products
+      if (name.includes('23mm') && !parsed.tileW && !parsed.tileH) {
+        parsed.tileW = 23;
+        parsed.tileH = 23;
+      }
+      
+      // Detect category from URL/breadcrumbs
+      let categoryHint = parsed.categoryHint;
+      if (!categoryHint) {
+        if (url.includes('waterline') || url.includes('mosaic') || $('.breadcrumb, .woocommerce-breadcrumb').text().toLowerCase().includes('waterline')) {
+          categoryHint = 'waterline_tile';
+        }
+      }
+      
+      // Normalize price
+      let normalizedPrice = priceData.price;
+      let unit = priceData.unit || parsed.unit;
+      let priceUnit = priceData.unit;
+      
+      // Convert per-sheet to per-m² if we have sheet dimensions
+      if (priceData.unit === 'sheet' && parsed.sheetW && parsed.sheetH) {
+        const sheetAreaM2 = (parsed.sheetW * parsed.sheetH) / 1000000;
+        normalizedPrice = priceData.price! / sheetAreaM2;
+        priceUnit = 'm2';
+        unit = 'm2';
+      }
+      
+      // Calculate physical repeat
+      const physicalRepeatM = this.calculatePhysicalRepeat(parsed);
       
       return {
         name: name || undefined,
         sku: sku || undefined,
-        imageUrl: imageUrl || undefined,
+        price: normalizedPrice,
+        priceRaw: priceData.priceRaw,
+        imageUrl: primaryImage,
+        allImageUrls: allImageUrls.length > 0 ? allImageUrls : undefined,
         source_url: url,
         sizes: {
-          sheetW: parsed.sheetW,
-          sheetH: parsed.sheetH,
-          tileW: parsed.tileW,
-          tileH: parsed.tileH,
-          thickness: parsed.thickness,
-          grout: parsed.grout
+          sheetW: parsed.sheetW || undefined,
+          sheetH: parsed.sheetH || undefined,
+          tileW: parsed.tileW || undefined,
+          tileH: parsed.tileH || undefined,
+          thickness: parsed.thickness || undefined,
+          grout: parsed.grout || undefined
         },
         finish: parsed.finish,
-        category: parsed.category,
-        unit: parsed.unit,
-        priceRaw: parsed.priceRaw,
-        normalizedPrice: parsed.normalizedPrice,
-        priceUnit: parsed.priceUnit
+        categoryHint,
+        unit,
+        normalizedPrice,
+        priceUnit,
+        physical_repeat_m: physicalRepeatM,
+        priceSource: priceData.priceSource
       };
       
     } catch (error) {

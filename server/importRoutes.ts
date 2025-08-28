@@ -34,6 +34,22 @@ export function registerImportRoutes(app: Express) {
       const { url } = validation.data;
       const result = await ImportService.prefillFromUrl(url);
       
+      // Make relative URLs absolute
+      if (result.imageUrl && result.imageUrl.startsWith('/')) {
+        const urlObj = new URL(url);
+        result.imageUrl = `${urlObj.protocol}//${urlObj.host}${result.imageUrl}`;
+      }
+      
+      if (result.allImageUrls) {
+        result.allImageUrls = result.allImageUrls.map(imgUrl => {
+          if (imgUrl.startsWith('/')) {
+            const urlObj = new URL(url);
+            return `${urlObj.protocol}//${urlObj.host}${imgUrl}`;
+          }
+          return imgUrl;
+        });
+      }
+      
       res.json(result);
 
     } catch (error) {

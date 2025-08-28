@@ -111,14 +111,17 @@ export function registerMaterialRoutes(app: Express) {
         }
 
         try {
-          textureResult = await textureProcessor.processTexture(filePath, {
-            tileWidthMm: data.tileWidthMm ? parseInt(data.tileWidthMm) : undefined,
-            tileHeightMm: data.tileHeightMm ? parseInt(data.tileHeightMm) : undefined,
-            sheetWidthMm: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : undefined,
-            sheetHeightMm: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : undefined,
-            groutWidthMm: data.groutWidthMm ? parseInt(data.groutWidthMm) : undefined,
+          const processOptions: any = {
             makeSeamless: data.makeSeamless !== false
-          });
+          };
+          
+          if (data.tileWidthMm) processOptions.tileWidthMm = parseInt(data.tileWidthMm);
+          if (data.tileHeightMm) processOptions.tileHeightMm = parseInt(data.tileHeightMm);
+          if (data.sheetWidthMm) processOptions.sheetWidthMm = parseInt(data.sheetWidthMm);
+          if (data.sheetHeightMm) processOptions.sheetHeightMm = parseInt(data.sheetHeightMm);
+          if (data.groutWidthMm) processOptions.groutWidthMm = parseInt(data.groutWidthMm);
+          
+          textureResult = await textureProcessor.processTexture(filePath, processOptions);
 
           // Cleanup
           await textureProcessor.cleanup(filePath);
@@ -152,14 +155,17 @@ export function registerMaterialRoutes(app: Express) {
         notes: data.notes || null,
         textureUrl: textureResult?.textureUrl || null,
         thumbnailUrl: textureResult?.thumbnailUrl || null,
-        physicalRepeatM: textureResult?.physicalRepeatM?.toString() || ImportService.calculatePhysicalRepeat({
-          sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : undefined,
-          sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : undefined,
-          tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : undefined,
-          tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : undefined,
-          grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : undefined,
-          thickness: data.thicknessMm ? parseInt(data.thicknessMm) : undefined
-        }).toString()
+        physicalRepeatM: textureResult?.physicalRepeatM?.toString() || (() => {
+          const sizes = {
+            sheetW: data.sheetWidthMm ? parseInt(data.sheetWidthMm) : undefined,
+            sheetH: data.sheetHeightMm ? parseInt(data.sheetHeightMm) : undefined,
+            tileW: data.tileWidthMm ? parseInt(data.tileWidthMm) : undefined,
+            tileH: data.tileHeightMm ? parseInt(data.tileHeightMm) : undefined,
+            grout: data.groutWidthMm ? parseInt(data.groutWidthMm) : undefined,
+            thickness: data.thicknessMm ? parseInt(data.thicknessMm) : undefined
+          };
+          return ImportService.calculatePhysicalRepeat(sizes).toString();
+        })()
       };
 
       const material = await storage.createMaterial(materialData);

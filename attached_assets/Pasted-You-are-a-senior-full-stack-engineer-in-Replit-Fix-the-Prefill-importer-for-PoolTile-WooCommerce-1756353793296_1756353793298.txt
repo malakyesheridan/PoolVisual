@@ -1,0 +1,143 @@
+You are a senior full-stack engineer in Replit. **Fix the Prefill importer for PoolTile (WooCommerce)** so it returns correct **price**, **sheet/tile sizes**, and a **product image** (not the site logo). Keep everything backward-compatible.
+
+==============================================================================
+SCOPE
+==============================================================================
+- Update `GET /api/import/prefill?url=...` to use **WooCommerce-aware selectors**, **JSON-LD parsing**, and a **Playwright fallback**.
+- Prefer **gallery product images** (largest srcset or data-large_image). Exclude logos/placeholders.
+- Normalize price to correct **unit** (m²/lm/each) and compute **per-m²** when price is “per sheet/box”.
+- Return multiple candidate images so the UI can pick if needed.
+
+==============================================================================
+BACKEND IMPLEMENTATION
+==============================================================================
+1) **Fetcher with fallback**
+- `fetchHtml(url)` tries `got`/`axios` first with headers:
+  - `User-Agent`: "Mozilla/5.0 …"
+  - `Accept-Language`: "en-AU,en;q=0.9"
+- If it doesn’t find `.woocommerce-product-gallery` **or** `.summary .price`, fallback to **Playwright**:
+  - `await page.goto(url, { waitUntil:'domcontentloaded' })`
+  - `await page.waitForSelector('h1.product_title, .product_title', { timeout: 5000 })`
+  - Extract `page.content()`.
+
+2) **Parse strategy (Cheerio)**
+- **JSON-LD first**: find `<script type="application/ld+json">` with `@type:"Product"`.
+  - Prefer `offers.price` (number) and `image` array.
+- **Woo selectors**:
+  - Name: `h1.product_title, .product_title, h1.product-title`
+  - SKU: `span.sku, .product_meta .sku`
+  - Price:
+    - `.summary .price .amount` (collect all `.amount`), choose the **max** numeric (variation ranges).
+    - Also scan nearby text for units (`/m²|per\s*sheet|\/\s*lm/i`).
+  - Description/specs block (concatenate):
+    - `.woocommerce-Tabs-panel`, `.product-short-description`, `.woocommerce-product-details__short-description`, `.product_meta`, `table.woocommerce-product-attributes`
+- **Images** (ordered preference; **filter out logos**):
+  - `#woocommerce-product-gallery img, .woocommerce-product-gallery__image img, .wp-post-image`
+  - Attributes considered:
+    - `data-large_image`, `srcset` (pick largest width), then `src`
+  - **Reject** if:
+    - filename contains `logo`, `placeholder`, `icon`, `.svg`
+    - width < 300 or height < 300 (when known via `srcset`)
+  - Build `candidates[]` sorted by pixel width desc; pick `primary = candidates[0]`.
+
+3) **Size & unit parsing (regex on combined text + table)**
+```ts
+const rx = {
+  mmPair: /(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/i,
+  sheet: /(sheet|sheet size)\s*[:\-]?\s*(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/i,
+  tile: /(tile|chip|mosaic|piece)\s*[:\-]?\s*(\d{1,3})\s*[x×]\s*(\d{1,3})\s*mm/i,
+  thickness: /(thickness)\s*[:\-]?\s*(\d{1,2})\s*mm/i,
+  grout: /(grout)\s*[:\-]?\s*(\d{1,2})\s*mm/i,
+  perSheet: /\$?\s*([\d\.,]+)\s*(per|\/)\s*sheet/i,
+  perBox:   /\$?\s*([\d\.,]+)\s*(per|\/)\s*box/i,
+  covers:   /(covers|box covers)\s*([\d\.,]+)\s*m²/i,
+  perM2:    /\$?\s*([\d\.,]+)\s*(\/|\s+per\s+)m²/i,
+  perLM:    /\$?\s*([\d\.,]+)\s*(\/|\s+per\s+)lm/i
+};
+Extract sheetW/H, tileW/H, thickness, grout.
+
+Price normalisation:
+
+if perM2 → price=val, unit='m2'
+
+else if perLM → price=val, unit='lm'
+
+else if perSheet and sheetW/H → price_m2 = priceSheet / ((sheetW*sheetH)/1e6), unit='m2'
+
+else if perBox & covers → price_m2 = priceBox / covers, unit='m2'
+
+else → leave unit inferred by category; price numeric best-effort; include priceRaw in response.
+
+physical_repeat_m = sheetW? /1000 : tileW? /1000 : null.
+
+Response shape
+
+ts
+Copy code
+{
+  name, sku, price, priceRaw, unit, categoryHint, imageUrl: primary,
+  allImageUrls: candidates, source_url: url,
+  sizes: { sheetW, sheetH, tileW, tileH, thickness, grout },
+  physical_repeat_m
+}
+Edge rules for PoolTile waterline pages
+
+If URL or breadcrumbs contain waterline or mosaic → categoryHint='waterline_tile', default unit='m2'.
+
+If product name contains 23mm, set tileW/tileH=23 when not found elsewhere.
+
+Log for debugging
+
+Include which selector/regex won (e.g., priceSource:'jsonld'|'woo'|'sheet->m2').
+
+Return debug when ?debug=1.
+
+==============================================================================
+FRONTEND CHANGES
+After Prefill:
+
+If imageUrl present → immediately call POST /api/materials/upload-texture-from-url to generate seamless texture, show preview.
+
+If allImageUrls.length > 1 → show a mini image picker (thumbnails) so user can switch; default is index 0.
+
+If priceRaw exists but price missing, surface a unit selector (m²/lm/sheet) and auto-recompute price from sheetW/H when the user picks “per sheet”.
+
+Add a warning chip when unit couldn’t be inferred: “Verify unit (default m²)”.
+
+==============================================================================
+REJECTION & FALLBACKS
+If no good image: show toast “Couldn’t find a product image. Pick one from the gallery below or paste an image URL.” and render the allImageUrls picker plus URL field.
+
+If price/size unclear: prefill what we can; do not block save.
+
+==============================================================================
+TESTS (include fixture for the example URL)
+Create a static HTML fixture that mimics PoolTile WooCommerce markup (price block, gallery, meta table) including a logo and real gallery images.
+
+Unit tests:
+
+Image filter removes logo.svg/png and picks the largest gallery image (data-large_image/srcset).
+
+Price parser converts per sheet with sheetW/H = 300x300 to per-m² correctly (divide by 0.09).
+
+Tile size “23mm” inferred from name when missing.
+
+E2E (Playwright):
+
+Prefill with the provided URL (if network allowed) OR fixture page → name/category correct, imageUrl is product image, price normalized, texture generated.
+
+==============================================================================
+ACCEPTANCE CRITERIA
+When I prefill https://www.pooltile.com.au/product/cmc555-white-wavy-23mm/:
+
+Material name + category are correct (as today).
+
+Price is captured and normalized (per-m² for waterline by default).
+
+Image is a product/gallery image (not the site logo); texture preview appears automatically.
+
+physical_repeat_m computed from 23mm chip or sheet size if present.
+
+UI lets me quickly switch images if multiple were detected.
+
+No console errors; strict TS; existing editor behavior unchanged.
