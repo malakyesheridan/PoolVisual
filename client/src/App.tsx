@@ -48,15 +48,15 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/materials-new">
+      <Route path="/materials-old">
         <ProtectedRoute>
-          <MaterialsNew />
+          <Materials />
         </ProtectedRoute>
       </Route>
       
       <Route path="/materials">
         <ProtectedRoute>
-          <Materials />
+          <MaterialsNew />
         </ProtectedRoute>
       </Route>
       
