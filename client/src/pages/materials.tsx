@@ -536,12 +536,30 @@ export default function Materials() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopNavigation currentPage="materials" />
+    <div className="min-h-screen bg-slate-50 pb-20 md:pb-0">
+      <div className="hidden md:block">
+        <TopNavigation currentPage="materials" />
+      </div>
       
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+      {/* Mobile header */}
+      <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between">
+          <h1 className="font-semibold mobile-text-lg">Materials</h1>
+          <Button
+            onClick={() => setShowAddForm(true)}
+            className="tap-target"
+            size="sm"
+            data-testid="button-add-material"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Add
+          </Button>
+        </div>
+      </div>
+      
+      <div className="max-w-7xl mx-auto mobile-container md:px-6 mobile-spacing md:py-8">
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
               Materials Library
@@ -562,7 +580,7 @@ export default function Materials() {
             
             <Button 
               onClick={() => setShowAddForm(true)}
-              data-testid="button-add-material"
+              data-testid="button-add-material-desktop"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Material
@@ -646,7 +664,7 @@ export default function Materials() {
                 </Button>
               </Card>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
                 {filteredMaterials.map((material) => (
                   <MaterialCard 
                     key={material.id} 

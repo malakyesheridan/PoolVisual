@@ -1,0 +1,81 @@
+You are a senior full-stack engineer in Replit. **Overhaul the mobile UX** for PoolVisual Quotes. The current mobile experience is clunky; make it world-class: clean layout, large touch targets, buttery navigation, and polished animations. **Do not break desktop.** TypeScript + React + Tailwind. No TODOs.
+
+==============================================================================
+NON-REGRESSION (HARD)
+==============================================================================
+- Desktop layouts remain unchanged (≥1024px).
+- All routes, APIs, and editor features must continue to work.
+- Changes are additive and responsive; do not rename existing state keys.
+
+==============================================================================
+DESIGN PRINCIPLES (MOBILE FIRST ≤768px)
+==============================================================================
+- Minimal chrome; content first.
+- 44×44dp minimum tap targets.
+- One primary action per screen, elevated via FAB or primary button.
+- Smooth transitions (CSS/Framer Motion), no jank.
+- Respect safe areas (notches/home indicator) using `env(safe-area-inset-*)`.
+
+==============================================================================
+BREAKPOINTS & TOKENS
+==============================================================================
+Tailwind config:
+- `sm: 640px`, `md: 768px`, `lg: 1024px`, `xl: 1280px`.
+- Add CSS vars for safe areas:
+  `.safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 12px); }`
+- Typographic scale:
+  - mobile body: 16px base, titles 18–20px; no tiny text.
+
+==============================================================================
+GLOBAL NAV (MOBILE)
+==============================================================================
+- Implement **bottom nav bar** (sticky, safe-area aware) with 4 tabs:
+  1) Jobs
+  2) Editor
+  3) Materials
+  4) Quotes
+- Use icons + short labels; highlight active route.
+- Hide bottom nav on desktop; show only on `md:hidden`.
+
+Files:
+- `src/components/nav/BottomNav.tsx` (mobile only)
+- Inject in `AppLayout` beneath `Outlet`.
+
+==============================================================================
+CANVAS EDITOR — MOBILE UX
+==============================================================================
+Goal: full-screen stage with a **bottom sheet toolbelt**. Keep gestures simple.
+
+Layout (≤768px):
+- Top app bar (sticky): Back, Title (“Editor”), **Undo/Redo**, Overflow (Export/Before/After toggle).
+- Stage: fills viewport; double-tap = zoom to 100%; pinch to zoom; two-finger pan.
+- **Bottom Sheet** (swipeable):
+  - Collapsed (72dp): shows the current tool + “Materials” tab pill.
+  - Half (60% height) and Full (95% height) states via pan gesture.
+  - Tabs inside: **Tools** | **Materials**.
+    - Tools: Area, Linear, Waterline, Eraser, Brush size slider; Calibration chip (“Set”/“Edit”).
+    - Materials: category chips (horizontal scroll), search, 2-column grid of cards (thumb, name, price).
+  - Primary action row (sticky inside sheet): **Attach** (disabled if no mask selected).
+
+Gestures:
+- One-finger pan within stage; two-finger pan disables drawing.
+- Long-press on mask = select mask.
+- Haptics: on attach & delete (navigator.vibrate if available).
+
+Files:
+- `src/components/editor/mobile/BottomSheet.tsx` (Framer Motion)
+- `src/components/editor/mobile/Toolbelt.tsx`
+- `src/components/editor/mobile/MaterialGrid.tsx`
+
+Performance:
+- On mobile uploads, downscale to max 2000px on the long edge before upload.
+- Reduce canvas overdraw; avoid heavy shadows.
+
+==============================================================================
+UPLOAD UX (MOBILE)
+==============================================================================
+Add a **floating action button (FAB)** on Editor and Jobs pages:
+- “+” opens: **Take Photo** / **Choose from Library**.
+- Input element:
+  ```jsx
+  <input type="file" accept="image/*" capture="environment" className="hidden" />

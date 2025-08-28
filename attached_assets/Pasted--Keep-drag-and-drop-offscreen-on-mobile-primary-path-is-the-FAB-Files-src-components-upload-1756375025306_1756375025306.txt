@@ -1,0 +1,83 @@
+	•	Keep drag-and-drop offscreen on mobile; primary path is the FAB.
+
+Files:
+	•	src/components/uploader/FabUpload.tsx
+	•	Reuse existing upload pipeline.
+
+==============================================================================
+MATERIALS — MOBILE PAGES
+	•	/materials: search at top, filter chips (scrollable), 2-column card grid (min card 160px).
+	•	Card tap → drawer sheet with details (sizes, price, texture preview) and Use in Editor CTA.
+	•	When opened from Editor, “Use in Editor” attaches to the active mask and returns.
+
+Files:
+	•	src/pages/materials/MaterialsMobile.tsx
+	•	src/components/materials/MaterialCard.tsx
+	•	src/components/materials/MaterialSheet.tsx
+
+==============================================================================
+FORMS & DRAWERS
+	•	All modals become full-screen dialogs on mobile with top app bar (Close & Save).
+	•	Inputs: large touch targets (min h-12), numeric steppers for mm values.
+	•	Sticky submit bar at bottom with primary button.
+
+Files to adapt:
+	•	Add/Edit Material drawer → full-screen on mobile via md:hidden + lg:block.
+
+==============================================================================
+ACCESSIBILITY
+	•	4.5:1 contrast min; larger text respects OS scaling.
+	•	Focus outlines visible; keyboard navigation works with mobile keyboard.
+	•	Reduce motion option: respect prefers-reduced-motion (disable big animations).
+
+==============================================================================
+TAILWIND/STYLE IMPLEMENTATION NOTES
+	•	Replace tight paddings with responsive classes: px-4 py-3 md:px-6 md:py-4.
+	•	Hide sidebars on mobile: hidden md:flex.
+	•	Grids:
+	•	Materials grid: grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-6.
+	•	Icon buttons:
+	•	h-11 w-11 rounded-full flex items-center justify-center active:scale-[0.98].
+
+==============================================================================
+EDITOR CONTROLS (RESPONSIVE)
+	•	Undo/Redo in top app bar on mobile (icons only); in desktop remain in toolbar.
+	•	Before/After/Side-by-Side in overflow menu on mobile.
+	•	Metrics (area, lm, cost) show as pill bar above bottom sheet when a mask is selected (single line, scrollable).
+
+==============================================================================
+SAFE AREAS
+	•	Bottom nav + sheets add pb-[calc(env(safe-area-inset-bottom)+8px)].
+	•	Top bar adds pt-[calc(env(safe-area-inset-top)+8px)] on iOS Safari.
+
+==============================================================================
+CODE TASKS (SUMMARY)
+	1.	Add BottomNav.tsx; mount in AppLayout; hide on desktop.
+	2.	Implement BottomSheet with Tools/Materials tabs (Framer Motion or CSS).
+	3.	Create FabUpload.tsx; wire to existing upload endpoint (capture="environment").
+	4.	Make Add/Edit Material drawers full-screen on mobile; sticky Save bar.
+	5.	Materials grid/list mobile components; detail sheet with “Use in Editor”.
+	6.	Editor header on mobile: back, title, undo/redo, overflow menu (toggle modes, export).
+	7.	Responsive classes sweep (spacing, font, grid).
+	8.	Safe-area utilities and css classes added globally.
+	9.	Disable hover tooltips on mobile (@media (hover: none)); use tap tooltips/toasts.
+	10.	Performance pass: mobile image pre-downscale, rAF throttling, remove heavy drop-shadows.
+
+==============================================================================
+TESTS (PLAYWRIGHT MOBILE)
+	•	iPhone 12 & Pixel 7 emulation.
+	•	Flows:
+	1.	Open Editor → FAB upload → photo appears → bottom sheet expands → draw mask → attach material.
+	2.	Undo/Redo via top bar works; metrics pill updates.
+	3.	Navigate via bottom nav across Jobs/Materials/Quotes.
+	4.	Add Material full-screen dialog → Save → appears in grid → Use in Editor attaches and returns.
+	•	No horizontal scroll on any primary screen.
+	•	Tap targets ≥44px (assert via bounding boxes).
+	•	Lighthouse Mobile: Performance ≥85, Accessibility ≥95, Best Practices ≥95.
+
+==============================================================================
+ACCEPTANCE CRITERIA
+	•	Mobile feels native: bottom nav, FAB upload, swipeable tool/material sheet.
+	•	Zero layout jank; 60fps interactions on modern phones.
+	•	Every control reachable with one hand; no microscopic tap targets.
+	•	Desktop unchanged

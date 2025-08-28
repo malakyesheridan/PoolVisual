@@ -15,6 +15,7 @@ import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
+import { BottomNav } from "@/components/nav/BottomNav";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -113,6 +114,9 @@ function App() {
         <TooltipProvider>
           <Toaster position="top-right" richColors closeButton />
           <Router />
+          
+          {/* Mobile bottom navigation */}
+          <BottomNav />
         </TooltipProvider>
       </QueryClientProvider>
     </AppErrorBoundary>
