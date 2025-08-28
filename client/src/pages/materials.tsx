@@ -121,7 +121,30 @@ export default function Materials() {
       // Handle form state based on save type
       if (!saveAndNext) {
         setShowAddForm(false);
-        resetForm();
+        // Clear form
+        setFormData({
+          name: '',
+          sku: '',
+          category: '',
+          unit: '',
+          cost: '',
+          price: '',
+          wastagePct: '8',
+          marginPct: '',
+          supplier: 'PoolTile',
+          color: '',
+          finish: '',
+          tileWidthMm: '',
+          tileHeightMm: '',
+          sheetWidthMm: '',
+          sheetHeightMm: '',
+          groutWidthMm: '',
+          thicknessMm: '',
+          notes: '',
+          makeSeamless: true
+        });
+        setTexturePreview(null);
+        setFileKey(null);
       } else {
         resetFormForNext();
         setSaveAndNext(false);
@@ -178,8 +201,8 @@ export default function Materials() {
       grout_width_mm: formData.groutWidthMm ? parseInt(formData.groutWidthMm) : null,
       thickness_mm: formData.thicknessMm ? parseInt(formData.thicknessMm) : null,
       notes: formData.notes || null,
-      texture_url: texture?.textureUrl || null,
-      thumbnail_url: texture?.thumbnailUrl || null,
+      texture_url: texturePreview || null,
+      thumbnail_url: texturePreview || null,
       fileKey: fileKey,
       orgId: selectedOrgId
     };
@@ -736,7 +759,7 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
                         />
                         <Button
                           type="button"
-                          onClick={handleImageFromUrl}
+                          onClick={() => handleImageFromUrl()}
                           disabled={isUploading || !imageUrl.trim()}
                           size="sm"
                           data-testid="button-use-image-url"
