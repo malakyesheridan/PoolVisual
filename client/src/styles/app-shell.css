@@ -1,0 +1,63 @@
+:root {
+  --app-header-h-mobile: 56px;
+  --app-header-h-desktop: 64px;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-header-h: calc(var(--app-header-h-mobile) + var(--app-safe-top));
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-header-h: calc(var(--app-header-h-desktop) + var(--app-safe-top));
+  }
+}
+
+/* AppShell regions */
+.app-shell {
+  min-height: 100dvh; /* dynamic viewport prevents iOS 100vh bugs */
+  display: grid;
+  grid-template-rows: var(--app-header-h) 1fr;
+  background: rgb(248 250 252); /* tailwind slate-50-ish */
+}
+
+.app-header {
+  position: sticky; /* relative to app-shell; not clipped by body */
+  top: 0;
+  z-index: 50; /* above content, below modals if any use 60+ */
+  height: var(--app-header-h);
+  padding-top: var(--app-safe-top);
+  backdrop-filter: saturate(180%) blur(8px);
+}
+
+.app-main {
+  min-height: 0; /* allow child to size using flex/grid */
+  overflow: hidden; /* we will create inner scroll containers */
+}
+
+/* Standard scroll area for pages */
+.page-scroll {
+  height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Z-index scale to avoid header overlap bugs */
+.z-header { z-index: 50; }
+.z-popover { z-index: 60; }
+.z-modal { z-index: 70; }
+
+/* Utility if some page forces absolute child to cover screen */
+.cover-under-header {
+  position: relative;
+  height: calc(100dvh - var(--app-header-h));
+}
+
+/* Mobile bottom nav adjustments */
+.bottom-nav-spacer {
+  height: 80px; /* space for bottom navigation on mobile */
+}
+
+@media (min-width: 768px) {
+  .bottom-nav-spacer {
+    height: 0;
+  }
+}

@@ -82,7 +82,7 @@ export default function MaterialsNew() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="bg-gray-50 dark:bg-gray-900">
       {/* Header */}
       <div className="bg-white dark:bg-gray-800 border-b">
         <div className="container mx-auto px-4 py-4">
@@ -225,7 +225,7 @@ export default function MaterialsNew() {
                     <div>
                       {material.price && (
                         <p className="font-semibold text-green-600">
-                          ${typeof material.price === 'number' ? material.price.toFixed(2) : parseFloat(material.price.toString()).toFixed(2)}
+                          ${typeof material.price === 'number' ? material.price.toFixed(2) : parseFloat(String(material.price)).toFixed(2)}
                         </p>
                       )}
                       <p className="text-xs text-gray-500">per {material.unit}</p>

@@ -88,25 +88,8 @@ export function CanvasEditorPage() {
   // Show upload interface if no image is loaded
   if (!photo) {
     return (
-      <div className="h-screen flex flex-col bg-slate-50">
-        {/* Mobile header */}
-        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3">
-          <div className="flex items-center justify-between">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/dashboard')}
-              className="tap-target"
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <h1 className="font-semibold mobile-text-lg">Editor</h1>
-            <div className="w-10" /> {/* Spacer */}
-          </div>
-        </div>
-
-        <div className="flex-1 flex items-center justify-center p-4 md:p-8">
+      <div className="cover-under-header bg-slate-50">
+        <div className="flex items-center justify-center p-4 md:p-8 h-full">
           <div className="max-w-2xl w-full">
             <div className="text-center mb-6 md:mb-8">
               <h1 className="text-2xl md:text-3xl font-bold text-slate-900 mb-3 md:mb-4 mobile-text-xl">
@@ -166,59 +149,17 @@ export function CanvasEditorPage() {
   // Main editor interface
   return (
     <div className={cn(
-      "h-screen flex flex-col bg-slate-100",
+      "cover-under-header flex flex-col bg-slate-100",
       isFullscreen && "fixed inset-0 z-50"
     )}>
-      {/* Mobile header */}
-      <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 relative z-20">
-        <div className="flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => navigate('/dashboard')}
-            className="tap-target"
-            data-testid="button-back"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </Button>
-          <h1 className="font-semibold mobile-text-lg">Editor</h1>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="tap-target"
-              data-testid="button-undo"
-            >
-              <Undo className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="tap-target"
-              data-testid="button-redo"
-            >
-              <Redo className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="tap-target"
-              data-testid="button-menu"
-            >
-              <MoreHorizontal className="w-5 h-5" />
-            </Button>
-          </div>
-        </div>
-      </div>
-
       {/* Main Editor Layout */}
       <div className="flex-1 flex overflow-hidden">
         {/* Canvas Area */}
         <div className="flex-1 flex flex-col bg-white">
           {/* Canvas */}
-          <div className="flex-1 relative bg-gray-100 overflow-auto mb-20 md:mb-0">
+          <div className="flex-1 relative bg-gray-100 overflow-hidden">
             <CanvasStage
-              className="w-full h-full min-h-0"
+              className="absolute inset-0 w-full h-full"
             />
           </div>
         </div>

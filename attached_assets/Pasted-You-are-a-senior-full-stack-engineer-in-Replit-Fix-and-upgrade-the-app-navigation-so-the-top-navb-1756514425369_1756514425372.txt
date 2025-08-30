@@ -1,0 +1,280 @@
+You are a senior full-stack engineer in Replit. **Fix and upgrade the app navigation so the top navbar never gets cut off** on any page (especially **Materials** and **Canvas Editor**), and navigation is smooth on desktop and mobile. The fix must be structural (shared app shell), not page-by-page hacks. TypeScript + React + Tailwind. All changes are **additive** (no route renames). Keep existing page content; just refactor layout and z-index/overflow rules.
+
+===============================================================================
+GOALS (NON-NEGOTIABLE)
+===============================================================================
+1) **Persistent App Shell**: a fixed header (navbar) at the top, optional left sidebar, and a scrollable main content region beneath it.
+2) **No clipping/cutoff**: Header must never be clipped by parent `overflow:hidden` or absolute layers (e.g., the Canvas).  
+3) **Mobile safe-area**: Respect iOS notch (`viewport-fit=cover` and safe-area insets).  
+4) **Canvas Editor & Materials**: Content must size to the visible viewport **minus** the header height; no overlapping header; no hidden nav.  
+5) **Z-index sanity**: Header above everything; any floating canvases/tools must be below it by default.  
+6) **Smooth nav**: Links usable at all times; mobile shows a clean “page bar / back” pattern; desktop shows full navbar.  
+
+===============================================================================
+A) GLOBAL: META + CSS VARIABLES
+===============================================================================
+1) Ensure the viewport meta is set to support safe area on iOS (index.html):
+```html
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+Create (or extend) src/styles/app-shell.css:
+
+css
+Copy code
+:root {
+  --app-header-h-mobile: 56px;
+  --app-header-h-desktop: 64px;
+  --app-safe-top: env(safe-area-inset-top, 0px);
+  --app-header-h: calc(var(--app-header-h-mobile) + var(--app-safe-top));
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --app-header-h: calc(var(--app-header-h-desktop) + var(--app-safe-top));
+  }
+}
+
+/* AppShell regions */
+.app-shell {
+  min-height: 100dvh; /* dynamic viewport prevents iOS 100vh bugs */
+  display: grid;
+  grid-template-rows: var(--app-header-h) 1fr;
+  background: rgb(248 250 252); /* tailwind slate-50-ish */
+}
+
+.app-header {
+  position: sticky; /* relative to app-shell; not clipped by body */
+  top: 0;
+  z-index: 50; /* above content, below modals if any use 60+ */
+  height: var(--app-header-h);
+  padding-top: var(--app-safe-top);
+  backdrop-filter: saturate(180%) blur(8px);
+}
+
+.app-main {
+  min-height: 0; /* allow child to size using flex/grid */
+  overflow: hidden; /* we will create inner scroll containers */
+}
+
+/* Standard scroll area for pages */
+.page-scroll {
+  height: 100%;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Z-index scale to avoid header overlap bugs */
+.z-header { z-index: 50; }
+.z-popover { z-index: 60; }
+.z-modal { z-index: 70; }
+
+/* Utility if some page forces absolute child to cover screen */
+.cover-under-header {
+  position: relative;
+  height: calc(100dvh - var(--app-header-h));
+}
+Import app-shell.css once (e.g., in src/main.tsx or global styles).
+
+===============================================================================
+B) APP SHELL COMPONENT (ONE SOURCE OF LAYOUT TRUTH)
+Create src/layout/AppShell.tsx:
+
+tsx
+Copy code
+import { PropsWithChildren } from 'react';
+import { Link, NavLink } from 'react-router-dom';
+
+export function AppShell({ children }: PropsWithChildren) {
+  return (
+    <div className="app-shell">
+      <header className="app-header bg-white/80 border-b z-header">
+        <div className="mx-auto max-w-7xl h-full flex items-center px-3 gap-3">
+          <Link to="/" className="font-semibold">PoolVisual Quotes</Link>
+          <nav className="hidden md:flex items-center gap-2 text-sm">
+            <NavItem to="/jobs" label="Jobs" />
+            <NavItem to="/canvas-editor" label="Canvas Editor" />
+            <NavItem to="/materials" label="Materials" />
+            <NavItem to="/quotes" label="Quotes" />
+          </nav>
+          <div className="ml-auto flex items-center gap-2">
+            {/* right-side actions/user menu as you have now */}
+          </div>
+        </div>
+      </header>
+
+      <main className="app-main">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+function NavItem({ to, label }: { to: string; label: string }) {
+  return (
+    <NavLink
+      to={to}
+      className={({ isActive }) =>
+        `px-3 py-2 rounded-lg hover:bg-slate-100 ${isActive ? 'bg-slate-200 font-medium' : ''}`
+      }
+    >
+      {label}
+    </NavLink>
+  );
+}
+Wrap your router outlet with AppShell (e.g., in src/App.tsx):
+
+tsx
+Copy code
+import { Routes, Route } from 'react-router-dom';
+import { AppShell } from './layout/AppShell';
+import MaterialsPage from './pages/MaterialsPage';
+import CanvasEditorPage from './pages/CanvasEditorPage';
+import JobsPage from './pages/JobsPage';
+import QuotesPage from './pages/QuotesPage';
+
+export default function App() {
+  return (
+    <AppShell>
+      <div className="page-scroll"> {/* standard scroll container */}
+        <Routes>
+          <Route path="/materials" element={<MaterialsPage />} />
+          <Route path="/canvas-editor" element={<CanvasEditorPage />} />
+          <Route path="/jobs" element={<JobsPage />} />
+          <Route path="/quotes" element={<QuotesPage />} />
+          {/* ... */}
+        </Routes>
+      </div>
+    </AppShell>
+  );
+}
+===============================================================================
+C) FIX MATERIALS PAGE HEIGHT/SCROLL (NO HEADER OVERLAP)
+Ensure the Materials page uses the provided scroll container and does not set h-screen or overflow-hidden on the page root.
+
+src/pages/MaterialsPage.tsx (outermost node):
+
+tsx
+Copy code
+export default function MaterialsPage() {
+  return (
+    <div className="max-w-7xl mx-auto p-4">
+      {/* your redesigned page content; DO NOT use fixed headers here */}
+    </div>
+  );
+}
+If you previously wrapped Materials with a full-screen div: remove h-screen, fixed, and page-level overflow-hidden—these are the usual culprits that clip the navbar.
+
+===============================================================================
+D) FIX CANVAS EDITOR LAYOUT (CONTENT UNDER HEADER, NO CUT-OFF)
+Your current editor likely uses absolute/fixed w-screen h-screen which overlaps the header. Switch to a contained layout with a measured canvas area under the header:
+
+src/pages/CanvasEditorPage.tsx:
+
+tsx
+Copy code
+export default function CanvasEditorPage() {
+  return (
+    <div className="cover-under-header"> {/* fills viewport minus header */}
+      <div className="h-full grid lg:grid-cols-[280px_1fr]">
+        {/* Left sidebar */}
+        <aside className="border-r overflow-auto">
+          {/* sidebar tools */}
+        </aside>
+
+        {/* Canvas region */}
+        <section className="relative overflow-hidden">
+          <div id="canvas-host" className="absolute inset-0">
+            {/* Mount your Konva/Canvas/Editor root here */}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+Key points:
+
+Use cover-under-header so the page height is calc(100dvh - header).
+
+Any absolute child (like your canvas) must be confined inside the section; it won’t reach over the header anymore.
+
+Do not set position: fixed; top: 0 on the canvas root.
+
+If the editor previously used Stage sizing based on window innerHeight, update to:
+
+ts
+Copy code
+const stageHeight = Math.max(0, window.innerHeight - headerPixelHeight);
+But prefer observing the container:
+
+ts
+Copy code
+const host = document.getElementById('canvas-host');
+const { width, height } = host.getBoundingClientRect(); // pass to Stage
+===============================================================================
+E) Z-INDEX & OVERFLOW CLEANUP
+Search the repo and remove/adjust these anti-patterns on Materials/Editor roots:
+
+className="fixed inset-0" on page roots → replace with cover-under-header.
+
+h-screen on page roots → replace with container-based sizing.
+
+overflow-hidden on page roots → use overflow-hidden only on the canvas section, not the whole page.
+
+Ensure floating toolbars/popovers inside the editor use z-index < 50:
+
+tsx
+Copy code
+<div className="z-40">…editor floating toolbars…</div>
+Modals that should overlay the header can use z-60 or z-70.
+
+===============================================================================
+F) MOBILE NAV IMPROVEMENTS (OPTIONAL BUT NICE)
+Add a compact “page actions” bar inside the page, not as a second header. The main app header remains 1 bar only, avoiding stacked sticky elements.
+
+Example for editor:
+
+tsx
+Copy code
+<div className="absolute bottom-3 right-3 z-40 flex gap-2">
+  {/* FABs for upload, mask, materials, etc. */}
+</div>
+===============================================================================
+G) ACCEPTANCE TESTS (MANUAL)
+Desktop:
+
+Navigate among Jobs → Materials → Canvas Editor → Quotes.
+
+Header remains visible and clickable at all times.
+
+Canvas never overlaps the header; scroll inside content works.
+
+Mobile (iPhone + Android):
+
+Safe area respected (no content under the notch).
+
+Header remains visible; page scrolling stays smooth.
+
+Opening the keyboard on Materials inputs doesn’t push the header off-screen permanently.
+
+Stress:
+
+Resize window (simulate address bar shrink/expand on mobile).
+
+Toggle any editor floating panels; header still on top and clickable.
+
+===============================================================================
+H) QUICK LINT CHECKS (CATCH REGRESSIONS)
+Search and report any of the following on Materials/Editor roots and replace:
+
+class.*=("|')(.*)(fixed|inset-0|h-screen|overflow-hidden)(.*)("|') → verify usage.
+
+Any position: fixed canvas container → change to absolute inside cover-under-header.
+
+Any z-50 element that is not the header → reduce to z-40 unless it’s a modal.
+
+===============================================================================
+DELIVERABLE
+Implement AppShell, apply it to all routes, and refactor Materials and Canvas Editor pages to use page-scroll/cover-under-header patterns.
+
+Remove header clipping and ensure navigation works everywhere on desktop and mobile.
+
+No regressions to canvas interactivity or page functionality.
