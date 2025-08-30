@@ -15,7 +15,8 @@ type P = {
 export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
   const stageScale = useEditorStore(s => s.zoom);
   const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
-  const url = material?.textureUrl || material?.thumbnailUrl || material?.texture_url || material?.thumbnail_url || '';
+  const url = (material as any)?.textureUrl || (material as any)?.texture_url || (material as any)?.thumbnailUrl || (material as any)?.thumbnail_url || '';
+  console.log('🔍 [MaskTexture] Material URLs:', { textureUrl: (material as any)?.textureUrl, thumbnailUrl: (material as any)?.thumbnailUrl, selectedUrl: url });
 
   const rectRef = useRef<Konva.Rect>(null);
   const [img, setImg] = useState<HTMLImageElement|null>(null);
@@ -33,9 +34,9 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
 
   // Clip poly
   const clipFunc = useMemo(() => {
-    const pts = polygon ?? [];
+    const pts = polygon || [];
     return function (this: Konva.Group, ctx: Konva.Context) {
-      if (!pts.length) return;
+      if (!pts?.length) return;
       ctx.beginPath();
       ctx.moveTo(pts[0].x, pts[0].y);
       for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
@@ -57,25 +58,28 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
     const r = rectRef.current;
     if (!r || !img) return;
 
-    const repeatPx = Math.max(64, meta?.scale ?? 512); // world pixels per tile (precomputed from ppm)
+    const repeatPx = Math.max(128, meta?.scale ?? 256); // world pixels per tile (precomputed from ppm)
     const ps = patternScaleFor(img, repeatPx);
 
     // Compensate for stage zoom: pattern scale is in node space  
     // Make pattern larger for visibility
-    const sx = Math.max(0.1, ps.x / stageScale);
-    const sy = Math.max(0.1, ps.y / stageScale);
+    const sx = Math.max(0.2, ps.x / stageScale);
+    const sy = Math.max(0.2, ps.y / stageScale);
 
     // Test with a colored pattern first, then image pattern
     console.log('🔍 [MaskTexture] Image loaded:', img.src || img.currentSrc, 'naturalWidth:', img.naturalWidth || img.width);
     
-    // Apply pattern with white base for visibility
-    r.fill('#ffffff'); // White base for pattern visibility
+    // Clear any existing fill and apply pattern properly
+    r.fill(null);
     r.fillPatternImage(img);
     r.fillPatternScale({ x: sx, y: sy });
     r.fillPatternRotation(meta?.rotationDeg ?? 0);
     r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
     r.fillPatternRepeat('repeat');
     r.fillEnabled(true);
+    
+    // Debugging: try manual pattern test
+    console.log('🔧 [MaskTexture] Pattern applied:', { sx, sy, imgSrc: img.src, fillPatternImage: r.fillPatternImage() });
     
     // Force visibility test
     if (!img.complete || img.naturalWidth === 0) {
@@ -102,7 +106,7 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
         y={bbox.y} 
         width={bbox.w} 
         height={bbox.h}
-        fill={img ? '#ffffff' : 'rgba(0,0,0,0.04)'}
+        fill={'rgba(0,0,0,0.04)'}
       />
     </Group>
   );
