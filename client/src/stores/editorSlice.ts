@@ -5,6 +5,8 @@
 
 import { create } from 'zustand';
 import type { Photo } from '@shared/schema';
+import { pickRepeatMeters } from '@/canvas/texture-utils';
+import { useMaterialsStore } from '@/state/materialsStore';
 
 // Canonical types exactly as specified
 export type Tool = 'hand'|'area'|'linear'|'waterline'|'eraser';
@@ -19,6 +21,7 @@ export type Mask = {
   path:{ points:Vec2[] }; bandHeightM?:number;
   createdAt:string;
   materialId?:string;
+  materialMeta?: { scale: number; rotationDeg: number; offsetX: number; offsetY: number } | null;
 };
 
 export interface EditorSlice {
@@ -102,13 +105,34 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   setTool(t){ set(s=>{ if(s.activeTool!==t) return {...s, activeTool:t, transient:undefined}; return s; }); },
   selectMask(id){ set({ selectedMaskId: id }); },
   applyMaterialToMask(maskId, materialId) {
-    set(state => ({
-      masks: state.masks.map(mask => 
-        mask.id === maskId 
-          ? { ...mask, materialId }
-          : mask
-      )
-    }));
+    set(state => {
+      // Get material from materials store to calculate scaling
+      const materialsStore = useMaterialsStore.getState();
+      const material = materialsStore.items[materialId];
+      
+      let materialMeta = null;
+      if (material) {
+        // Calculate pixel scale based on calibration and material properties
+        const ppm = state.calibration?.ppm || 120; // pixels per meter, fallback to reasonable default
+        const repeatM = pickRepeatMeters(material);
+        const repeatPx = repeatM * ppm;
+        
+        materialMeta = { 
+          scale: repeatPx, 
+          rotationDeg: 0, 
+          offsetX: 0, 
+          offsetY: 0 
+        };
+      }
+      
+      return {
+        masks: state.masks.map(mask => 
+          mask.id === maskId 
+            ? { ...mask, materialId, materialMeta }
+            : mask
+        )
+      };
+    });
   },
 
   startCalibration(){ set(s=>({...s, calState:'placingA', calTemp:{}, transient:undefined })); },

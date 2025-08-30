@@ -1,0 +1,331 @@
+You are a senior engineer in Replit. The **last bug** is that the material texture is NOT actually rendering inside masks in the Canvas Editor, even though “material applied” logs appear. Implement a **bulletproof texture rendering pipeline** that works with Konva, respects calibration (px/m), zoom/pan, and mask polygons (clip), and never silently fails. Do NOT regress any existing functionality.
+
+===============================================================================
+ROOT CAUSES TO ELIMINATE
+===============================================================================
+- Texture image never loads (CORS or wrong URL) → pattern is null.
+- Pattern is created on a node that has zero size (e.g., polygon shape with only stroke).
+- Pattern scale not computed from physical repeat → image tiled at 1px.
+- Stage zoom/pan ignored → pattern scale drifts when zooming.
+- Layer not redrawn/cached after load → nothing visible.
+- Sidebar/Modal applies `material_id` but renderer never binds it to a visible node.
+
+===============================================================================
+TARGET IMPLEMENTATION (ADD/REPLACE)
+===============================================================================
+We will render textures by:
+1) **Clipping** to the mask polygon with a `Group clipFunc`.
+2) Filling a **large Rect** with **fillPatternImage**.
+3) Computing **pattern scale** using calibration (px/m) & material sheet/tile mm.
+4) **Re-rendering** on material change or stage scale change.
+5) Caching images (HTMLImageElement) per material id.
+
+Files to add/modify below. Keep names as given; adapt imports to your paths.
+
+-------------------------------------------------------------------------------
+A) Shared image cache & helpers
+-------------------------------------------------------------------------------
+**client/src/canvas/texture-utils.ts**
+```ts
+export type TextureMeta = {
+  scale: number;         // base scale applied to both axes (image px -> world px)
+  rotationDeg: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+export function pickRepeatMeters(material: {
+  physical_repeat_m?: number | null;
+  sheet_width_mm?: number | null;
+  tile_width_mm?: number | null;
+}) {
+  // Prefer explicit physical repeat (meters), else sheet width, else tile width, else 0.3m fallback.
+  if (material.physical_repeat_m && material.physical_repeat_m > 0) return material.physical_repeat_m;
+  if (material.sheet_width_mm && material.sheet_width_mm > 0) return material.sheet_width_mm / 1000;
+  if (material.tile_width_mm && material.tile_width_mm > 0) return material.tile_width_mm / 1000;
+  return 0.30; // sensible default for mosaics
+}
+
+const imgCache = new Map<string, HTMLImageElement>();
+const inflight = new Map<string, Promise<HTMLImageElement>>();
+
+export function preloadImage(url: string): Promise<HTMLImageElement> {
+  if (!url) return Promise.reject(new Error('empty texture url'));
+  if (imgCache.has(url)) return Promise.resolve(imgCache.get(url)!);
+  if (inflight.has(url)) return inflight.get(url)!;
+
+  const p = new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      imgCache.set(url, img);
+      inflight.delete(url);
+      resolve(img);
+    };
+    img.onerror = (e) => {
+      inflight.delete(url);
+      reject(new Error(`image load failed: ${url}`));
+    };
+    img.src = url;
+  });
+  inflight.set(url, p);
+  return p;
+}
+
+/**
+ * Compute Konva fillPatternScale values so that one pattern tile spans `repeatPx` pixels in world space.
+ * If the source image is W×H px, scaleX = repeatPx / W (and same for Y).
+ */
+export function computePatternScale(img: HTMLImageElement, repeatPx: number) {
+  const sx = repeatPx / img.width;
+  const sy = repeatPx / img.height;
+  return { x: sx, y: sy };
+}
+B) Editor store: apply material + expose stage scale for zoom-aware patterns
+client/src/state/editorStore.ts (ADD or EXTEND these pieces; keep existing methods)
+
+ts
+Copy code
+import { create } from 'zustand';
+import type { Material } from '../state/materialsStore';
+import { pickRepeatMeters } from '../canvas/texture-utils';
+
+type MaskMeta = {
+  id: string;
+  kind: 'area'|'linear'|'band';
+  polygon?: { x: number; y: number }[]; // world coords
+  material_id?: string | null;
+  material_meta?: { scale: number; rotationDeg: number; offsetX: number; offsetY: number } | null;
+};
+
+type EditorState = {
+  stageScale: number;                           // current zoom
+  setStageScale: (s: number) => void;
+
+  selectedMaskId: string | null;
+  setSelectedMask: (id: string|null) => void;
+
+  getCalibrationPxPerMeter: () => number;
+  getMaskById: (id: string) => MaskMeta | null;
+  updateMaskMaterial: (maskId: string, patch: Partial<MaskMeta>) => void;
+  pushUndo: (label: string) => void;
+
+  applyMaterialToMask: (maskId: string, material: Material) => void;
+};
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  stageScale: 1,
+  setStageScale: (s) => set({ stageScale: Math.max(0.05, s) }),
+
+  selectedMaskId: null,
+  setSelectedMask: (id) => set({ selectedMaskId: id }),
+
+  // TODO wire these to your real implementations
+  getCalibrationPxPerMeter: () => 120, // <- replace with actual
+  getMaskById: (_id) => null,          // <- replace with actual lookup
+  updateMaskMaterial: (_id, _patch) => {},
+  pushUndo: (_label) => {},
+
+  applyMaterialToMask: (maskId, material) => {
+    const ppm = Math.max(1, get().getCalibrationPxPerMeter());   // pixels per meter
+    const repeatM = pickRepeatMeters(material);
+    const repeatPx = repeatM * ppm;
+
+    // We initially set a neutral scale; renderer will refine using image dims.
+    const meta = { scale: repeatPx /*temporary placeholder*/, rotationDeg: 0, offsetX: 0, offsetY: 0 };
+    get().pushUndo('Apply material');
+    get().updateMaskMaterial(maskId, { material_id: material.id, material_meta: meta });
+  }
+}));
+C) Mask texture renderer (Konva) — clip + pattern fill Rect
+client/src/components/canvas/MaskTexture.tsx
+
+tsx
+Copy code
+import { Group, Rect } from 'react-konva';
+import Konva from 'konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { preloadImage, computePatternScale } from '../../canvas/texture-utils';
+import { useEditorStore } from '../../state/editorStore';
+import { useMaterialsStore } from '../../state/materialsStore';
+
+type P = {
+  maskId: string;
+  polygon: { x: number; y: number }[];     // mask polygon (world coords)
+  materialId: string;
+  materialMeta?: { scale?: number; rotationDeg?: number; offsetX?: number; offsetY?: number } | null;
+};
+
+/**
+ * Renders a repeating texture inside the given polygon using Konva clip + Rect with fillPatternImage.
+ * The Rect is large (viewport-sized) and sits under the clip so the pattern fills the shape.
+ * It recomputes on stage zoom changes so that pattern stays world-scale-true.
+ */
+export function MaskTexture({ maskId, polygon, materialId, materialMeta }: P) {
+  const stageScale = useEditorStore(s => s.stageScale);
+
+  const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
+  const textureUrl = material?.texture_url || material?.thumbnail_url || '';
+
+  const groupRef = useRef<Konva.Group>(null);
+  const rectRef  = useRef<Konva.Rect>(null);
+
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // Load texture
+  useEffect(() => {
+    let mounted = true;
+    setError(null);
+    setImg(null);
+    if (!textureUrl) return;
+    preloadImage(textureUrl)
+      .then(i => { if (mounted) setImg(i); })
+      .catch(e => { if (mounted) setError(e.message); });
+    return () => { mounted = false; };
+  }, [textureUrl]);
+
+  // Clip func for polygon
+  const clipFunc = useMemo(() => {
+    const pts = polygon ?? [];
+    return function (this: Konva.Group, ctx: Konva.Context) {
+      if (!pts.length) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.clip();
+    };
+  }, [polygon]);
+
+  // Bounding box (for rect sizing)
+  const bbox = useMemo(() => {
+    const xs = polygon.map(p => p.x);
+    const ys = polygon.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) };
+  }, [polygon]);
+
+  // Apply pattern when the image or stage scale changes
+  useEffect(() => {
+    const rect = rectRef.current;
+    if (!rect || !img) return;
+
+    // materialMeta.scale currently holds "repeatPx" placeholder from applyMaterialToMask; derive pattern scale now:
+    const repeatPx = Math.max(32, materialMeta?.scale ?? 256); // world pixels per tile (min clamp)
+    const patternScale = computePatternScale(img, repeatPx);
+
+    rect.fillPatternImage(img);
+    // Konva's pattern scale is in node space; correct for stage scale so world-tied repeat looks consistent:
+    const sx = patternScale.x / stageScale;
+    const sy = patternScale.y / stageScale;
+    rect.fillPatternScale({ x: sx, y: sy });
+    rect.fillPatternRotation(materialMeta?.rotationDeg ?? 0);
+    rect.fillPatternOffset({ x: materialMeta?.offsetX ?? 0, y: materialMeta?.offsetY ?? 0 });
+    rect.fillPatternRepeat('repeat');
+    rect.cache(); // ensure pattern paints reliably
+    rect.getLayer()?.batchDraw();
+  }, [img, materialMeta?.scale, materialMeta?.rotationDeg, materialMeta?.offsetX, materialMeta?.offsetY, stageScale]);
+
+  if (!polygon?.length || !material) return null;
+
+  return (
+    <Group ref={groupRef} listening={false} clipFunc={clipFunc}>
+      {/* Large rect covering bbox; pattern will fill & be clipped by the Group */}
+      <Rect ref={rectRef}
+        x={bbox.x} y={bbox.y} width={bbox.w} height={bbox.h}
+        fill={img ? undefined : 'rgba(0,0,0,0.04)'} // subtle placeholder while loading
+      />
+      {/* (Optional) show error text if image fails:
+      {error && <Text x={bbox.x} y={bbox.y} text={error} fontSize={12} fill="red" />} */}
+    </Group>
+  );
+}
+D) Stage integration — render MaskTexture for masks with a material
+client/src/components/canvas/CanvasStage.tsx (illustrative diff; integrate into your existing component)
+
+tsx
+Copy code
+import { Layer, Stage } from 'react-konva';
+import { useEditorStore } from '../../state/editorStore';
+import { MaskTexture } from './MaskTexture';
+
+// ... other imports
+
+export default function CanvasStage() {
+  const stageScale = useEditorStore(s => s.stageScale);
+  const setStageScale = useEditorStore(s => s.setStageScale);
+
+  // TODO pull your masks list from your editor model
+  const masks: Array<{
+    id: string;
+    kind: 'area'|'linear'|'band';
+    polygon?: { x: number; y: number }[];
+    material_id?: string | null;
+    material_meta?: { scale?: number; rotationDeg?: number; offsetX?: number; offsetY?: number } | null;
+  }> = []; // ← inject real masks
+
+  // onWheel or zoom controls must update store scale:
+  const onWheel = (e: any) => {
+    e.evt.preventDefault();
+    const scaleBy = 1.05;
+    const dir = e.evt.deltaY > 0 ? 1/scaleBy : scaleBy;
+    setStageScale(stageScale * dir);
+  };
+
+  return (
+    <Stage width={/* container width */ 1200} height={/* container height */ 700} scaleX={stageScale} scaleY={stageScale} onWheel={onWheel}>
+      {/* Base photo & drawing layers... */}
+
+      {/* Texture layer BELOW mask strokes but ABOVE photo */}
+      <Layer listening={false}>
+        {masks.filter(m => m.kind === 'area' && m.material_id && m.polygon?.length)
+              .map(m => (
+                <MaskTexture
+                  key={m.id}
+                  maskId={m.id}
+                  polygon={m.polygon!}
+                  materialId={m.material_id!}
+                  materialMeta={m.material_meta || undefined}
+                />
+              ))
+        }
+      </Layer>
+
+      {/* Your vector/stroke outlines on a separate layer so edges are visible */}
+      {/* <Layer> ... mask strokes/handles ... </Layer> */}
+    </Stage>
+  );
+}
+E) Optional: “Re-apply Texture” debug action
+Add a temporary button in your Editor panel to force refresh on the selected mask (helps catch stale refs):
+
+tsx
+Copy code
+<button className="btn btn-sm" disabled={!selectedMaskId} onClick={()=>{
+  const m = useEditorStore.getState().getMaskById(useEditorStore.getState().selectedMaskId!);
+  if (m?.material_id) {
+    // Trigger a no-op patch to refresh renderers watching material_meta
+    useEditorStore.getState().updateMaskMaterial(m.id, { material_meta: { ...(m.material_meta||{}), offsetX: (m.material_meta?.offsetX||0) } });
+  }
+}}>Re-apply Texture</button>
+===============================================================================
+F) Hard instrumentation (remove after pass)
+Log once when an image loads: console.info('[texture] loaded', url, img.width, img.height).
+
+Log on render: console.info('[texture] render', {maskId, repeatPx, patternScale, stageScale}).
+
+If preloadImage rejects, display a toast + draw a subtle hatch fill (already handled via placeholder).
+
+===============================================================================
+G) Acceptance Criteria (must pass now)
+Pick a material with a valid texture_url → the selected mask immediately shows the tiled texture inside its polygon, with correct orientation and scale (world-space) and stays consistent while zooming/panning.
+
+Switching material updates texture accordingly (no blue overlay).
+
+Refresh the page → materials still in store; selecting a mask + picking a material renders texture.
+
+If an external image blocks CORS, a visible placeholder appears and a console error shows the URL.
+
+Implement all code above now. This replaces “material applied” logs with actual pattern rendering that is clip-correct, zoom-aware, and scale-accurate. If your masks use a different shape representation, adapt the polygon and clipFunc logic but keep the same overall approach (Group clip + Rect pattern).

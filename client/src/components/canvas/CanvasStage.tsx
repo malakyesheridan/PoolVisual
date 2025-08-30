@@ -10,7 +10,7 @@ import useImage from 'use-image';
 import { useEditorStore } from '@/stores/editorSlice';
 import { useMaterialsStore } from '@/state/materialsStore';
 import { InputRouter } from '@/editor/input/InputRouter';
-import { MaterialTexture } from './MaterialTexture';
+import { MaskTexture } from './MaskTexture';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -139,21 +139,14 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
         {/* Material Layer - renders textures for masks with attached materials */}
         <Layer id="MaterialOverlay" listening={false}>
-          {masks.map((mask) => {
-            if (!mask.materialId || mask.type !== 'area') {
-              return null;
-            }
-            
-            const material = materials[mask.materialId];
-            if (!material) {
-              return null;
-            }
-            
+          {masks.filter(mask => mask.materialId && mask.type === 'area' && mask.path?.points?.length).map((mask) => {
             return (
-              <MaterialTexture
+              <MaskTexture
                 key={`material-${mask.id}`}
-                mask={mask}
-                material={material}
+                maskId={mask.id}
+                polygon={mask.path.points}
+                materialId={mask.materialId!}
+                materialMeta={mask.materialMeta}
               />
             );
           })}
