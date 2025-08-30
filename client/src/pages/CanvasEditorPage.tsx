@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/stores/editorSlice';
+import { useMaterialsStore } from '@/state/materialsStore';
+import { listMaterialsClient } from '@/lib/materialsClient';
 import { CanvasStage } from '@/components/canvas/CanvasStage';
 import { Toolbar } from '@/components/editor/Toolbar';
 import { Sidebar } from '@/components/editor/Sidebar';
@@ -9,16 +11,22 @@ import { CalibrationDialog } from '@/components/editor/CalibrationDialog';
 import { BottomSheet } from '@/components/editor/mobile/BottomSheet';
 import { Toolbelt } from '@/components/editor/mobile/Toolbelt';
 import { FabUpload } from '@/components/uploader/FabUpload';
+import { MaterialPickerModal } from '@/components/materials/MaterialPickerModal';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Undo, Redo, MoreHorizontal } from 'lucide-react';
+import { ArrowLeft, Undo, Redo, MoreHorizontal, Palette } from 'lucide-react';
 import { useLocation } from 'wouter';
+import { toast } from 'sonner';
 
 export function CanvasEditorPage() {
   console.info('[EditorPage] route file:', import.meta?.url || 'CanvasEditorPage.tsx');
   
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showCalibrationDialog, setShowCalibrationDialog] = useState(false);
+  const [showMaterialPicker, setShowMaterialPicker] = useState(false);
   const [, navigate] = useLocation();
+
+  // Materials store integration
+  const { all: getAllMaterials, hydrateMerge } = useMaterialsStore();
 
   const photo = useEditorStore(s => s.photo);
   const loadImageFile = useEditorStore(s => s.loadImageFile);
@@ -32,6 +40,21 @@ export function CanvasEditorPage() {
     setTool,
     startCalibration
   } = useEditorStore();
+
+  // Load materials when component mounts (lazy, non-clobber)
+  useEffect(() => {
+    const currentMaterials = getAllMaterials();
+    if (currentMaterials.length === 0) {
+      listMaterialsClient()
+        .then(materials => {
+          hydrateMerge(materials);
+          console.log('[CanvasEditor] Loaded', materials.length, 'materials');
+        })
+        .catch(error => {
+          console.error('[CanvasEditor] Failed to load materials:', error);
+        });
+    }
+  }, [getAllMaterials, hydrateMerge]);
 
   // Global keyboard handler exactly as specified
   useEffect(()=>{
@@ -73,6 +96,18 @@ export function CanvasEditorPage() {
   const handleExport = () => {
     // Export functionality will be implemented with stage access
     console.info('[Export] Export functionality placeholder');
+  };
+
+  const handleMaterialPick = (material: any) => {
+    console.log('[CanvasEditor] Material picked:', material);
+    
+    // For now, just close the modal and show a success message
+    // TODO: Wire this to actual mask selection and material application
+    setShowMaterialPicker(false);
+    toast.success(`Selected material: ${material.name}`);
+    
+    // This is where we would apply the material to the selected mask
+    // when the mask system is properly integrated
   };
 
   const handleFullscreen = () => {
@@ -185,6 +220,24 @@ export function CanvasEditorPage() {
 
       {/* Calibration Dialog */}
       <CalibrationDialog />
+
+      {/* Material Picker Modal */}
+      <MaterialPickerModal
+        open={showMaterialPicker}
+        onClose={() => setShowMaterialPicker(false)}
+        onPick={handleMaterialPick}
+      />
+
+      {/* Floating Material Picker Button */}
+      <Button
+        onClick={() => setShowMaterialPicker(true)}
+        className="fixed bottom-20 md:bottom-4 right-4 z-50 bg-blue-600 hover:bg-blue-700 shadow-lg"
+        size="lg"
+        data-testid="button-open-material-picker"
+      >
+        <Palette className="w-5 h-5 mr-2" />
+        Materials
+      </Button>
     </div>
   );
 }

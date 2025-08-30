@@ -1,0 +1,378 @@
+You are a senior full-stack engineer in Replit. **Fix the sync between Materials and the Canvas Editor** and ship a **Material Picker Modal** that opens when a mask is selected (or via a button) and lets the user choose from the full library. The chosen material must immediately apply to the selected mask with correct scale/tiling. Keep the sidebar tab as an optional fallback, but the modal becomes the primary flow. All changes are **additive**. TypeScript, React, Zustand, Konva (or your current canvas lib).
+
+================================================================================
+PROBLEM SUMMARY (WHAT TO FIX)
+================================================================================
+- Materials save/persist in the Library, but **do not appear in the Editor** because:
+  1) The Editor is not reading the **same store** as the Library, or it hydrates with an empty response and **overwrites** local state.
+  2) The Editor filters by category with no selected mask → shows “no materials”.
+  3) Materials → Mask attach path is missing/fragile (no default scale / texture preloading).
+- UX is cramped; a **modal picker** showing the **full library** is better than a narrow sidebar.
+
+================================================================================
+SOLUTION OVERVIEW (APPLY ALL)
+================================================================================
+1) **Single source of truth**: both Library and Editor use the same `useMaterialsStore` (persisted). The Editor never clears it; it only `hydrateMerge`.
+2) **MaterialPickerModal**: opens when a mask is selected or via “Pick Material” button; shows search, categories, infinite grid of cards.
+3) **Attach pipeline**: selecting a material calls `applyMaterialToMask(maskId, material)`:
+   - Preload texture (Image/HTMLImageElement).
+   - Compute default **repeat scale** using calibration (px/m) + material sheet/tile mm.
+   - Update mask model `material_id`, `material_meta` (scale, rotation, offset), push to undo stack, and re-render.
+4) **Editor readiness**: if store is empty on entering Editor, it lazily fetches and **merge-hydrates**, never wiping existing cache.
+5) **Optional**: keep sidebar “Materials” tab; it just opens the modal.
+
+================================================================================
+FILES TO ADD / MODIFY
+================================================================================
+
+1) client/src/state/materialsStore.ts  (if you already have the persisted/merge store, keep it; otherwise replace with this)
+```ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+export type Material = {
+  id: string;
+  name: string;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number|null;
+  texture_url?: string|null;
+  thumbnail_url?: string|null;
+  sheet_width_mm?: number|null;
+  sheet_height_mm?: number|null;
+  tile_width_mm?: number|null;
+  tile_height_mm?: number|null;
+  physical_repeat_m?: number|null;
+  created_at?: string;
+};
+
+type S = {
+  items: Record<string, Material>;
+  hydrateMerge: (arr: Material[]) => void;   // merges; ignores empty
+  upsert: (m: Material) => void;
+  all: () => Material[];
+  byCategory: (c: Material['category']|'all') => Material[];
+};
+
+export const useMaterialsStore = create<S>()(
+  persist(
+    (set, get) => ({
+      items: {},
+      hydrateMerge: (arr) => {
+        if (!Array.isArray(arr) || arr.length === 0) return;
+        const merged = { ...get().items };
+        for (const m of arr) merged[m.id] = m;
+        set({ items: merged });
+      },
+      upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+      all: () => Object.values(get().items),
+      byCategory: (c) => c === 'all' ? Object.values(get().items)
+                                     : Object.values(get().items).filter(i => i.category === c),
+    }),
+    { name: 'materials_v1', storage: createJSONStorage(() => localStorage) }
+  )
+);
+client/src/lib/materialsClient.ts (endpoint resolver + non-clobber list)
+
+ts
+Copy code
+import type { Material } from '../state/materialsStore';
+
+type EndpointKind = 'v2'|'v1'|'force';
+const API = import.meta.env.VITE_API_BASE_URL || '';
+const KEY = 'materials_endpoint_kind';
+let resolved: EndpointKind | null = (sessionStorage.getItem(KEY) as EndpointKind) || null;
+
+async function tryJSON(path: string, init?: RequestInit) {
+  const res = await fetch(`${API}${path}`, { credentials: 'include', ...(init||{}) });
+  const text = await res.text();
+  let json: any; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
+  if (!res.ok) throw new Error(json?.error || json?.message || `${res.status} ${res.statusText}`);
+  return json;
+}
+
+export async function resolveMaterialsEndpoint(): Promise<EndpointKind> {
+  if (resolved) return resolved;
+  try { await tryJSON('/api/v2/materials'); resolved = 'v2'; }
+  catch { try { await tryJSON('/api/materials'); resolved = 'v1'; } catch { resolved = 'force'; } }
+  sessionStorage.setItem(KEY, resolved);
+  return resolved;
+}
+
+export async function listMaterialsClient(): Promise<Material[]> {
+  const kind = await resolveMaterialsEndpoint();
+  if (kind === 'v2') return (await tryJSON('/api/v2/materials')).items || [];
+  if (kind === 'v1') { const d = await tryJSON('/api/materials'); return (Array.isArray(d)? d : d?.items) || []; }
+  try { const d = await tryJSON('/api/_materials/last'); return d?.items || []; } catch { return []; }
+}
+client/src/state/editorStore.ts (centralize selection + apply function)
+
+ts
+Copy code
+import { create } from 'zustand';
+import type { Material } from './materialsStore';
+
+type MaskMeta = {
+  id: string;
+  kind: 'area'|'linear'|'band';
+  material_id?: string|null;
+  material_meta?: { scale: number; rotationDeg: number; offsetX: number; offsetY: number } | null;
+};
+
+type EditorState = {
+  selectedMaskId: string | null;
+  setSelectedMask: (id: string|null) => void;
+
+  // required from existing codebase (stubs if you already have equivalents):
+  getCalibrationPxPerMeter: () => number;         // returns px/m for current photo (>= 1)
+  getMaskById: (id: string) => MaskMeta | null;
+  updateMaskMaterial: (maskId: string, patch: Partial<MaskMeta>) => void;
+  pushUndo: (label: string) => void;
+
+  // new high-level action:
+  applyMaterialToMask: (maskId: string, material: Material) => Promise<void>;
+};
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  selectedMaskId: null,
+  setSelectedMask: (id) => set({ selectedMaskId: id }),
+
+  // IMPLEMENT these using your existing editor model:
+  getCalibrationPxPerMeter: () => 100,         // TODO: wire to real calibration
+  getMaskById: (_id) => null,                  // TODO: wire to real selector
+  updateMaskMaterial: (_id, _patch) => {},     // TODO: wire to real mutator
+  pushUndo: (_label) => {},                    // TODO: wire to undo stack
+
+  applyMaterialToMask: async (maskId, material) => {
+    const ppm = Math.max(1, get().getCalibrationPxPerMeter()); // pixels per meter
+    // Determine physical repeat in meters: prefer sheet size, else tile size, else 0.3m fallback
+    const repeatM =
+      (material.physical_repeat_m && material.physical_repeat_m > 0 ? material.physical_repeat_m :
+      (material.sheet_width_mm ? (material.sheet_width_mm/1000) :
+      (material.tile_width_mm ? (material.tile_width_mm/1000) : 0.30)));
+
+    // Convert physical repeat (m) to pixels and compute scale so one texture width spans that many px
+    const repeatPx = repeatM * ppm;
+    const defaultScale = repeatPx > 0 ? (256 / repeatPx) : 1;  // assumes 256px texture base; adjust if you generate atlases
+    const meta = { scale: defaultScale, rotationDeg: 0, offsetX: 0, offsetY: 0 };
+
+    get().pushUndo('Apply material');
+    get().updateMaskMaterial(maskId, { material_id: material.id, material_meta: meta });
+  }
+}));
+client/src/components/materials/MaterialPickerModal.tsx (full-screen modal)
+
+tsx
+Copy code
+import { useEffect, useMemo, useState } from 'react';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { listMaterialsClient } from '../../lib/materialsClient';
+import type { Material } from '../../state/materialsStore';
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  onPick: (m: Material) => void;
+  initialCategory?: Material['category']|'all';
+};
+
+export function MaterialPickerModal({ open, onClose, onPick, initialCategory='all' }: Props) {
+  const hydrateMerge = useMaterialsStore(s => s.hydrateMerge);
+  const all = useMaterialsStore(s => s.all());
+  const [q, setQ] = useState('');
+  const [cat, setCat] = useState<Material['category']|'all'>(initialCategory);
+
+  useEffect(() => {
+    if (!open) return;
+    if (all.length === 0) {
+      listMaterialsClient().then(items => hydrateMerge(items)).catch(() => {});
+    }
+  }, [open]); // eslint-disable-line
+
+  const filtered = useMemo(() => {
+    const ql = q.trim().toLowerCase();
+    return all.filter(m => (cat==='all' || m.category===cat) && (!ql || (m.name?.toLowerCase().includes(ql) || m.id.includes(ql))));
+  }, [all, q, cat]);
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[70]">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose}/>
+      <div className="absolute inset-0 md:inset-10 bg-white dark:bg-zinc-900 rounded-none md:rounded-2xl shadow-xl flex flex-col">
+        <div className="p-3 border-b flex items-center gap-2">
+          <div className="font-semibold">Choose Material</div>
+          <div className="ml-auto flex gap-2">
+            <select className="inp" value={cat} onChange={e=>setCat(e.target.value as any)}>
+              <option value="all">All</option>
+              <option value="waterline_tile">Waterline Tile</option>
+              <option value="interior">Interior</option>
+              <option value="coping">Coping</option>
+              <option value="paving">Paving</option>
+              <option value="fencing">Fencing</option>
+            </select>
+            <input className="inp" placeholder="Search…" value={q} onChange={e=>setQ(e.target.value)} />
+            <button className="btn" onClick={onClose}>Close</button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          {filtered.length === 0 ? (
+            <div className="text-sm text-zinc-500">No materials match.</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {filtered.map(m => (
+                <button key={m.id} className="border rounded-xl overflow-hidden text-left hover:shadow focus:shadow"
+                        onClick={() => onPick(m)}>
+                  <div className="aspect-[4/3] bg-zinc-100">
+                    {m.thumbnail_url || m.texture_url ? (
+                      <img src={m.thumbnail_url || m.texture_url || ''} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full grid place-items-center text-xs text-zinc-400">No image</div>
+                    )}
+                  </div>
+                  <div className="p-2">
+                    <div className="text-sm font-medium line-clamp-2">{m.name}</div>
+                    <div className="text-[11px] text-zinc-500">{m.category}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+client/src/pages/CanvasEditorPage.tsx (wire modal + mask selection + attach)
+
+tsx
+Copy code
+import { useEffect, useState } from 'react';
+import { MaterialPickerModal } from '../components/materials/MaterialPickerModal';
+import { useEditorStore } from '../state/editorStore';
+import { useMaterialsStore } from '../state/materialsStore';
+import { listMaterialsClient } from '../lib/materialsClient';
+
+export default function CanvasEditorPage() {
+  const selectedMaskId = useEditorStore(s => s.selectedMaskId);
+  const setSelectedMask = useEditorStore(s => s.setSelectedMask);
+  const applyMaterialToMask = useEditorStore(s => s.applyMaterialToMask);
+
+  const mats = useMaterialsStore(s => s.all());
+  const hydrateMerge = useMaterialsStore(s => s.hydrateMerge);
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Ensure materials are present (lazy, non-clobber)
+  useEffect(() => {
+    if (mats.length === 0) listMaterialsClient().then(hydrateMerge).catch(()=>{});
+  }, []); // eslint-disable-line
+
+  // Hook editor's mask click to open the modal (keep your existing selection logic, just add this)
+  useEffect(() => {
+    // Example: subscribe to canvas mask selection events
+    // editor.on('maskSelected', (id) => { setSelectedMask(id); setPickerOpen(true); });
+    // Wire to your actual event bus.
+  }, []); // eslint-disable-line
+
+  return (
+    <div className="cover-under-header">
+      <div className="h-full grid lg:grid-cols-[280px_1fr]">
+        <aside className="border-r overflow-auto">
+          {/* Keep your current tools. Add a clear call to open picker when a mask is selected: */}
+          <div className="p-3">
+            <button className="btn btn-primary w-full" disabled={!selectedMaskId} onClick={()=>setPickerOpen(true)}>
+              {selectedMaskId ? 'Pick Material for Selected Mask' : 'Select a Mask to Pick Material'}
+            </button>
+          </div>
+          {/* Optional: keep old sidebar list, but it should just open the modal instead of showing tiny cards */}
+        </aside>
+        <section className="relative overflow-hidden">
+          <div id="canvas-host" className="absolute inset-0">{/* your Konva Stage */}</div>
+        </section>
+      </div>
+
+      <MaterialPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        initialCategory="all"
+        onPick={async (m) => {
+          const maskId = useEditorStore.getState().selectedMaskId;
+          if (!maskId) return;
+          await applyMaterialToMask(maskId, m);
+          setPickerOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+client/src/canvas/materialTexture.ts (texture preload + pattern helper; adapt to your canvas lib)
+
+ts
+Copy code
+export async function preloadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/** Given a Konva.Shape polygon + image, set a repeating fill to simulate tile sheet. */
+export async function applyPatternToKonvaShape(shape: any, imgUrl: string, scale: number, rotationDeg: number, offsetX=0, offsetY=0) {
+  const img = await preloadImage(imgUrl);
+  shape.fillPatternImage(img);
+  shape.fillPatternScale({ x: scale, y: scale });
+  shape.fillPatternRotation(rotationDeg);
+  shape.fillPatternOffset({ x: offsetX, y: offsetY });
+  shape.fillPatternRepeat('repeat');
+  shape.getLayer()?.batchDraw();
+}
+Integrate this inside your renderer that reacts to mask.material_id/material_meta changes:
+
+ts
+Copy code
+// when mask updated:
+if (mask.material_id) {
+  const m = useMaterialsStore.getState().items[mask.material_id];
+  if (m?.texture_url) {
+    await applyPatternToKonvaShape(maskKonvaNode, m.texture_url, mask.material_meta?.scale ?? 1, mask.material_meta?.rotationDeg ?? 0, mask.material_meta?.offsetX ?? 0, mask.material_meta?.offsetY ?? 0);
+  }
+}
+server/routes/materialsList.ts (ONLY if you lack a GET; ensures hydration works)
+
+ts
+Copy code
+import { FastifyInstance } from 'fastify';
+export async function materialsListRoutes(app: FastifyInstance) {
+  const pg = (app as any).pg || (app as any).sql;
+  app.get('/api/materials', async (_req, reply) => {
+    const { rows } = await pg.query(`SELECT * FROM materials WHERE is_active = true ORDER BY created_at DESC LIMIT 500`);
+    reply.send({ items: rows });
+  });
+}
+Register this route early. If you already have a v2 GET that works, keep using it.
+
+================================================================================
+UX CHANGES (WHAT THE USER EXPERIENCES)
+Selecting a mask opens a full-screen Material Picker with search + categories.
+
+Clicking a card immediately applies the texture to the selected mask with a sensible default scale based on calibration and material sheet/tile size.
+
+The “Materials” sidebar button simply opens the same modal (no duplicated logic).
+
+Materials now always show in the Editor because the Editor subscribes to the same persisted store, and lazy-merge hydrates if needed (no clobber on empty).
+
+================================================================================
+ACCEPTANCE CHECKS
+Add material in Library → navigate to Editor → Select mask → Pick Material → texture appears and follows mask boundaries; undo works.
+
+Refresh app → open Editor → if store cache exists, materials are already selectable; if not, the modal fetches list once and merges (cache remains intact).
+
+Switch categories/search in the modal → responsive and fast; selecting applies instantly.
+
+Mobile: modal is full-screen; list scrolls; choose → applies; no header overlap.
+
+Ship exactly this. If your canvas engine isn’t Konva, adapt applyPatternToKonvaShape to your renderer (Fabric.js/WebGL tile shader) but keep the same meta fields (scale, rotationDeg, offsetX, offsetY) so future edits (rotate/scale/drag texture) remain straightforward.
