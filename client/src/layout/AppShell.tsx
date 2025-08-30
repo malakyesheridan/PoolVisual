@@ -10,7 +10,8 @@ import {
   FileText, 
   Settings,
   User,
-  LogOut
+  LogOut,
+  Palette
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
     { to: '/jobs', label: 'Jobs', icon: Briefcase },
+    { to: '/canvas-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/materials', label: 'Materials', icon: Package },
     { to: '/quotes', label: 'Quotes', icon: FileText },
   ];
