@@ -8,7 +8,9 @@ import { Stage, Layer, Line, Circle, Image as KonvaImage } from 'react-konva';
 import { Stage as StageType } from 'konva/lib/Stage';
 import useImage from 'use-image';
 import { useEditorStore } from '@/stores/editorSlice';
+import { useMaterialsStore } from '@/state/materialsStore';
 import { InputRouter } from '@/editor/input/InputRouter';
+import { MaterialTexture } from './MaterialTexture';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -45,6 +47,9 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const pan = useEditorStore(s => s.pan);
   const selectedMaskId = useEditorStore(s => s.selectedMaskId);
   const selectMask = useEditorStore(s => s.selectMask);
+
+  // Materials store for texture lookup
+  const materials = useMaterialsStore(s => s.items);
 
   // Create InputRouter with store reference
   const router = useMemo(() => new InputRouter(useEditorStore), []);
@@ -139,16 +144,16 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
               return null;
             }
             
-            // Simple material visualization - shows attached materials
+            const material = materials[mask.materialId];
+            if (!material) {
+              return null;
+            }
+            
             return (
-              <Line
+              <MaterialTexture
                 key={`material-${mask.id}`}
-                points={mask.path.points.flatMap(p => [p.x, p.y])}
-                fill="rgba(100, 150, 255, 0.25)"
-                stroke="rgba(100, 150, 255, 0.8)"
-                strokeWidth={1}
-                closed={true}
-                opacity={0.6}
+                mask={mask}
+                material={material}
               />
             );
           })}
