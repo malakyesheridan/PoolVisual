@@ -160,17 +160,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
         {/* Material Layer - renders textures for masks with attached materials */}
         <Layer id="MaterialOverlay" listening={false}>
-          {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => {
-            return (
-              <MaskTexture
-                key={`material-${mask.id}`}
-                maskId={mask.id}
-                polygon={mask.polygon!}
-                materialId={mask.material_id!}
-                meta={mask.material_meta}
-              />
-            );
-          })}
+          {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => (
+            <MaskTexture
+              key={`material-${mask.id}`}
+              maskId={mask.id}
+              polygon={mask.polygon!}
+              materialId={mask.material_id!}
+              meta={mask.material_meta}
+            />
+          ))}
         </Layer>
 
         {/* Enhanced Mask Selection - combine with existing masks layer to reduce layer count */}

@@ -15,7 +15,7 @@ type P = {
 export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
   const stageScale = useEditorStore(s => s.zoom);
   const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
-  const url = material?.texture_url || material?.thumbnail_url || '';
+  const url = material?.textureUrl || material?.thumbnailUrl || material?.texture_url || material?.thumbnail_url || '';
 
   const rectRef = useRef<Konva.Rect>(null);
   const [img, setImg] = useState<HTMLImageElement|null>(null);
@@ -72,7 +72,7 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
     r.cache();                  // ensure paint
     r.getLayer()?.batchDraw();
 
-    // Debug (remove later)
+    // Debug texture rendering
     console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy });
   }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale, maskId]);
 
