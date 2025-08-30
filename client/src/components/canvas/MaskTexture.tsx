@@ -1,4 +1,4 @@
-import { Group, Rect } from 'react-konva';
+import { Group, Rect, Line } from 'react-konva';
 import Konva from 'konva';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadTextureImage, patternScaleFor } from '../../lib/textureLoader';
@@ -17,7 +17,7 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
   const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
   const url = material?.textureUrl || material?.thumbnailUrl || material?.texture_url || material?.thumbnail_url || '';
 
-  const rectRef = useRef<Konva.Rect>(null);
+  const shapeRef = useRef<Konva.Line>(null);
   const [img, setImg] = useState<HTMLImageElement|null>(null);
 
   // Load (with proxy fallback)
@@ -54,29 +54,37 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
 
   // Apply pattern on changes
   useEffect(() => {
-    const r = rectRef.current;
+    const r = shapeRef.current;
     if (!r || !img) return;
 
-    // If any legacy fill is present, disable it. Pattern should win.
-    r.fill(undefined as any);
-    r.fillEnabled(true);
-    (r as any).fillPriority('pattern'); // <-- key line
-
-    const repeatPx = Math.max(32, meta?.scale ?? 256); // world pixels per tile (precomputed from ppm)
+    const repeatPx = Math.max(64, meta?.scale ?? 512); // world pixels per tile (precomputed from ppm)
     const ps = patternScaleFor(img, repeatPx);
 
-    // Compensate for stage zoom: pattern scale is in node space
-    const sx = ps.x / stageScale;
-    const sy = ps.y / stageScale;
+    // Compensate for stage zoom: pattern scale is in node space  
+    // Make pattern larger for visibility
+    const sx = Math.max(0.1, ps.x / stageScale);
+    const sy = Math.max(0.1, ps.y / stageScale);
 
+    // Test with a colored pattern first, then image pattern
+    console.log('🔍 [MaskTexture] Image loaded:', img.src || img.currentSrc, 'naturalWidth:', img.naturalWidth || img.width);
+    
+    // Apply pattern (don't clear fill, let pattern override)
     r.fillPatternImage(img);
     r.fillPatternScale({ x: sx, y: sy });
     r.fillPatternRotation(meta?.rotationDeg ?? 0);
     r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
     r.fillPatternRepeat('repeat');
+    r.fillEnabled(true);
+    
+    // Force visibility test
+    if (!img.complete || img.naturalWidth === 0) {
+      console.warn('🚨 [MaskTexture] Image not loaded properly, using fallback');
+      r.fillPatternImage(null);
+      r.fill('#ff6b6b'); // Red fallback to confirm shape is working
+    }
 
-    r.opacity(1);                  // ensure fully opaque (overlay tint is now off)
-    r.cache();                     // paint reliably
+    r.opacity(1);                  // ensure fully opaque
+    r.cache();                     // force redraw
     r.getLayer()?.batchDraw();
 
     console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy, url });
@@ -84,10 +92,17 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
 
   if (!polygon?.length || !material) return null;
 
+  // Use Line with polygon points directly for better pattern rendering
+  const points = polygon.flatMap(p => [p.x, p.y]);
+  
   return (
-    <Group listening={false} clipFunc={clipFunc}>
-      <Rect ref={rectRef} x={bbox.x} y={bbox.y} width={bbox.w} height={bbox.h}
-            fill={img ? undefined : 'rgba(0,0,0,0.04)'} />
+    <Group listening={false}>
+      <Line 
+        ref={shapeRef} 
+        points={points}
+        closed={true}
+        fill={img ? 'transparent' : 'rgba(0,0,0,0.04)'}
+      />
     </Group>
   );
 }
