@@ -1,0 +1,294 @@
+You are a senior engineer in Replit. **Overhaul the texture system now** so that materials render **inside masks** reliably. The problem is almost always one (or more) of: CORS-tainted images, pattern bound to a zero-size node, missing redraw, wrong scale relative to zoom, or rendering before the image is actually available. Below is a **drop-in implementation** that fixes all of these in a robust way with a server proxy + deterministic Konva pattern renderer.
+
+================================================================================
+1) BACKEND — Safe texture proxy (kills CORS/taint) + strong caching
+================================================================================
+
+Create: `server/routes/textureProxy.ts`
+```ts
+import { FastifyInstance } from 'fastify';
+import fetch from 'node-fetch';
+
+const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
+// Optionally restrict domains: add e.g. 'www.pooltile.com.au'
+const ALLOW_ANY_HOST = true;
+const ALLOWED_HOSTS = new Set<string>([
+  'www.pooltile.com.au',
+  'pooltile.com.au',
+]);
+
+export async function textureProxyRoutes(app: FastifyInstance) {
+  app.get('/api/texture', async (req, reply) => {
+    try {
+      const url = (req.query as any)?.url as string;
+      if (!url) return reply.code(400).send({ error: 'MISSING_URL' });
+
+      const u = new URL(url);
+      if (!ALLOWED_PROTOCOLS.has(u.protocol)) {
+        return reply.code(400).send({ error: 'BAD_PROTOCOL' });
+      }
+      if (!ALLOW_ANY_HOST && !ALLOWED_HOSTS.has(u.host)) {
+        return reply.code(403).send({ error: 'HOST_NOT_ALLOWED', host: u.host });
+      }
+
+      const res = await fetch(u.toString(), {
+        headers: {
+          'User-Agent': 'PoolVisual/1.0 (+texture-proxy)',
+          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+        },
+      });
+
+      if (!res.ok || !res.body) {
+        return reply.code(502).send({ error: 'UPSTREAM_FAILED', status: res.status });
+      }
+
+      // Pass-through content-type; default to image/jpeg
+      const ct = res.headers.get('content-type') || 'image/jpeg';
+      reply
+        .header('Content-Type', ct)
+        .header('Cache-Control', 'public, max-age=86400, s-maxage=86400')
+        .header('Access-Control-Allow-Origin', '*');
+
+      return reply.send(res.body);
+    } catch (err: any) {
+      app.log.error({ err }, 'texture proxy error');
+      return reply.code(500).send({ error: 'PROXY_ERROR', message: err.message });
+    }
+  });
+}
+Register it early in server/index.ts:
+
+ts
+Copy code
+import { textureProxyRoutes } from './routes/textureProxy';
+app.register(textureProxyRoutes);
+================================================================================
+2) FRONTEND — Bulletproof loader (tries direct blob, falls back to proxy)
+Create: client/src/lib/textureLoader.ts
+
+ts
+Copy code
+const API = import.meta.env.VITE_API_BASE_URL || '';
+const cache = new Map<string, HTMLImageElement>();
+const inflight = new Map<string, Promise<HTMLImageElement>>();
+
+function blobToImageURL(blob: Blob) {
+  return URL.createObjectURL(blob);
+}
+
+async function loadViaFetchObjectURL(src: string): Promise<HTMLImageElement> {
+  const r = await fetch(src, { credentials: 'omit', mode: 'cors' });
+  if (!r.ok) throw new Error('fetch failed ' + r.status);
+  const b = await r.blob();
+  const url = blobToImageURL(b);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+/** Loads an image as same-origin (no taint). Falls back to backend proxy if needed. */
+export function loadTextureImage(src: string): Promise<HTMLImageElement> {
+  if (!src) return Promise.reject(new Error('empty src'));
+  if (cache.has(src)) return Promise.resolve(cache.get(src)!);
+  if (inflight.has(src)) return inflight.get(src)!;
+
+  const p = (async () => {
+    try {
+      const img = await loadViaFetchObjectURL(src);
+      cache.set(src, img);
+      return img;
+    } catch {
+      // fallback to proxy
+      const proxied = `${API}/api/texture?url=${encodeURIComponent(src)}`;
+      const img = await loadViaFetchObjectURL(proxied);
+      cache.set(src, img);
+      return img;
+    }
+  })();
+
+  inflight.set(src, p);
+  return p.finally(() => inflight.delete(src));
+}
+
+/** Given desired world repeat (pixels), and source image size, compute Konva pattern scale. */
+export function patternScaleFor(img: HTMLImageElement, repeatPx: number) {
+  const repeat = Math.max(16, repeatPx);
+  return { x: repeat / img.width, y: repeat / img.height };
+}
+================================================================================
+3) FRONTEND — Deterministic Mask Texture renderer (clip + rect + zoom-aware)
+Create/replace: client/src/components/canvas/MaskTexture.tsx
+
+tsx
+Copy code
+import { Group, Rect } from 'react-konva';
+import Konva from 'konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { loadTextureImage, patternScaleFor } from '../../lib/textureLoader';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { useEditorStore } from '../../state/editorStore';
+
+type P = {
+  maskId: string;
+  polygon: { x:number; y:number }[];
+  materialId: string;
+  meta?: { scale?: number; rotationDeg?: number; offsetX?: number; offsetY?: number } | null;
+};
+
+export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
+  const stageScale = useEditorStore(s => s.stageScale);
+  const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
+  const url = material?.texture_url || material?.thumbnail_url || '';
+
+  const rectRef = useRef<Konva.Rect>(null);
+  const [img, setImg] = useState<HTMLImageElement|null>(null);
+
+  // Load (with proxy fallback)
+  useEffect(() => {
+    let alive = true;
+    setImg(null);
+    if (!url) return;
+    loadTextureImage(url)
+      .then(i => { if (alive) setImg(i); })
+      .catch(err => { console.warn('[texture] load failed', url, err); });
+    return () => { alive = false; };
+  }, [url]);
+
+  // Clip poly
+  const clipFunc = useMemo(() => {
+    const pts = polygon ?? [];
+    return function (this: Konva.Group, ctx: Konva.Context) {
+      if (!pts.length) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.clip();
+    };
+  }, [polygon]);
+
+  // Bounding box
+  const bbox = useMemo(() => {
+    const xs = polygon.map(p=>p.x), ys = polygon.map(p=>p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x:minX, y:minY, w:Math.max(1, maxX-minX), h:Math.max(1, maxY-minY) };
+  }, [polygon]);
+
+  // Apply pattern on changes
+  useEffect(() => {
+    const r = rectRef.current;
+    if (!r || !img) return;
+
+    const repeatPx = Math.max(32, meta?.scale ?? 256); // world pixels per tile (precomputed from ppm)
+    const ps = patternScaleFor(img, repeatPx);
+
+    // Compensate for stage zoom: pattern scale is in node space
+    const sx = ps.x / stageScale;
+    const sy = ps.y / stageScale;
+
+    r.fillPatternImage(img);
+    r.fillPatternScale({ x: sx, y: sy });
+    r.fillPatternRotation(meta?.rotationDeg ?? 0);
+    r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
+    r.fillPatternRepeat('repeat');
+    r.cache();                  // ensure paint
+    r.getLayer()?.batchDraw();
+
+    // Debug (remove later)
+    console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy });
+  }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale, maskId]);
+
+  if (!polygon?.length || !material) return null;
+
+  return (
+    <Group listening={false} clipFunc={clipFunc}>
+      <Rect ref={rectRef} x={bbox.x} y={bbox.y} width={bbox.w} height={bbox.h}
+            fill={img ? undefined : 'rgba(0,0,0,0.04)'} />
+    </Group>
+  );
+}
+================================================================================
+4) FRONTEND — Apply material stores repeatPx in meta.scale (don’t guess here)
+Ensure your application path stores repeatPx (world pixels between texture repeats) and not arbitrary scale. Update applyMaterialToSelected accordingly:
+
+client/src/state/editorStore.ts (adjust function only)
+
+ts
+Copy code
+import { pickRepeatMeters } from '../canvas/texture-utils'; // or duplicate logic
+
+applyMaterialToSelected: (material) => {
+  const d = get().deps; if (!d) return;
+  const id = get().selectedMaskId; if (!id) return;
+
+  const ppm = Math.max(1, d.getPxPerMeter()); // pixels per meter from calibration
+  const repeatM =
+    (material.physical_repeat_m && material.physical_repeat_m > 0) ? material.physical_repeat_m :
+    (material.sheet_width_mm ? material.sheet_width_mm / 1000 :
+    (material.tile_width_mm ? material.tile_width_mm / 1000 : 0.30));
+
+  const repeatPx = repeatM * ppm; // <- this is meta.scale
+  const meta = { scale: repeatPx, rotationDeg: 0, offsetX: 0, offsetY: 0 };
+
+  d.pushUndo('Apply material');
+  d.patchMask(id, { material_id: material.id, material_meta: meta });
+}
+================================================================================
+5) FRONTEND — Stage integration layer order (textures must be visible)
+In client/src/components/canvas/CanvasStage.tsx ensure:
+
+Photo/background first.
+
+Texture layer next (listening={false}).
+
+Mask outlines/handles over the top.
+
+tsx
+Copy code
+<Layer listening={false}>
+  {masks.filter(m => m.kind==='area' && m.material_id && m.polygon?.length)
+        .map(m => (
+          <MaskTexture key={m.id}
+            maskId={m.id}
+            polygon={m.polygon!}
+            materialId={m.material_id!}
+            meta={m.material_meta || undefined}
+          />
+        ))}
+</Layer>
+
+<Layer>
+  {/* outlines/handles/hit areas for selection */}
+</Layer>
+Also: when the user zooms, update the store’s stageScale so textures re-compute.
+
+================================================================================
+6) QUICK SANITY CHECKS (do these now)
+Pick a material with a real texture_url (not the supplier logo).
+
+Open DevTools > Console and ensure you see:
+"[texture] render" { maskId, img: "XXXXxYYYY", repeatPx: N, stageScale: 1, sx, sy }
+If you see image load failed, the proxy wasn’t hit → check /api/texture route is registered.
+
+Temporarily set the Rect without clip to verify you can see the pattern at all:
+
+tsx
+Copy code
+// In MaskTexture, replace <Group clipFunc=...> with <Group> to test quickly
+If it shows, your polygon points order might be wrong (self-intersecting). Fix the polygon or simplify.
+
+================================================================================
+7) Acceptance (must pass now)
+Selecting a mask and picking a material shows the actual texture inside the mask.
+
+Zoom in/out: texture repeat remains world-true (does not shrink/grow relative to geometry).
+
+Switching masks and applying different materials works.
+
+No CORS errors; /api/texture?url=… works with 200 and caches.
+
+Implement all code above now. This replaces the unreliable pattern path with a proxied, zoom-aware, clip-correct renderer and removes the common CORS/taint failure mode that prevents textures from ever appearing.

@@ -39,15 +39,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setSelectedMask: (id) => set({ selectedMaskId: id }),
   setShowMaterialPicker: (show) => set({ showMaterialPicker: show }),
   
-  // Add missing applyMaterialToSelected function
+  // Add missing applyMaterialToSelected function with proper repeatPx calculation
   applyMaterialToSelected: (material) => {
     const state = get();
     const maskId = state.selectedMaskId;
     if (!maskId) return;
     
-    console.info('[EditorStore] Applying material to selected mask:', { maskId, material: material.name });
-    // This will be handled by the material application system
-    state.applyMaterialToMask(maskId, material);
+    // Calculate proper repeatPx from calibration and material properties
+    const ppm = Math.max(1, state.getCalibrationPxPerMeter()); // pixels per meter from calibration
+    const repeatM = 
+      (material.physicalRepeatM && material.physicalRepeatM > 0) ? parseFloat(material.physicalRepeatM) :
+      (material.sheetWidthMm ? material.sheetWidthMm / 1000 :
+      (material.tileWidthMm ? material.tileWidthMm / 1000 : 0.30));
+
+    const repeatPx = repeatM * ppm; // <- this is meta.scale
+    const meta = { scale: repeatPx, rotationDeg: 0, offsetX: 0, offsetY: 0 };
+    
+    console.info('[EditorStore] Applying material with proper scaling:', { 
+      maskId, 
+      material: material.name, 
+      repeatM, 
+      ppm, 
+      repeatPx 
+    });
+    
+    // Apply material with calculated metadata
+    state.updateMaskMaterial(maskId, { material_id: material.id, material_meta: meta });
   },
   
   // TODO: Wire these to your existing editor state/canvas system

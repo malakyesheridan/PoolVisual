@@ -54,7 +54,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   // New editor store for robust selection and material application
   const newSelectedMaskId = useNewEditorStore(s => s.selectedMaskId);
   const newSelectMask = useNewEditorStore(s => s.setSelectedMask);
-  const registerDeps = useNewEditorStore(s => s.registerDeps);
+  const registerDeps = useNewEditorStore(s => (s as any).registerDeps);
 
   // Register dependencies once - only if registerDeps exists
   useEffect(() => {
