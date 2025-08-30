@@ -64,16 +64,12 @@ export class TextureManager {
     try {
       // Fix relative URLs and use proxy for external URLs
       const resolvedUrl = this.resolveUrl(url);
-      const proxyUrl = this.shouldUseProxy(resolvedUrl) ? `/api/texture?url=${encodeURIComponent(resolvedUrl)}` : resolvedUrl;
+      const finalUrl = this.shouldUseProxy(resolvedUrl) ? `/api/texture?url=${encodeURIComponent(resolvedUrl)}` : resolvedUrl;
       
-      // Load image via blob to avoid taint
-      const imageBlob = await this.loadImageBlob(proxyUrl);
-      if (!imageBlob) return null;
-
-      const imageUrl = URL.createObjectURL(imageBlob);
+      console.info('[TextureManager] Loading texture from:', finalUrl);
       
-      // Create PIXI texture - using v8 API
-      const texture = await PIXI.Assets.load(imageUrl);
+      // Load texture directly with PixiJS v8 - no blob conversion needed
+      const texture = await PIXI.Assets.load(finalUrl);
 
       if (!texture) {
         throw new Error('Failed to load texture');
@@ -82,9 +78,7 @@ export class TextureManager {
       // Validate texture size
       this.validateTextureSize(texture);
 
-      // Clean up blob URL
-      URL.revokeObjectURL(imageUrl);
-
+      console.info('[TextureManager] Successfully loaded texture:', finalUrl, texture.width, texture.height);
       return texture;
 
     } catch (error) {
