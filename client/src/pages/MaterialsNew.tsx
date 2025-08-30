@@ -27,7 +27,7 @@ export default function MaterialsNew() {
   const [loading, setLoading] = useState(true);
   const [testMode, setTestMode] = useState(false);
   
-  // Get current materials
+  // Get current materials and filtered list
   const allMaterials = all();
 
   // Load materials on mount
@@ -145,15 +145,7 @@ export default function MaterialsNew() {
             <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full" />
             <span className="ml-3 text-gray-600">Loading materials...</span>
           </div>
-        ) : lastError ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-red-500" />
-              <span className="font-medium text-red-800">Error loading materials</span>
-            </div>
-            <p className="text-red-700 mt-1">{lastError}</p>
-          </div>
-        ) : filteredMaterials.length === 0 && Object.keys(items).length === 0 ? (
+        ) : filteredMaterials.length === 0 && allMaterials.length === 0 ? (
           // Empty state
           <div className="bg-white dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
