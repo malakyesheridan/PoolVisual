@@ -71,6 +71,13 @@ export default function Dashboard() {
               Manage your pool renovation projects
             </p>
           </div>
+          <div className="flex gap-3">
+            <Link href="/canvas-editor">
+              <Button variant="outline" className="bg-gradient-to-r from-purple-500 to-blue-500 text-white border-0">
+                ✨ Test WebGL V2 Renderer
+              </Button>
+            </Link>
+          </div>
           
           <div className="flex items-center gap-3">
             <Button variant="outline" data-testid="button-filters">

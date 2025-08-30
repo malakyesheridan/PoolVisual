@@ -52,6 +52,12 @@ export class MaterialRenderer {
   }
 
   async initialize(containerId: string): Promise<boolean> {
+    console.info('[MaterialRenderer] Attempting initialization...', {
+      isV2Enabled: this.isV2Enabled,
+      containerId,
+      pixiAvailable: !!PIXI
+    });
+
     if (!this.isV2Enabled) {
       console.info('[MaterialRenderer] V2 disabled, using fallback');
       return false;
@@ -65,9 +71,11 @@ export class MaterialRenderer {
       }
 
       this.container = container;
+      console.info('[MaterialRenderer] Container found, creating PIXI app...');
 
       // Create Pixi Application with WebGL2 preferred, WebGL1 fallback
-      this.app = new PIXI.Application({
+      this.app = new PIXI.Application();
+      await this.app.init({
         width: container.clientWidth || 800,
         height: container.clientHeight || 600,
         backgroundColor: 0x000000,
@@ -80,7 +88,7 @@ export class MaterialRenderer {
       });
 
       // Mount canvas
-      container.appendChild(this.app.view as HTMLCanvasElement);
+      container.appendChild(this.app.canvas);
       
       // Set up resize observer
       this.resizeObserver = new ResizeObserver(() => {
@@ -94,9 +102,8 @@ export class MaterialRenderer {
       this.resizeObserver.observe(container);
 
       console.info('[MaterialRenderer] WebGL initialized', {
-        renderer: this.app.renderer.type === PIXI.RendererType.WEBGL ? 'WebGL' : 'Canvas',
-        version: (this.app.renderer as any).gl?.getParameter((this.app.renderer as any).gl.VERSION),
-        size: { width: this.app.view.width, height: this.app.view.height }
+        renderer: this.app.renderer.type,
+        size: { width: this.app.canvas.width, height: this.app.canvas.height }
       });
 
       return true;
@@ -153,10 +160,13 @@ export class MaterialRenderer {
       if (!mesh) {
         needsGeometryUpdate = true;
         
-        // Create new mesh
+        // Create new mesh using v8 API
         const geometry = new PIXI.Geometry();
         const shader = new MaterialPass();
-        mesh = new PIXI.Mesh(geometry, shader);
+        mesh = new PIXI.Mesh({
+          geometry: geometry,
+          shader: shader
+        }) as any;
         
         if (mesh) {
           this.app.stage.addChild(mesh);
@@ -203,10 +213,12 @@ export class MaterialRenderer {
       mask.meta?.offsetY || 0
     );
 
-    // Update geometry
+    // Update geometry using v8 API - simplified approach
     const geometry = mesh.geometry;
-    geometry.addAttribute('aVertexPosition', triangulated.vertices, 2);
-    geometry.addAttribute('aTextureCoord', uvs, 2);
+    
+    // Create attribute data directly - using v8 Buffer API
+    geometry.addAttribute('aVertexPosition', triangulated.vertices);
+    geometry.addAttribute('aTextureCoord', uvs);
     geometry.addIndex(triangulated.indices);
   }
 

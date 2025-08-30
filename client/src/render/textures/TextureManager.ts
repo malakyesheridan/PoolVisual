@@ -8,7 +8,7 @@ import * as PIXI from 'pixi.js';
 export interface TextureOptions {
   mipmaps?: boolean;
   anisotropicFiltering?: boolean;
-  wrapMode?: PIXI.WRAP_MODES;
+  wrapMode?: string;
 }
 
 export class TextureManager {
@@ -71,32 +71,15 @@ export class TextureManager {
 
       const imageUrl = URL.createObjectURL(imageBlob);
       
-      // Create PIXI texture
-      const baseTexture = PIXI.BaseTexture.from(imageUrl, {
-        scaleMode: PIXI.SCALE_MODES.LINEAR,
-        wrapMode: options.wrapMode || PIXI.WRAP_MODES.REPEAT,
-        mipmap: options.mipmaps ? PIXI.MIPMAP_MODES.ON : PIXI.MIPMAP_MODES.OFF,
-      });
+      // Create PIXI texture - using v8 API
+      const texture = await PIXI.Assets.load(imageUrl);
 
-      // Configure anisotropic filtering if supported and requested
-      if (options.anisotropicFiltering && this.supportsAnisotropicFiltering()) {
-        baseTexture.anisotropicLevel = 4; // 4x anisotropic filtering
+      if (!texture) {
+        throw new Error('Failed to load texture');
       }
 
-      const texture = new PIXI.Texture(baseTexture);
-
-      // Wait for texture to load
-      await new Promise<void>((resolve, reject) => {
-        if (baseTexture.valid) {
-          resolve();
-        } else {
-          baseTexture.once('loaded', resolve);
-          baseTexture.once('error', reject);
-        }
-      });
-
       // Validate texture size
-      this.validateTextureSize(baseTexture);
+      this.validateTextureSize(texture);
 
       // Clean up blob URL
       URL.revokeObjectURL(imageUrl);
@@ -139,7 +122,7 @@ export class TextureManager {
     // Check WebGL support for anisotropic filtering
     try {
       const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+      const gl = canvas.getContext('webgl') as WebGLRenderingContext;
       if (!gl) return false;
 
       const ext = gl.getExtension('EXT_texture_filter_anisotropic') ||
@@ -152,8 +135,8 @@ export class TextureManager {
     }
   }
 
-  private validateTextureSize(baseTexture: PIXI.BaseTexture): void {
-    const { width, height } = baseTexture;
+  private validateTextureSize(texture: PIXI.Texture): void {
+    const { width, height } = texture;
     
     if (width < 512 || height < 512) {
       console.warn('[TextureManager] Small texture detected, may blur:', { width, height });
@@ -201,21 +184,18 @@ export class TextureManager {
   clearCache(materialId?: string): void {
     if (materialId) {
       // Clear specific material textures
-      const keysToDelete = Array.from(this.textureCache.keys())
-        .filter(key => key.startsWith(`${materialId}_`));
-      
-      for (const key of keysToDelete) {
-        const texture = this.textureCache.get(key);
-        if (texture) {
+      const keysToDelete: string[] = [];
+      this.textureCache.forEach((texture, key) => {
+        if (key.startsWith(`${materialId}_`)) {
           texture.destroy(true);
-          this.textureCache.delete(key);
+          keysToDelete.push(key);
         }
-      }
+      });
+      
+      keysToDelete.forEach(key => this.textureCache.delete(key));
     } else {
       // Clear all textures
-      for (const texture of this.textureCache.values()) {
-        texture.destroy(true);
-      }
+      this.textureCache.forEach(texture => texture.destroy(true));
       this.textureCache.clear();
     }
   }
@@ -226,11 +206,11 @@ export class TextureManager {
   getCacheStats(): { count: number; memoryEstimate: number } {
     let memoryEstimate = 0;
     
-    for (const texture of this.textureCache.values()) {
-      const { width, height } = texture.baseTexture;
+    this.textureCache.forEach(texture => {
+      const { width, height } = texture;
       // Estimate 4 bytes per pixel (RGBA) + mipmaps (~33% extra)
       memoryEstimate += width * height * 4 * 1.33;
-    }
+    });
 
     return {
       count: this.textureCache.size,

@@ -35,12 +35,11 @@ interface CanvasStageProps {
 }
 
 export function CanvasStage({ className, width = 800, height = 600 }: CanvasStageProps) {
-  console.info('[CanvasStage] mounted from:', import.meta?.url || 'CanvasStage.tsx');
-  
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
   const materialRendererRef = useRef<MaterialRenderer | null>(null);
   const [renderV2Enabled, setRenderV2Enabled] = useState(false);
+  
 
   // Destructure state - individual selectors to prevent infinite loops
   const masks = useEditorStore(s => s.masks);
@@ -127,16 +126,26 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   // Initialize WebGL renderer
   useEffect(() => {
     const initRenderer = async () => {
-      if (!materialRendererRef.current) {
-        materialRendererRef.current = new MaterialRenderer();
-        const initialized = await materialRendererRef.current.initialize('gl-layer');
-        setRenderV2Enabled(initialized);
+      try {
+        console.info('[CanvasStage] Starting WebGL renderer initialization...');
         
-        if (initialized) {
-          console.info('[CanvasStage] WebGL V2 renderer enabled');
-        } else {
-          console.info('[CanvasStage] Using fallback Konva renderer');
+        if (!materialRendererRef.current) {
+          console.info('[CanvasStage] Creating MaterialRenderer instance...');
+          materialRendererRef.current = new MaterialRenderer();
+          
+          console.info('[CanvasStage] Calling initialize...');
+          const initialized = await materialRendererRef.current.initialize('gl-layer');
+          setRenderV2Enabled(initialized);
+          
+          if (initialized) {
+            console.info('🚀 [CanvasStage] WebGL V2 renderer ENABLED - photo-realistic materials active');
+          } else {
+            console.info('⚠️ [CanvasStage] WebGL V2 failed - using fallback Konva renderer');
+          }
         }
+      } catch (error) {
+        console.error('[CanvasStage] WebGL initialization error:', error);
+        setRenderV2Enabled(false);
       }
     };
 
@@ -174,7 +183,9 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
       };
 
       try {
-        await materialRendererRef.current.renderMasks(webglMasks, materials, config);
+        // Convert materials record to array
+        const materialsArray = Object.values(materials);
+        await materialRendererRef.current.renderMasks(webglMasks, materialsArray, config);
       } catch (error) {
         console.error('[CanvasStage] WebGL render failed:', error);
       }
