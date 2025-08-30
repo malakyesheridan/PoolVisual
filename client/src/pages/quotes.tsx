@@ -4,7 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { TopNavigation } from "@/components/layout/top-navigation";
 import { QuoteBuilder } from "@/components/quotes/quote-builder";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
@@ -74,8 +73,7 @@ export default function Quotes() {
   if (quoteId) {
     if (quoteLoading) {
       return (
-        <div className="min-h-screen bg-slate-50">
-          <TopNavigation currentPage="quotes" />
+        <div className="bg-slate-50">
           <div className="max-w-6xl mx-auto px-6 py-8">
             <div className="animate-pulse space-y-6">
               <div className="h-8 bg-slate-200 rounded w-64"></div>
@@ -88,8 +86,7 @@ export default function Quotes() {
 
     if (!quote) {
       return (
-        <div className="min-h-screen bg-slate-50">
-          <TopNavigation currentPage="quotes" />
+        <div className="bg-slate-50">
           <div className="max-w-6xl mx-auto px-6 py-8 text-center">
             <h1 className="text-2xl font-bold text-slate-900 mb-4">Quote not found</h1>
             <Button onClick={() => navigate('/quotes')}>
@@ -102,9 +99,7 @@ export default function Quotes() {
     }
 
     return (
-      <div className="min-h-screen bg-slate-50">
-        <TopNavigation currentPage="quotes" />
-        
+      <div className="bg-slate-50">        
         <div className="max-w-6xl mx-auto px-6 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
@@ -182,9 +177,7 @@ export default function Quotes() {
 
   // Quotes list view
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopNavigation currentPage="quotes" />
-      
+    <div className="bg-slate-50">      
       <div className="max-w-7xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

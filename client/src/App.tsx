@@ -17,7 +17,6 @@ import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
-import { BottomNav } from "@/components/nav/BottomNav";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -143,8 +142,6 @@ function App() {
           
           {isAuthenticated ? <ProtectedRouter /> : <PublicRouter />}
           
-          {/* Mobile bottom navigation - only show for authenticated users */}
-          {isAuthenticated && <BottomNav />}
         </TooltipProvider>
       </QueryClientProvider>
     </AppErrorBoundary>

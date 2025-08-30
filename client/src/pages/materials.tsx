@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { TopNavigation } from "@/components/layout/top-navigation";
 import { MaterialCard } from "@/components/materials/material-card";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
@@ -538,10 +537,7 @@ export default function Materials() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-20 md:pb-0">
-      <div className="hidden md:block">
-        <TopNavigation currentPage="materials" />
-      </div>
+    <div className="bg-slate-50 pb-20 md:pb-0">
       
       {/* Mobile header */}
       <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3">

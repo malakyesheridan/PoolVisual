@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { TopNavigation } from "@/components/layout/top-navigation";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -70,8 +69,7 @@ export default function Jobs() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopNavigation />
+    <div className="bg-slate-50">
       
       <div className="max-w-2xl mx-auto px-6 py-8">
         {/* Header */}

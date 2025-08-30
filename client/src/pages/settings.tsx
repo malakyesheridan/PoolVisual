@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { TopNavigation } from "@/components/layout/top-navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
@@ -98,9 +97,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <TopNavigation currentPage="settings" />
-      
+    <div className="bg-slate-50">      
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
