@@ -8,9 +8,12 @@ import { Stage, Layer, Line, Circle, Image as KonvaImage } from 'react-konva';
 import { Stage as StageType } from 'konva/lib/Stage';
 import useImage from 'use-image';
 import { useEditorStore } from '@/stores/editorSlice';
+import { useEditorStore as useNewEditorStore } from '@/state/editorStore';
 import { useMaterialsStore } from '@/state/materialsStore';
 import { InputRouter } from '@/editor/input/InputRouter';
 import { MaskTexture } from './MaskTexture';
+import { MaskShape } from './MaskShape';
+import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './modelBindings';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -47,6 +50,22 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const pan = useEditorStore(s => s.pan);
   const selectedMaskId = useEditorStore(s => s.selectedMaskId);
   const selectMask = useEditorStore(s => s.selectMask);
+
+  // New editor store for robust selection and material application
+  const newSelectedMaskId = useNewEditorStore(s => s.selectedMaskId);
+  const newSelectMask = useNewEditorStore(s => s.setSelectedMask);
+  const registerDeps = useNewEditorStore(s => s.registerDeps);
+
+  // Register dependencies once
+  useEffect(() => {
+    registerDeps({
+      listMasks: getAllMasks,
+      getMask: getMaskById,
+      patchMask: patchMask,
+      pushUndo: pushUndo,
+      getPxPerMeter: getPxPerMeter,
+    });
+  }, [registerDeps]);
 
   // Materials store for texture lookup
   const materials = useMaterialsStore(s => s.items);
@@ -139,14 +158,31 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
         {/* Material Layer - renders textures for masks with attached materials */}
         <Layer id="MaterialOverlay" listening={false}>
-          {masks.filter(mask => mask.materialId && mask.type === 'area' && mask.path?.points?.length).map((mask) => {
+          {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => {
             return (
               <MaskTexture
                 key={`material-${mask.id}`}
                 maskId={mask.id}
-                polygon={mask.path.points}
-                materialId={mask.materialId!}
-                materialMeta={mask.materialMeta}
+                polygon={mask.polygon!}
+                materialId={mask.material_id!}
+                meta={mask.material_meta}
+              />
+            );
+          })}
+        </Layer>
+
+        {/* Mask Selection Layer - robust selection with hit areas */}
+        <Layer id="MaskSelection" listening>
+          {getAllMasks().map(mask => {
+            const isSelected = newSelectedMaskId === mask.id;
+            return (
+              <MaskShape
+                key={`shape-${mask.id}`}
+                id={mask.id}
+                kind={mask.kind}
+                polygon={mask.polygon}
+                isSelected={isSelected}
+                color={mask.kind === 'area' ? '#2dd4bf' : mask.kind === 'band' ? '#8b5cf6' : '#f59e0b'}
               />
             );
           })}

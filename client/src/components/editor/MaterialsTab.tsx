@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, Package, Info } from 'lucide-react';
 import { Material } from '@shared/schema';
 import { useEditorStore } from '@/stores/editorSlice';
+import { useEditorStore as useNewEditorStore } from '@/state/editorStore';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest } from '@/lib/queryClient';
@@ -123,8 +124,10 @@ export function MaterialsTab() {
     calibration
   } = useEditorStore();
   
-  // For now, just use the first mask if any are available
-  const currentMask = masks[0];
+  const { selectedMaskId, applyMaterialToSelected } = useNewEditorStore();
+  
+  // For now, just use the first mask if any are available, or the selected one
+  const currentMask = selectedMaskId ? masks.find(m => m.id === selectedMaskId) : masks[0];
 
   // Fetch materials for the selected category
   const { data: materials, isLoading, error } = useQuery({
@@ -151,8 +154,9 @@ export function MaterialsTab() {
       // Already selected, attach it
       try {
         setIsAttaching(true);
-        // TODO: Implement material attachment
-        // await attachMaterial(currentMask.id, material.id);
+        // Apply material using new robust system
+        applyMaterialToSelected(material);
+        console.info('[CanvasEditor] Material picked:', material);
         
         toast({
           title: 'Material Attached',

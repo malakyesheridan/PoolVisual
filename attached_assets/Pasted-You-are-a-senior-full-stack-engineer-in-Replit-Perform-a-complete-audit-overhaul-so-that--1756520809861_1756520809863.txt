@@ -1,0 +1,469 @@
+You are a senior full-stack engineer in Replit. Perform a **complete audit + overhaul** so that:
+
+1) **Mask selection** is rock-solid (you can select/deselect/switch masks via click/tap, keyboard, or a list), and the UI clearly shows which mask is active.
+2) **Applying a material** always targets the **currently selected mask**.
+3) **Textures actually render** inside mask polygons with correct tiling, scaling (px/m), and zoom awareness, not just “material applied” logs.
+4) No regressions to the existing editor, library, zoom/pan, or undo.
+
+All changes are **additive** (don’t remove old code paths; wire the new ones and feature-gate if needed). TypeScript + React + Konva. Use Zustand for state.
+
+=====================================================================
+A) DATA & STATE — SINGLE SOURCE OF TRUTH FOR SELECTION & MASKS
+=====================================================================
+Create/replace **client/src/state/editorStore.ts**. Keep your existing shape model; this store **adapts** to it through injected getters/setters so we don’t rewrite your model.
+
+```ts
+// client/src/state/editorStore.ts
+import { create } from 'zustand';
+import type Konva from 'konva';
+import type { Material } from '../state/materialsStore';
+import { pickRepeatMeters } from '../canvas/texture-utils';
+
+export type MaskKind = 'area'|'linear'|'band';
+
+export type MaskRecord = {
+  id: string;
+  kind: MaskKind;
+  polygon?: { x:number; y:number }[];    // world-space points for area masks
+  center?: { x:number; y:number };       // for linear/band (your current fields are ok)
+  material_id?: string|null;
+  material_meta?: { scale:number; rotationDeg:number; offsetX:number; offsetY:number }|null;
+};
+
+type EditorDeps = {
+  // Injected bindings to your existing model:
+  listMasks: () => MaskRecord[];
+  getMask: (id: string) => MaskRecord | null;
+  patchMask: (id: string, patch: Partial<MaskRecord>) => void;
+  pushUndo: (label: string) => void;
+  getPxPerMeter: () => number;           // calibration
+};
+
+type EditorState = {
+  // deps must be registered once at Editor mount
+  deps?: EditorDeps;
+  registerDeps: (d: EditorDeps) => void;
+
+  // selection & stage view
+  stageScale: number;
+  setStageScale: (s:number)=>void;
+
+  selectedMaskId: string|null;
+  selectMask: (id: string|null) => void;
+  cycleMask: (dir: 1|-1)=>void;          // keyboard nav
+
+  // material application
+  applyMaterialToSelected: (m: Material) => void;
+};
+
+export const useEditorStore = create<EditorState>((set, get) => ({
+  deps: undefined,
+  registerDeps: (d) => set({ deps: d }),
+
+  stageScale: 1,
+  setStageScale: (s) => set({ stageScale: Math.max(0.05, Math.min(10, s)) }),
+
+  selectedMaskId: null,
+  selectMask: (id) => set({ selectedMaskId: id }),
+
+  cycleMask: (dir) => {
+    const d = get().deps; if (!d) return;
+    const arr = d.listMasks();
+    if (arr.length === 0) return;
+    const cur = get().selectedMaskId;
+    const idx = Math.max(0, arr.findIndex(m => m.id === cur));
+    const next = arr[(idx + (dir === 1 ? 1 : arr.length - 1)) % arr.length];
+    set({ selectedMaskId: next.id });
+  },
+
+  applyMaterialToSelected: (material) => {
+    const d = get().deps; if (!d) return;
+    const id = get().selectedMaskId; if (!id) return;
+    const ppm = Math.max(1, d.getPxPerMeter());
+    const repeatM = pickRepeatMeters(material);
+    const repeatPx = repeatM * ppm;
+
+    // We store "repeatPx" in meta.scale; the renderer converts to patternScale using image width.
+    const meta = { scale: repeatPx, rotationDeg: 0, offsetX: 0, offsetY: 0 };
+    d.pushUndo('Apply material');
+    d.patchMask(id, { material_id: material.id, material_meta: meta });
+  },
+}));
+=====================================================================
+B) TEXTURE PIPELINE — CLIP + PATTERN RECT + ZOOM AWARE
+Create client/src/canvas/texture-utils.ts used by the renderer.
+
+ts
+Copy code
+// client/src/canvas/texture-utils.ts
+export type TextureMeta = { scale:number; rotationDeg:number; offsetX:number; offsetY:number };
+
+export function pickRepeatMeters(m: {
+  physical_repeat_m?: number|null;
+  sheet_width_mm?: number|null;
+  tile_width_mm?: number|null;
+}) {
+  if (m.physical_repeat_m && m.physical_repeat_m > 0) return m.physical_repeat_m;
+  if (m.sheet_width_mm && m.sheet_width_mm > 0) return m.sheet_width_mm / 1000;
+  if (m.tile_width_mm && m.tile_width_mm > 0) return m.tile_width_mm / 1000;
+  return 0.3; // sensible fallback
+}
+
+const cache = new Map<string, HTMLImageElement>();
+const inflight = new Map<string, Promise<HTMLImageElement>>();
+
+export function preloadImage(url: string) {
+  if (!url) return Promise.reject(new Error('empty texture url'));
+  if (cache.has(url)) return Promise.resolve(cache.get(url)!);
+  if (inflight.has(url)) return inflight.get(url)!;
+  const p = new Promise<HTMLImageElement>((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { cache.set(url, img); inflight.delete(url); resolve(img); };
+    img.onerror = () => { inflight.delete(url); reject(new Error('image load failed: ' + url)); };
+    img.src = url;
+  });
+  inflight.set(url, p);
+  return p;
+}
+
+export function computePatternScale(img: HTMLImageElement, repeatPx: number) {
+  const repeat = Math.max(16, repeatPx); // clamp
+  return { x: repeat / img.width, y: repeat / img.height };
+}
+Create client/src/components/canvas/MaskTexture.tsx:
+
+tsx
+Copy code
+// client/src/components/canvas/MaskTexture.tsx
+import { Group, Rect } from 'react-konva';
+import Konva from 'konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { computePatternScale, preloadImage } from '../../canvas/texture-utils';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { useEditorStore } from '../../state/editorStore';
+
+type P = {
+  maskId: string;
+  polygon: { x:number; y:number }[];
+  materialId: string;
+  meta?: { scale?: number; rotationDeg?: number; offsetX?: number; offsetY?: number } | null;
+};
+
+export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
+  const stageScale = useEditorStore(s => s.stageScale);
+  const mat = useMaterialsStore(s => s.all().find(m => m.id === materialId));
+  const texUrl = mat?.texture_url || mat?.thumbnail_url || '';
+
+  const rectRef = useRef<Konva.Rect>(null);
+
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setImg(null);
+    if (!texUrl) return;
+    preloadImage(texUrl).then(i => { if (mounted) setImg(i); }).catch(err => {
+      console.warn('[texture] load failed', texUrl, err);
+    });
+    return () => { mounted = false; };
+  }, [texUrl]);
+
+  const clipFunc = useMemo(() => {
+    const pts = polygon || [];
+    return function (this: Konva.Group, ctx: Konva.Context) {
+      if (!pts.length) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.clip();
+    };
+  }, [polygon]);
+
+  const bbox = useMemo(() => {
+    const xs = polygon.map(p=>p.x), ys = polygon.map(p=>p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x:minX, y:minY, w:Math.max(1, maxX-minX), h:Math.max(1, maxY-minY) };
+  }, [polygon]);
+
+  useEffect(() => {
+    const r = rectRef.current;
+    if (!r || !img) return;
+    const repeatPx = Math.max(32, meta?.scale ?? 256);        // world pixels per tile
+    const ps = computePatternScale(img, repeatPx);            // world scale
+    const sx = ps.x / stageScale;                             // convert to node scale
+    const sy = ps.y / stageScale;
+
+    r.fillPatternImage(img);
+    r.fillPatternScale({ x: sx, y: sy });
+    r.fillPatternRotation(meta?.rotationDeg ?? 0);
+    r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
+    r.fillPatternRepeat('repeat');
+    r.cache();
+    r.getLayer()?.batchDraw();
+  }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale]);
+
+  if (!polygon?.length) return null;
+
+  return (
+    <Group listening={false} clipFunc={clipFunc}>
+      <Rect ref={rectRef} x={bbox.x} y={bbox.y} width={bbox.w} height={bbox.h}
+        fill={img ? undefined : 'rgba(0,0,0,0.04)'} />
+    </Group>
+  );
+}
+=====================================================================
+C) MASK RENDERER — SOLID HIT AREA + SELECTION HIGHLIGHT + EVENTS
+Create client/src/components/canvas/MaskShape.tsx: (this renders the polygon outline with a fat invisible hit area so selection always works on desktop & mobile)
+
+tsx
+Copy code
+// client/src/components/canvas/MaskShape.tsx
+import { Group, Line, Shape } from 'react-konva';
+import { useMemo } from 'react';
+import { useEditorStore } from '../../state/editorStore';
+
+type P = {
+  id: string;
+  kind: 'area'|'linear'|'band';
+  polygon?: { x:number; y:number }[];
+  isSelected: boolean;
+  color?: string;
+};
+
+export function MaskShape({ id, kind, polygon=[], isSelected, color='#2dd4bf' }: P) {
+  const selectMask = useEditorStore(s => s.selectMask);
+
+  const points = useMemo(() => polygon.flatMap(p => [p.x, p.y]), [polygon]);
+
+  // fat hit area to make taps reliable
+  const onSelect = (e:any) => {
+    e.cancelBubble = true;
+    selectMask(id);
+  };
+
+  if (kind !== 'area') {
+    // TODO: render linear/band shapes similarly; selection handler remains the same
+    return null;
+  }
+
+  return (
+    <Group onMouseDown={onSelect} onTouchStart={onSelect} onClick={onSelect}>
+      <Line points={points} closed stroke={isSelected ? color : '#10b981'}
+            strokeWidth={isSelected ? 3 : 2} lineJoin="round" lineCap="round" listening={false} />
+      {/* An invisible wide stroke to make selection easy */}
+      <Line points={points} closed stroke="rgba(0,0,0,0)" strokeWidth={18} hitStrokeWidth={18} />
+    </Group>
+  );
+}
+=====================================================================
+D) CANVAS STAGE — WIRE EVERYTHING TOGETHER
+Update client/src/components/canvas/CanvasStage.tsx to:
+
+Register deps with the store (your existing mask model).
+
+Render MaskTexture for masks that have materials.
+
+Render MaskShape for hit detection & selection.
+
+Handle deselect when clicking empty canvas; handle zoom to keep stageScale in store.
+
+tsx
+Copy code
+// client/src/components/canvas/CanvasStage.tsx
+import { Stage, Layer } from 'react-konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { MaskTexture } from './MaskTexture';
+import { MaskShape } from './MaskShape';
+import { useEditorStore } from '../../state/editorStore';
+
+// Inject your existing editor model bindings here:
+import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './modelBindings';
+
+export default function CanvasStage() {
+  const stageRef = useRef<any>(null);
+
+  // Register once
+  const registerDeps = useEditorStore(s => s.registerDeps);
+  useEffect(() => {
+    registerDeps({
+      listMasks: () => getAllMasks(),
+      getMask: (id) => getMaskById(id),
+      patchMask: (id, patch) => patchMask(id, patch),
+      pushUndo: (l) => pushUndo(l),
+      getPxPerMeter: () => getPxPerMeter(),
+    });
+  }, [registerDeps]);
+
+  const stageScale = useEditorStore(s => s.stageScale);
+  const setStageScale = useEditorStore(s => s.setStageScale);
+  const selectedMaskId = useEditorStore(s => s.selectedMaskId);
+  const selectMask = useEditorStore(s => s.selectMask);
+
+  // Pull masks from your existing model each render; memoize for performance
+  const masks = useMemo(() => getAllMasks(), [/* add deps from your model's change events if available */]);
+
+  // zoom (wheel)
+  const onWheel = (e:any) => {
+    e.evt.preventDefault();
+    const scaleBy = 1.06;
+    const dir = e.evt.deltaY > 0 ? 1/scaleBy : scaleBy;
+    setStageScale(stageScale * dir);
+  };
+
+  // click empty space to deselect
+  const onStageMouseDown = (e:any) => {
+    if (e.target === e.target.getStage()) {
+      selectMask(null);
+    }
+  };
+
+  // Keyboard: Tab / Shift+Tab to cycle masks; Enter to re-apply last material if needed
+  useEffect(() => {
+    const h = (ev: KeyboardEvent) => {
+      if (ev.key === 'Tab') {
+        ev.preventDefault();
+        useEditorStore.getState().cycleMask(ev.shiftKey ? -1 : 1);
+      }
+    };
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, []);
+
+  // Layout
+  const [size, setSize] = useState({ w: 1200, h: 700 });
+  useEffect(() => {
+    // Measure container (replace with ResizeObserver on your host element)
+    const host = document.getElementById('canvas-host') || document.body;
+    const ro = new (window as any).ResizeObserver((entries:any[]) => {
+      const r = entries[0].contentRect;
+      setSize({ w: r.width, h: r.height });
+    });
+    ro.observe(host);
+    return () => ro.disconnect();
+  }, []);
+
+  return (
+    <div id="canvas-host" className="absolute inset-0">
+      <Stage ref={stageRef} width={size.w} height={size.h} scaleX={stageScale} scaleY={stageScale}
+             onWheel={onWheel} onMouseDown={onStageMouseDown} onTouchStart={onStageMouseDown}>
+        {/* Photo layer below (your existing background image layer) */}
+        {/* <Layer listening={false}> ... </Layer> */}
+
+        {/* Textures layer (clipped fills) */}
+        <Layer listening={false}>
+          {masks.filter(m => m.kind==='area' && m.material_id && m.polygon?.length)
+                .map(m => (
+                  <MaskTexture key={m.id}
+                    maskId={m.id}
+                    polygon={m.polygon!}
+                    materialId={m.material_id!}
+                    meta={m.material_meta || undefined}
+                  />
+                ))}
+        </Layer>
+
+        {/* Vector layer: outlines + hit areas (selection) */}
+        <Layer>
+          {masks.filter(m => m.kind==='area' && m.polygon?.length).map(m => (
+            <MaskShape key={m.id}
+              id={m.id}
+              kind="area"
+              polygon={m.polygon!}
+              isSelected={selectedMaskId === m.id}
+            />
+          ))}
+        </Layer>
+
+        {/* (Optional) handles/anchors layer... */}
+      </Stage>
+    </div>
+  );
+}
+Create client/src/components/canvas/modelBindings.ts to adapt to your current model (replace internals with your real selectors/mutators — this file is just a shim to keep all new code decoupled):
+
+ts
+Copy code
+// client/src/components/canvas/modelBindings.ts
+import type { MaskRecord } from '../../state/editorStore';
+
+// TODO: Replace stubs with your actual data/model accessors.
+export function getAllMasks(): MaskRecord[] {
+  // Return the live array from your existing editor model.
+  // Ensure every mask has a stable string id.
+  return (window as any).__masks ?? [];
+}
+
+export function getMaskById(id: string): MaskRecord | null {
+  const arr = getAllMasks();
+  return arr.find(m => m.id === id) ?? null;
+}
+
+export function patchMask(id: string, patch: Partial<MaskRecord>) {
+  const m = getMaskById(id);
+  if (!m) return;
+  Object.assign(m, patch);
+  // Trigger your redraw/invalidation event if needed.
+}
+
+export function pushUndo(label: string) {
+  // Call into your existing undo manager.
+  console.info('[undo]', label);
+}
+
+export function getPxPerMeter(): number {
+  // Wire to your calibration model; default fallback.
+  return (window as any).__ppm ?? 120;
+}
+=====================================================================
+E) MATERIAL PICKER — APPLY TO CURRENT SELECTION
+Wherever you confirm a material pick (sidebar or modal), replace your current logic with:
+
+ts
+Copy code
+import { useEditorStore } from '../state/editorStore';
+import type { Material } from '../state/materialsStore';
+
+function onPick(m: Material) {
+  const id = useEditorStore.getState().selectedMaskId;
+  if (!id) { /* toast: select a mask first */ return; }
+  useEditorStore.getState().applyMaterialToSelected(m);
+}
+=====================================================================
+F) BUG TRAPS & LOGGING (TEMPORARY; REMOVE WHEN STABLE)
+Add these one-time guards:
+
+When applying a material, assert the selected mask exists and has a polygon:
+
+ts
+Copy code
+const mask = get().deps?.getMask?.(id);
+if (!mask || !mask.polygon?.length) { console.warn('[apply] missing mask/polygon', id, mask); return; }
+In MaskTexture’s effect, log once:
+
+ts
+Copy code
+console.info('[texture] render', { maskId, texUrl, img: img?.width+'x'+img?.height, repeatPx: meta?.scale, stageScale });
+If textures still don’t show, the most common issues are:
+
+CORS on supplier images (fix by proxying through your backend or by using images you host).
+
+Polygon winding creating zero-area clip; ensure points are ordered consistently and closed.
+
+=====================================================================
+G) ACCEPTANCE (MUST PASS)
+Click/tap any mask → it highlights and becomes the selected one; the previous selection clears.
+
+Press Tab/Shift+Tab cycles masks in draw order.
+
+Open materials modal (or sidebar), pick a material → the texture appears inside the selected mask, scaled to calibrated real size and remains visually consistent while zooming.
+
+Switch selection and pick a different material → second mask updates correctly, first remains unchanged.
+
+Undo/redo after apply returns to previous state without losing selection state.
+
+Refresh app → existing materials still selectable; applying again keeps textures working.
+
+Implement everything above now. If your canvas engine differs from Konva, keep the same structure (group clip + large patterned rect + zoom-aware scaling) and adapt the API calls accordingly. This overhaul fixes mask selection reliability and replaces placeholder overlays with real, zoom-stable textures.
