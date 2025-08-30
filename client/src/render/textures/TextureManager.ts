@@ -88,7 +88,11 @@ export class TextureManager {
       return texture;
 
     } catch (error) {
-      console.error('[TextureManager] Failed to load texture:', url, error);
+      console.error('[TextureManager] Failed to load texture:', url, {
+        error: error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
       return null;
     }
   }

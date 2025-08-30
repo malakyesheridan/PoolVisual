@@ -131,41 +131,41 @@ void main() {
 `;
 
 export class MaterialPass extends PIXI.Shader {
-  public uniforms: any;
+  public resources: any;
 
   constructor() {
     const program = PIXI.GlProgram.from({
       vertex: vertexShader,
       fragment: fragmentShader,
     });
-    const uniforms = {
-      // Texture uniforms
-      uTex: PIXI.Texture.EMPTY,
-      uLuma: PIXI.Texture.EMPTY,
-      uAOMask: PIXI.Texture.EMPTY,
+    
+    // In PixiJS v8, textures and uniforms are separate in resources
+    const resources = {
+      // Textures go directly as resources
+      uTex: PIXI.Texture.EMPTY.source,
+      uLuma: PIXI.Texture.EMPTY.source,
+      uAOMask: PIXI.Texture.EMPTY.source,
       
-      // Transformation uniforms
-      uLumaScale: [1.0, 1.0],
-      uRepeatScale: [1.0, 1.0],
-      
-      // Appearance uniforms
-      uGamma: 2.2,
-      uContrast: 1.1,
-      uSaturation: 1.0,
-      uAO: 0.1,
-      uFeather: 4.0,
-      
-      // Material uniforms
-      uBond: 0.0, // 0=straight, 1=brick50, 2=herringbone
-      uGroutWidth: 0.0,
-      uGroutColor: [0.8, 0.8, 0.8],
+      // Uniforms go in a uniform group with explicit types
+      materialUniforms: {
+        uLumaScale: { value: new Float32Array([1.0, 1.0]), type: 'vec2<f32>' },
+        uRepeatScale: { value: new Float32Array([1.0, 1.0]), type: 'vec2<f32>' },
+        uGamma: { value: 2.2, type: 'f32' },
+        uContrast: { value: 1.1, type: 'f32' },
+        uSaturation: { value: 1.0, type: 'f32' },
+        uAO: { value: 0.1, type: 'f32' },
+        uFeather: { value: 4.0, type: 'f32' },
+        uBond: { value: 0.0, type: 'f32' },
+        uGroutWidth: { value: 0.0, type: 'f32' },
+        uGroutColor: { value: new Float32Array([0.8, 0.8, 0.8]), type: 'vec3<f32>' }
+      }
     };
     
     super({
       glProgram: program,
-      resources: uniforms
+      resources: resources
     });
-    this.uniforms = uniforms;
+    this.resources = resources;
   }
 
   /**
@@ -179,7 +179,7 @@ export class MaterialPass extends PIXI.Shader {
       herringbone: 2.0
     };
     
-    this.uniforms.uBond = bondValues[bond] || 0.0;
+    this.resources.materialUniforms.uBond.value = bondValues[bond] || 0.0;
   }
 
   /**
@@ -190,7 +190,7 @@ export class MaterialPass extends PIXI.Shader {
    */
   setGrout(widthMm: number, color: string, repeatM: number): void {
     // Convert grout width to UV space
-    this.uniforms.uGroutWidth = (widthMm / 1000) / repeatM;
+    this.resources.materialUniforms.uGroutWidth.value = (widthMm / 1000) / repeatM;
     
     // Parse grout color
     const hex = color.replace('#', '');
@@ -198,7 +198,9 @@ export class MaterialPass extends PIXI.Shader {
     const g = parseInt(hex.substr(2, 2), 16) / 255;
     const b = parseInt(hex.substr(4, 2), 16) / 255;
     
-    this.uniforms.uGroutColor = [r, g, b];
+    this.resources.materialUniforms.uGroutColor.value[0] = r;
+    this.resources.materialUniforms.uGroutColor.value[1] = g;
+    this.resources.materialUniforms.uGroutColor.value[2] = b;
   }
 
   /**
@@ -207,8 +209,8 @@ export class MaterialPass extends PIXI.Shader {
    * @param scale Scale factor for luminance UV mapping
    */
   setLuminanceMap(luminanceTexture: PIXI.Texture, scale: [number, number]): void {
-    this.uniforms.uLuma = luminanceTexture;
-    this.uniforms.uLumaScale = scale;
+    this.resources.uLuma = luminanceTexture.source;
+    this.resources.materialUniforms.uLumaScale.value.set(scale);
     
     // Add preprocessor define - simplified for v8
     // Note: Dynamic shader compilation in v8 requires different approach
@@ -220,8 +222,8 @@ export class MaterialPass extends PIXI.Shader {
    * @param strength AO effect strength (0-1)
    */
   setAOMask(aoTexture: PIXI.Texture, strength: number): void {
-    this.uniforms.uAOMask = aoTexture;
-    this.uniforms.uAO = Math.max(0, Math.min(1, strength));
+    this.resources.uAOMask = aoTexture.source;
+    this.resources.materialUniforms.uAO.value = Math.max(0, Math.min(1, strength));
     
     // Add preprocessor define - simplified for v8
     // Note: Dynamic shader compilation in v8 requires different approach
@@ -235,6 +237,6 @@ export class MaterialPass extends PIXI.Shader {
    */
   setRepeatScale(repeatPixels: number, materialRepeatM: number, pxPerMeter: number): void {
     const worldScale = repeatPixels / (pxPerMeter * materialRepeatM);
-    this.uniforms.uRepeatScale = [worldScale, worldScale];
+    this.resources.materialUniforms.uRepeatScale.value.set([worldScale, worldScale]);
   }
 }

@@ -160,13 +160,13 @@ export class MaterialRenderer {
       if (!mesh) {
         needsGeometryUpdate = true;
         
-        // Create new mesh using v8 API
+        // Create simple mesh with texture (fallback to basic approach)
         const geometry = new PIXI.Geometry();
-        const shader = new MaterialPass();
-        mesh = new PIXI.Mesh({
-          geometry: geometry,
-          shader: shader
-        }) as any;
+        const texture = await this.getBasicTexture(material);
+        
+        if (!texture) return;
+        
+        mesh = new PIXI.Mesh({ geometry, texture });
         
         if (mesh) {
           this.app.stage.addChild(mesh);
@@ -179,19 +179,22 @@ export class MaterialRenderer {
         await this.updateMeshGeometry(mesh, mask, config);
       }
 
-      // Update material and uniforms
+      // Update material texture
       if (mesh) {
-        await this.updateMeshMaterial(mesh, material, mask, config);
+        const texture = await this.getBasicTexture(material);
+        if (texture) {
+          mesh.texture = texture;
+        }
       }
 
-      console.info('[render]', mask.maskId, {
-        repeatPx: mask.meta?.scale || 256,
-        bond: mask.meta?.bond || 'straight',
-        stageScale: config.stageScale
-      });
+      console.info('[MaterialRenderer] Rendered mask:', mask.maskId, 'with basic texture');
 
     } catch (error) {
-      console.error('[MaterialRenderer] Failed to render mask:', mask.maskId, error);
+      console.error('[MaterialRenderer] Failed to render mask:', mask.maskId, {
+        error: error,
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
     }
   }
 
@@ -226,47 +229,21 @@ export class MaterialRenderer {
     geometry.addIndex(indexBuffer);
   }
 
-  private async updateMeshMaterial(
-    mesh: PIXI.Mesh,
-    material: Material,
-    mask: MaskGeometry,
-    config: RenderConfig
-  ): Promise<void> {
+  private async getBasicTexture(material: Material): Promise<PIXI.Texture | null> {
     // Get material texture
     const textureUrl = (material as any).textureUrl || (material as any).texture_url || '';
-    if (!textureUrl) return;
+    if (!textureUrl) return null;
 
     const texture = await this.textureManager.getTexture(material.id, textureUrl, {
       mipmaps: true,
       anisotropicFiltering: true
     });
 
-    if (!texture) return;
-
-    // Update shader uniforms
-    const shader = mesh.shader as any; // MaterialPass extends PIXI.Shader
-    if (shader && shader.uniforms) {
-      shader.uniforms.uTex = texture;
-      shader.uniforms.uGamma = 2.2;
-      shader.uniforms.uContrast = 1.1;
-      shader.uniforms.uSaturation = 1.0;
-      shader.uniforms.uAO = 0.1;
-      shader.uniforms.uFeather = 4.0;
+    if (texture) {
+      console.info('[MaterialRenderer] Loaded basic texture', material.id, texture.width, texture.height);
     }
 
-    // Scale and repeat based on material properties
-    const repeatM = this.getPhysicalRepeat(material);
-    const repeatPx = (mask.meta?.scale || 256) / config.pxPerMeter * repeatM;
-    
-    if (shader && shader.uniforms) {
-      shader.uniforms.uRepeatScale = [1.0 / repeatPx, 1.0 / repeatPx];
-      const bondValues = { straight: 0.0, brick50: 1.0, herringbone: 2.0 };
-      shader.uniforms.uBond = bondValues[mask.meta?.bond as keyof typeof bondValues] || 0.0;
-      shader.uniforms.uGroutWidth = (mask.meta?.groutMm || 2) / 1000 / repeatM;
-      shader.uniforms.uGroutColor = this.parseColor(mask.meta?.groutColor || '#cccccc');
-    }
-
-    console.info('[tex] loaded', material.id, texture.width, texture.height);
+    return texture;
   }
 
   private getPhysicalRepeat(material: Material): number {
