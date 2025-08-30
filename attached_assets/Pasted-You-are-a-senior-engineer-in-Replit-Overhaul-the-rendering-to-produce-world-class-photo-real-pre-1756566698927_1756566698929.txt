@@ -1,0 +1,229 @@
+You are a senior engineer in Replit. **Overhaul the rendering to produce world-class, photo-real previews** of pool materials applied to arbitrary polygon masks. Keep all current features (masks, calibration, materials library, quoting). Implement a **WebGL mesh pipeline** for perspective-correct texturing + lighting-aware compositing, surfaced through clean UX controls. The goal: renders that look photographed, not pasted.
+
+NON-NEGOTIABLES
+- Do **not** regress any existing functionality (mask tools, selection, undo, uploads, mobile).
+- Keep Konva/React UI as is; insert a **WebGL render layer** underneath the mask outlines.
+- Materials still come from the Materials Library; quoting still uses mask areas × material pricing.
+- Use feature flag `RENDER_V2=true` to enable the new renderer; fall back to current method if false.
+
+STACK & DIRECTORY
+- Konva/React for UI and mask editing (unchanged).
+- **PixiJS (WebGL2 preferred, WebGL1 fallback)** for material rendering. If Pixi is not present, add it.
+- Triangulation: **earcut**.
+- Texture loader uses existing `/api/texture?url=...` proxy to avoid CORS/taint.
+- New files (create if missing):
+  - `client/src/render/MaterialRenderer.ts`  ← orchestrates Pixi, scenes, and masks
+  - `client/src/render/mesh/triangulate.ts`  ← polygon → triangles (earcut)
+  - `client/src/render/mesh/uv.ts`           ← world-space (meters) → UVs
+  - `client/src/render/textures/TextureManager.ts` ← texture caching, mipmaps, anisotropic
+  - `client/src/render/shaders/MaterialPass.ts`    ← fragment shader for lighting/composite
+  - `client/src/render/shaders/LuminancePass.ts`   ← downsampled luminance map from photo
+  - `client/src/render/shaders/AOPass.ts`          ← edge ambient occlusion mask from polygon
+  - `client/src/components/editor/TileSettingsPanel.tsx` ← scale/rotate/offset/bond/grout UI
+  - Integrations into `CanvasStage.tsx` and existing editor store.
+
+PHASE 1 — PERSPECTIVE-CORRECT TEXTURING (triangulated mesh)
+1) **Mount Pixi under Konva**  
+   - In `CanvasStage.tsx`, create an absolutely-positioned `<div id="gl-layer" class="absolute inset-0 pointer-events-none">` below the vector overlay.  
+   - `MaterialRenderer` creates a Pixi Application targeting `#gl-layer`, sized by a `ResizeObserver`.  
+   - Keep Konva for selection/handles; Pixi only draws materials.
+
+2) **Triangulate masks**  
+   - Implement `triangulate(points: {x,y}[]) → {indices: number[], verts: Float32Array}` using earcut.  
+   - Cache per mask; recompute only when points change.
+
+3) **World-space UVs from calibration**  
+   - Get `pxPerMeter` from existing calibration.  
+   - Compute a local 2D basis for the mask:  
+     - u axis: along the longest edge direction.  
+     - v axis: perpendicular in image plane.  
+   - For each vertex (image pixels), map to **meter space**:  
+     `worldU = dot((p - p0), uDir) / pxPerMeter`  
+     `worldV = dot((p - p0), vDir) / pxPerMeter`  
+   - Convert to UV via material repeat:  
+     - Determine **physical repeat** (meters): `repeatM = physical_repeat_m || sheet_width_mm/1000 || tile_width_mm/1000 || 0.30`.  
+     - UV: `u = worldU / repeatM`, `v = worldV / repeatM`.  
+   - Respect material rotation/offset from user controls (apply basis rotation and offsets before UV scale).
+
+4) **Create Pixi Mesh**  
+   - Build `PIXI.MeshGeometry` from `verts` with `uvs` and `indices`.  
+   - Use `PIXI.Mesh<MaterialShader>` with a custom fragment shader (below).  
+   - Depth: draw order equals mask order; one mesh per mask.
+
+PHASE 2 — TEXTURE FIDELITY & MANAGEMENT
+1) **TextureManager**  
+   - `getTexture(materialId, url, {mipmaps:true})` returns a `PIXI.Texture` with:  
+     - uploaded from Image/Blob via the proxy;  
+     - mipmaps generated;  
+     - anisotropic filtering enabled when available.  
+   - Cache by materialId+url.  
+   - If source image < 1024px on either side, warn in console; still render.
+
+2) **Grout parameterization**  
+   - For mosaic/tiles, grout should be a **parameter**, not baked.  
+   - Store `groutWidthMm` and `groutColor` on material (default width 2–3mm).  
+   - Pass to shader as uniforms. For non-tiled stone, grout width = 0.
+
+3) **Bond patterns**  
+   - UI must support `bond = 'straight' | 'brick50' | 'herringbone'`.  
+   - Implement in UV transform: for brick50, offset v rows by 0.5 repeat; for herringbone, rotate basis ±45° and interleave.
+
+PHASE 3 — LIGHTING-AWARE COMPOSITING
+1) **Luminance map**  
+   - Build a downsampled luminance texture (single-channel) from the background photo region.  
+   - Linearize sRGB: `linear = pow(color, 2.2)` → `luma = dot(linear.rgb, vec3(0.2126,0.7152,0.0722))`.  
+   - Store as `texLuma`; update when base photo changes.
+
+2) **Edge AO mask**  
+   - From the polygon, rasterize a 4–8px inward distance field (or blur the binary mask).  
+   - AO = smoothstep(0, 1, 1 - dist/featherPx) scaled by 0.08–0.15.  
+   - Provide `aoStrength` uniform.
+
+3) **Material fragment shader (GLSL)**  
+   _Fragment pseudo-GLSL (`MaterialPass.ts`)_
+   ```glsl
+   precision mediump float;
+   varying vec2 vUV;                // from mesh (world UVs)
+   uniform sampler2D uTex;          // material texture (with mipmaps)
+   uniform sampler2D uLuma;         // scene luminance, low-res
+   uniform sampler2D uAOMask;       // edge occlusion mask
+   uniform vec2 uLumaScale;         // map to screen coords
+   uniform float uGamma;            // 2.2
+   uniform float uAO;               // 0..1
+   uniform float uFeather;          // in px, used in AO prepass
+   uniform float uContrast;         // 1.0..1.2
+   uniform float uSaturation;       // 0.9..1.1
+   // Optional normal/specular:
+   uniform sampler2D uNormalTex;
+   uniform float uSpec;             // 0..0.2
+
+   vec3 toLinear(vec3 c){ return pow(c, vec3(uGamma)); }
+   vec3 toSRGB(vec3 c){ return pow(c, vec3(1.0/uGamma)); }
+
+   void main(){
+     // Base texture (already perspective-correct via mesh UVs)
+     vec4 tex = texture2D(uTex, vUV);
+
+     // Match scene lighting via luminance modulation
+     vec2 luv = gl_FragCoord.xy * uLumaScale;
+     float l = texture2D(uLuma, luv).r;  // 0..1, linear
+     vec3 baseLin = toLinear(tex.rgb) * mix(0.9, 1.1, l);  // gentle luminance coupling
+
+     // Contrast/saturation tweak
+     vec3 avg = vec3(dot(baseLin, vec3(0.333)));
+     baseLin = mix(avg, baseLin, uSaturation);
+     baseLin = (baseLin - 0.5) * uContrast + 0.5;
+
+     // Edge AO
+     float ao = texture2D(uAOMask, luv).r * uAO;
+     baseLin *= (1.0 - ao);
+
+     // Optional very subtle specular from normal map
+     // (compute fake directional highlight; keep it tiny to avoid "CGI sheen")
+     // ... (skip or keep minimal)
+
+     gl_FragColor = vec4(toSRGB(baseLin), 1.0);
+   }
+Blend ordering
+
+In Pixi, disable any multiply/overlay hacks at node level; handle in shader.
+
+Draw order: photo → (WebGL material meshes) → Konva outlines/handles.
+
+PHASE 4 — EDGE TREATMENT & QA
+
+Feathered edges
+
+Do NOT draw any solid fill in Konva when a texture is present.
+
+Keep a 2–6px feather in AO; outlines on top remain crisp.
+
+QA tools
+
+Add a checkerboard diagnostic toggle in the Tile Settings panel to verify UV scale/orientation.
+
+Add warnings:
+
+if screenRepeatPx < 64 → “Texture too small; may blur.”
+
+if screenRepeatPx > 800 → “Texture too large; may alias.”
+
+PHASE 5 — UI/UX CONTROLS (“Tile Settings”)
+
+Add TileSettingsPanel.tsx (drawer or modal) for selected mask:
+
+Scale (locks to calibration; allow fine ±10%)
+
+Rotate (snaps to 0/45/90; free rotate too)
+
+Offset X/Y (drag to pan texture)
+
+Bond (straight, brick50, herringbone)
+
+Grout width (mm) and color
+
+Match Scene toggle (enables luminance modulation & contrast tuning)
+
+Feather/AO strength slider (2–8 px / 0.0–0.2)
+
+Live updates re-render the mesh with current uniforms.
+
+PERFORMANCE
+
+Use a single Pixi application and one mesh per mask.
+
+Recreate geometry only when mask points change; otherwise update uniforms only.
+
+Use mipmaps + anisotropic filtering; cap active meshes for mobile if < 60fps (degrade AO/luma resolution).
+
+OffscreenCanvas where supported for the luminance pass.
+
+Pause WebGL renders when editor tab is backgrounded.
+
+EXPORTS
+
+For final export, render to a high-res framebuffer (1× or 2×), composite photo + material meshes in WebGL, then overlay Konva outlines.
+
+Downscale with Lanczos (or high-quality Pixi filter) and apply subtle sharpening + grain match (1–2% noise) for photographic feel.
+
+Bundle before/after + zoomed crops + quote PDF (existing flow).
+
+INTEGRATION DETAILS
+
+Materials: use texture_url (fallback thumbnail_url) from the saved material.
+
+Apply action: store material_id on mask and material_meta with { scale: repeatPx, rotationDeg, offsetX, offsetY, bond, groutMm, groutColor, sceneMatch }.
+
+Renderer reads from the same store; never uses a blue overlay when material_id is present.
+
+Keep the Materials Picker Modal; “Apply” simply updates store → renderer updates.
+
+TESTS / ACCEPTANCE
+
+Select a mask → pick a material → actual texture appears, aligned to perspective, no flat tint.
+
+Zoom/pan: repeat appears world-constant (no rubber-banding).
+
+Rotate/scale/offset in Tile Settings update immediately.
+
+“Match Scene” notably improves realism (texture follows lighting; no washed-out look).
+
+Edge looks seated (feather + AO), no halos.
+
+Exported images look crisp; grout is sharp at 100% view.
+
+Mobile still interactive at ≥ 30 fps; renderer degrades gracefully if needed.
+
+INSTRUMENTATION (TEMPORARY)
+
+Log once per material load: console.info('[tex] loaded', id, img.width, img.height).
+
+Log per render: console.info('[render]', maskId, {repeatPx, bond, stageScale}).
+
+Provide a dev overlay that draws UV grid every 8 UV units for QA.
+
+DONE WHEN
+
+Demo scene (the sample pool photo) shows believable results for at least three materials (interior tile, coping stone, paving) with correct perspective and lighting; exports look like real photos; the old overlay never appears when a material is applied; quoting remains accurate.
+
+Implement all steps above under RENDER_V2. Keep feature-flagged fallback to current renderer until this passes acceptance.

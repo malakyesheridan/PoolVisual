@@ -14,6 +14,7 @@ import { InputRouter } from '@/editor/input/InputRouter';
 import { MaskTexture } from './MaskTexture';
 import { MaskShape } from './MaskShape';
 import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './modelBindings';
+import { MaterialRenderer, type MaskGeometry, type RenderConfig } from '@/render/MaterialRenderer';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -38,6 +39,8 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
+  const materialRendererRef = useRef<MaterialRenderer | null>(null);
+  const [renderV2Enabled, setRenderV2Enabled] = useState(false);
 
   // Destructure state - individual selectors to prevent infinite loops
   const masks = useEditorStore(s => s.masks);
@@ -121,9 +124,77 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     };
   }, [backgroundImage, stageDimensions, pan, zoom]);
 
+  // Initialize WebGL renderer
+  useEffect(() => {
+    const initRenderer = async () => {
+      if (!materialRendererRef.current) {
+        materialRendererRef.current = new MaterialRenderer();
+        const initialized = await materialRendererRef.current.initialize('gl-layer');
+        setRenderV2Enabled(initialized);
+        
+        if (initialized) {
+          console.info('[CanvasStage] WebGL V2 renderer enabled');
+        } else {
+          console.info('[CanvasStage] Using fallback Konva renderer');
+        }
+      }
+    };
+
+    initRenderer();
+
+    return () => {
+      if (materialRendererRef.current) {
+        materialRendererRef.current.destroy();
+        materialRendererRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update WebGL renderer when masks or materials change
+  useEffect(() => {
+    const updateRenderer = async () => {
+      if (!renderV2Enabled || !materialRendererRef.current) return;
+
+      // Convert masks to WebGL format
+      const webglMasks: MaskGeometry[] = getAllMasks()
+        .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
+        .map(mask => ({
+          maskId: mask.id,
+          points: mask.polygon!,
+          materialId: mask.material_id!,
+          meta: mask.material_meta
+        }));
+
+      // Get render configuration
+      const pxPerMeter = getPxPerMeter() || 100; // Default if no calibration
+      const config: RenderConfig = {
+        pxPerMeter,
+        stageScale: zoom,
+        sceneSize: stageDimensions
+      };
+
+      try {
+        await materialRendererRef.current.renderMasks(webglMasks, materials, config);
+      } catch (error) {
+        console.error('[CanvasStage] WebGL render failed:', error);
+      }
+    };
+
+    updateRenderer();
+  }, [masks, materials, zoom, stageDimensions, renderV2Enabled]);
+
   return (
-    <div className={className}>
-      <Stage
+    <div className={className} style={{ position: 'relative' }}>
+      {/* WebGL Layer - positioned below Konva */}
+      <div 
+        id="gl-layer" 
+        className="absolute inset-0 pointer-events-none"
+        style={{ zIndex: 1 }}
+      />
+      
+      {/* Konva Stage - positioned above WebGL */}
+      <div style={{ position: 'relative', zIndex: 2 }}>
+        <Stage
         ref={stageRef}
         width={stageDimensions.width} 
         height={stageDimensions.height}
@@ -158,18 +229,20 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           ):null}
         </Layer>
 
-        {/* Material Layer - renders textures for masks with attached materials */}
-        <Layer id="MaterialOverlay" listening={false}>
-          {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => (
-            <MaskTexture
-              key={`material-${mask.id}`}
-              maskId={mask.id}
-              polygon={mask.polygon!}
-              materialId={mask.material_id!}
-              meta={mask.material_meta}
-            />
-          ))}
-        </Layer>
+        {/* Material Layer - fallback to Konva when WebGL is disabled */}
+        {!renderV2Enabled && (
+          <Layer id="MaterialOverlay" listening={false}>
+            {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => (
+              <MaskTexture
+                key={`material-${mask.id}`}
+                maskId={mask.id}
+                polygon={mask.polygon!}
+                materialId={mask.material_id!}
+                meta={mask.material_meta}
+              />
+            ))}
+          </Layer>
+        )}
 
         {/* Enhanced Mask Selection - combine with existing masks layer to reduce layer count */}
 
@@ -193,7 +266,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
                     key={m.id} 
                     points={m.path.points.flatMap(p=>[p.x,p.y])} 
                     closed 
-                    fill={hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
+                    fill={hasMaterial && renderV2Enabled ? 'transparent' : hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
                     stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
                     strokeWidth={isSelected || isNewSelected ? 4 : 2}
                     onClick={handleSelect}
@@ -239,7 +312,8 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
             </>
           )}
         </Layer>
-      </Stage>
+        </Stage>
+      </div>
     </div>
   );
 }
