@@ -30,6 +30,9 @@ export function CanvasEditorPage() {
 
   const photo = useEditorStore(s => s.photo);
   const loadImageFile = useEditorStore(s => s.loadImageFile);
+  const selectedMaskId = useEditorStore(s => s.selectedMaskId);
+  const selectMask = useEditorStore(s => s.selectMask);
+  const applyMaterialToMask = useEditorStore(s => s.applyMaterialToMask);
   const {
     calState,
     transient,
@@ -101,13 +104,20 @@ export function CanvasEditorPage() {
   const handleMaterialPick = (material: any) => {
     console.log('[CanvasEditor] Material picked:', material);
     
-    // For now, just close the modal and show a success message
-    // TODO: Wire this to actual mask selection and material application
-    setShowMaterialPicker(false);
-    toast.success(`Selected material: ${material.name}`);
+    if (!selectedMaskId) {
+      toast.error('Please select a mask first');
+      return;
+    }
     
-    // This is where we would apply the material to the selected mask
-    // when the mask system is properly integrated
+    // Apply material to selected mask
+    applyMaterialToMask(selectedMaskId, material.id);
+    setShowMaterialPicker(false);
+    toast.success(`Applied ${material.name} to selected mask`);
+  };
+
+  const handleMaskSelect = (maskId: string) => {
+    selectMask(maskId);
+    console.log('[CanvasEditor] Mask selected:', maskId);
   };
 
   const handleFullscreen = () => {
@@ -231,12 +241,18 @@ export function CanvasEditorPage() {
       {/* Floating Material Picker Button */}
       <Button
         onClick={() => setShowMaterialPicker(true)}
-        className="fixed bottom-20 md:bottom-4 right-4 z-50 bg-blue-600 hover:bg-blue-700 shadow-lg"
+        disabled={!selectedMaskId}
+        className={cn(
+          "fixed bottom-20 md:bottom-4 right-4 z-50 shadow-lg",
+          selectedMaskId 
+            ? "bg-blue-600 hover:bg-blue-700" 
+            : "bg-gray-400 cursor-not-allowed"
+        )}
         size="lg"
         data-testid="button-open-material-picker"
       >
         <Palette className="w-5 h-5 mr-2" />
-        Materials
+        {selectedMaskId ? 'Apply Material' : 'Select Mask First'}
       </Button>
     </div>
   );

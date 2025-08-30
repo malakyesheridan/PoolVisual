@@ -43,6 +43,8 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const photo = useEditorStore(s => s.photo);
   const zoom = useEditorStore(s => s.zoom);
   const pan = useEditorStore(s => s.pan);
+  const selectedMaskId = useEditorStore(s => s.selectedMaskId);
+  const selectMask = useEditorStore(s => s.selectMask);
 
   // Create InputRouter with store reference
   const router = useMemo(() => new InputRouter(useEditorStore), []);
@@ -153,13 +155,39 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         </Layer>
 
         <Layer id="Masks" listening>
-          {masks.map(m =>
-            m.type==='area'
-              ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} closed fill="rgba(16,185,129,.25)" stroke="#10b981" strokeWidth={2}/>
-              : m.type==='waterline_band'
-                ? <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#8b5cf6" strokeWidth={3}/>
-                : <Line key={m.id} points={m.path.points.flatMap(p=>[p.x,p.y])} stroke="#f59e0b" strokeWidth={3}/>
-          )}
+          {masks.map(m => {
+            const isSelected = selectedMaskId === m.id;
+            return (
+              m.type==='area'
+                ? <Line 
+                    key={m.id} 
+                    points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                    closed 
+                    fill="rgba(16,185,129,.25)" 
+                    stroke={isSelected ? "#3b82f6" : "#10b981"} 
+                    strokeWidth={isSelected ? 4 : 2}
+                    onClick={() => selectMask(m.id)}
+                    onTap={() => selectMask(m.id)}
+                  />
+                : m.type==='waterline_band'
+                  ? <Line 
+                      key={m.id} 
+                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                      stroke={isSelected ? "#3b82f6" : "#8b5cf6"} 
+                      strokeWidth={isSelected ? 5 : 3}
+                      onClick={() => selectMask(m.id)}
+                      onTap={() => selectMask(m.id)}
+                    />
+                  : <Line 
+                      key={m.id} 
+                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                      stroke={isSelected ? "#3b82f6" : "#f59e0b"} 
+                      strokeWidth={isSelected ? 5 : 3}
+                      onClick={() => selectMask(m.id)}
+                      onTap={() => selectMask(m.id)}
+                    />
+            );
+          })}
         </Layer>
 
         <Layer id="Calibration" listening>

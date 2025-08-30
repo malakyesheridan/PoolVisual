@@ -18,11 +18,14 @@ export type Mask = {
   id:string; photoId:string; type:MaskType;
   path:{ points:Vec2[] }; bandHeightM?:number;
   createdAt:string;
+  materialId?:string;
 };
 
 export interface EditorSlice {
   photoId: string;
   activeTool: Tool;
+  selectedMaskId: string | null;
+  
   // Calibration
   calState: CalState;
   calTemp?: { a?:Vec2; b?:Vec2; preview?:Vec2; meters?:number } | undefined;
@@ -34,6 +37,8 @@ export interface EditorSlice {
 
   // Actions
   setTool(t:Tool): void;
+  selectMask(id: string | null): void;
+  applyMaterialToMask(maskId: string, materialId: string): void;
 
   startCalibration(): void;
   placeCalPoint(p:Vec2): void;
@@ -81,6 +86,7 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
   // Initial state
   photoId: 'temp-photo',
   activeTool: 'hand',
+  selectedMaskId: null,
   calState: 'idle',
   calTemp: undefined,
   calibration: undefined,
@@ -94,6 +100,16 @@ export const useEditorStore = create<EditorSlice>((set, get) => ({
 
   // Actions implemented exactly as specified
   setTool(t){ set(s=>{ if(s.activeTool!==t) return {...s, activeTool:t, transient:undefined}; return s; }); },
+  selectMask(id){ set({ selectedMaskId: id }); },
+  applyMaterialToMask(maskId, materialId) {
+    set(state => ({
+      masks: state.masks.map(mask => 
+        mask.id === maskId 
+          ? { ...mask, materialId }
+          : mask
+      )
+    }));
+  },
 
   startCalibration(){ set(s=>({...s, calState:'placingA', calTemp:{}, transient:undefined })); },
 
