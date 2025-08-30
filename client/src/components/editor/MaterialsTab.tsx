@@ -124,7 +124,8 @@ export function MaterialsTab() {
     calibration
   } = useEditorStore();
   
-  const { selectedMaskId, applyMaterialToSelected } = useNewEditorStore();
+  const { selectedMaskId } = useNewEditorStore();
+  const applyMaterialToSelected = useNewEditorStore(s => s.applyMaterialToSelected);
   
   // For now, just use the first mask if any are available, or the selected one
   const currentMask = selectedMaskId ? masks.find(m => m.id === selectedMaskId) : masks[0];
@@ -155,7 +156,15 @@ export function MaterialsTab() {
       try {
         setIsAttaching(true);
         // Apply material using new robust system
-        applyMaterialToSelected(material);
+        if (applyMaterialToSelected && typeof applyMaterialToSelected === 'function') {
+          applyMaterialToSelected(material);
+        } else {
+          // Fallback to direct material application
+          const store = useEditorStore.getState();
+          if (selectedMaskId) {
+            await store.applyMaterialToMask(selectedMaskId, material);
+          }
+        }
         console.info('[CanvasEditor] Material picked:', material);
         
         toast({

@@ -56,15 +56,17 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const newSelectMask = useNewEditorStore(s => s.setSelectedMask);
   const registerDeps = useNewEditorStore(s => s.registerDeps);
 
-  // Register dependencies once
+  // Register dependencies once - only if registerDeps exists
   useEffect(() => {
-    registerDeps({
-      listMasks: getAllMasks,
-      getMask: getMaskById,
-      patchMask: patchMask,
-      pushUndo: pushUndo,
-      getPxPerMeter: getPxPerMeter,
-    });
+    if (registerDeps && typeof registerDeps === 'function') {
+      registerDeps({
+        listMasks: getAllMasks,
+        getMask: getMaskById,
+        patchMask: patchMask,
+        pushUndo: pushUndo,
+        getPxPerMeter: getPxPerMeter,
+      });
+    }
   }, [registerDeps]);
 
   // Materials store for texture lookup
@@ -171,26 +173,20 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           })}
         </Layer>
 
-        {/* Mask Selection Layer - robust selection with hit areas */}
-        <Layer id="MaskSelection" listening>
-          {getAllMasks().map(mask => {
-            const isSelected = newSelectedMaskId === mask.id;
-            return (
-              <MaskShape
-                key={`shape-${mask.id}`}
-                id={mask.id}
-                kind={mask.kind}
-                polygon={mask.polygon}
-                isSelected={isSelected}
-                color={mask.kind === 'area' ? '#2dd4bf' : mask.kind === 'band' ? '#8b5cf6' : '#f59e0b'}
-              />
-            );
-          })}
-        </Layer>
+        {/* Enhanced Mask Selection - combine with existing masks layer to reduce layer count */}
 
         <Layer id="Masks" listening>
           {masks.map(m => {
             const isSelected = selectedMaskId === m.id;
+            const isNewSelected = newSelectedMaskId === m.id;
+            const handleSelect = (e: any) => {
+              e.cancelBubble = true;
+              selectMask(m.id);
+              if (newSelectMask && typeof newSelectMask === 'function') {
+                newSelectMask(m.id);
+              }
+            };
+            
             return (
               m.type==='area'
                 ? <Line 
@@ -198,27 +194,30 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
                     points={m.path.points.flatMap(p=>[p.x,p.y])} 
                     closed 
                     fill="rgba(16,185,129,.25)" 
-                    stroke={isSelected ? "#3b82f6" : "#10b981"} 
-                    strokeWidth={isSelected ? 4 : 2}
-                    onClick={() => selectMask(m.id)}
-                    onTap={() => selectMask(m.id)}
+                    stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
+                    strokeWidth={isSelected || isNewSelected ? 4 : 2}
+                    onClick={handleSelect}
+                    onTap={handleSelect}
+                    hitStrokeWidth={20}
                   />
                 : m.type==='waterline_band'
                   ? <Line 
                       key={m.id} 
                       points={m.path.points.flatMap(p=>[p.x,p.y])} 
-                      stroke={isSelected ? "#3b82f6" : "#8b5cf6"} 
-                      strokeWidth={isSelected ? 5 : 3}
-                      onClick={() => selectMask(m.id)}
-                      onTap={() => selectMask(m.id)}
+                      stroke={isSelected || isNewSelected ? "#3b82f6" : "#8b5cf6"} 
+                      strokeWidth={isSelected || isNewSelected ? 5 : 3}
+                      onClick={handleSelect}
+                      onTap={handleSelect}
+                      hitStrokeWidth={20}
                     />
                   : <Line 
                       key={m.id} 
                       points={m.path.points.flatMap(p=>[p.x,p.y])} 
-                      stroke={isSelected ? "#3b82f6" : "#f59e0b"} 
-                      strokeWidth={isSelected ? 5 : 3}
-                      onClick={() => selectMask(m.id)}
-                      onTap={() => selectMask(m.id)}
+                      stroke={isSelected || isNewSelected ? "#3b82f6" : "#f59e0b"} 
+                      strokeWidth={isSelected || isNewSelected ? 5 : 3}
+                      onClick={handleSelect}
+                      onTap={handleSelect}
+                      hitStrokeWidth={20}
                     />
             );
           })}

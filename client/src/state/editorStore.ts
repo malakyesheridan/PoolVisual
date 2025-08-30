@@ -29,6 +29,7 @@ type EditorState = {
   
   // High-level material application
   applyMaterialToMask: (maskId: string, material: Material) => Promise<void>;
+  applyMaterialToSelected?: (material: Material) => void;
 };
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -37,6 +38,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   
   setSelectedMask: (id) => set({ selectedMaskId: id }),
   setShowMaterialPicker: (show) => set({ showMaterialPicker: show }),
+  
+  // Add missing applyMaterialToSelected function
+  applyMaterialToSelected: (material) => {
+    const state = get();
+    const maskId = state.selectedMaskId;
+    if (!maskId) return;
+    
+    console.info('[EditorStore] Applying material to selected mask:', { maskId, material: material.name });
+    // This will be handled by the material application system
+    state.applyMaterialToMask(maskId, material);
+  },
   
   // TODO: Wire these to your existing editor state/canvas system
   getCalibrationPxPerMeter: () => {
