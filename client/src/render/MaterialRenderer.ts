@@ -216,10 +216,14 @@ export class MaterialRenderer {
     // Update geometry using v8 API - simplified approach
     const geometry = mesh.geometry;
     
-    // Create attribute data directly - using v8 Buffer API
-    geometry.addAttribute('aVertexPosition', triangulated.vertices);
-    geometry.addAttribute('aTextureCoord', uvs);
-    geometry.addIndex(triangulated.indices);
+    // Create attribute data using PixiJS v8 API with usage
+    const positionBuffer = new PIXI.Buffer({ data: triangulated.vertices, usage: PIXI.BufferUsage.VERTEX });
+    const uvBuffer = new PIXI.Buffer({ data: uvs, usage: PIXI.BufferUsage.VERTEX });  
+    const indexBuffer = new PIXI.Buffer({ data: triangulated.indices, usage: PIXI.BufferUsage.INDEX });
+    
+    geometry.addAttribute('aVertexPosition', positionBuffer);
+    geometry.addAttribute('aTextureCoord', uvBuffer);
+    geometry.addIndex(indexBuffer);
   }
 
   private async updateMeshMaterial(
@@ -262,7 +266,7 @@ export class MaterialRenderer {
       shader.uniforms.uGroutColor = this.parseColor(mask.meta?.groutColor || '#cccccc');
     }
 
-    console.info('[tex] loaded', material.id, texture.baseTexture.width, texture.baseTexture.height);
+    console.info('[tex] loaded', material.id, texture.width, texture.height);
   }
 
   private getPhysicalRepeat(material: Material): number {

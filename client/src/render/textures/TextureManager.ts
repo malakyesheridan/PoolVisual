@@ -48,7 +48,7 @@ export class TextureManager {
       
       if (texture) {
         this.textureCache.set(cacheKey, texture);
-        console.info('[tex] cached', materialId, texture.baseTexture.width, texture.baseTexture.height);
+        console.info('[tex] cached', materialId, texture.width, texture.height);
       }
       
       return texture;
@@ -62,8 +62,9 @@ export class TextureManager {
     options: TextureOptions
   ): Promise<PIXI.Texture | null> {
     try {
-      // Use proxy for external URLs to avoid CORS/taint issues
-      const proxyUrl = this.shouldUseProxy(url) ? `/api/texture?url=${encodeURIComponent(url)}` : url;
+      // Fix relative URLs and use proxy for external URLs
+      const resolvedUrl = this.resolveUrl(url);
+      const proxyUrl = this.shouldUseProxy(resolvedUrl) ? `/api/texture?url=${encodeURIComponent(resolvedUrl)}` : resolvedUrl;
       
       // Load image via blob to avoid taint
       const imageBlob = await this.loadImageBlob(proxyUrl);
@@ -111,6 +112,14 @@ export class TextureManager {
       console.error('[TextureManager] Failed to load image blob:', url, error);
       return null;
     }
+  }
+
+  private resolveUrl(url: string): string {
+    // Convert relative URLs to absolute URLs
+    if (url.startsWith('/')) {
+      return `${window.location.origin}${url}`;
+    }
+    return url;
   }
 
   private shouldUseProxy(url: string): boolean {
