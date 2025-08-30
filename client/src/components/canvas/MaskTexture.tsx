@@ -1,4 +1,4 @@
-import { Group, Rect, Line } from 'react-konva';
+import { Group, Rect } from 'react-konva';
 import Konva from 'konva';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadTextureImage, patternScaleFor } from '../../lib/textureLoader';
@@ -17,7 +17,7 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
   const material = useMaterialsStore(s => s.all().find(m => m.id === materialId));
   const url = material?.textureUrl || material?.thumbnailUrl || material?.texture_url || material?.thumbnail_url || '';
 
-  const shapeRef = useRef<Konva.Line>(null);
+  const rectRef = useRef<Konva.Rect>(null);
   const [img, setImg] = useState<HTMLImageElement|null>(null);
 
   // Load (with proxy fallback)
@@ -54,7 +54,7 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
 
   // Apply pattern on changes
   useEffect(() => {
-    const r = shapeRef.current;
+    const r = rectRef.current;
     if (!r || !img) return;
 
     const repeatPx = Math.max(64, meta?.scale ?? 512); // world pixels per tile (precomputed from ppm)
@@ -68,7 +68,8 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
     // Test with a colored pattern first, then image pattern
     console.log('🔍 [MaskTexture] Image loaded:', img.src || img.currentSrc, 'naturalWidth:', img.naturalWidth || img.width);
     
-    // Apply pattern (don't clear fill, let pattern override)
+    // Apply pattern with white base for visibility
+    r.fill('#ffffff'); // White base for pattern visibility
     r.fillPatternImage(img);
     r.fillPatternScale({ x: sx, y: sy });
     r.fillPatternRotation(meta?.rotationDeg ?? 0);
@@ -92,16 +93,16 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
 
   if (!polygon?.length || !material) return null;
 
-  // Use Line with polygon points directly for better pattern rendering
-  const points = polygon.flatMap(p => [p.x, p.y]);
-  
+  // Restore Rect with clipping for proper pattern support
   return (
-    <Group listening={false}>
-      <Line 
-        ref={shapeRef} 
-        points={points}
-        closed={true}
-        fill={img ? 'transparent' : 'rgba(0,0,0,0.04)'}
+    <Group listening={false} clipFunc={clipFunc}>
+      <Rect 
+        ref={rectRef} 
+        x={bbox.x} 
+        y={bbox.y} 
+        width={bbox.w} 
+        height={bbox.h}
+        fill={img ? '#ffffff' : 'rgba(0,0,0,0.04)'}
       />
     </Group>
   );
