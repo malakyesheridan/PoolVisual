@@ -4,9 +4,9 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { useMaterialsStore } from '../stores/materialsStore';
+import { useMaterialsStore } from '../state/materialsStore';
 import { AddEditMaterialSheet } from '../components/materials/AddEditMaterialSheet';
-import { listMaterials, createMaterial, getResolvedEndpoint } from '../lib/materialsClient';
+import { listMaterialsClient, createMaterialClient } from '../lib/materialsClient';
 import { toast } from 'sonner';
 
 const categories = [
@@ -19,32 +19,33 @@ const categories = [
 ];
 
 export default function MaterialsNew() {
-  const { items, hydrate, upsert, byCategory, lastError, setError } = useMaterialsStore();
+  const { all, byCategory, upsert, hydrateMerge } = useMaterialsStore();
   
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'coping' | 'waterline_tile' | 'interior' | 'paving' | 'fencing'>('all');
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [loading, setLoading] = useState(true);
   const [testMode, setTestMode] = useState(false);
+  
+  // Get current materials
+  const allMaterials = all();
 
   // Load materials on mount
   useEffect(() => {
     async function loadMaterials() {
       try {
         setLoading(true);
-        setError(null);
-        const materials = await listMaterials();
-        hydrate(materials);
+        const materials = await listMaterialsClient();
+        hydrateMerge(materials); // Safe merge - won't clobber on empty
         console.log('[materials-new] Loaded', materials.length, 'materials');
       } catch (error: any) {
         console.error('[materials-new] Load failed:', error);
-        setError(error.message);
       } finally {
         setLoading(false);
       }
     }
     loadMaterials();
-  }, [hydrate, setError]);
+  }, [hydrateMerge]);
 
   // Get filtered materials
   const filteredMaterials = byCategory(categoryFilter).filter(material =>
@@ -65,7 +66,7 @@ export default function MaterialsNew() {
       };
       
       console.log('[materials-new] Creating test material:', testMaterial);
-      const result = await createMaterial(testMaterial);
+      const result = await createMaterialClient(testMaterial);
       
       if (result?.id) {
         upsert(result);
@@ -251,16 +252,11 @@ export default function MaterialsNew() {
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 <span className="text-gray-600">
-                  API: <code className="bg-gray-200 px-1 rounded">{getResolvedEndpoint()}</code>
+                  API: <code className="bg-gray-200 px-1 rounded">force</code>
                 </span>
                 <span className="text-gray-600">
-                  Materials: <strong>{Object.keys(items).length}</strong>
+                  Materials: <strong>{allMaterials.length}</strong>
                 </span>
-                {lastError && (
-                  <span className="text-red-600">
-                    Error: {lastError}
-                  </span>
-                )}
               </div>
               
               <Button

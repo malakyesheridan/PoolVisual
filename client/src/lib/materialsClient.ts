@@ -1,8 +1,11 @@
+import type { Material } from '../state/materialsStore';
+
 type Row = Record<string, any>;
 const API = import.meta.env.VITE_API_BASE_URL || '';
+type EndpointKind = 'v2'|'v1'|'force';
+const SS_KEY = 'materials_endpoint_kind';
 
-type EndpointKind = 'v2'|'v1'|'force'|null;
-let resolved: EndpointKind = null;
+let resolved: EndpointKind | null = (sessionStorage.getItem(SS_KEY) as EndpointKind) || null;
 
 function snakeify(obj: any) {
   if (!obj || typeof obj !== 'object') return obj;
@@ -71,104 +74,62 @@ async function tryGet(path: string) {
   return json;
 }
 
-export async function resolveEndpoint(): Promise<EndpointKind> {
+export async function resolveMaterialsEndpoint(): Promise<EndpointKind> {
   if (resolved) return resolved;
-  
-  // Try v2 first
-  try { 
-    await tryGet('/api/v2/materials'); 
-    resolved = 'v2'; 
-    console.log('[client] Resolved endpoint: v2');
-    return resolved; 
-  } catch {}
-  
-  // Try v1
-  try { 
-    await tryGet('/api/materials');   
-    resolved = 'v1'; 
-    console.log('[client] Resolved endpoint: v1');
-    return resolved; 
-  } catch {}
-  
-  // Fall back to force mode
-  resolved = 'force';
-  console.log('[client] Resolved endpoint: force');
+  try { await tryGet('/api/v2/materials'); resolved = 'v2'; } catch {
+    try { await tryGet('/api/materials'); resolved = 'v1'; } catch {
+      resolved = 'force';
+    }
+  }
+  sessionStorage.setItem(SS_KEY, resolved);
   return resolved;
 }
 
-export async function listMaterials(): Promise<Row[]> {
-  const kind = await resolveEndpoint();
-  
+/** LIST with robust fallbacks; returns [] only if we truly have no rows. */
+export async function listMaterialsClient(): Promise<Material[]> {
+  const kind = await resolveMaterialsEndpoint();
   if (kind === 'v2') {
-    try {
-      const { items } = await tryGet('/api/v2/materials');
-      return items || [];
-    } catch (e) {
-      console.warn('[client] v2 list failed, trying fallback:', e);
-    }
+    const { items } = await tryGet('/api/v2/materials');
+    return items || [];
   }
-  
   if (kind === 'v1') {
-    try {
-      const data = await tryGet('/api/materials');
-      return data?.items || data || [];
-    } catch (e) {
-      console.warn('[client] v1 list failed:', e);
-    }
+    const data = await tryGet('/api/materials');
+    // tolerate either {items} or raw array
+    return (Array.isArray(data) ? data : data?.items) || [];
   }
-  
-  // Force mode fallback - try any available list endpoint
-  try { 
-    const data = await tryGet('/api/_materials/list'); 
-    return data?.items || []; 
-  } catch { 
-    return []; 
+  // FORCE mode — try debug/last endpoints if present; otherwise do not clobber store.
+  try {
+    const dbg = await tryGet('/api/_materials/last'); // you added this earlier
+    return dbg?.items || [];
+  } catch {
+    return []; // will be treated as "no update" by hydrateMerge
   }
 }
 
-export async function createMaterial(input: any): Promise<Row> {
+/** CREATE with fallback chain; always returns a row with id */
+export async function createMaterialClient(input: any): Promise<Material> {
   const body = normalizeInput(input);
-  const kind = await resolveEndpoint();
+  const kind = await resolveMaterialsEndpoint();
 
-  // Try resolved endpoint first
   if (kind === 'v2') {
-    try { 
-      return await tryPost('/api/v2/materials', body); 
-    } catch (e) { 
-      console.warn('[client] v2 create failed, trying fallback:', e);
-    }
+    try { return await tryPost('/api/v2/materials', body); } catch {/*fallthrough*/}
   }
-  
   if (kind === 'v1') {
-    try { 
-      return await tryPost('/api/materials', body); 
-    } catch (e) { 
-      console.warn('[client] v1 create failed, trying fallback:', e);
-    }
+    try { return await tryPost('/api/materials', body); } catch {/*fallthrough*/}
   }
-  
-  // Final fallback — force insert with guaranteed fields
+  // FORCE write
   const forceBody = {
-    name: body.name,
-    category: body.category,
-    unit: body.unit,
+    name: body.name, category: body.category, unit: body.unit,
     price: body.price ?? null,
-    sheet_width_mm: body.sheet_width_mm ?? null,
-    sheet_height_mm: body.sheet_height_mm ?? null,
-    tile_width_mm: body.tile_width_mm ?? null,
-    tile_height_mm: body.tile_height_mm ?? null,
-    texture_url: body.texture_url ?? null,
-    thumbnail_url: body.thumbnail_url ?? null,
-    supplier: body.supplier ?? 'PoolTile',
-    source_url: body.source_url ?? null,
-    notes: body.notes ?? null
+    sheet_width_mm: body.sheet_width_mm ?? null, sheet_height_mm: body.sheet_height_mm ?? null,
+    tile_width_mm: body.tile_width_mm ?? null, tile_height_mm: body.tile_height_mm ?? null,
+    texture_url: body.texture_url ?? null, thumbnail_url: body.thumbnail_url ?? null,
+    supplier: body.supplier ?? 'PoolTile', source_url: body.source_url ?? null, notes: body.notes ?? null
   };
-  
-  console.log('[client] Using force save fallback');
-  const row = await tryPost('/api/materials/_force', forceBody);
-  return row;
+  return await tryPost('/api/materials/_force', forceBody);
 }
 
-export function getResolvedEndpoint(): EndpointKind {
-  return resolved;
-}
+// Keep legacy exports for compatibility
+export const listMaterials = listMaterialsClient;
+export const createMaterial = createMaterialClient;
+export const resolveEndpoint = resolveMaterialsEndpoint;

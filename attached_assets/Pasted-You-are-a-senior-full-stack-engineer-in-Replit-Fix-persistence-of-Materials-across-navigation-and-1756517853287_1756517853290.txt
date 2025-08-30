@@ -1,0 +1,298 @@
+You are a senior full-stack engineer in Replit. **Fix persistence of Materials across navigation and in the Canvas Editor.** The issue is almost certainly: (a) your store gets overwritten with an empty fetch result when the page remounts, (b) the app is in **force** mode with no GET endpoint, so listing returns `[]`, or (c) the Editor is reading a different source than the Library. Implement the following **single-truth store + safe hydration + endpoint fallback + backend GET**. All changes are additive. TypeScript everywhere.
+
+================================================================================
+1) STATE — SINGLE SOURCE OF TRUTH WITH PERSIST + SAFE HYDRATION
+================================================================================
+Create/replace `client/src/state/materialsStore.ts`:
+```ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+
+export type Material = {
+  id: string;
+  name: string;
+  category: 'coping'|'waterline_tile'|'interior'|'paving'|'fencing';
+  unit: 'm2'|'lm'|'each';
+  price?: number|null;
+  cost?: number|null;
+  texture_url?: string|null;
+  physical_repeat_m?: number|null;
+  sheet_width_mm?: number|null;
+  sheet_height_mm?: number|null;
+  tile_width_mm?: number|null;
+  tile_height_mm?: number|null;
+  created_at?: string;
+};
+
+type S = {
+  items: Record<string, Material>;
+  lastLoadedAt?: number|null;
+  hydrateMerge: (arr: Material[]) => void;      // MERGES; never clears on empty
+  upsert: (m: Material) => void;
+  all: () => Material[];
+  byCategory: (c: Material['category']|'all') => Material[];
+  reset: () => void; // for debugging
+};
+
+export const useMaterialsStore = create<S>()(
+  persist(
+    (set, get) => ({
+      items: {},
+      lastLoadedAt: null,
+      hydrateMerge: (arr) => {
+        if (!Array.isArray(arr) || arr.length === 0) {
+          // do NOT clobber existing cache with an empty fetch
+          return;
+        }
+        const merged = { ...get().items };
+        for (const m of arr) merged[m.id] = m;
+        set({ items: merged, lastLoadedAt: Date.now() });
+      },
+      upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+      all: () => Object.values(get().items),
+      byCategory: (c) => (c === 'all' ? Object.values(get().items) : Object.values(get().items).filter(i => i.category === c)),
+      reset: () => set({ items: {}, lastLoadedAt: null })
+    }),
+    {
+      name: 'materials_v1',
+      storage: createJSONStorage(() => localStorage)
+    }
+  )
+);
+Why: persist keeps items across route changes/reloads; hydrateMerge prevents an empty response from wiping local cache.
+
+================================================================================
+2) CLIENT — ENDPOINT RESOLVER + LIST/CREATE WITH FALLBACKS (NO EMPTY CLOBBER)
+Create/replace client/src/lib/materialsClient.ts:
+
+ts
+Copy code
+import type { Material } from '../state/materialsStore';
+
+type Row = Record<string, any>;
+const API = import.meta.env.VITE_API_BASE_URL || '';
+type EndpointKind = 'v2'|'v1'|'force';
+const SS_KEY = 'materials_endpoint_kind';
+
+let resolved: EndpointKind | null = (sessionStorage.getItem(SS_KEY) as EndpointKind) || null;
+
+function num(v: any) {
+  if (v === '' || v === undefined || v === null) return null;
+  const n = Number(v); return Number.isFinite(n) ? n : null;
+}
+
+function normalizeInput(input: any) {
+  const base = {
+    name: input.name, sku: input.sku ?? null, category: input.category, unit: input.unit,
+    price: num(input.price ?? input.priceAmount), cost: num(input.cost),
+    wastage_pct: num(input.wastage_pct ?? input.wastagePct),
+    margin_pct: num(input.margin_pct ?? input.marginPct),
+    tile_width_mm: num(input.tile_width_mm ?? input.tileWidthMm),
+    tile_height_mm: num(input.tile_height_mm ?? input.tileHeightMm),
+    sheet_width_mm: num(input.sheet_width_mm ?? input.sheetWidthMm),
+    sheet_height_mm: num(input.sheet_height_mm ?? input.sheetHeightMm),
+    grout_width_mm: num(input.grout_width_mm ?? input.groutWidthMm),
+    thickness_mm: num(input.thickness_mm ?? input.thicknessMm),
+    finish: input.finish ?? null,
+    texture_url: input.texture_url ?? input.textureUrl ?? null,
+    thumbnail_url: input.thumbnail_url ?? input.thumbnailUrl ?? null,
+    supplier: input.supplier ?? 'PoolTile',
+    source_url: input.source_url ?? input.sourceUrl ?? null,
+    notes: input.notes ?? null
+  };
+  // snakeify (simple)
+  return Object.fromEntries(Object.entries(base).map(([k,v]) => [k.replace(/[A-Z]/g, m => `_${m.toLowerCase()}`), v]));
+}
+
+async function tryGet(path: string) {
+  const res = await fetch(`${API}${path}`, { credentials: 'include' });
+  const text = await res.text();
+  let json: any; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
+  if (!res.ok) throw new Error(json?.error || json?.message || `${res.status} ${res.statusText}`);
+  return json;
+}
+async function tryPost(path: string, body: any) {
+  const res = await fetch(`${API}${path}`, {
+    method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+  });
+  const text = await res.text();
+  let json: any; try { json = text ? JSON.parse(text) : undefined; } catch { json = undefined; }
+  if (!res.ok) throw new Error(json?.error || json?.message || `${res.status} ${res.statusText}`);
+  return json;
+}
+
+export async function resolveMaterialsEndpoint(): Promise<EndpointKind> {
+  if (resolved) return resolved;
+  try { await tryGet('/api/v2/materials'); resolved = 'v2'; } catch {
+    try { await tryGet('/api/materials'); resolved = 'v1'; } catch {
+      resolved = 'force';
+    }
+  }
+  sessionStorage.setItem(SS_KEY, resolved);
+  return resolved;
+}
+
+/** LIST with robust fallbacks; returns [] only if we truly have no rows. */
+export async function listMaterialsClient(): Promise<Material[]> {
+  const kind = await resolveMaterialsEndpoint();
+  if (kind === 'v2') {
+    const { items } = await tryGet('/api/v2/materials');
+    return items || [];
+  }
+  if (kind === 'v1') {
+    const data = await tryGet('/api/materials');
+    // tolerate either {items} or raw array
+    return (Array.isArray(data) ? data : data?.items) || [];
+  }
+  // FORCE mode — try debug/last endpoints if present; otherwise do not clobber store.
+  try {
+    const dbg = await tryGet('/api/_materials/last'); // you added this earlier
+    return dbg?.items || [];
+  } catch {
+    return []; // will be treated as "no update" by hydrateMerge
+  }
+}
+
+/** CREATE with fallback chain; always returns a row with id */
+export async function createMaterialClient(input: any): Promise<Material> {
+  const body = normalizeInput(input);
+  const kind = await resolveMaterialsEndpoint();
+
+  if (kind === 'v2') {
+    try { return await tryPost('/api/v2/materials', body); } catch {/*fallthrough*/}
+  }
+  if (kind === 'v1') {
+    try { return await tryPost('/api/materials', body); } catch {/*fallthrough*/}
+  }
+  // FORCE write
+  const forceBody = {
+    name: body.name, category: body.category, unit: body.unit,
+    price: body.price ?? null,
+    sheet_width_mm: body.sheet_width_mm ?? null, sheet_height_mm: body.sheet_height_mm ?? null,
+    tile_width_mm: body.tile_width_mm ?? null, tile_height_mm: body.tile_height_mm ?? null,
+    texture_url: body.texture_url ?? null, thumbnail_url: body.thumbnail_url ?? null,
+    supplier: body.supplier ?? 'PoolTile', source_url: body.source_url ?? null, notes: body.notes ?? null
+  };
+  return await tryPost('/api/materials/_force', forceBody);
+}
+================================================================================
+3) APP-LEVEL INITIALIZER — HYDRATE ONCE, NEVER OVERWRITE WITH EMPTY
+Create client/src/app/initMaterials.ts and call it from the app root (main.tsx or App.tsx).
+
+ts
+Copy code
+import { useMaterialsStore } from '../state/materialsStore';
+import { listMaterialsClient } from '../lib/materialsClient';
+
+/** Call once at app startup (and optionally on window focus). */
+export async function initMaterialsOnce() {
+  const state = useMaterialsStore.getState();
+  // If we already have cached items, don't block; just lazy-merge fresh list.
+  try {
+    const list = await listMaterialsClient();
+    state.hydrateMerge(list); // MERGES; does nothing if list is []
+  } catch (e) {
+    // ignore; keep cache
+    console.warn('[materials] init list failed', e);
+  }
+}
+
+// Optional: background refresh on tab focus
+export function attachMaterialsFocusRefresh() {
+  const handler = async () => {
+    try {
+      const list = await listMaterialsClient();
+      useMaterialsStore.getState().hydrateMerge(list);
+    } catch {}
+  };
+  window.addEventListener('focus', handler);
+  return () => window.removeEventListener('focus', handler);
+}
+In your root (once):
+
+ts
+Copy code
+// src/main.tsx or App.tsx
+import { initMaterialsOnce, attachMaterialsFocusRefresh } from './app/initMaterials';
+
+initMaterialsOnce();
+attachMaterialsFocusRefresh(); // optional
+================================================================================
+4) MATERIALS PAGE — USE hydrateMerge (DO NOT RESET STORE ON MOUNT)
+Update the Materials page to not wipe the store when list returns []. Replace any previous hydrate(items) calls with:
+
+ts
+Copy code
+import { useEffect } from 'react';
+import { listMaterialsClient } from '../lib/materialsClient';
+import { useMaterialsStore } from '../state/materialsStore';
+
+useEffect(() => {
+  (async () => {
+    const items = await listMaterialsClient();
+    useMaterialsStore.getState().hydrateMerge(items); // merge only
+  })();
+}, []);
+Never do set({ items: {} }) on mount.
+
+================================================================================
+5) CANVAS EDITOR — READ FROM THE SAME STORE + LAZY LOAD IF EMPTY
+In the editor’s sidebar provider/component:
+
+tsx
+Copy code
+import { useEffect } from 'react';
+import { useMaterialsStore } from '../../state/materialsStore';
+import { listMaterialsClient } from '../../lib/materialsClient';
+
+export function EditorMaterialsSidebar() {
+  const mats = useMaterialsStore(s => s.all());
+
+  useEffect(() => {
+    if (mats.length === 0) {
+      listMaterialsClient().then(arr => useMaterialsStore.getState().hydrateMerge(arr)).catch(()=>{});
+    }
+  }, [mats.length]);
+
+  // render using mats...
+}
+This guarantees the Editor shows materials even when navigated to first (cold load).
+
+================================================================================
+6) BACKEND (SAFETY) — PROVIDE A SIMPLE GET IF MISSING (V1)
+If your BE lacks a GET route and you’re stuck in force mode, add this minimal V1 list route so the client can hydrate on load:
+
+server/routes/materialsList.ts:
+
+ts
+Copy code
+import { FastifyInstance } from 'fastify';
+export async function materialsListRoutes(app: FastifyInstance) {
+  const pg = (app as any).pg || (app as any).sql;
+  app.get('/api/materials', async (_req, reply) => {
+    const { rows } = await pg.query(
+      `SELECT * FROM materials WHERE is_active = true ORDER BY created_at DESC LIMIT 500`
+    );
+    reply.send({ items: rows });
+  });
+}
+Register early (before static/notFound) and ensure the same pool is used everywhere.
+
+If you have multi-tenant filtering, make it inclusive:
+
+sql
+Copy code
+WHERE is_active = true AND (org_id = $1 OR org_id IS NULL)
+Otherwise new rows with org_id NULL won’t show.
+
+================================================================================
+7) ACCEPTANCE (WHAT MUST BE TRUE AFTER THIS PATCH)
+After adding a material, navigate away and back: material remains visible (because the store is persisted and list never empties it).
+
+On hard refresh: materials load from localStorage immediately; once network returns, hydrateMerge merges any server rows.
+
+Editor’s materials sidebar shows the same items (same store); selecting a material attaches to masks as before.
+
+No console errors; navigation no longer wipes materials.
+
+Implement everything above now. This fixes the disappearing data (no more empty-fetch clobber) and ensures the Editor and Library are always reading the same, persisted truth.

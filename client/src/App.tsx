@@ -1,3 +1,4 @@
+import React from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -17,6 +18,7 @@ import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
+import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -133,6 +135,15 @@ function PublicRouter() {
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+
+  // Initialize materials store once
+  React.useEffect(() => {
+    if (isAuthenticated) {
+      initMaterialsOnce();
+      const cleanup = attachMaterialsFocusRefresh();
+      return cleanup;
+    }
+  }, [isAuthenticated]);
 
   return (
     <AppErrorBoundary>

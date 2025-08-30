@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { createMaterial } from '../../lib/materialsClient';
-import { useMaterialsStore } from '../../stores/materialsStore';
+import { createMaterialClient } from '../../lib/materialsClient';
+import { useMaterialsStore } from '../../state/materialsStore';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -119,7 +119,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
     setSaving(true);
     try {
       console.log('[sheet] Saving material:', form);
-      const row = await createMaterial(form);
+      const row = await createMaterialClient(form);
       
       if (!row?.id) {
         throw new Error('No ID returned from server');
