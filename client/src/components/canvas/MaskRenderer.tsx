@@ -36,6 +36,10 @@ export function MaskRenderer({
   const getFillColor = () => {
     if (mask.type !== 'area') return 'transparent';
     
+    // Don't show tint overlay when material is applied
+    const hasMaterial = !!(mask as any).materialId || !!(mask as any).material_id;
+    if (hasMaterial) return 'transparent';
+    
     const baseColor = getStrokeColor();
     return baseColor + '33'; // Add transparency
   };

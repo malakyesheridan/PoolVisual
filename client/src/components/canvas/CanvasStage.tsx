@@ -185,13 +185,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
               }
             };
             
+            const hasMaterial = !!(m as any).materialId || !!(m as any).material_id;
+            
             return (
               m.type==='area'
                 ? <Line 
                     key={m.id} 
                     points={m.path.points.flatMap(p=>[p.x,p.y])} 
                     closed 
-                    fill="rgba(16,185,129,.25)" 
+                    fill={hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
                     stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
                     strokeWidth={isSelected || isNewSelected ? 4 : 2}
                     onClick={handleSelect}

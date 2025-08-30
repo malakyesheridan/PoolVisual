@@ -1,0 +1,251 @@
+You are a senior engineer in Replit. The remaining bug: **when a material is applied, the mask only shows a semi-transparent tint (overlay), not the actual texture**. Fix this by (1) **removing/deferring the tint** whenever a material is set, and (2) making the **pattern fill authoritative** (fillPriority="pattern"), with a robust, proxied image loader and zoom-aware scaling.
+
+Ship the patch below **additively**. Do not rename routes or break existing features.
+
+================================================================================
+A) TURN OFF THE TINT WHEN A MATERIAL IS PRESENT
+================================================================================
+
+Find your mask fill/tint component (often the polygon that paints the blue overlay). Ensure it **does not fill** when a material is set. Example for your area shape:
+
+**client/src/components/canvas/MaskShape.tsx** (or wherever you paint the mask fill)
+```tsx
+// BEFORE: you likely do something like <Line ... fill="rgba(0, 139, 255, .25)" />
+// AFTER: only tint when NO material is attached
+const hasMaterial = !!mask.material_id; // inject via props if needed
+<Line
+  points={points}
+  closed
+  // Disable overlay when texture is used
+  fill={hasMaterial ? undefined : 'rgba(0,139,255,0.22)'}
+  stroke={isSelected ? '#2563eb' : '#10b981'}
+  strokeWidth={isSelected ? 3 : 2}
+  lineJoin="round"
+  lineCap="round"
+/>
+If you have a separate “overlay layer”, guard it:
+
+tsx
+Copy code
+{!hasMaterial && <YourTintOverlay .../>}
+================================================================================
+B) SERVER: TEXTURE PROXY TO KILL CORS/TAINT (if you don’t already have it)
+server/routes/textureProxy.ts
+
+ts
+Copy code
+import { FastifyInstance } from 'fastify';
+import fetch from 'node-fetch';
+
+export async function textureProxyRoutes(app: FastifyInstance) {
+  app.get('/api/texture', async (req, reply) => {
+    const url = (req.query as any)?.url as string;
+    if (!url) return reply.code(400).send({ error: 'MISSING_URL' });
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'PoolVisual/1.0 (+texture-proxy)',
+        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8'
+      }
+    });
+    if (!res.ok || !res.body) return reply.code(502).send({ error: 'UPSTREAM_FAILED', status: res.status });
+    reply
+      .header('Content-Type', res.headers.get('content-type') || 'image/jpeg')
+      .header('Cache-Control', 'public,max-age=86400,s-maxage=86400')
+      .header('Access-Control-Allow-Origin', '*');
+    return reply.send(res.body);
+  });
+}
+Register once in server/index.ts:
+
+ts
+Copy code
+import { textureProxyRoutes } from './routes/textureProxy';
+app.register(textureProxyRoutes);
+================================================================================
+C) FRONTEND: BULLETPROOF LOADER (direct → proxy) + PATTERN PRIORITY
+client/src/lib/textureLoader.ts
+
+ts
+Copy code
+const API = import.meta.env.VITE_API_BASE_URL || '';
+const cache = new Map<string, HTMLImageElement>();
+
+function blobToImageURL(blob: Blob) { return URL.createObjectURL(blob); }
+
+async function loadBlobAsImage(url: string): Promise<HTMLImageElement> {
+  const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+  if (!res.ok) throw new Error('fetch ' + res.status);
+  const blob = await res.blob();
+  const obj = blobToImageURL(blob);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = obj;
+  });
+}
+
+export async function loadTextureImage(src: string): Promise<HTMLImageElement> {
+  if (!src) throw new Error('empty src');
+  if (cache.has(src)) return cache.get(src)!;
+  try {
+    const img = await loadBlobAsImage(src);
+    cache.set(src, img);
+    return img;
+  } catch {
+    const proxied = `${API}/api/texture?url=${encodeURIComponent(src)}`;
+    const img = await loadBlobAsImage(proxied);
+    cache.set(src, img);
+    return img;
+  }
+}
+
+export function patternScaleFor(img: HTMLImageElement, repeatPx: number) {
+  const repeat = Math.max(16, repeatPx || 256);
+  return { x: repeat / img.width, y: repeat / img.height };
+}
+================================================================================
+D) FRONTEND: AUTHORITATIVE TEXTURE RENDERER (clip + Rect + fillPriority)
+client/src/components/canvas/MaskTexture.tsx
+
+tsx
+Copy code
+import { Group, Rect } from 'react-konva';
+import Konva from 'konva';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { loadTextureImage, patternScaleFor } from '../../lib/textureLoader';
+import { useEditorStore } from '../../state/editorStore';
+import { useMaterialsStore } from '../../state/materialsStore';
+
+type P = {
+  maskId: string;
+  polygon: { x:number; y:number }[];
+  materialId: string;
+  meta?: { scale?: number; rotationDeg?: number; offsetX?: number; offsetY?: number } | null;
+};
+
+export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
+  const stageScale = useEditorStore(s => s.stageScale);
+  const mat = useMaterialsStore(s => s.all().find(m => m.id === materialId));
+  const url = mat?.texture_url || mat?.thumbnail_url || '';
+  const rectRef = useRef<Konva.Rect>(null);
+  const [img, setImg] = useState<HTMLImageElement|null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setImg(null);
+    if (!url) return;
+    loadTextureImage(url).then(i => { if (alive) setImg(i); }).catch(err => {
+      console.warn('[texture] load failed', url, err);
+    });
+    return () => { alive = false; };
+  }, [url]);
+
+  const clipFunc = useMemo(() => {
+    const pts = polygon ?? [];
+    return function (this: Konva.Group, ctx: Konva.Context) {
+      if (!pts.length) return;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.closePath();
+      ctx.clip();
+    };
+  }, [polygon]);
+
+  const bbox = useMemo(() => {
+    const xs = polygon.map(p => p.x), ys = polygon.map(p => p.y);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    return { x:minX, y:minY, w:Math.max(1, maxX-minX), h:Math.max(1, maxY-minY) };
+  }, [polygon]);
+
+  useEffect(() => {
+    const r = rectRef.current;
+    if (!r || !img) return;
+    // If any legacy fill is present, disable it. Pattern should win.
+    r.fill(undefined as any);
+    r.fillEnabled(true);
+    r.fillPriority('pattern'); // <-- key line
+
+    const repeatPx = Math.max(32, meta?.scale ?? 256);     // world pixels per tile (computed from calibration)
+    const ps = patternScaleFor(img, repeatPx);
+    const sx = ps.x / stageScale;                          // compensate for zoom
+    const sy = ps.y / stageScale;
+
+    r.fillPatternImage(img);
+    r.fillPatternScale({ x: sx, y: sy });
+    r.fillPatternRotation(meta?.rotationDeg ?? 0);
+    r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
+    r.fillPatternRepeat('repeat');
+
+    r.opacity(1);                  // ensure fully opaque (overlay tint is now off)
+    r.cache();                     // paint reliably
+    r.getLayer()?.batchDraw();
+
+    console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy, url });
+  }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale, maskId]);
+
+  if (!polygon?.length || !mat) return null;
+
+  return (
+    <Group listening={false} clipFunc={clipFunc}>
+      <Rect ref={rectRef} x={bbox.x} y={bbox.y} width={bbox.w} height={bbox.h}
+            // no tint here; texture is the fill. When img not ready, subtle placeholder only:
+            fill={img ? undefined : 'rgba(0,0,0,0.03)'}
+      />
+    </Group>
+  );
+}
+Important: In your stage/layer order, textures must be above the photo and below the stroke outlines, with the tint disabled as per (A).
+
+================================================================================
+E) APPLY PATH — meta.scale MUST BE “repeatPx” (world pixels per tile)
+In your material apply action, ensure you store repeatPx (calibration × physical repeat):
+
+client/src/state/editorStore.ts (apply action only)
+
+ts
+Copy code
+applyMaterialToSelected: (material) => {
+  const d = get().deps; if (!d) return;
+  const id = get().selectedMaskId; if (!id) return;
+
+  const ppm = Math.max(1, d.getPxPerMeter()); // pixels per meter from calibration
+  const repeatM =
+    (material.physical_repeat_m && material.physical_repeat_m > 0) ? material.physical_repeat_m :
+    (material.sheet_width_mm ? material.sheet_width_mm / 1000 :
+    (material.tile_width_mm ? material.tile_width_mm / 1000 : 0.30));
+
+  const repeatPx = repeatM * ppm; // meta.scale is world repeat in pixels
+  d.pushUndo('Apply material');
+  d.patchMask(id, { material_id: material.id, material_meta: { scale: repeatPx, rotationDeg: 0, offsetX: 0, offsetY: 0 } });
+}
+================================================================================
+F) QUICK DIAGNOSTICS (TEMP — REMOVE AFTER CONFIRM)
+In DevTools, you should see [texture] render logs with img: 'WxH', repeatPx, and sx/sy.
+
+If you still see only tint:
+
+Verify that (A) removed the tint for hasMaterial.
+
+Temporarily remove clipFunc to confirm the pattern is visible at all:
+
+tsx
+Copy code
+// <Group listening={false} clipFunc={clipFunc}> → <Group listening={false}>
+If it appears now, your polygon may be self-intersecting or empty; fix the mask points or winding order.
+
+If logs show image load failed, ensure /api/texture?url=... returns 200 for that URL.
+
+Ensure only one renderer paints the mask fill (no other element above your Rect).
+
+================================================================================
+ACCEPTANCE
+Select a mask → open material picker → choose a material with a valid texture_url.
+
+The actual texture now fills the mask (no blue tint), scaled correctly against calibration and stable under zoom.
+
+Switching masks & materials works; undo returns previous texture state.
+
+Implement exactly as above. This removes the overlay conflict, forces pattern priority, and guarantees the image loads (via proxy) and paints as the mask’s fill.

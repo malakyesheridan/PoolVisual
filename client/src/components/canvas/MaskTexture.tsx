@@ -57,6 +57,11 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
     const r = rectRef.current;
     if (!r || !img) return;
 
+    // If any legacy fill is present, disable it. Pattern should win.
+    r.fill(undefined as any);
+    r.fillEnabled(true);
+    (r as any).fillPriority('pattern'); // <-- key line
+
     const repeatPx = Math.max(32, meta?.scale ?? 256); // world pixels per tile (precomputed from ppm)
     const ps = patternScaleFor(img, repeatPx);
 
@@ -69,12 +74,13 @@ export function MaskTexture({ maskId, polygon, materialId, meta }: P) {
     r.fillPatternRotation(meta?.rotationDeg ?? 0);
     r.fillPatternOffset({ x: meta?.offsetX ?? 0, y: meta?.offsetY ?? 0 });
     r.fillPatternRepeat('repeat');
-    r.cache();                  // ensure paint
+
+    r.opacity(1);                  // ensure fully opaque (overlay tint is now off)
+    r.cache();                     // paint reliably
     r.getLayer()?.batchDraw();
 
-    // Debug texture rendering
-    console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy });
-  }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale, maskId]);
+    console.info('[texture] render', { maskId, img: img.width+'x'+img.height, repeatPx, stageScale, sx, sy, url });
+  }, [img, meta?.scale, meta?.rotationDeg, meta?.offsetX, meta?.offsetY, stageScale, maskId, url]);
 
   if (!polygon?.length || !material) return null;
 
