@@ -1,0 +1,383 @@
+You are a senior engineer in Replit. **Do a full, working overhaul of the Canvas Editor**. The current path is unreliable (tints, missing textures, desync on pan/zoom). Replace it with a **proven, minimal, debug-friendly pipeline** that (1) always renders a texture in a mask, (2) stays glued to the photo while panning/zooming, and (3) is the foundation for photoreal passes. If anything is unclear, make the safest choice, document it inline, and proceed. **No regressions** to masks, calibration, materials, quotes, mobile.
+
+We are not asking for “nice to have” here. We want a **guaranteed working baseline** that can be verified in minutes, not days. Build it in three hard phases with acceptance after each:
+
+- **Phase A (Baseline):** Texture-in-mask that never fails.
+- **Phase B (Sync):** Perfect pan/zoom/resize lockstep.
+- **Phase C (Realism):** Lighting-aware blend + edge seating (photoreal step 1).
+
+Keep the old code behind a flag: `RENDER_V1` (old), `RENDER_V2` (new). Ship `RENDER_V2=on` by default once acceptance passes.
+
+---
+
+## FILES / STRUCTURE (create if missing)
+
+client/
+src/state/photoTransformStore.ts // Single source of truth for pan/zoom
+src/components/canvas/PhotoCanvas.tsx // Mounts Konva + Pixi, IO, subscriptions
+src/render/MaterialRenderer.ts // Pixi v8 app, meshes, transform
+src/render/mesh/triangulate.ts // earcut wrapper (poly -> indices/verts)
+src/render/textures/TextureManager.ts // robust loader (proxy, blob), checker fallback
+src/render/debug/Overlay.tsx // triangle & anchor-dot debug
+src/render/shaders/MaterialPass.ts // GLSL: linear blend + AO (Phase C)
+server/
+routes/textureProxy.ts // if not present, implement below
+
+php
+Copy code
+
+Use **PixiJS v8**. Use **earcut** for triangulation. No CSS transforms on the WebGL canvas—**only stage transforms**.
+
+---
+
+## PHASE A — Guaranteed texture-in-mask (NO excuses)
+
+### 1) Canonical PhotoSpace transform
+**client/src/state/photoTransformStore.ts**
+```ts
+import { create } from 'zustand';
+
+export type PhotoTransform = { S:number; originX:number; originY:number };
+
+type PhotoState = {
+  imgW:number; imgH:number;
+  containerW:number; containerH:number;
+  fitScale:number; zoom:number; panX:number; panY:number;
+  T: PhotoTransform;
+  setImageSize:(w:number,h:number)=>void;
+  setContainer:(w:number,h:number)=>void;
+  setPan:(x:number,y:number)=>void;
+  setZoom:(z:number, anchorScr?:{x:number,y:number})=>void;
+  recompute:()=>void;
+};
+
+function computeT(s: PhotoState): PhotoTransform {
+  const S = s.fitScale * s.zoom;
+  const originX = s.panX + (s.containerW - s.imgW * S)/2;
+  const originY = s.panY + (s.containerH - s.imgH * S)/2;
+  return { S, originX, originY };
+}
+
+export const usePhoto = create<PhotoState>((set, get) => ({
+  imgW:1, imgH:1, containerW:1, containerH:1, fitScale:1, zoom:1, panX:0, panY:0,
+  T:{S:1,originX:0,originY:0},
+  setImageSize:(w,h)=>{ set({imgW:w, imgH:h}); get().recompute(); },
+  setContainer:(w,h)=>{ set({containerW:w, containerH:h}); get().recompute(); },
+  setPan:(x,y)=>{ set({panX:x, panY:y}); get().recompute(); },
+  setZoom:(z, anchorScr)=>{
+    const s = get(); const z1 = Math.max(0.2, Math.min(6, z));
+    if (!anchorScr) { set({zoom:z1}); get().recompute(); return; }
+    const T0 = s.T;
+    const ix = (anchorScr.x - T0.originX)/T0.S;
+    const iy = (anchorScr.y - T0.originY)/T0.S;
+    const S1 = s.fitScale * z1;
+    const originX1 = s.panX + (s.containerW - s.imgW * S1)/2;
+    const originY1 = s.panY + (s.containerH - s.imgH * S1)/2;
+    const sx0 = T0.originX + ix*T0.S, sy0 = T0.originY + iy*T0.S;
+    const sx1 = originX1 + ix*S1,   sy1 = originY1 + iy*S1;
+    set({ zoom:z1, panX: s.panX + (sx0-sx1), panY: s.panY + (sy0-sy1) });
+    get().recompute();
+  },
+  recompute:()=> set(s => ({ T: computeT(s as PhotoState) })),
+}));
+2) Texture loader that ALWAYS returns something
+client/src/render/textures/TextureManager.ts
+
+ts
+Copy code
+const API = import.meta.env.VITE_API_BASE_URL || '';
+
+function makeChecker(size=256){ // guaranteed local fallback
+  const c = document.createElement('canvas'); c.width=c.height=size;
+  const ctx = c.getContext('2d')!;
+  const n=8, s=size/n;
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+    ctx.fillStyle = ((x+y)&1)?'#dcdcdc':'#f3f3f3';
+    ctx.fillRect(x*s,y*s,s,s);
+  }
+  return c;
+}
+
+export async function loadImageSafe(url?:string): Promise<HTMLImageElement> {
+  try {
+    if (!url) throw new Error('empty url');
+    const resp = await fetch(`${API}/api/texture?url=${encodeURIComponent(url)}`);
+    if (!resp.ok) throw new Error('proxy failed '+resp.status);
+    const blob = await resp.blob();
+    const objURL = URL.createObjectURL(blob);
+    await new Promise<void>((res,rej)=>{
+      const img = new Image();
+      img.onload = ()=>{ (img as any)._ok = true; res(); };
+      img.onerror = rej;
+      img.src = objURL; (window as any).__lastLoadedImage = img;
+    });
+    return (window as any).__lastLoadedImage;
+  } catch {
+    // Fallback: guaranteed checker image
+    const img = new Image();
+    img.src = makeChecker().toDataURL('image/png');
+    await new Promise(r => img.onload = () => r(null));
+    return img;
+  }
+}
+3) Pixi renderer (no CSS transforms; subscribe to T)
+client/src/render/MaterialRenderer.ts
+
+ts
+Copy code
+import * as PIXI from 'pixi.js';
+import earcut from 'earcut';
+
+export class MaterialRenderer {
+  app: PIXI.Application;
+  meshes = new Map<string, PIXI.Mesh>();
+  container: HTMLElement;
+
+  constructor(host: HTMLElement, w:number, h:number) {
+    this.container = host;
+    this.app = new PIXI.Application({
+      width:w, height:h, backgroundAlpha:0, autoDensity:true,
+      resolution: window.devicePixelRatio || 1, powerPreference:'high-performance'
+    });
+    host.appendChild(this.app.view as HTMLCanvasElement);
+    (this.app.view as HTMLCanvasElement).style.transform = 'none';
+  }
+
+  setTransform(T:{S:number;originX:number;originY:number}) {
+    this.app.stage.position.set(T.originX, T.originY);
+    this.app.stage.scale.set(T.S, T.S);
+  }
+
+  resize(w:number,h:number){ this.app.renderer.resize(w,h); }
+
+  upsertMesh(maskId:string, image:HTMLImageElement, vertsImg:Float32Array){
+    const indices = new Uint16Array(earcut(Array.from(vertsImg)));
+    const tex = PIXI.Texture.from(image);
+    tex.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+
+    const uvs = new Float32Array(vertsImg.length); // Phase A: naive UV in image space
+    for(let i=0;i<vertsImg.length;i+=2){ uvs[i] = vertsImg[i]/image.width; uvs[i+1] = vertsImg[i+1]/image.height; }
+
+    const geo = new PIXI.Geometry()
+      .addAttribute('aPosition', vertsImg, 2)
+      .addAttribute('aUV', uvs, 2)
+      .addIndex(indices);
+
+    const mat = new PIXI.MeshMaterial({ texture: tex });
+    const mesh = new PIXI.Mesh({ geometry: geo, material: mat });
+
+    const old = this.meshes.get(maskId);
+    if (old) { old.destroy({children:true}); }
+    this.meshes.set(maskId, mesh);
+    this.app.stage.addChild(mesh);
+  }
+
+  removeMesh(maskId:string){
+    const m = this.meshes.get(maskId);
+    if (m) { m.destroy({children:true}); this.meshes.delete(maskId); }
+  }
+}
+4) Konva + Pixi mount and shared transform
+client/src/components/canvas/PhotoCanvas.tsx
+
+tsx
+Copy code
+import { useEffect, useRef } from 'react';
+import { Stage, Layer, Group, Image as KonvaImage, Line, Circle } from 'react-konva';
+import { usePhoto } from '../../state/photoTransformStore';
+import { MaterialRenderer } from '../../render/MaterialRenderer';
+import { loadImageSafe } from '../../render/textures/TextureManager';
+
+export function PhotoCanvas({photoUrl, masks, selectedMaskId, materialForMask}:{photoUrl:string; masks:any[]; selectedMaskId?:string; materialForMask:(id:string)=>{texture_url?:string}|null}) {
+  const mountRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<any>(null);
+  const groupRef = useRef<any>(null);
+  const imgRef = useRef<HTMLImageElement|null>(null);
+  const mrRef = useRef<MaterialRenderer|null>(null);
+  const T = usePhoto(s=>s.T);
+  const imgW = usePhoto(s=>s.imgW);
+  const imgH = usePhoto(s=>s.imgH);
+
+  // Mount Pixi and subscriptions once
+  useEffect(() => {
+    const host = mountRef.current!;
+    const mr = new MaterialRenderer(host, host.clientWidth, host.clientHeight);
+    mrRef.current = mr;
+
+    const unsub = usePhoto.subscribe(s=>s.T, t => mr.setTransform(t));
+    const ro = new ResizeObserver(r => {
+      const {width, height} = r[0].contentRect;
+      usePhoto.getState().setContainer(width,height);
+      mr.resize(width,height);
+    });
+    ro.observe(host);
+
+    return () => { unsub(); ro.disconnect(); };
+  }, []);
+
+  // Load background photo and set image size
+  useEffect(() => {
+    (async () => {
+      const img = await loadImageSafe(photoUrl);
+      imgRef.current = img;
+      usePhoto.getState().setImageSize(img.naturalWidth||img.width, img.naturalHeight||img.height);
+    })();
+  }, [photoUrl]);
+
+  // Build meshes (Phase A: always show something)
+  useEffect(() => {
+    const mr = mrRef.current; if (!mr || !imgRef.current) return;
+    for (const m of masks) {
+      const mat = materialForMask(m.id);
+      const textureImgPromise = mat?.texture_url ? loadImageSafe(mat.texture_url) : Promise.resolve(imgRef.current!); // fallback
+      textureImgPromise.then(texImg => {
+        const verts = new Float32Array(m.pointsImg.flatMap((p:any)=>[p.xImg, p.yImg]));
+        mr.upsertMesh(m.id, texImg, verts);
+      }).catch(()=>{ /* fallback already handled in loader */ });
+    }
+  }, [masks, materialForMask, imgW, imgH]);
+
+  return (
+    <div ref={mountRef} className="relative w-full h-full">
+      <Stage ref={stageRef} width={usePhoto.getState().containerW} height={usePhoto.getState().containerH} scaleX={1} scaleY={1}>
+        <Layer>
+          <Group ref={groupRef} x={T.originX} y={T.originY} scaleX={T.S} scaleY={T.S} listening>
+            {/* Background photo in IMAGE space */}
+            {imgRef.current && <KonvaImage image={imgRef.current} x={0} y={0} width={imgW} height={imgH} />}
+            {/* Mask outlines */}
+            {masks.map(m=>{
+              const pts = m.pointsImg.flatMap((p:any)=>[p.xImg, p.yImg]);
+              const selected = m.id === selectedMaskId;
+              return <Line key={m.id} points={pts} closed stroke={selected?'#2563eb':'#10b981'} strokeWidth={(selected?3:2)/T.S} lineJoin="round" lineCap="round" />;
+            })}
+            {/* Debug anchor dots */}
+            <Circle x={0} y={0} radius={4/T.S} fill="#ff00aa" />
+            <Circle x={imgW} y={0} radius={4/T.S} fill="#ff00aa" />
+            <Circle x={0} y={imgH} radius={4/T.S} fill="#ff00aa" />
+          </Group>
+        </Layer>
+      </Stage>
+    </div>
+  );
+}
+5) Texture proxy (if missing)
+server/routes/textureProxy.ts
+
+ts
+Copy code
+import { FastifyInstance } from 'fastify';
+import fetch from 'node-fetch';
+
+export async function textureProxyRoutes(app: FastifyInstance) {
+  app.get('/api/texture', async (req, reply) => {
+    try {
+      const url = (req.query as any)?.url as string;
+      if (!url) return reply.code(400).send({error:'MISSING_URL'});
+      const res = await fetch(url, { headers:{ 'User-Agent':'PoolVisual/1.0', 'Accept':'image/*,*/*;q=0.8' }});
+      if (!res.ok || !res.body) return reply.code(502).send({error:'UPSTREAM_FAILED', status:res.status});
+      reply.header('Content-Type', res.headers.get('content-type')||'image/jpeg')
+           .header('Cache-Control','public, max-age=86400')
+           .header('Access-Control-Allow-Origin','*');
+      return reply.send(res.body);
+    } catch (e:any) {
+      app.log.error(e);
+      return reply.code(500).send({error:'PROXY_ERROR', message:e.message});
+    }
+  });
+}
+Register in your server entrypoint.
+
+Acceptance A (baseline must pass now):
+
+Draw a mask → Apply any material. You see a texture inside the mask (checkerboard at worst).
+
+Reload, change pages, zoom, pan: mesh remains visible. No tints/fancy effects—just a texture that always shows.
+
+PHASE B — Lockstep pan/zoom/resize (no drift, no lag)
+Rule: One transform {S,originX,originY} applied to both Konva photoGroup and Pixi stage. Subscribe Pixi to the store so it updates every time pan/zoom changes (no “render later” tricks). Remove any other transforms (CSS or per-mesh pan/zoom).
+
+Add a per-frame logger (temporary):
+
+ts
+Copy code
+const unsubLog = usePhoto.subscribe(s=>s.T, T => console.log('[T]', T.originX, T.originY, T.S));
+Drag/zoom and verify logs update smoothly. If mesh doesn’t move, MaterialRenderer.setTransform() isn’t called or canvas has CSS transforms—fix immediately.
+
+Acceptance B:
+
+Pan & zoom: photo, blue outline, and texture move together 1:1.
+
+Three anchor dots in Konva sit exactly at the same image corners while texture moves beneath them.
+
+PHASE C — First photoreal step (lighting & edge seating)
+client/src/render/shaders/MaterialPass.ts (minimal working GLSL—linearize, luminance match, AO; keep simple to avoid regressions)
+
+glsl
+Copy code
+precision mediump float;
+varying vec2 vUV;
+uniform sampler2D uTex;
+uniform sampler2D uLuma;     // luminance downsample of background
+uniform sampler2D uAO;       // 0..1 edge mask (1 = strong AO)
+uniform vec2 uLumaScale;     // map gl_FragCoord.xy to uLuma UVs
+uniform float uGamma;        // 2.2
+uniform float uAOAmt;        // 0..0.2
+uniform float uContrast;     // 1.0..1.2
+uniform float uSaturation;   // 0.9..1.1
+
+vec3 toLinear(vec3 c){ return pow(c, vec3(uGamma)); }
+vec3 toSRGB(vec3 c){ return pow(c, vec3(1.0/uGamma)); }
+
+void main() {
+  vec3 base = toLinear(texture2D(uTex, vUV).rgb);
+
+  // Scene luminance modulation
+  vec2 luv = gl_FragCoord.xy * uLumaScale;
+  float L = texture2D(uLuma, luv).r;       // 0..1 (assume linear in texture)
+  base *= mix(0.9, 1.1, L);
+
+  // Contrast & saturation
+  float avg = dot(base, vec3(0.333));
+  base = mix(vec3(avg), base, uSaturation);
+  base = (base - 0.5) * uContrast + 0.5;
+
+  // Edge seating (darken near edges)
+  float ao = texture2D(uAO, luv).r * uAOAmt;
+  base *= (1.0 - ao);
+
+  gl_FragColor = vec4(toSRGB(base), 1.0);
+}
+Hook this shader in MaterialRenderer (create a PIXI.Shader/MeshMaterial with the uniforms). For now you can set uLuma and uAO to small solid textures (0.5 gray and 0 black) to validate—must not break baseline rendering. Then add real luma (downsampled photo) and AO (inset blurred mask) once the shader path is confirmed.
+
+Acceptance C:
+
+With photoreal enabled, textures still render.
+
+Luminance modulation reduces the washed-out look; AO seats edges (no “sticker” halo).
+
+Zero crashes. Turning shader off reverts to Phase A visuals.
+
+CRITICAL GUARDRAILS (do these or it fails)
+No CSS transform on Pixi canvas. All pan/zoom via stage.position/scale.
+
+One transform for both systems; do not apply additional offsets/scales on Konva nodes or meshes.
+
+Always build meshes from image-space vertices; never from screen pixels.
+
+The loader must show checkerboard if supplier textures fail. No blank masks ever again.
+
+QUICK TEST PLAYBOOK (you run, we accept)
+Load editor → Draw one mask → Click “Apply material” → You see a texture in the mask (supplier image or checkerboard).
+
+Pan, zoom in/out, resize window: photo, outline, texture are glued in lockstep.
+
+Toggle photoreal: shader on/off shows visible, stable change; nothing disappears.
+
+Switch pages → return: material persists and renders immediately.
+
+If any step fails, stop and fix the transform or loader first—do not add features until Phase A & B are bulletproof.
+
+OPTIONAL NEXT (after acceptance)
+UVs from calibration (repeat in meters), grout + bonds, depth tint/caustics for pool interiors, export sharpening/grain. Those are Phase D/E once the baseline is locked.
+
+Deliver now with Phase A+B (required) and Phase C minimal shader (preferred). Leave a short README at the top of each new file with what it does and how to verify quickly.

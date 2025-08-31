@@ -40,7 +40,30 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
   const materialRendererRef = useRef<MaterialRenderer | null>(null);
-  const [renderV2Enabled, setRenderV2Enabled] = useState(false);
+  const [renderV2Enabled, setRenderV2Enabled] = useState(true); // Phase A: Enable V2
+  
+  // V2 Early return - use new PhotoCanvas system  
+  if (renderV2Enabled) {
+    console.info('🚀 [CanvasStage] V2 ENABLED - Using PhotoCanvas system');
+    
+    // Import PhotoCanvas dynamically to avoid circular dependencies
+    const PhotoCanvas = require('./PhotoCanvas').PhotoCanvas;
+    
+    return (
+      <div className="relative w-full h-full">
+        <PhotoCanvas 
+          photoUrl={photo?.originalUrl || ''} 
+          masks={masks || []} 
+          selectedMaskId={selectedMaskId}
+          materialForMask={(id: string) => {
+            const mask = masks?.find(m => m.id === id);
+            const matId = mask?.materialId;
+            return matId ? materials.find(m => m.id === matId) || null : null;
+          }}
+        />
+      </div>
+    );
+  }
   
 
   // Destructure state - individual selectors to prevent infinite loops

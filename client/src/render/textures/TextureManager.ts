@@ -1,10 +1,53 @@
-/**
- * TextureManager - High-quality texture loading with mipmaps and anisotropic filtering
- * Handles caching, CORS proxy, and performance optimization for material textures
- */
+const API = import.meta.env.VITE_API_BASE_URL || '';
 
-import * as PIXI from 'pixi.js';
+function makeChecker(size=256){ // guaranteed local fallback
+  const c = document.createElement('canvas'); c.width=c.height=size;
+  const ctx = c.getContext('2d')!;
+  const n=8, s=size/n;
+  for(let y=0;y<n;y++)for(let x=0;x<n;x++){
+    ctx.fillStyle = ((x+y)&1)?'#dcdcdc':'#f3f3f3';
+    ctx.fillRect(x*s,y*s,s,s);
+  }
+  return c;
+}
 
+export async function loadImageSafe(url?:string): Promise<HTMLImageElement> {
+  try {
+    if (!url) throw new Error('empty url');
+    
+    // Handle relative URLs by making them absolute
+    let finalUrl = url;
+    if (url.startsWith('/')) {
+      finalUrl = `${window.location.origin}${url}`;
+    }
+    
+    // For external URLs, use proxy. For local URLs, direct fetch.
+    const needsProxy = finalUrl.startsWith('http') && !finalUrl.includes(window.location.hostname);
+    const fetchUrl = needsProxy ? `${API}/api/texture?url=${encodeURIComponent(finalUrl)}` : finalUrl;
+    
+    const resp = await fetch(fetchUrl);
+    if (!resp.ok) throw new Error('fetch failed '+resp.status);
+    const blob = await resp.blob();
+    const objURL = URL.createObjectURL(blob);
+    
+    const img = new Image();
+    await new Promise<void>((res,rej)=>{
+      img.onload = () => res();
+      img.onerror = rej;
+      img.src = objURL;
+    });
+    
+    return img;
+  } catch {
+    // Fallback: guaranteed checker image
+    const img = new Image();
+    img.src = makeChecker().toDataURL('image/png');
+    await new Promise(r => img.onload = () => r(null));
+    return img;
+  }
+}
+
+// Legacy interface compatibility
 export interface TextureOptions {
   mipmaps?: boolean;
   anisotropicFiltering?: boolean;
@@ -12,21 +55,17 @@ export interface TextureOptions {
 }
 
 export class TextureManager {
-  private textureCache = new Map<string, PIXI.Texture>();
-  private loadingPromises = new Map<string, Promise<PIXI.Texture | null>>();
+  private textureCache = new Map<string, HTMLImageElement>();
+  private loadingPromises = new Map<string, Promise<HTMLImageElement>>();
 
   /**
-   * Get texture with caching and quality options
-   * @param materialId Unique material identifier for caching
-   * @param url Texture URL (will use proxy if needed)
-   * @param options Quality and filtering options
-   * @returns PIXI Texture or null if failed
+   * Get texture with caching - V2 returns HTMLImageElement for reliability
    */
   async getTexture(
     materialId: string,
     url: string,
     options: TextureOptions = {}
-  ): Promise<PIXI.Texture | null> {
+  ): Promise<HTMLImageElement> {
     const cacheKey = `${materialId}_${url}`;
     
     // Return cached texture if available
@@ -40,18 +79,14 @@ export class TextureManager {
     }
 
     // Start loading
-    const loadPromise = this.loadTexture(url, options);
+    const loadPromise = loadImageSafe(url);
     this.loadingPromises.set(cacheKey, loadPromise);
 
     try {
-      const texture = await loadPromise;
-      
-      if (texture) {
-        this.textureCache.set(cacheKey, texture);
-        console.info('[tex] cached', materialId, texture.width, texture.height);
-      }
-      
-      return texture;
+      const img = await loadPromise;
+      this.textureCache.set(cacheKey, img);
+      console.info('[tex] cached', materialId, img.width, img.height);
+      return img;
     } finally {
       this.loadingPromises.delete(cacheKey);
     }
