@@ -472,10 +472,10 @@ export class MaterialRenderer {
   private applyPhotorealisticEffects(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
     // Apply visual enhancements to make materials look photographed instead of flat overlays
     
-    // 1. Enhanced texture filtering for quality
-    if (texture.baseTexture) {
-      texture.baseTexture.scaleMode = PIXI.SCALE_MODES.LINEAR;
-      texture.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON;
+    // 1. Enhanced texture filtering for quality (PixiJS v8 compatible)
+    if (texture.source) {
+      texture.source.scaleMode = 'linear';
+      texture.source.mipmap = true;
     }
     
     // 2. Adjust material properties based on type for realism
