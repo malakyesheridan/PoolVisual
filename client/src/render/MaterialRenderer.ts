@@ -435,6 +435,19 @@ export class MaterialRenderer {
     }
   }
 
+  /** The ONLY way WebGL follows the photo: update stage pos/scale here. */
+  setTransform(T:{S:number; originX:number; originY:number}) {
+    if (!this.app?.stage) return;
+    this.app.stage.position.set(T.originX, T.originY);
+    this.app.stage.scale.set(T.S, T.S);
+    // Remove any CSS transforms - use ONLY Pixi stage transforms
+    if (this.app.view && this.app.view.style) {
+      this.app.view.style.transform = 'none';
+      this.app.view.style.transformOrigin = '0 0';
+    }
+    // IMPORTANT: no CSS transforms on canvas; no per-mesh transforms for pan/zoom
+  }
+
   private addDiagnosticAnchors(imgW: number, imgH: number): void {
     if (!this.app) return;
     

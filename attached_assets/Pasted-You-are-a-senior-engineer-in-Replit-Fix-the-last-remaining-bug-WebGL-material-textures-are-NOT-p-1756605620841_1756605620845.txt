@@ -1,0 +1,221 @@
+You are a senior engineer in Replit. **Fix the last remaining bug: WebGL material textures are NOT panning while the photo + Konva mask outlines do.** Implement a *single, canonical* transform pipeline and wire the WebGL renderer to it so textures move 1:1 with the image at all times.
+
+NON-NEGOTIABLES
+- Keep the **PhotoSpace** model (image-space vertices; one transform `{S, originX, originY}`).
+- **Do not** scale the Konva Stage. Only the **photoGroup** (Konva) and the **Pixi/WebGL stage** move/scale.
+- Remove any CSS transforms on the WebGL canvas if you decide to transform the Pixi stage (use **one** method, not both).
+- No regressions to selection, undo, zoom, or performance.
+
+-------------------------------------------------------------------------------
+A) Canonical transform + store subscription (single source of truth)
+-------------------------------------------------------------------------------
+**client/src/state/photoTransformStore.ts**
+```ts
+import { create } from 'zustand';
+
+export type PhotoTransform = { S:number; originX:number; originY:number };
+export type PhotoState = {
+  imgW:number; imgH:number;
+  containerW:number; containerH:number;
+  fitScale:number; zoom:number; panX:number; panY:number;
+  T: PhotoTransform;
+  setContainer: (w:number,h:number)=>void;
+  setPan: (x:number,y:number)=>void;
+  setZoom: (z:number, anchorScr?:{x:number,y:number})=>void;
+  recompute: ()=>void;
+};
+
+function makeT(s: Omit<PhotoState,'T'|'setContainer'|'setPan'|'setZoom'|'recompute'>): PhotoTransform {
+  const S = s.fitScale * s.zoom;
+  const originX = s.panX + (s.containerW - s.imgW * S) / 2;
+  const originY = s.panY + (s.containerH - s.imgH * S) / 2;
+  return { S, originX, originY };
+}
+
+export const usePhoto = create<PhotoState>((set, get) => ({
+  imgW: 1, imgH: 1, containerW: 1, containerH: 1,
+  fitScale: 1, zoom: 1, panX: 0, panY: 0,
+  T: { S:1, originX:0, originY:0 },
+
+  setContainer: (w,h) => { set({ containerW:w, containerH:h }); get().recompute(); },
+  setPan: (x,y) => { set({ panX:x, panY:y }); get().recompute(); },
+  setZoom: (z, anchorScr) => {
+    const s = get(); const z0 = s.zoom; const z1 = Math.max(0.2, Math.min(6, z));
+    if (!anchorScr) { set({ zoom:z1 }); get().recompute(); return; }
+    // zoom around cursor: adjust pan to keep the same image point under cursor
+    const T0 = s.T;
+    const ix = (anchorScr.x - T0.originX) / T0.S;
+    const iy = (anchorScr.y - T0.originY) / T0.S;
+    const S1 = s.fitScale * z1;
+    const originX1 = s.panX + (s.containerW - s.imgW * S1) / 2;
+    const originY1 = s.panY + (s.containerH - s.imgH * S1) / 2;
+    const sx0 = T0.originX + ix * T0.S;
+    const sy0 = T0.originY + iy * T0.S;
+    const sx1 = originX1 + ix * S1;
+    const sy1 = originY1 + iy * S1;
+    const panX = s.panX + (sx0 - sx1);
+    const panY = s.panY + (sy0 - sy1);
+    set({ zoom:z1, panX, panY }); get().recompute();
+  },
+
+  recompute: () => {
+    const s = get();
+    set({ T: makeT(s) });
+  },
+}));
+B) MaterialRenderer: authoritative transform method, called on every T change
+client/src/render/MaterialRenderer.ts
+
+ts
+Copy code
+import * as PIXI from 'pixi.js';
+
+export class MaterialRenderer {
+  app: PIXI.Application;
+  stageRoot: PIXI.Container;
+
+  constructor(host: HTMLElement, w:number, h:number) {
+    this.app = new PIXI.Application({
+      width: w, height: h, antialias: true, backgroundAlpha: 0,
+      autoDensity: true, resolution: window.devicePixelRatio || 1,
+      powerPreference: 'high-performance',
+    });
+    host.appendChild(this.app.view as HTMLCanvasElement);
+    this.stageRoot = this.app.stage; // single root container
+    this.app.ticker.start();
+  }
+
+  resize(w:number, h:number) {
+    this.app.renderer.resize(w, h);
+  }
+
+  /** The ONLY way WebGL follows the photo: update stage pos/scale here. */
+  setTransform(T:{S:number; originX:number; originY:number}) {
+    this.stageRoot.position.set(T.originX, T.originY);
+    this.stageRoot.scale.set(T.S, T.S);
+    // IMPORTANT: no CSS transforms on canvas; no per-mesh transforms for pan/zoom
+  }
+
+  renderOnce() {
+    this.app.renderer.render(this.stageRoot);
+  }
+}
+Ensure there is no style.transform applied to this.app.view. If you previously used CSS transforms, remove them and rely solely on setTransform().
+
+C) Wire the WebGL renderer to the store with a subscription
+React effects can miss rapid drags; use a store subscription so Pixi updates every pan tick.
+
+client/src/components/canvas/CanvasStage.tsx (excerpt)
+
+tsx
+Copy code
+import { useEffect, useRef } from 'react';
+import { usePhoto } from '../../state/photoTransformStore';
+import { MaterialRenderer } from '../../render/MaterialRenderer';
+
+export default function CanvasStage() {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const glRef = useRef<MaterialRenderer|null>(null);
+
+  useEffect(() => {
+    const host = containerRef.current!;
+    const W = host.clientWidth, H = host.clientHeight;
+    usePhoto.getState().setContainer(W,H);
+
+    // Init WebGL
+    const mr = new MaterialRenderer(host, W, H);
+    glRef.current = mr;
+
+    // Subscribe to PhotoSpace transform updates
+    const unsub = usePhoto.subscribe(
+      s => s.T,
+      (T) => { mr.setTransform(T); /* immediate repaint not required if ticker running */ }
+    );
+
+    // Resize observer keeps both Konva & WebGL in sync
+    const ro = new ResizeObserver(entries => {
+      const r = entries[0].contentRect;
+      usePhoto.getState().setContainer(r.width, r.height);
+      glRef.current?.resize(r.width, r.height);
+    });
+    ro.observe(host);
+
+    return () => { unsub(); ro.disconnect(); };
+  }, []);
+
+  return (
+    <div ref={containerRef} className="absolute inset-0">
+      {/* Konva Stage overlay mounts here too; Konva photoGroup uses usePhoto().T */}
+    </div>
+  );
+}
+Why your texture didn’t pan: Previously, Pixi’s stage transform was only updated on mask changes or with a delayed React effect. The subscribe above fires on every panX/panY/zoom/fitScale change, so WebGL remains glued in real time.
+
+D) Guardrails: remove double transforms & local mesh offsets
+Ensure no CSS transform on the WebGL canvas:
+
+css
+Copy code
+/* Remove if present */
+canvas.pixi-view { transform: none !important; transform-origin: 0 0 !important; }
+Verify Pixi mesh containers and sprites have position=(0,0) and scale=(1,1).
+All image-space vertices should be authored in geometry; do not offset them to follow pan/zoom.
+
+Konva:
+
+Stage scale must be 1.
+
+One photoGroup with x=T.originX, y=T.originY, scaleX=scaleY=T.S.
+
+Background image at (0,0) size (imgW,imgH).
+
+Mask Line nodes inside photoGroup with no extra x/y/scale.
+
+Quick assert (run once on pan start):
+
+ts
+Copy code
+console.table({
+  stageScale: stage.scaleX(),
+  photoGroupX: group.x(), photoGroupY: group.y(), photoGroupS: group.scaleX(),
+  pixiStageX: glRef.current?.app.stage.position.x, pixiStageY: glRef.current?.app.stage.position.y,
+  pixiStageS: glRef.current?.app.stage.scale.x
+});
+Expected: stageScale=1, photoGroupS ≡ pixiStageS ≡ T.S, photoGroupX/Y ≡ pixiStageX/Y ≡ T.originX/Y.
+
+E) Pan/zoom handlers update ONE state (PhotoSpace)
+ts
+Copy code
+function onWheel(e: WheelEvent) {
+  e.preventDefault();
+  const scaleBy = 1.06;
+  const z = usePhoto.getState().zoom * (e.deltaY > 0 ? 1/scaleBy : scaleBy);
+  usePhoto.getState().setZoom(z, { x: e.clientX, y: e.clientY });
+}
+function onDrag(dx:number, dy:number) {
+  const s = usePhoto.getState();
+  usePhoto.getState().setPan(s.panX + dx, s.panY + dy);
+}
+You should not call any Pixi/Konva transform directly here—only update the store. The subscription keeps both renderers in sync.
+
+F) Diagnostics (add, then remove)
+Draw three anchor dots in both renderers at (0,0), (imgW,0), (0,imgH).
+If Pixi dots do not move with Konva dots while panning, your subscribe isn’t firing or another transform is fighting it.
+
+Temporarily log transforms per frame during a pan:
+
+ts
+Copy code
+const unsubLog = usePhoto.subscribe(s=>s.T, T => console.log('[T]', T.originX, T.originY, T.S));
+G) Acceptance (must pass now)
+Pan: photo, mask outline, and WebGL texture move together 1:1 with no lag.
+
+Zoom: repeat stays world-true; no rubber-banding.
+
+Rapid drags do not cause WebGL to “lag” a frame behind.
+
+No CSS transform applied to the WebGL canvas; only Pixi stage transforms.
+
+Resizing the container keeps everything aligned.
+
+Implement exactly the changes above. The key fix is the store subscription that calls MaterialRenderer.setTransform(T) on every pan/zoom update and the removal of any duplicate transforms. This guarantees the texture layer pans in perfect lockstep with the image and the Konva outlines.

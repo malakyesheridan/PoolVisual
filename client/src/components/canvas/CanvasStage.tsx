@@ -16,6 +16,7 @@ import { MaskShape } from './MaskShape';
 import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './modelBindings';
 import { MaterialRenderer, type MaskGeometry, type RenderConfig } from '@/render/MaterialRenderer';
 import { PhotoSpace, PhotoTransform, makeTransform, calculateFitScale, imgToScreen, screenToImg } from '@/render/photoTransform';
+import { usePhoto } from '@/state/photoTransformStore';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -144,6 +145,16 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           
           if (initialized) {
             console.info('🚀 [CanvasStage] WebGL V2 renderer ENABLED - photo-realistic materials active');
+            
+            // Subscribe to PhotoSpace transform updates for real-time WebGL panning
+            const unsubscribe = usePhoto.subscribe((state) => {
+              if (materialRendererRef.current) {
+                materialRendererRef.current.setTransform(state.T);
+              }
+            });
+            
+            // Store unsubscribe function for cleanup
+            (materialRendererRef.current as any).unsubscribeTransform = unsubscribe;
           } else {
             console.info('⚠️ [CanvasStage] WebGL V2 failed - using fallback Konva renderer');
           }
@@ -158,6 +169,10 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
     return () => {
       if (materialRendererRef.current) {
+        // Cleanup subscription
+        if ((materialRendererRef.current as any).unsubscribeTransform) {
+          (materialRendererRef.current as any).unsubscribeTransform();
+        }
         materialRendererRef.current.destroy();
         materialRendererRef.current = null;
       }
