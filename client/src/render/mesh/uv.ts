@@ -44,7 +44,11 @@ export function computeWorldUVs(
   
   // Compute UVs for each vertex in world space
   const uvs = new Float32Array(points.length * 2);
+  let minU = Infinity, maxU = -Infinity;
+  let minV = Infinity, maxV = -Infinity;
   
+  // First pass: compute world-space UVs
+  const worldUVs = [];
   for (let i = 0; i < points.length; i++) {
     const p = points[i];
     
@@ -60,7 +64,22 @@ export function computeWorldUVs(
     let u = rotatedU / repeatM + offsetX;
     let v = rotatedV / repeatM + offsetY;
     
-    // Store UV coordinates (can exceed 0-1 range for tiling)
+    worldUVs.push({ u, v });
+    minU = Math.min(minU, u);
+    maxU = Math.max(maxU, u);
+    minV = Math.min(minV, v);
+    maxV = Math.max(maxV, v);
+  }
+  
+  // Second pass: normalize to prevent negative UVs while preserving tiling
+  for (let i = 0; i < points.length; i++) {
+    let { u, v } = worldUVs[i];
+    
+    // Shift to ensure all UVs are positive (preserves tiling pattern)
+    u = u - Math.floor(minU);
+    v = v - Math.floor(minV);
+    
+    // Store UV coordinates
     uvs[i * 2] = u;
     uvs[i * 2 + 1] = v;
   }

@@ -237,8 +237,9 @@ export class MaterialRenderer {
         mesh.tint = 0xFFFFFF;
         mesh.alpha = 1.0;
         
-        console.info('[MaterialRenderer] Basic mesh created successfully');
-        this.applySimpleEnhancement(mesh, texture, material);
+        // Ensure texture is properly bound to mesh
+        mesh.texture = texture;
+        console.info('[MaterialRenderer] Basic mesh created successfully with texture:', texture.width, 'x', texture.height);
         
         // Apply inverse image transform to mesh vertices to compensate for stage transform
         // With PhotoSpace Groups, masks are in image coordinate space
