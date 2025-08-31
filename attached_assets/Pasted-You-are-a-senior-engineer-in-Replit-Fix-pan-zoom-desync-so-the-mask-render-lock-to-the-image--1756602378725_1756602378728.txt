@@ -1,0 +1,227 @@
+You are a senior engineer in Replit. **Fix pan/zoom desync** so the mask + render lock to the image perfectly. Implement a single, canonical **PhotoSpace transform** used by ALL layers (image, Konva masks, WebGL renderer). Store mask points in **image-relative coordinates** (original image pixel space), not screen coords.
+
+===============================================================================
+GOALS (non-negotiable)
+===============================================================================
+- Masks and textures stick to the photo during pan/zoom/resize 1:1.
+- One shared transform `{scale, translate}` drives ALL layers.
+- Stage remains at scale=1; do not double-transform.
+- All drawing/edit tools map pointer → image coords via the inverse transform.
+- No regressions to selection, undo, materials, mobile.
+
+===============================================================================
+A) Data Model — always image coordinates
+===============================================================================
+- Store every vertex as `{xImg, yImg}` where units are **original image pixels** (the decoded image’s naturalWidth/naturalHeight).
+- On load, record:
+  - `imgW, imgH`: natural image size.
+  - `fit`: the base fit to show the image (computed per viewport).
+  - `zoom`: additional user zoom (starts at 1).
+  - `panX, panY`: user pan in **screen pixels** after fit.
+
+Keep a single object in the editor store:
+
+```ts
+type PhotoSpace = {
+  imgW: number; imgH: number;
+  fitScale: number;          // base fit-to-container scale
+  zoom: number;              // user zoom multiplier
+  panX: number; panY: number;// additional pan in screen px
+};
+Derived (read-only) values:
+
+ts
+Copy code
+// Final scale applied to the image and all overlays:
+S = fitScale * zoom;
+
+// Image top-left in screen space:
+originX = panX + (containerW - imgW * S) / 2; // if you want centered fit
+originY = panY + (containerH - imgH * S) / 2;
+===============================================================================
+B) Single Transform — apply to ALL layers
+Create a helper photoTransform.ts:
+
+ts
+Copy code
+export type PhotoTransform = {
+  S: number;          // scale = fitScale * zoom
+  originX: number;    // screen-space top-left of image
+  originY: number;
+};
+
+export function makeTransform(p: {imgW:number; imgH:number; fitScale:number; zoom:number; panX:number; panY:number; containerW:number; containerH:number;}): PhotoTransform {
+  const S = p.fitScale * p.zoom;
+  const originX = p.panX + (p.containerW - p.imgW * S) / 2;
+  const originY = p.panY + (p.containerH - p.imgH * S) / 2;
+  return { S, originX, originY };
+}
+
+// Image -> Screen
+export function imgToScreen(T: PhotoTransform, xImg: number, yImg: number) {
+  return { x: T.originX + xImg * T.S, y: T.originY + yImg * T.S };
+}
+
+// Screen -> Image (for pointer/input)
+export function screenToImg(T: PhotoTransform, xScr: number, yScr: number) {
+  return { x: (xScr - T.originX) / T.S, y: (yScr - T.originY) / T.S };
+}
+Konva: Do NOT scale the Stage. Create a Group that represents photo-space and apply the transform there:
+
+tsx
+Copy code
+// CanvasStage.tsx
+<Stage width={W} height={H} scaleX={1} scaleY={1}>
+  <Layer>
+    <Group
+      x={T.originX}
+      y={T.originY}
+      scaleX={T.S}
+      scaleY={T.S}
+      listening={true}
+    >
+      {/* Background image drawn at (0,0) with width=imgW, height=imgH */}
+      <KonvaImage image={imgEl} x={0} y={0} width={imgW} height={imgH} />
+
+      {/* Masks: pass IMAGE-SPACE vertices directly (no conversion needed) */}
+      {masks.map(m => (
+        <Line
+          key={m.id}
+          points={m.vertices.flatMap(v => [v.xImg, v.yImg])}
+          closed
+          stroke={m.isSelected ? '#2563eb' : '#10b981'}
+          strokeWidth={m.isSelected ? 3/T.S : 2/T.S} // keep constant screen thickness
+          listening={true}
+          // selection handlers...
+        />
+      ))}
+    </Group>
+
+    {/* Optional UI overlays that must NOT scale go on a separate layer */}
+  </Layer>
+</Stage>
+WebGL/Pixi layer: place a DOM <canvas> on top of the Konva stage and apply the same transform via Pixi stage or CSS transform.
+
+Option A (Pixi):
+
+ts
+Copy code
+// After Pixi app created with size = container size:
+app.stage.position.set(T.originX, T.originY);
+app.stage.scale.set(T.S, T.S);
+
+// Draw a single sprite for the photo at (0,0) sized imgW x imgH (if you render it in WebGL).
+// For material meshes: geometry vertices are in IMAGE-SPACE (xImg,yImg).
+// UVs remain as you already compute; Pixi takes the scaled positions from stage transform.
+Option B (CSS transform if you render raw WebGL):
+
+ts
+Copy code
+glCanvas.style.transformOrigin = '0 0';
+glCanvas.style.transform = `matrix(${T.S},0,0,${T.S},${T.originX},${T.originY})`;
+glCanvas.width = containerW;
+glCanvas.height = containerH;
+// Render meshes at IMAGE-SPACE coordinates; CSS transform handles screen placement.
+Key rule: background photo, mask vectors, and material mesh all live in the same coordinate space (image space) and share the same visual transform {originX,originY, S}.
+
+===============================================================================
+C) Pointer mapping — always convert through the inverse
+Wherever you read pointer/touch for drawing/selection:
+
+ts
+Copy code
+function onPointerDown(e) {
+  const {x: sx, y: sy} = stage.getPointerPosition(); // screen space
+  const {x: ix, y: iy} = screenToImg(T, sx, sy);     // convert to image space
+  // use (ix, iy) to add/edit mask vertices
+}
+Hit testing: operate in image-space. For Konva, since the Group is scaled, you can either:
+
+keep hit detection inside the Group (Konva will transform hits for you), but then store vertices you modify in image-space (divide by scale before storing), OR
+
+keep your own hit test with screenToImg(T, …) and compare against image-space vertices.
+
+===============================================================================
+D) Zoom & Pan — update ONE state, not multiple
+On wheel zoom:
+
+Compute zoom around cursor in image space:
+
+ts
+Copy code
+// Before update
+const z0 = zoom;
+const {x: ix, y: iy} = screenToImg(makeTransform(/* with z0 */), sx, sy);
+// Apply new zoom with clamp (e.g., 0.2..6)
+const z1 = clamp(z0 * (deltaY > 0 ? 1/1.06 : 1.06), 0.2, 6);
+zoom = z1;
+// Recompute transform T1 with z1, then adjust pan so the image point stays under the cursor:
+const T0 = makeTransform({... , zoom: z0});
+const T1 = makeTransform({... , zoom: z1});
+const s0 = imgToScreen(T0, ix, iy);
+const s1 = imgToScreen(T1, ix, iy);
+panX += (s0.x - s1.x);
+panY += (s0.y - s1.y);
+On drag/pan: update panX/panY only. Do not touch Stage scale.
+
+On container resize: recompute fitScale (cover/contain logic) and rebuild T.
+
+===============================================================================
+E) Renderer synchronization — one source of truth
+Expose a selector selectPhotoTransform() from the editor store that returns {S,originX,originY,imgW,imgH}.
+
+Subscribe Konva Group and Pixi/WebGL stage to this selector; on change, apply the transform (position/scale) once.
+
+Make sure your WebGL mesh vertices are in image space and never modified for screen transforms.
+
+===============================================================================
+F) Stroke & handle scaling (visual polish)
+Because the Group scales, stroke widths and handles will scale too. Keep them screen-constant by dividing by T.S:
+
+strokeWidth = base / T.S
+
+handle radius, hitStrokeWidth etc. also base / T.S.
+
+===============================================================================
+G) Quick tests (must pass)
+Load a photo; draw a mask; apply a material.
+
+Zoom in/out at the cursor: the texture, mask, and photo stick together perfectly.
+
+Pan the canvas: all three move together.
+
+Resize the container: fit recalculates, mask/material remain glued to the correct photo region.
+
+Draw/edit at any zoom: vertices land in the right place (because input maps through screenToImg).
+
+===============================================================================
+H) Guardrails / common pitfalls
+Never set Stage scale for zoom. Only the photo Group (and WebGL stage/CSS) should scale.
+
+Don’t store screen-space vertices. Migrate existing masks: when opening a project, convert old screen points → image points using screenToImg(Told, px, py) once.
+
+Ensure both Konva and WebGL layers read the same transform (no local calculations that drift).
+
+If you have an additional internal scale on the image node (e.g., to “fit”), remove it and fold it into fitScale.
+
+===============================================================================
+Patch checklist (what to change now)
+ Add photoTransform.ts with makeTransform, imgToScreen, screenToImg.
+
+ Refactor Stage: set Stage scale=1; add a single photoGroup with position/scale from T.
+
+ Draw background image at (0,0) size (imgW,imgH) inside photoGroup.
+
+ Render masks inside photoGroup using image-space vertices.
+
+ Apply the same T to Pixi/WebGL stage (position & scale) or CSS transform.
+
+ Update pointer handlers to use screenToImg(T, sx, sy).
+
+ Implement zoom-around-cursor logic that adjusts panX/panY to keep the anchor point fixed.
+
+ Recompute fitScale on container resize and rebuild T.
+
+ Normalize all stroke/handle sizes by 1/T.S.
+
+Deliver this now. The current “mask/render not sticking” issue will be resolved when all layers share one transform and all data lives in image space with pointer input using the inverse mapping.
