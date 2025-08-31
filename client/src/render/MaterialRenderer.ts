@@ -212,6 +212,7 @@ export class MaterialRenderer {
         const uvs = computeWorldUVs(
           mask.points,
           config.pxPerMeter,
+          material,
           mask.meta?.rotationDeg || 0,
           mask.meta?.offsetX || 0,
           mask.meta?.offsetY || 0
@@ -231,20 +232,13 @@ export class MaterialRenderer {
         // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
-        // Ensure mesh is visible first - get basic rendering working
+        // Ensure mesh is visible and use simple enhancement
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         mesh.alpha = 1.0;
         
-        console.info('[MaterialRenderer] Basic mesh created, attempting photorealistic enhancement...');
-        
-        // Apply simple photorealistic effects safely
-        try {
-          this.applyPhotorealisticEffectsSafely(mesh, texture, material);
-          console.info('[MaterialRenderer] Photorealistic effects applied successfully');
-        } catch (error) {
-          console.warn('[MaterialRenderer] Photorealistic effects failed, using basic texture:', error);
-        }
+        console.info('[MaterialRenderer] Basic mesh created successfully');
+        this.applySimpleEnhancement(mesh, texture, material);
         
         // Apply inverse image transform to mesh vertices to compensate for stage transform
         // With PhotoSpace Groups, masks are in image coordinate space
@@ -477,65 +471,33 @@ export class MaterialRenderer {
     return mesh;
   }
 
-  private applyPhotorealisticEffectsSafely(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
-    // Apply visual enhancements safely with error checking
-    
-    // 1. Enhanced texture filtering for quality (PixiJS v8 compatible)
+  private applySimpleEnhancement(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
+    // Apply basic visual enhancement without breaking rendering
     try {
       if (texture && texture.source) {
         texture.source.scaleMode = 'linear';
       }
     } catch (error) {
-      console.warn('[MaterialRenderer] Failed to set texture properties:', error);
+      // Ignore texture setting errors
     }
     
-    // 2. Simple color enhancement based on material type
-    const category = material?.category || '';
-    
-    try {
-      // Use simple tint instead of complex filters for now
-      if (category.includes('tile') || category.includes('waterline')) {
-        // Subtle blue tint for underwater tiles
-        mesh.tint = 0xF0F8FF; // Alice blue tint
-        mesh.alpha = 0.98;
-        console.log('[MaterialRenderer] Applied tile tint');
-      } else if (category.includes('coping')) {
-        // Slight warm tint for stone
-        mesh.tint = 0xFFF8DC; // Cornsilk tint
-        mesh.alpha = 0.96;
-        console.log('[MaterialRenderer] Applied coping tint');
-      } else if (category.includes('paving')) {
-        // Weathered outdoor tint
-        mesh.tint = 0xF5F5DC; // Beige tint
-        mesh.alpha = 0.94;
-        console.log('[MaterialRenderer] Applied paving tint');
-      } else {
-        // Default: no tint, just ensure visibility
-        mesh.tint = 0xFFFFFF;
-        mesh.alpha = 1.0;
-        console.log('[MaterialRenderer] Applied default appearance');
-      }
-    } catch (error) {
-      console.warn('[MaterialRenderer] Failed to apply material effects:', error);
-      // Fallback to basic appearance
-      mesh.tint = 0xFFFFFF;
-      mesh.alpha = 1.0;
-    }
-    
-    console.log(`[MaterialRenderer] Applied safe photorealistic effects for ${category} material`);
+    // Basic material-based appearance
+    mesh.visible = true;
+    mesh.tint = 0xFFFFFF;
+    mesh.alpha = 1.0;
   }
 
   /**
    * Update existing mesh with photorealistic properties
    */
-  private updatePhotorealisticMesh(mesh: PIXI.Mesh, geometry: MaskGeometry, texture: PIXI.Texture, material: any): void {
+  private updateSimpleMesh(mesh: PIXI.Mesh, geometry: MaskGeometry, texture: PIXI.Texture, material: any): void {
     this.updateMesh(mesh, geometry, texture);
     
-    // Reapply safe photorealistic effects to updated mesh
+    // Reapply simple enhancement to updated mesh
     try {
-      this.applyPhotorealisticEffectsSafely(mesh, texture, material);
+      this.applySimpleEnhancement(mesh, texture, material);
     } catch (error) {
-      console.warn('[MaterialRenderer] Failed to update photorealistic effects:', error);
+      console.warn('[MaterialRenderer] Failed to update enhancement:', error);
     }
   }
 
