@@ -165,6 +165,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   }, []);
 
   // Update WebGL renderer when masks or materials change
+  // Update WebGL renderer when masks OR photoTransform changes
   useEffect(() => {
     const updateRenderer = async () => {
       if (!renderV2Enabled || !materialRendererRef.current) return;

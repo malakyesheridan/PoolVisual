@@ -151,7 +151,10 @@ export class MaterialRenderer {
       // Add diagnostic anchor dots to verify alignment with Konva
       this.addDiagnosticAnchors(transform.imageWidth, transform.imageHeight);
       
-      console.info('[MaterialRenderer] Applied PhotoSpace transform:', {
+      // Force render to ensure transform is applied immediately
+      this.app.renderer.render(this.app.stage);
+      
+      console.info('[MaterialRenderer] Applied PhotoSpace transform + forced render:', {
         position: { x: transform.x, y: transform.y },
         scale: { x: transform.scaleX, y: transform.scaleY }
       });
