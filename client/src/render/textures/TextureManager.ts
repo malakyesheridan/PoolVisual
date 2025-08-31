@@ -1,17 +1,27 @@
+/**
+ * Loader That Never Fails - Contract Requirement
+ * SAFETY: Always returns HTMLImageElement - real texture or 256x256 checkerboard fallback
+ * NEVER throws; NEVER leaves caller with no image
+ */
 const API = import.meta.env.VITE_API_BASE_URL || '';
 
-function makeChecker(size=256){ // guaranteed local fallback
-  const c = document.createElement('canvas'); c.width=c.height=size;
+function makeChecker(size = 256): HTMLCanvasElement {
+  // SAFETY: Zero-dependency checkerboard fallback
+  const c = document.createElement('canvas'); 
+  c.width = c.height = size;
   const ctx = c.getContext('2d')!;
-  const n=8, s=size/n;
-  for(let y=0;y<n;y++)for(let x=0;x<n;x++){
-    ctx.fillStyle = ((x+y)&1)?'#dcdcdc':'#f3f3f3';
-    ctx.fillRect(x*s,y*s,s,s);
+  const n = 8, s = size / n;
+  
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      ctx.fillStyle = ((x + y) & 1) ? '#dcdcdc' : '#f3f3f3';
+      ctx.fillRect(x * s, y * s, s, s);
+    }
   }
   return c;
 }
 
-export async function loadImageSafe(url?:string): Promise<HTMLImageElement> {
+export async function loadImageSafe(url?: string): Promise<HTMLImageElement> {
   try {
     if (!url) throw new Error('empty url');
     
@@ -23,23 +33,25 @@ export async function loadImageSafe(url?:string): Promise<HTMLImageElement> {
     
     // For external URLs, use proxy. For local URLs, direct fetch.
     const needsProxy = finalUrl.startsWith('http') && !finalUrl.includes(window.location.hostname);
-    const fetchUrl = needsProxy ? `${API}/api/texture?url=${encodeURIComponent(finalUrl)}` : finalUrl;
+    const fetchUrl = needsProxy ? `/api/texture?url=${encodeURIComponent(finalUrl)}` : finalUrl;
     
     const resp = await fetch(fetchUrl);
-    if (!resp.ok) throw new Error('fetch failed '+resp.status);
+    if (!resp.ok) throw new Error('fetch failed ' + resp.status);
     const blob = await resp.blob();
     const objURL = URL.createObjectURL(blob);
     
     const img = new Image();
-    await new Promise<void>((res,rej)=>{
+    await new Promise<void>((res, rej) => {
       img.onload = () => res();
       img.onerror = rej;
       img.src = objURL;
     });
     
     return img;
-  } catch {
-    // Fallback: guaranteed checker image
+  } catch (error) {
+    // SAFETY: Never fail - log warning and return checkerboard
+    console.warn('[PVQ][WARN] texture-fallback', url, error instanceof Error ? error.message : error);
+    
     const img = new Image();
     img.src = makeChecker().toDataURL('image/png');
     await new Promise(r => img.onload = () => r(null));

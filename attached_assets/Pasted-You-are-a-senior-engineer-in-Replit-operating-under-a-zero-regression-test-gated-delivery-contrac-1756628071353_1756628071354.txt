@@ -1,0 +1,252 @@
+You are a senior engineer in Replit operating under a **zero-regression, test-gated delivery contract**. Your task is to **stabilize and harden** the Canvas Editor of “PoolVisual Quotes” and deliver a working, photoreal material rendering pipeline **without breaking anything that already works**. This document is both a *technical spec* and a *process contract*. **Do not** write or change code outside the constraints below. **Do not** proceed to a later step if the current step’s acceptance checks are not green.
+
+---
+
+# 0) Mission Statement (Read Carefully)
+
+Produce a **reliable, production-safe** Canvas Editor that:
+
+1) **Always renders** a texture inside a user-drawn mask (guaranteed visible fallback if supplier texture fails).
+2) **Stays glued** to the background photo on pan/zoom/resize (mask outline and material texture move in lockstep).
+3) **Looks believable** (first pass of photoreal improvements that do not crash: luminance-matched blend + edge seating).
+4) **Never regresses** saving/loading materials, mask tools, job data, calibration, quoting, or mobile interaction.
+
+If a requirement is ambiguous, **make the safest choice**, document it inline with a short comment `// SAFETY: <reason>`, and proceed. If you hit an error, **stop**, print a clear diagnostic, and remediate before continuing. **All work must be feature-flagged** behind `RENDER_V2`. `RENDER_V1` remains available for instant rollback.
+
+---
+
+# 1) Non-Negotiable Invariants
+
+- **Single Source of Truth for Transform:** All rendering (Konva and WebGL/Pixi) must share the same `PhotoSpace` transform `T = { S, originX, originY }`. No other transforms (no CSS transforms on the WebGL canvas; no per-node offsets for pan/zoom).
+- **Coordinate Space:** Store **all mask vertices in IMAGE SPACE** (original image pixels). Never persist or compute in screen space.
+- **Idempotent Mount:** The renderer must mount/unmount cleanly and be re-created without side effects (no lingering timers, event listeners, or stale state).
+- **Fail-Safe Textures:** If a supplier texture cannot load, a **checkerboard** fallback must display instantly—**no blank masks**.
+- **Zero-Regression:** Existing features (mask drawing, undo/redo, materials CRUD, job loading, quoting, calibration, mobile upload, navigation) must behave exactly as before or better. If any check fails, **abort and roll back** to the last green checkpoint.
+
+---
+
+# 2) High-Level Architecture (Minimal & Proven)
+
+- **UI/Editing:** Keep **Konva/React** for the editor UI, masks, selection, handles, rulers, and calibration display.
+- **Render Engine:** Add **PixiJS v8** for material rendering (WebGL2 preferred, WebGL1 fallback). Only one Pixi application instance.
+- **Triangulation:** Use **earcut** to triangulate arbitrary polygon masks.
+- **Texture IO:** Fetch textures through `/api/texture?url=…` proxy (CORS-safe). On any failure, render a **local checkerboard** texture.
+- **Feature Flags:** `RENDER_V2=true` uses the new pipeline; else use the existing path untouched.
+- **Strict Transforms:** `app.stage.position = (originX, originY)`, `app.stage.scale = (S, S)`. **Never** apply CSS transforms to `app.view`. **Never** scale the Konva Stage.
+
+---
+
+# 3) Files to Add / Confirm
+
+client/
+src/state/photoTransformStore.ts // canonical PhotoSpace store
+src/components/canvas/PhotoCanvas.tsx // mounts Konva + Pixi, subscriptions, IO
+src/render/MaterialRenderer.ts // Pixi app, mesh registry, transform API
+src/render/mesh/triangulate.ts // earcut wrapper (poly -> indices/verts)
+src/render/textures/TextureManager.ts // robust loader + checkerboard fallback
+src/render/shaders/MaterialPass.ts // minimal photoreal shader (safe)
+src/render/debug/Overlay.tsx // anchor dots + triangle debug (dev-only)
+server/
+routes/textureProxy.ts // image proxy with cache and CORS headers
+
+markdown
+Copy code
+
+If a file already exists, **harden it** to match this spec rather than replacing it blindly.
+
+---
+
+# 4) PhotoSpace Store (Single Transform, Zoom-Around-Cursor)
+
+Create `usePhoto` Zustand store with:
+
+- State: `imgW,imgH,containerW,containerH,fitScale,zoom,panX,panY,T:{S,originX,originY}`
+- Methods:
+  - `setImageSize(w,h)` → update and `recompute()`.
+  - `setContainer(w,h)` → update and `recompute()`.
+  - `setPan(x,y)` → update and `recompute()`.
+  - `setZoom(z, anchorScr?)` → clamp 0.2..6. If `anchorScr` is provided, keep the same image point under the cursor by adjusting pan. Then `recompute()`.
+  - `recompute()` computes `S = fitScale*zoom`, `originX = panX + (containerW - imgW*S)/2`, `originY = panY + (containerH - imgH*S)/2`.
+
+**Acceptance Gate A1 (Transform):**
+- Wheel zoom with cursor maintains the same image point under the cursor.
+- Dragging (pan) updates `panX/panY` and `T` continuously (verify with a console throttle).
+
+---
+
+# 5) Loader That Never Fails
+
+Implement `loadImageSafe(url)`:
+
+- Try proxy URL `/api/texture?url=…`. If fetch or blob decode fails, **fallback to a 256×256 checkerboard** generated locally.
+- Return a fully loaded `HTMLImageElement`.
+- Never throw; never leave the caller with no image.
+
+**Acceptance Gate A2 (Loader):**
+- Break the supplier URL on purpose → editor still shows a checkerboard texture **inside the mask** (not a blank area).
+
+---
+
+# 6) Pixi MaterialRenderer (Minimal, Reliable)
+
+Create a `MaterialRenderer` with:
+
+- Constructor(host,w,h): create Pixi app `{ width:w, height:h, backgroundAlpha:0, autoDensity:true, resolution:devicePixelRatio, powerPreference:'high-performance' }`. Append `app.view` to `host`. Force `app.view.style.transform = 'none'`.
+- `setTransform(T)` sets `app.stage.position` and `app.stage.scale`.
+- `resize(w,h)` resizes renderer.
+- `upsertMesh(maskId, image, vertsImg)`:
+  - Triangulate with **earcut** over `vertsImg` (Float32Array `[x0,y0,x1,y1,…]`) in **image space**.
+  - Build UVs (Phase 1 baseline): `u = x / image.width`, `v = y / image.height` (we will improve UVs later).
+  - Create `Geometry` with attributes `aPosition` and `aUV`, index buffer from earcut.
+  - Create `MeshMaterial` with `texture` (enable mipmaps).
+  - Replace any existing mesh with the same `maskId`, add to stage.
+- `removeMesh(maskId)` destroys existing mesh.
+
+**Acceptance Gate A3 (Baseline Mesh):**
+- Draw a mask, apply a material: **a texture appears** inside the mask every time (real texture or checkerboard). Persist across page changes. No crashes.
+
+---
+
+# 7) Konva + Pixi Mount (Strict Transform Sharing)
+
+Mount Konva Stage and a `div#gl-layer` for Pixi inside the same container:
+
+- Stage is `scale=1`.
+- Create one Konva `Layer` with a `Group` named `photoGroup` using:
+  - `x=T.originX`, `y=T.originY`, `scaleX=scaleY=T.S`.
+- Background photo is rendered at `(0,0)` with dimensions `(imgW,imgH)` inside `photoGroup`.
+- Mask outlines are rendered from `mask.pointsImg` (image space), **no per-node x/y/scale**. Stroke widths divide by `T.S` to remain 1–2 px on screen.
+- Subscribe Pixi to `usePhoto(s=>s.T)` and call `materialRenderer.setTransform(T)` **on every change** (drag frames included).
+- Use a `ResizeObserver` to set container size in the store and call `materialRenderer.resize(w,h)`.
+
+**Acceptance Gate B1 (Lockstep):**
+- Pan, zoom, resize → **photo, outline, and texture** move together 1:1. Add dev-only anchor dots `(0,0), (imgW,0), (0,imgH)` to visually confirm.
+
+---
+
+# 8) Data Flow (Safe, Predictable)
+
+- On photo load: call `setImageSize(naturalWidth, naturalHeight)`.
+- On material selection for a mask:
+  - Get `texture_url`; call `loadImageSafe`.
+  - Build `Float32Array` from `mask.pointsImg`.
+  - Call `materialRenderer.upsertMesh(mask.id, image, vertsImg)`.
+- On mask edit: re-run triangulation + `upsertMesh`.
+- On material change: `upsertMesh` with new texture.
+- On mask delete: `removeMesh(mask.id)`.
+- Do **not** mutate Pixi stage for pan/zoom anywhere else. All pan/zoom originates from the store.
+
+**Acceptance Gate B2 (Editing):**
+- Add/delete/reshape mask while zoomed; mesh updates instantly; alignment never breaks.
+
+---
+
+# 9) First Photoreal Step (Safe Shader)
+
+Add a minimal shader `MaterialPass` that:
+
+- Converts texture to linear (`pow(col, 2.2)`), applies a **gentle luminance modulation** from a downsampled background photo luminance texture, adds **edge seating** via a simple AO mask (an inset blurred polygon mask). Converts back to sRGB. **No heavy/unstable filters**.
+
+Wiring:
+- Add uniforms: `uTex`, `uLuma` (downsampled single-channel), `uAO` (edge mask), `uLumaScale` (to map fragment to luma/AO UVs), `uGamma=2.2`, `uAOAmt≈0.12`, `uContrast≈1.06`, `uSaturation≈1.0`.
+- If luma/AO aren’t ready, **bind neutral textures** (0.5 gray for luma; black for AO) so the shader still renders identically to baseline.
+- Replace the MeshMaterial with this shader via Pixi’s `Shader` API. Keep a kill-switch: `PHOTOREAL_ON=true/false`.
+
+**Acceptance Gate C1 (Photoreal On/Off):**
+- Toggling photoreal should never blank the mesh. With luma/AO neutral, result ≈ baseline; with real luma/AO, edges look seated and lighting fits the scene.
+
+---
+
+# 10) Error Handling, Logging, and Abort Criteria
+
+- Wrap all asynchronous operations with `try/catch`; log a **single, clear** error line: `[PVQ][ERR] <module>: <message>`.
+- When a texture fails to load: log `[PVQ][WARN] texture-fallback <url>` and render checkerboard **immediately**.
+- Add a dev command `window.__PVQ = { dump() { /* print transforms, meshes, counts */ } }` to allow quick introspection.
+- If `stage.scale` or `group.scale` or Pixi canvas CSS transform are **ever** not equal to the store’s `T`, print `[PVQ][FATAL] transform drift` and **reset** them to `T`.
+
+**Acceptance Gate S (Stability):**
+- Simulate fast pans/zooms and multiple material switches; logs show no repeats of FATAL; meshes never disappear; CPU/GPU usage stays stable.
+
+---
+
+# 11) Rollback / Feature Flag
+
+- Export a single `enableRenderV2:boolean` from config/env. If false, **do not** mount the Pixi renderer and do not modify old code paths. Keep existing editor working.
+- Expose a dev toggle in UI (only in development) to switch between V1 and V2 quickly for A/B verification.
+
+---
+
+# 12) Tests You Must Run Before Claiming “Done”
+
+Manual but deterministic checklist (check each, do not skip):
+
+1) **Loader fallback:** Break a material URL → checkerboard appears inside mask (not blank).
+2) **Glue test:** Pan/zoom/resize with one mask → photo/outline/texture move together 1:1.
+3) **Edit at zoom:** Reshape mask at 150% zoom → mesh updates correctly and remains aligned.
+4) **Multiple masks:** Two masks with different materials → both render and stay aligned during pan/zoom.
+5) **Switch pages:** Navigate away and back → masks + materials rehydrate and render immediately.
+6) **Mobile:** Open on mobile, upload a photo, draw mask, add material → render visible, panning smooth (≥30fps).
+7) **Photoreal toggle:** On/off → never blanks; with luma/AO real, looks less “sticker”.
+8) **No transform drift:** Print `window.__PVQ.dump()` before/after interactions; Pixi and Konva transforms match `T`.
+
+If any step fails, **stop**, diagnose, and fix. Do not push partial fixes that break an earlier green step.
+
+---
+
+# 13) Forbidden Actions
+
+- Do **not** scale the Konva Stage for zoom. Only scale the `photoGroup` and Pixi stage using `T`.
+- Do **not** apply CSS transforms to the Pixi canvas. All transforms must be internal stage transforms.
+- Do **not** store screen-space vertices. If legacy data exists, convert once to image space at load and persist back.
+- Do **not** “patch” pan/zoom by adding offsets to meshes or masks. Only update `T` in the store and subscribe.
+
+---
+
+# 14) Minimal Code Stubs You Can Start From (Safe Defaults)
+
+- **Texture UVs Phase 1:** `u=x/image.width, v=y/image.height`. (We will upgrade to calibration-based UVs after stability.)
+- **Luminance/AO Phase 0:** Neutral textures (0.5 gray for luma, black for AO) while wiring shader; once stable, supply real luma/AO textures.
+- **Checkerboard Fallback:** Always present, zero-dependency, no network.
+
+---
+
+# 15) Definition of Done
+
+- A user can: upload photo → draw mask → apply material → **see texture immediately** (no blank/blue tint), pan/zoom without drift, and export a clean image.
+- The system survives broken supplier URLs by rendering checkerboard inside the mask, not by failing.
+- Photoreal toggle **on** produces a visibly more seated material (subtle, stable) and **off** returns to baseline without disruption.
+- No regressions in materials CRUD, persistence, job reload, quotes, calibration display, or mobile image upload.
+
+---
+
+# 16) Final Handoff Requirements
+
+- Short README at top of each new file explaining purpose, inputs, outputs, and where it’s used.
+- A `DEV_NOTES.md` explaining how to toggle V1/V2, how to force the fallback checkerboard, and where to look in the console for `[PVQ]` logs.
+- A list of **TODO (future)** with precise, low-risk next steps (calibration-true UVs, bond patterns, grout param, depth tint, export sharpening/grain)—but only after the above is stable.
+
+---
+
+# 17) Quick Smoke Commands (you should add these temporarily)
+
+- `window.__PVQ.dump()` → prints current T, stage transform, number of meshes, and loaded textures.
+- `window.__PVQ.testFailTexture()` → applies a broken URL to verify the checkerboard fallback.
+- `window.__PVQ.testTogglePhotoreal()` → flips the photoreal shader on/off to show stability.
+
+---
+
+# 18) Acceptance Clause
+
+If after implementing this spec any step in **Tests You Must Run** fails, you must **stop and remediate immediately**. Do not add new features or filters until **Phase A + B** (baseline + sync) are green. The bar is simple: **mask+texture always visible** and **never desynced** during pan/zoom/resize. Only then ship Phase C (the minimal, safe photoreal blend).
+
+Deliver exactly as specified. If you deviate, explain **why** in code comments prefixed with `// SAFETY:` and provide a measurable acceptance alternative. This is a reliability-first rebuild; correctness and non-regression outrank frills and “nice to have” effects.
+
+
+
+
+
+
+
+Sources
+
+Ask ChatGPT

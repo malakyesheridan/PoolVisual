@@ -17,6 +17,7 @@ import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './
 import { MaterialRenderer, type MaskGeometry, type RenderConfig } from '@/render/MaterialRenderer';
 import { PhotoSpace, PhotoTransform, makeTransform, calculateFitScale, imgToScreen, screenToImg } from '@/render/photoTransform';
 import { usePhoto } from '@/state/photoTransformStore';
+import { PhotoCanvas } from './PhotoCanvas';
 
 const BUILD_TIMESTAMP = new Date().toISOString();
 const RANDOM_ID = Math.random().toString(36).substring(2, 8);
@@ -40,14 +41,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
   const stageRef = useRef<StageType>(null);
   const [stageDimensions, setStageDimensions] = useState({ width, height });
   const materialRendererRef = useRef<MaterialRenderer | null>(null);
-  const [renderV2Enabled, setRenderV2Enabled] = useState(true); // Phase A: Enable V2
+  const [renderV2Enabled, setRenderV2Enabled] = useState(false); // SAFETY: Keep V1 active for zero regression
   
-  // V2 Early return - use new PhotoCanvas system  
-  if (renderV2Enabled) {
-    console.info('🚀 [CanvasStage] V2 ENABLED - Using PhotoCanvas system');
-    
-    // Import PhotoCanvas dynamically to avoid circular dependencies
-    const PhotoCanvas = require('./PhotoCanvas').PhotoCanvas;
+  // SAFETY: Feature flag for zero-regression rollback to V1
+  const RENDER_V2 = false; // Temporarily disable V2 while fixing import issues
+  
+  if (RENDER_V2) {
+    console.info('[PVQ] V2 render enabled - using PhotoCanvas system');
     
     return (
       <div className="relative w-full h-full">
