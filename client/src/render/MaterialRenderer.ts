@@ -222,24 +222,25 @@ export class MaterialRenderer {
         // The mesh positioning will handle the transformation
         const meshVertices = triangulated.vertices;
 
-        // Create mesh geometry compatible with PixiJS v8
+        // Create mesh geometry using PixiJS v8 syntax
         const geometry = new PIXI.MeshGeometry({
           positions: new Float32Array(meshVertices),
           uvs: new Float32Array(uvs),
-          indices: new Uint32Array(triangulated.indices) // Fixed: use Uint32Array
+          indices: new Uint32Array(triangulated.indices)
         });
         
-        // Create mesh with texture
-        mesh = new PIXI.Mesh({ geometry, texture });
+        // Ensure texture has proper address mode for tiling
+        texture.source.addressMode = 'repeat';
         
-        // Ensure mesh is visible and use simple enhancement
+        // Create mesh with geometry and texture
+        mesh = new PIXI.Mesh(geometry, texture);
+        
+        // Ensure visibility
         mesh.visible = true;
-        mesh.tint = 0xFFFFFF;
         mesh.alpha = 1.0;
+        mesh.tint = 0xFFFFFF;
         
-        // Ensure texture is properly bound to mesh
-        mesh.texture = texture;
-        console.info('[MaterialRenderer] Basic mesh created successfully with texture:', texture.width, 'x', texture.height);
+        console.info('[MaterialRenderer] Mesh created with texture:', texture.width, 'x', texture.height);
         
         // Apply inverse image transform to mesh vertices to compensate for stage transform
         // With PhotoSpace Groups, masks are in image coordinate space
