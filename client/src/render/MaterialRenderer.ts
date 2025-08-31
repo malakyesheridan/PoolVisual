@@ -90,12 +90,13 @@ export class MaterialRenderer {
       // Mount canvas
       container.appendChild(this.app.canvas);
       
-      // Position canvas correctly
+      // Position canvas correctly with background for visibility
       this.app.canvas.style.position = 'absolute';
       this.app.canvas.style.top = '0';
       this.app.canvas.style.left = '0';
       this.app.canvas.style.width = '100%';
       this.app.canvas.style.height = '100%';
+      this.app.canvas.style.backgroundColor = 'rgba(255,0,0,0.1)'; // Light red tint to debug visibility
       
       console.info('[MaterialRenderer] Canvas added with debug styling:', {
         canvas: this.app.canvas,
@@ -197,33 +198,59 @@ export class MaterialRenderer {
           indices: new Uint16Array(triangulated.indices)
         });
         
-        // Create mesh with enhanced texture rendering
+        // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
-        // Apply material properties through mesh properties
+        // Ensure mesh is visible
         mesh.alpha = 1.0;
+        mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Apply physical scaling based on material repeat
-        const repeatM = this.getPhysicalRepeat(material);
-        const scale = repeatM * config.pxPerMeter;
+        // Position mesh at origin (no transformations)
+        mesh.position.set(0, 0);
+        mesh.scale.set(1, 1);
+        mesh.rotation = 0;
         
-        // Configure mesh for realistic rendering
-        if (mesh.shader) {
-          // Future: Apply advanced shader properties here once PixiJS v8 compatibility is resolved
-          console.info('[MaterialRenderer] Enhanced material properties applied:', {
-            material: material.id,
-            roughness: this.getMaterialRoughness(material),
-            metallic: this.getMaterialMetallic(material),
-            repeatM: repeatM,
-            scale: scale
-          });
-        }
+        // Debug mesh properties
+        console.info('[MaterialRenderer] Mesh created with properties:', {
+          vertices: triangulated.vertices.length / 2,
+          triangles: triangulated.indices.length / 3,
+          uvs: uvs.length / 2,
+          textureSize: `${texture.width}x${texture.height}`,
+          meshBounds: {
+            x: mesh.x,
+            y: mesh.y,
+            width: mesh.width,
+            height: mesh.height
+          },
+          visible: mesh.visible,
+          alpha: mesh.alpha
+        });
         
         if (mesh) {
+          // Clear previous mesh if exists
+          const existingMesh = this.meshes.get(mask.maskId);
+          if (existingMesh) {
+            this.app.stage.removeChild(existingMesh);
+          }
+          
           this.app.stage.addChild(mesh);
           this.meshes.set(mask.maskId, mesh);
-          console.info('[MaterialRenderer] Added mesh to stage:', mask.maskId, 'vertices:', triangulated.vertices.length/2);
+          
+          console.info('[MaterialRenderer] Added mesh to stage:', {
+            maskId: mask.maskId,
+            vertices: triangulated.vertices.length / 2,
+            stageChildren: this.app.stage.children.length,
+            meshPosition: { x: mesh.x, y: mesh.y },
+            meshBounds: { width: mesh.width, height: mesh.height },
+            textureValid: texture && texture.valid,
+            canvasSize: { width: this.app.screen.width, height: this.app.screen.height }
+          });
+          
+          // Force render update
+          this.app.render();
+          
+          console.info('[MaterialRenderer] Render forced - mesh should now be visible');
         }
       }
 
