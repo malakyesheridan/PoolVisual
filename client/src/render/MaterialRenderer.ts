@@ -199,9 +199,29 @@ export class MaterialRenderer {
           mask.meta?.offsetY || 0
         );
 
+        // Transform vertices from screen space to image-relative space
+        let transformedVertices = triangulated.vertices;
+        if (config?.imageTransform) {
+          const transform = config.imageTransform;
+          transformedVertices = new Float32Array(triangulated.vertices.length);
+          
+          for (let i = 0; i < triangulated.vertices.length; i += 2) {
+            // Convert screen coordinates to image-relative coordinates
+            const screenX = triangulated.vertices[i] ?? 0;
+            const screenY = triangulated.vertices[i + 1] ?? 0;
+            
+            // Transform from screen space to image space
+            const imageRelativeX = (screenX - transform.x) / transform.scaleX;
+            const imageRelativeY = (screenY - transform.y) / transform.scaleY;
+            
+            transformedVertices[i] = imageRelativeX;
+            transformedVertices[i + 1] = imageRelativeY;
+          }
+        }
+
         // Create mesh geometry compatible with PixiJS v8
         const geometry = new PIXI.MeshGeometry({
-          positions: new Float32Array(triangulated.vertices),
+          positions: new Float32Array(transformedVertices),
           uvs: new Float32Array(uvs),
           indices: new Uint32Array(triangulated.indices) // Fixed: use Uint32Array
         });
@@ -209,35 +229,25 @@ export class MaterialRenderer {
         // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
-        // Remove test sprite - UV coordinates are now fixed
-        
         // Ensure mesh is visible
         mesh.alpha = 1.0;
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Position mesh at the mask's actual screen coordinates (fix TypeScript iteration)
-        const vertices = Array.from(triangulated.vertices);
-        const maskBounds = {
-          minX: Math.min(...vertices.filter((_, i) => i % 2 === 0)),
-          maxX: Math.max(...vertices.filter((_, i) => i % 2 === 0)),
-          minY: Math.min(...vertices.filter((_, i) => i % 2 === 1)),
-          maxY: Math.max(...vertices.filter((_, i) => i % 2 === 1))
-        };
-        
-        // Apply image transform to sync mesh with image position/scale
+        // Position mesh exactly where the image is positioned
         if (config?.imageTransform) {
           const transform = config.imageTransform;
           mesh.position.set(transform.x, transform.y);
           mesh.scale.set(transform.scaleX, transform.scaleY);
         } else {
-          // Fallback to original positioning
           mesh.position.set(0, 0);
           mesh.scale.set(1, 1);
         }
         mesh.rotation = 0;
         
         // Debug mesh properties with coordinate analysis
+        const vertices = Array.from(triangulated.vertices);
+        const transformedArray = Array.from(transformedVertices);
         console.info('[MaterialRenderer] Mesh created with properties:', {
           vertices: triangulated.vertices.length / 2,
           triangles: triangulated.indices.length / 3,
@@ -249,9 +259,10 @@ export class MaterialRenderer {
             width: mesh.width,
             height: mesh.height
           },
-          maskBounds,
-          vertexSample: triangulated.vertices.slice(0, 10), // First 5 vertex coords
-          uvSample: Array.from(uvs.slice(0, 10)), // First 5 UV coords (fix TypeScript)
+          originalVertexSample: vertices.slice(0, 6), // First 3 original coords
+          transformedVertexSample: transformedArray.slice(0, 6), // First 3 transformed coords
+          uvSample: Array.from(uvs.slice(0, 6)), // First 3 UV coords
+          imageTransform: config?.imageTransform,
           visible: mesh.visible,
           alpha: mesh.alpha
         });
