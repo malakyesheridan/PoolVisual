@@ -1,0 +1,230 @@
+You are a senior engineer in Replit. **Implement “world-class” photoreal material renders** so results look photographed, not like a 2D overlay. Keep **all existing features** (masks, calibration, quoting, materials library, mobile). If something is unclear, make a safe, documented choice and proceed. **Do not regress** panning/zooming/selection (the texture layer must follow the photo 1:1).
+
+===============================================================================
+OBJECTIVE
+===============================================================================
+Replace the flat tint/CanvasPattern approach with a **WebGL mesh pipeline** that:
+- Applies materials **perspective-correct** inside polygon masks.
+- **Matches scene lighting** (brightness/contrast/white balance).
+- Adds **edge seating** (feather + ambient occlusion).
+- Supports **tile realism** (bond patterns, grout width/color, variation).
+- For pool interiors: **depth tint + subtle caustics + Fresnel edge brighten**.
+- Produces **export-quality** images with crisp grout and zero “sticker” look.
+
+Gate with env flag `RENDER_V2=true` (fallback to old renderer if false).
+
+===============================================================================
+ARCHITECTURE (KEEP EXISTING UI; ADD A WEBGL RENDER LAYER)
+===============================================================================
+- UI/editing remains **Konva/React** (masks, selection, handles, tools).
+- Add a **PixiJS (WebGL2 preferred) renderer** under the mask outlines. If Pixi is not available, install it.
+- **One canonical PhotoSpace transform** `{S, originX, originY}` drives:
+  - Konva `photoGroup` (background photo + outlines),
+  - Pixi `stage` (material meshes).
+- All mask vertices are stored in **image space** (original image pixels). No screen-space storage.
+
+New directories/files:
+client/src/render/MaterialRenderer.ts // Pixi orchestration (one app)
+client/src/render/mesh/triangulate.ts // polygon → triangles (earcut)
+client/src/render/mesh/uv.ts // image-space → world UVs (meters)
+client/src/render/textures/TextureManager.ts // cache, mipmaps, anisotropic
+client/src/render/shaders/MaterialPass.ts // fragment shader (GLSL)
+client/src/render/shaders/LuminancePass.ts // builds scene luminance map
+client/src/render/shaders/AOPass.ts // edge distance/AO mask
+client/src/components/editor/TileSettingsPanel.tsx // realism controls
+client/src/state/photoTransformStore.ts // PhotoSpace transform (if missing)
+
+markdown
+Copy code
+
+===============================================================================
+FEATURE SET TO IMPLEMENT
+===============================================================================
+1) **Perspective-correct texturing**
+   - Triangulate mask polygon with **earcut**.
+   - Geometry vertices in **image space** `(xImg, yImg)`.
+   - Compute **world UVs** from calibration:
+     - `pxPerMeter` from calibration.
+     - Material repeat (meters): `repeatM = physical_repeat_m || sheet_width_mm/1000 || tile_width_mm/1000 || 0.30`.
+     - Build a local basis (u along the longest edge, v perpendicular).
+     - `worldU = dot((p - p0), uDir) / pxPerMeter`, `worldV = dot((p - p0), vDir) / pxPerMeter`,
+       `UV = (worldU/repeatM, worldV/repeatM)`.
+     - Apply material **rotation** and **offset** from UI before dividing by `repeatM`.
+
+2) **Lighting-aware compositing**
+   - Create a **Luminance Map** from the background photo (downsample to power-of-two).
+     - Convert sRGB → linear: `linear = pow(color, 2.2)`.
+     - `luma = dot(linear, vec3(0.2126, 0.7152, 0.0722))`.
+     - Use bilinear sampling in shader; modulate material brightness ±10% to match scene.
+   - Use **linear blending** in shader and convert back to sRGB.
+
+3) **Edge seating (no sticker look)**
+   - Build an **edge AO mask**: rasterize polygon to a distance field (4–8 px inward), normalize to 0–1.
+   - Darken base by up to **8–15%** near edges.
+   - Feather (2–6 px) so edges visually integrate.
+
+4) **Tile realism**
+   - **Bond patterns**: `straight`, `brick50`, `herringbone`. Implement as UV transforms (row/col offsets; ±45° basis for herringbone).
+   - **Grout**: parametric `groutWidthMm` & `groutColor`.
+     - In shader, threshold UV to create joints; grout lives in shader (not baked).
+   - **Variation**: per-tile random rotation/jitter to break repetition (hash of cell indices).
+
+5) **Pool-specific look (interior finishes)**
+   - **Depth tint**: gradient across mask (user can set shallow/deep points). Tint toward water color with exponent falloff.
+   - **Subtle caustics overlay**: low-frequency animated noise modulating luma (toggle on/off; default very low).
+   - **Fresnel edge brighten** near waterline (soft +2–4% to mimic reflective edge highlight).
+
+6) **Texture fidelity**
+   - Load via existing **/api/texture?url=…** proxy; cache in **TextureManager**.
+   - Generate **mipmaps**; enable **anisotropic filtering** if supported.
+   - Warn if source texture < **1024×1024**.
+
+7) **Export quality**
+   - Render a dedicated **offscreen framebuffer** at 1×/2× scale for export.
+   - Downscale with high-quality filter; apply **0.2–0.4 px sharpening** and **1–2% grain** to match photo.
+
+8) **Performance & mobile**
+   - One Pixi app; one mesh per mask.
+   - Rebuild geometry only when mask points change; on pan/zoom, update **Pixi.stage** `position/scale` via the shared transform.
+   - Degrade gracefully on slow GPUs (lower luminance/AO resolution, disable caustics).
+
+===============================================================================
+GLSL — MATERIAL PASS (core idea)
+===============================================================================
+_Put in `client/src/render/shaders/MaterialPass.ts` (actual GLSL strings for Pixi Shader)._
+```glsl
+precision mediump float;
+varying vec2 vUV;                // perspective-correct UV
+uniform sampler2D uTex;          // material (mipmapped)
+uniform sampler2D uLuma;         // scene luminance (linear)
+uniform sampler2D uAO;           // edge ambient occlusion
+uniform vec2 uLumaScale;         // screen → luma UV scale
+uniform float uGamma;            // 2.2
+uniform float uAOAmt;            // 0..0.2
+uniform float uContrast;         // 1.0..1.2
+uniform float uSaturation;       // 0.9..1.1
+uniform vec3  uGroutRGB;         // sRGB 0..1
+uniform float uGroutPx;          // grout width in WORLD px (converted before)
+uniform vec2  uBond;             // (rowOffset, colOffset) for brick/herringbone
+uniform float uDepthMix;         // 0..1 extra tint by depth
+uniform vec3  uWaterTint;        // linear rgb
+
+vec3 toLinear(vec3 c){ return pow(c, vec3(uGamma)); }
+vec3 toSRGB(vec3 c){ return pow(c, vec3(1.0/uGamma)); }
+
+// Simple cell hash for jitter
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453123); }
+
+void main(){
+  // Bond pattern (row/col UV offsets)
+  vec2 uv = vUV;
+  // (Implement brick/herringbone offsets here based on uBond)
+
+  // Grout mask in UV space (cheap: modular thresholds)
+  vec2 cell = fract(uv);
+  float g = smoothstep(0.0, uGroutPx, min(cell.x, 1.0 - cell.x));
+  g = min(g, smoothstep(0.0, uGroutPx, min(cell.y, 1.0 - cell.y)));
+
+  // Base tex (linear color)
+  vec3 base = toLinear(texture2D(uTex, uv).rgb);
+
+  // Variation (tiny rotation/jitter)
+  float j = hash(floor(uv));
+  base = mix(base*0.98, base*1.02, j);
+
+  // Scene luminance modulation (match lighting)
+  vec2 luv = gl_FragCoord.xy * uLumaScale;
+  float L = texture2D(uLuma, luv).r; // 0..1
+  base *= mix(0.9, 1.1, L);
+
+  // Depth tint (pool interiors)
+  base = mix(base, uWaterTint, uDepthMix);
+
+  // Contrast / saturation in linear
+  float luma = dot(base, vec3(0.333));
+  base = mix(vec3(luma), base, uSaturation);
+  base = (base - 0.5) * uContrast + 0.5;
+
+  // Edge AO (seating)
+  float ao = texture2D(uAO, luv).r * uAOAmt;
+  base *= (1.0 - ao);
+
+  // Grout composite (in linear)
+  vec3 grout = toLinear(uGroutRGB);
+  vec3 col = mix(grout, base, g);
+
+  gl_FragColor = vec4(toSRGB(col), 1.0);
+}
+===============================================================================
+TEXTURE MANAGER (mipmaps + anisotropic)
+Build TextureManager.get(materialId, url) that:
+
+Loads via fetch → blob → Image → Pixi Texture.
+
+Enables baseTexture.mipmap = MIPMAP_MODES.ON.
+
+If supported: renderer.textureGC.anisotropicLevel = max.
+
+===============================================================================
+TILE SETTINGS UI (must be clean & fast)
+TileSettingsPanel.tsx when a mask with material is selected:
+
+Scale (locks to calibration; ±10% fine adjust).
+
+Rotate (0/45/90 snap + free).
+
+Offset X/Y (drag/arrow nudge).
+
+Bond: straight / brick50 / herringbone.
+
+Grout: width (mm) + color.
+
+Scene Match: toggle (enables luminance modulation).
+
+Depth Tint (0..1) + Water Color (for interiors).
+
+Feather/AO slider (2–8 px, 0..0.2).
+
+Dev toggles: UV grid, AO view, Luma view.
+
+All controls update uniforms instantly; geometry only rebuilds on mask point changes.
+
+===============================================================================
+EXPORT PIPELINE
+Command: “Export Before/After”.
+
+Render WebGL pass offscreen at target res, composite with photo, then overlay Konva outlines (if requested).
+
+Downscale with high-quality filter, apply slight sharpen + 1–2% grain.
+
+Include detail crops and the quote PDF in the bundle.
+
+===============================================================================
+QA / DIAGNOSTICS (temporary)
+Anchor dots rendered by both Konva and Pixi at (0,0), (imgW,0), (0,imgH) — they must overlap always.
+
+Toggle UV checkerboard (8-unit) to verify perspective and repeat.
+
+Console once per material: "[tex] loaded", id, size.
+
+Log per frame (throttled) during pan/zoom: "[T]", S, originX, originY.
+
+===============================================================================
+ACCEPTANCE (must pass)
+Apply a tile/stone to a mask: texture appears perspective-correct, with crisp grout; no blue tint.
+
+Pan/zoom: photo, outline, texture stay glued; repeat is world-true (no rubber-banding).
+
+Edge seating: subtle AO/feather removes “sticker” look.
+
+Scene Match ON: material brightness follows scene luminance (no washed-out look).
+
+Bond patterns + grout params render correctly and look realistic.
+
+Pool interior: depth tint + soft caustics show subtle water realism.
+
+Exported images look photographic (sharpened/grain-matched), suitable for client quotes.
+
+Mobile: ≥30 fps on mid devices; renderer degrades gracefully if needed.
+
+Implement everything above under RENDER_V2 without regressing existing features. If a legacy path conflicts, keep old code behind the flag and integrate the new renderer cleanly.

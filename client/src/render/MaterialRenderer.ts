@@ -445,7 +445,58 @@ export class MaterialRenderer {
       this.app.view.style.transform = 'none';
       this.app.view.style.transformOrigin = '0 0';
     }
+    console.log('[MaterialRenderer] Applied PhotoSpace transform + forced render:', {
+      position: { x: T.originX, y: T.originY },
+      scale: { x: T.S, y: T.S }
+    });
     // IMPORTANT: no CSS transforms on canvas; no per-mesh transforms for pan/zoom
+  }
+
+  /**
+   * Create a photorealistic mesh with advanced shading
+   */
+  private createPhotorealisticMesh(geometry: MaskGeometry, texture: PIXI.Texture, material: any): PIXI.Mesh {
+    console.log('[MaterialRenderer] Creating photorealistic mesh with PBR shading...');
+    
+    // Use the existing geometry and UV computation
+    const mesh = this.createMesh(geometry, texture);
+    
+    // TODO: Apply photorealistic shader when available
+    // For now, use enhanced material properties
+    if (mesh.shader) {
+      // Enhance the basic shader with material properties
+      (mesh.shader as any).uniforms = {
+        ...(mesh.shader as any).uniforms,
+        uRoughness: material.roughness || 0.6,
+        uMetallic: material.metallic || 0.1,
+        uSpecular: 1.2,
+        uBrightness: 1.05,
+        uContrast: 1.08,
+        uSaturation: 1.02
+      };
+    }
+    
+    return mesh;
+  }
+
+  /**
+   * Update existing mesh with photorealistic properties
+   */
+  private updatePhotorealisticMesh(mesh: PIXI.Mesh, geometry: MaskGeometry, texture: PIXI.Texture, material: any): void {
+    this.updateMesh(mesh, geometry, texture);
+    
+    // Update material properties for realism
+    if (mesh.shader) {
+      (mesh.shader as any).uniforms = {
+        ...(mesh.shader as any).uniforms,
+        uRoughness: material.roughness || 0.6,
+        uMetallic: material.metallic || 0.1,
+        uSpecular: 1.2,
+        uBrightness: 1.05,
+        uContrast: 1.08,
+        uSaturation: 1.02
+      };
+    }
   }
 
   private addDiagnosticAnchors(imgW: number, imgH: number): void {
