@@ -222,23 +222,33 @@ export class MaterialRenderer {
         // The mesh positioning will handle the transformation
         const meshVertices = triangulated.vertices;
 
-        // Create mesh geometry using PixiJS v8 syntax
-        const geometry = new PIXI.MeshGeometry({
-          positions: new Float32Array(meshVertices),
-          uvs: new Float32Array(uvs),
-          indices: new Uint32Array(triangulated.indices)
+        // Create geometry with v8 syntax
+        const geometry = new PIXI.Geometry({
+          attributes: {
+            aVertexPosition: {
+              buffer: new PIXI.Buffer(new Float32Array(meshVertices)),
+              size: 2
+            },
+            aTextureCoord: {
+              buffer: new PIXI.Buffer(new Float32Array(uvs)),
+              size: 2
+            }
+          },
+          indexBuffer: new PIXI.Buffer(new Uint16Array(triangulated.indices), true)
         });
         
-        // Ensure texture has proper address mode for tiling
-        texture.source.addressMode = 'repeat';
-        
-        // Create mesh with geometry and texture
+        // Create mesh
         mesh = new PIXI.Mesh(geometry, texture);
         
-        // Ensure visibility
+        // Ensure mesh visibility and basic settings
         mesh.visible = true;
         mesh.alpha = 1.0;
         mesh.tint = 0xFFFFFF;
+        
+        // Set texture repeat mode
+        if (texture?.source) {
+          texture.source.wrapMode = 'repeat';
+        }
         
         console.info('[MaterialRenderer] Mesh created with texture:', texture.width, 'x', texture.height);
         
