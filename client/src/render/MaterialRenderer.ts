@@ -104,7 +104,7 @@ export class MaterialRenderer {
       this.app.canvas.style.left = '0';
       this.app.canvas.style.width = '100%';
       this.app.canvas.style.height = '100%';
-      this.app.canvas.style.backgroundColor = 'rgba(255,0,0,0.1)'; // Light red tint to debug visibility
+      // Transparent background for production use
       
       console.info('[MaterialRenderer] Canvas added with debug styling:', {
         canvas: this.app.canvas,
@@ -141,11 +141,17 @@ export class MaterialRenderer {
     materials: Material[],
     config: RenderConfig
   ): Promise<void> {
-    // Apply stage-level transform to sync with image transforms
+    // Apply image transform to sync WebGL with Konva stage
     if (this.app?.stage && config?.imageTransform) {
       const transform = config.imageTransform;
+      // Apply the same transform that's applied to the Konva image
       this.app.stage.position.set(transform.x, transform.y);
       this.app.stage.scale.set(transform.scaleX, transform.scaleY);
+      
+      console.info('[MaterialRenderer] Applied stage transform:', {
+        position: { x: transform.x, y: transform.y },
+        scale: { x: transform.scaleX, y: transform.scaleY }
+      });
     }
     if (!this.app || !this.isV2Enabled) return;
 
@@ -224,9 +230,16 @@ export class MaterialRenderer {
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Position mesh at origin - vertices are already in correct screen coordinates
-        mesh.position.set(0, 0);
-        mesh.scale.set(1, 1);
+        // Apply inverse image transform to mesh vertices to compensate for stage transform
+        if (config?.imageTransform) {
+          const transform = config.imageTransform;
+          // Offset mesh to compensate for stage transform  
+          mesh.position.set(-transform.x, -transform.y);
+          mesh.scale.set(1/transform.scaleX, 1/transform.scaleY);
+        } else {
+          mesh.position.set(0, 0);
+          mesh.scale.set(1, 1);
+        }
         mesh.rotation = 0;
         
         // Debug mesh properties with coordinate analysis
