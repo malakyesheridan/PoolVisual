@@ -222,22 +222,16 @@ export class MaterialRenderer {
         // The mesh positioning will handle the transformation
         const meshVertices = triangulated.vertices;
 
-        // Create geometry with v8 syntax
-        const geometry = new PIXI.Geometry({
-          attributes: {
-            aVertexPosition: {
-              buffer: new PIXI.Buffer(new Float32Array(meshVertices)),
-              size: 2
-            },
-            aTextureCoord: {
-              buffer: new PIXI.Buffer(new Float32Array(uvs)),
-              size: 2
-            }
-          },
-          indexBuffer: new PIXI.Buffer(new Uint16Array(triangulated.indices), true)
-        });
+        // Simple working geometry creation
+        const positions = new Float32Array(meshVertices);
+        const textureCoords = new Float32Array(uvs);
+        const indices = new Uint16Array(triangulated.indices);
         
-        // Create mesh
+        const geometry = new PIXI.MeshGeometry({
+          positions: positions,
+          uvs: textureCoords, 
+          indices: indices
+        });
         mesh = new PIXI.Mesh(geometry, texture);
         
         // Ensure mesh visibility and basic settings
@@ -245,9 +239,13 @@ export class MaterialRenderer {
         mesh.alpha = 1.0;
         mesh.tint = 0xFFFFFF;
         
-        // Set texture repeat mode
-        if (texture?.source) {
-          texture.source.wrapMode = 'repeat';
+        // Force texture repeat
+        try {
+          if (texture && texture.source) {
+            texture.source.addressMode = 'repeat';
+          }
+        } catch (e) {
+          // Ignore if not supported
         }
         
         console.info('[MaterialRenderer] Mesh created with texture:', texture.width, 'x', texture.height);
