@@ -144,11 +144,11 @@ export class MaterialRenderer {
     // Apply image transform to sync WebGL with Konva stage
     if (this.app?.stage && config?.imageTransform) {
       const transform = config.imageTransform;
-      // Apply the same transform that's applied to the Konva image
+      // Apply PhotoSpace transform - originX/Y is the position, S is the scale
       this.app.stage.position.set(transform.x, transform.y);
       this.app.stage.scale.set(transform.scaleX, transform.scaleY);
       
-      console.info('[MaterialRenderer] Applied stage transform:', {
+      console.info('[MaterialRenderer] Applied PhotoSpace transform:', {
         position: { x: transform.x, y: transform.y },
         scale: { x: transform.scaleX, y: transform.scaleY }
       });
@@ -231,15 +231,10 @@ export class MaterialRenderer {
         mesh.tint = 0xFFFFFF;
         
         // Apply inverse image transform to mesh vertices to compensate for stage transform
-        if (config?.imageTransform) {
-          const transform = config.imageTransform;
-          // Offset mesh to compensate for stage transform  
-          mesh.position.set(-transform.x, -transform.y);
-          mesh.scale.set(1/transform.scaleX, 1/transform.scaleY);
-        } else {
-          mesh.position.set(0, 0);
-          mesh.scale.set(1, 1);
-        }
+        // With PhotoSpace Groups, masks are in image coordinate space
+        // The stage transform handles all positioning and scaling
+        mesh.position.set(0, 0);
+        mesh.scale.set(1, 1);
         mesh.rotation = 0;
         
         // Debug mesh properties with coordinate analysis

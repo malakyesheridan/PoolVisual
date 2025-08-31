@@ -169,15 +169,21 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     const updateRenderer = async () => {
       if (!renderV2Enabled || !materialRendererRef.current) return;
 
-      // Convert masks to WebGL format - masks should be stored in image coordinates
+      // Convert masks to WebGL format - convert screen coordinates to image coordinates
       const webglMasks: MaskGeometry[] = getAllMasks()
         .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
-        .map(mask => ({
-          maskId: mask.id,
-          points: mask.polygon!, // Points should be in image coordinate space
-          materialId: mask.material_id!,
-          meta: mask.material_meta
-        }));
+        .map(mask => {
+          // Mask points are already in image coordinate space for this PhotoSpace system
+          // The PhotoSpace transform handles the conversion to screen coordinates
+          const imagePoints = mask.polygon!;
+          
+          return {
+            maskId: mask.id,
+            points: imagePoints,
+            materialId: mask.material_id!,
+            meta: mask.material_meta
+          };
+        });
 
       // Get render configuration using PhotoSpace transform
       const pxPerMeter = getPxPerMeter() || 100; // Default if no calibration
