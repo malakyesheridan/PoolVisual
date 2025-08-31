@@ -141,6 +141,12 @@ export class MaterialRenderer {
     materials: Material[],
     config: RenderConfig
   ): Promise<void> {
+    // Apply stage-level transform to sync with image transforms
+    if (this.app?.stage && config?.imageTransform) {
+      const transform = config.imageTransform;
+      this.app.stage.position.set(transform.x, transform.y);
+      this.app.stage.scale.set(transform.scaleX, transform.scaleY);
+    }
     if (!this.app || !this.isV2Enabled) return;
 
     // Clear existing meshes that are no longer needed
@@ -199,29 +205,13 @@ export class MaterialRenderer {
           mask.meta?.offsetY || 0
         );
 
-        // Transform vertices from screen space to image-relative space
-        let transformedVertices = triangulated.vertices;
-        if (config?.imageTransform) {
-          const transform = config.imageTransform;
-          transformedVertices = new Float32Array(triangulated.vertices.length);
-          
-          for (let i = 0; i < triangulated.vertices.length; i += 2) {
-            // Convert screen coordinates to image-relative coordinates
-            const screenX = triangulated.vertices[i] ?? 0;
-            const screenY = triangulated.vertices[i + 1] ?? 0;
-            
-            // Transform from screen space to image space
-            const imageRelativeX = (screenX - transform.x) / transform.scaleX;
-            const imageRelativeY = (screenY - transform.y) / transform.scaleY;
-            
-            transformedVertices[i] = imageRelativeX;
-            transformedVertices[i + 1] = imageRelativeY;
-          }
-        }
+        // Use vertices in their original screen space coordinates
+        // The mesh positioning will handle the transformation
+        const meshVertices = triangulated.vertices;
 
         // Create mesh geometry compatible with PixiJS v8
         const geometry = new PIXI.MeshGeometry({
-          positions: new Float32Array(transformedVertices),
+          positions: new Float32Array(meshVertices),
           uvs: new Float32Array(uvs),
           indices: new Uint32Array(triangulated.indices) // Fixed: use Uint32Array
         });
@@ -234,20 +224,14 @@ export class MaterialRenderer {
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Position mesh exactly where the image is positioned
-        if (config?.imageTransform) {
-          const transform = config.imageTransform;
-          mesh.position.set(transform.x, transform.y);
-          mesh.scale.set(transform.scaleX, transform.scaleY);
-        } else {
-          mesh.position.set(0, 0);
-          mesh.scale.set(1, 1);
-        }
+        // Position mesh at origin - vertices are already in correct screen coordinates
+        mesh.position.set(0, 0);
+        mesh.scale.set(1, 1);
         mesh.rotation = 0;
         
         // Debug mesh properties with coordinate analysis
         const vertices = Array.from(triangulated.vertices);
-        const transformedArray = Array.from(transformedVertices);
+        const meshArray = Array.from(meshVertices);
         console.info('[MaterialRenderer] Mesh created with properties:', {
           vertices: triangulated.vertices.length / 2,
           triangles: triangulated.indices.length / 3,
@@ -259,8 +243,7 @@ export class MaterialRenderer {
             width: mesh.width,
             height: mesh.height
           },
-          originalVertexSample: vertices.slice(0, 6), // First 3 original coords
-          transformedVertexSample: transformedArray.slice(0, 6), // First 3 transformed coords
+          vertexSample: meshArray.slice(0, 6), // First 3 coords
           uvSample: Array.from(uvs.slice(0, 6)), // First 3 UV coords
           imageTransform: config?.imageTransform,
           visible: mesh.visible,

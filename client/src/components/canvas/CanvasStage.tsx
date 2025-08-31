@@ -209,15 +209,8 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
 
   return (
     <div className={className} style={{ position: 'relative' }}>
-      {/* WebGL Layer - positioned above background but below masks */}
-      <div 
-        id="gl-layer" 
-        className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 1.5 }}
-      />
-      
-      {/* Konva Stage - positioned above WebGL */}
-      <div style={{ position: 'relative', zIndex: 2 }}>
+      {/* Konva Stage - Base layer with image */}
+      <div style={{ position: 'relative', zIndex: 1 }}>
         <Stage
         ref={stageRef}
         width={stageDimensions.width} 
@@ -338,6 +331,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
         </Layer>
         </Stage>
       </div>
+      
+      {/* WebGL Layer - positioned ABOVE Konva Stage to render on top */}
+      <div 
+        id="gl-layer" 
+        className="absolute inset-0 pointer-events-none"
+        style={{ zIndex: 2 }}
+      />
     </div>
   );
 }
