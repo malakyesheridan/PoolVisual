@@ -1,20 +1,24 @@
 /**
- * UV coordinate mapping for world-space material texturing
- * Converts screen coordinates to world-space UVs based on calibration
+ * PhotoReal UV Mapping System - World-space material texturing
+ * Converts image-space coordinates to world-space UVs for realistic material rendering
  */
 
 /**
- * Compute world-space UV coordinates for polygon vertices
- * @param points Polygon vertices in screen pixels
- * @param pxPerMeter Calibration factor (pixels per meter)
- * @param rotationDeg Material rotation in degrees
- * @param offsetX Material offset in world space (meters)
- * @param offsetY Material offset in world space (meters)
- * @returns UV coordinates as Float32Array
+ * Compute photorealistic world-space UV coordinates for polygon vertices
+ * Uses proper perspective-corrected UV mapping based on physical material dimensions
+ * 
+ * @param points Polygon vertices in IMAGE SPACE pixels (not screen space)
+ * @param pxPerMeter Calibration factor (pixels per meter from calibration)
+ * @param material Material with physical dimensions for repeat calculation
+ * @param rotationDeg Material rotation in degrees (user adjustment)
+ * @param offsetX Material U offset in material units (user adjustment)
+ * @param offsetY Material V offset in material units (user adjustment)
+ * @returns UV coordinates as Float32Array for shader use
  */
 export function computeWorldUVs(
   points: { x: number; y: number }[],
   pxPerMeter: number,
+  material?: any,
   rotationDeg = 0,
   offsetX = 0,
   offsetY = 0
@@ -23,61 +27,52 @@ export function computeWorldUVs(
     return new Float32Array();
   }
 
-  // Calculate polygon bounds for normalization
+  // Calculate physical repeat size from material properties
+  const repeatM = calculatePhysicalRepeat(material);
+  
+  // Find polygon bounds for basis calculation
   const bounds = calculateBounds(points);
-  const width = bounds.maxX - bounds.minX;
-  const height = bounds.maxY - bounds.minY;
-
-  // Compute UVs for each vertex using simple normalized coordinates
+  const localBasis = calculateLocalBasis(points, bounds);
+  
+  // Reference point (typically first vertex or centroid)
+  const p0 = points[0];
+  
+  // Rotation transformation matrices
+  const rotRad = (rotationDeg * Math.PI) / 180;
+  const cosR = Math.cos(rotRad);
+  const sinR = Math.sin(rotRad);
+  
+  // Compute UVs for each vertex in world space
   const uvs = new Float32Array(points.length * 2);
   
   for (let i = 0; i < points.length; i++) {
-    const point = points[i];
+    const p = points[i];
     
-    // Normalize to 0-1 range based on polygon bounds
-    let u = (point.x - bounds.minX) / width;
-    let v = (point.y - bounds.minY) / height;
+    // Convert to world coordinates (meters from reference point)
+    const worldU = ((p.x - p0.x) * localBasis.uDir.x + (p.y - p0.y) * localBasis.uDir.y) / pxPerMeter;
+    const worldV = ((p.x - p0.x) * localBasis.vDir.x + (p.y - p0.y) * localBasis.vDir.y) / pxPerMeter;
     
-    // Clamp to prevent texture sampling outside valid range
-    u = Math.max(0, Math.min(1, u));
-    v = Math.max(0, Math.min(1, v));
+    // Apply user rotation around origin
+    const rotatedU = worldU * cosR - worldV * sinR;
+    const rotatedV = worldU * sinR + worldV * cosR;
     
-    // Apply rotation if specified (simple 2D rotation)
-    if (rotationDeg !== 0) {
-      const rotationRad = (rotationDeg * Math.PI) / 180;
-      const cosR = Math.cos(rotationRad);
-      const sinR = Math.sin(rotationRad);
-      
-      // Rotate around center (0.5, 0.5)
-      const centerU = u - 0.5;
-      const centerV = v - 0.5;
-      
-      const rotatedU = centerU * cosR - centerV * sinR;
-      const rotatedV = centerU * sinR + centerV * cosR;
-      
-      u = rotatedU + 0.5;
-      v = rotatedV + 0.5;
-    }
+    // Convert to material UV space (tiles per meter)
+    let u = rotatedU / repeatM + offsetX;
+    let v = rotatedV / repeatM + offsetY;
     
-    // Apply offsets (wrap to keep in 0-1 range)
-    u = (u + offsetX) % 1;
-    v = (v + offsetY) % 1;
-    
-    // Ensure positive values
-    if (u < 0) u += 1;
-    if (v < 0) v += 1;
-    
-    // Store UV coordinates
+    // Store UV coordinates (can exceed 0-1 range for tiling)
     uvs[i * 2] = u;
     uvs[i * 2 + 1] = v;
   }
 
-  console.debug('[uv] Computed UVs:', {
+  console.debug('[uv] Computed PhotoReal UVs:', {
     points: points.length,
     pxPerMeter,
+    repeatM,
     rotation: rotationDeg,
     offset: { x: offsetX, y: offsetY },
-    bounds: bounds,
+    bounds,
+    basis: localBasis,
     uvRange: {
       u: [Math.min(...Array.from(uvs).filter((_, i) => i % 2 === 0)), 
           Math.max(...Array.from(uvs).filter((_, i) => i % 2 === 0))],

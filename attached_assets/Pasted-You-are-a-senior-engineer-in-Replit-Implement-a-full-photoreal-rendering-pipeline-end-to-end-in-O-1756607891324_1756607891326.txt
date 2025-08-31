@@ -1,0 +1,284 @@
+You are a senior engineer in Replit. **Implement a full photoreal rendering pipeline end-to-end in ONE pass** so materials look photographed (not stickers) and stay glued to the photo during pan/zoom. Keep ALL current features (masks, calibration, materials library, quoting, mobile). Do not regress anything. If an edge case is unclear, make the safest choice, document it in comments, and proceed.
+
+===============================================================================
+0) GUARANTEES / GUARDRAILS (DO NOT BREAK)
+===============================================================================
+- No stage-level scaling. Use a single **PhotoSpace** transform `{S, originX, originY}` that both Konva and the WebGL renderer share.
+- Store mask vertices ONLY in **IMAGE SPACE** (original image pixels). Never store screen-space points.
+- Materials, pricing, jobs, and quotes must continue working as before.
+- Feature flag the new renderer: `RENDER_V2=true` → use new pipeline; otherwise fall back to current.
+
+===============================================================================
+1) DIRECTORY / FILES TO ADD
+===============================================================================
+client/
+src/state/photoTransformStore.ts # canonical PhotoSpace transform
+src/render/MaterialRenderer.ts # Pixi app + stage transform + mesh registry
+src/render/mesh/triangulate.ts # earcut wrapper (polygon -> indices/verts)
+src/render/mesh/uv.ts # image-space -> world UVs (meters + repeat)
+src/render/textures/TextureManager.ts # fetch->blob->image->Pixi.Texture (mipmaps, AF)
+src/render/shaders/MaterialPass.ts # GLSL fragment shader (lighting, grout, AO)
+src/render/shaders/LuminancePass.ts # build luminance texture from photo
+src/render/shaders/AOPass.ts # edge distance/AO mask generator
+src/components/editor/TileSettingsPanel.tsx # realism controls for selected mask
+src/components/canvas/PhotoCanvas.tsx # Konva + Pixi mounting, subscriptions, IO mapping
+server/
+routes/textureProxy.ts # already present; ensure enabled for CORS safety
+
+php
+Copy code
+
+===============================================================================
+2) PHOTO TRANSFORM (SINGLE SOURCE OF TRUTH)
+===============================================================================
+- Create `usePhoto` store with:
+  ```ts
+  type PhotoTransform = { S:number; originX:number; originY:number };
+  type PhotoState = {
+    imgW:number; imgH:number;
+    containerW:number; containerH:number;
+    fitScale:number; zoom:number; panX:number; panY:number;
+    T: PhotoTransform;
+    setContainer(w:number,h:number):void;
+    setPan(x:number,y:number):void;          // updates T
+    setZoom(z:number, anchorScr?:{x:number,y:number}):void; // zoom-around-cursor; updates T
+    setImageSize(w:number,h:number):void;    // called when image loads
+    recompute():void;                        // recompute T from current state
+  }
+recompute() sets T as:
+
+ts
+Copy code
+const S = fitScale * zoom;
+const originX = panX + (containerW - imgW * S)/2;
+const originY = panY + (containerH - imgH * S)/2;
+All pointer input uses inverse mapping:
+
+ts
+Copy code
+const imgX = (screenX - T.originX)/T.S, imgY = (screenY - T.originY)/T.S;
+===============================================================================
+3) KANONICAL KONVA LAYER (EDITOR UI)
+PhotoCanvas.tsx:
+
+Stage scaleX=scaleY=1.
+
+A single photoGroup inside the main Layer with:
+
+ini
+Copy code
+x=T.originX, y=T.originY, scaleX=scaleY=T.S
+Background image node at (0,0) with width=imgW, height=imgH.
+
+Mask outlines rendered from mask.pointsImg (image-space). No extra x/y/scale on individual Lines. Stroke widths/handle sizes divide by T.S to remain screen-constant.
+
+All draw/edit tools convert pointer screen → image using the inverse mapping above.
+
+===============================================================================
+4) PIXI/WEBGL MATERIAL RENDERER (GLUE TO TRANSFORM)
+MaterialRenderer.ts:
+
+Create new PIXI.Application({ width:containerW, height:containerH, backgroundAlpha:0, autoDensity:true, resolution:devicePixelRatio, powerPreference:'high-performance' }).
+
+Append app.view into an absolutely positioned <div id="gl-layer" class="absolute inset-0 pointer-events-none"> under the Konva outlines.
+
+NO CSS transforms on the canvas. All pan/zoom via app.stage.position.set(T.originX, T.originY) and app.stage.scale.set(T.S, T.S).
+
+Subscribe to usePhoto with select(s => s.T) and call setTransform(T) on every update (pans must track per-frame).
+
+Expose APIs:
+
+ts
+Copy code
+addOrUpdateMesh(maskId:string, vertsImg:Float32Array, indices:Uint16Array, material:any, uniforms:any): void
+removeMesh(maskId:string): void
+setUniforms(maskId:string, uniforms:Partial<Uniforms>): void
+resize(w:number,h:number): void
+setTransform(T:PhotoTransform): void
+===============================================================================
+5) TRIANGULATION & UVs
+triangulate.ts: wrap earcut. Inputs: image-space polygon [{xImg,yImg}]. Outputs:
+
+verts as Float32Array [x0,y0, x1,y1, ...] in IMAGE SPACE.
+
+indices as Uint16Array.
+
+uv.ts: compute world UVs using calibration & material repeat:
+
+pxPerMeter from calibration store.
+
+Physical repeat (meters):
+
+ini
+Copy code
+repeatM = physical_repeat_m || sheet_width_mm/1000 || tile_width_mm/1000 || 0.30
+Basis:
+
+Pick longest edge vector e = normalize(p_j - p_i) (image space).
+
+uDir = e, vDir = perp(e) (2D perpendicular).
+
+For vertex p:
+
+ini
+Copy code
+worldU = dot(p - p0, uDir) / pxPerMeter
+worldV = dot(p - p0, vDir) / pxPerMeter
+Apply user rotation θ and offsets (offU, offV) then UV = ((u*cos - v*sin)/repeatM + offU, (u*sin + v*cos)/repeatM + offV).
+
+Return uvs: Float32Array [u0,v0, u1,v1, ...].
+
+===============================================================================
+6) TEXTURE MANAGER
+TextureManager.get(materialId, url): fetch via /api/texture?url=... → blob → HTMLImageElement → PIXI.Texture.from(img).
+
+Enable texture.baseTexture.mipmap = PIXI.MIPMAP_MODES.ON.
+
+If renderer supports AF, set maximum anisotropic level.
+
+Warn in console if img.width < 1024 || img.height < 1024.
+
+===============================================================================
+7) SHADERS
+Use a custom Pixi Shader (MeshMaterial) with:
+
+Uniforms:
+
+scss
+Copy code
+uTex (sampler2D)        // material
+uLuma (sampler2D)       // luminance map
+uAO (sampler2D)         // edge seating mask
+uLumaScale (vec2)       // screen -> luma UV scale
+uGamma (float=2.2)
+uAOAmt (float=0..0.2)
+uContrast (float=1.0..1.2)
+uSaturation (float=0.9..1.1)
+uGroutRGB (vec3)        // sRGB grout color
+uGroutPx (float)        // grout width in WORLD px (convert before)
+uBond (vec2)            // row/col offsets; 0 for straight, 0.5 for brick50; special mode for herringbone
+uDepthMix (float)       // 0..1 for pool interiors
+uWaterTint (vec3)       // linear color tint
+MaterialPass.ts (GLSL) — implement:
+
+UV transforms for bond patterns (straight/brick50; herringbone uses ±45° basis).
+
+Grout as param: threshold fract(uv) against uGroutPx / repeatPxInUV.
+
+Linear color pipeline: convert texture to linear, modulate by luminance sample, apply contrast/saturation, AO darken near edges, optional depth tint and subtle caustics (low amplitude noise).
+
+Convert back to sRGB for output.
+
+Provide a minimal working GLSL (you can start from pseudo already supplied; compile with Pixi v8).
+
+===============================================================================
+8) LUMINANCE & AO PASSES
+LuminancePass:
+
+From the background photo (already in memory), build a downsampled luminance texture (power-of-two preferred).
+
+sRGB → linear → dot(linear, vec3(0.2126,0.7152,0.0722)).
+
+Store as single-channel or RGB with equal values.
+
+AOPass (edge seating):
+
+Rasterize mask polygon to a low-res mask; compute inward distance field (4–8 px) using jump-flood or separable blur as an approximation.
+
+Normalize to 0..1; AO = smoothstep(0.0, 1.0, 1 - dist/maxDist) * uAOAmt.
+
+===============================================================================
+9) UI — TILE SETTINGS PANEL
+When a mask with a material is selected, show TileSettingsPanel with live controls:
+
+Scale (±10% around calibrated repeat; updates UV scaling).
+
+Rotate (snap 0/45/90; also free rotate).
+
+Offset X/Y (nudges pan of the texture).
+
+Bond (straight, brick50, herringbone).
+
+Grout (width mm + color).
+
+Match Scene (toggle luminance modulation).
+
+Depth Tint (0..1) & Water Color (RGB) for pool interiors.
+
+AO/Feather sliders (0..0.2, 2–8 px).
+
+On change, call renderer.setUniforms(maskId, { ... }) with only the changed uniforms (no geometry rebuild unless mask points changed).
+
+===============================================================================
+10) PAN/ZOOM/RESIZE WIRES (FINAL FIX FOR SYNC)
+PhotoCanvas.tsx mounts Konva and Pixi. On mount:
+
+ResizeObserver → usePhoto.setContainer(w,h) and renderer.resize(w,h).
+
+Subscribe to usePhoto(s => s.T) and call both:
+
+photoGroup.setAttrs({ x:T.originX, y:T.originY, scaleX:T.S, scaleY:T.S })
+
+materialRenderer.setTransform(T)
+
+Wheel: use usePhoto.setZoom(z, {x: clientX, y: clientY}).
+
+Drag to pan: usePhoto.setPan(panX+dx, panY+dy).
+
+===============================================================================
+11) EXPORT PIPELINE
+Add Export command:
+
+Create an offscreen Pixi renderer at target resolution (1×/2×).
+
+Render: background photo sprite → material meshes (with all passes) → (optional) thin outline overlay.
+
+Downscale with HQ filter; apply 0.2–0.4px sharpen + 1–2% grain to match photo texture.
+
+Bundle: before/after image(s), 2–3 detail crops, and existing quote PDF.
+
+===============================================================================
+12) PERFORMANCE & FALLBACKS
+One Pixi app; one mesh per mask.
+
+Rebuild geometry only when mask.pointsImg changes; transform & uniforms update every frame via store subscription.
+
+Enable mipmaps + AF; cap AO/luma textures for mobile to maintain ≥30fps; disable caustics on low-end GPUs.
+
+If RENDER_V2=false or WebGL fails, fall back to the existing non-photoreal path automatically.
+
+===============================================================================
+13) DIAGNOSTICS (TEMP; REMOVE AFTER ACCEPTANCE)
+Render three anchor dots at (0,0), (imgW,0), (0,imgH) in BOTH Konva and Pixi. They must overlap at all times while panning/zooming.
+
+Dev toggles:
+
+UV Checkerboard (8-unit grid).
+
+Show Luminance Map / AO Mask.
+
+Console once per material: "[tex] loaded", id, w, h, mipmap, AF.
+
+Throttled per-frame log during pan: "[T]", S, originX, originY to verify stage updates.
+
+===============================================================================
+14) ACCEPTANCE TESTS (MUST PASS)
+Glue test: Draw a mask, apply a material. Pan/zoom/resize → photo, outline, and texture remain perfectly aligned; no lag.
+
+Perspective: Grout lines converge with the scene’s vanishing lines; no flat tiling.
+
+Lighting: With “Match Scene” ON, material brightness follows existing photo lighting; no washed-out overlay.
+
+Edges: Feather + AO seat the material; no halo. Outline remains 1–2 px visually at any zoom.
+
+Tile realism: Grout width/color render cleanly; bond patterns work; slight per-tile variation avoids repetition.
+
+Pool interior: Depth tint + subtle caustics + mild edge brighten read as believable water.
+
+Export: Final images look photographic (crisp grout, no aliasing), bundle includes before/after + crops + quote; file sizes reasonable.
+
+Mobile: Interaction is smooth (≥30fps). If GPU is weak, renderer auto-degrades (lower AO/Luma resolution, no caustics) without breaking alignment.
+
+No regressions: Materials persist, appear in editor, and quoting still uses mask area × material pricing.
+
+Implement everything above behind RENDER_V2. Keep the old path intact for fallback. When done, leave diagnostic toggles available via a dev flag so we can validate quickly.
