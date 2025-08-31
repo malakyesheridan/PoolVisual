@@ -90,6 +90,21 @@ export class MaterialRenderer {
       // Mount canvas
       container.appendChild(this.app.canvas);
       
+      // Add debug styling to make canvas visible
+      this.app.canvas.style.position = 'absolute';
+      this.app.canvas.style.top = '0';
+      this.app.canvas.style.left = '0';
+      this.app.canvas.style.width = '100%';
+      this.app.canvas.style.height = '100%';
+      this.app.canvas.style.border = '3px solid lime'; // Debug border
+      
+      console.info('[MaterialRenderer] Canvas added with debug styling:', {
+        canvas: this.app.canvas,
+        container: container.id,
+        canvasSize: { width: this.app.canvas.width, height: this.app.canvas.height },
+        containerSize: { width: container.clientWidth, height: container.clientHeight }
+      });
+      
       // Set up resize observer
       this.resizeObserver = new ResizeObserver(() => {
         if (this.app && this.container) {
@@ -160,17 +175,35 @@ export class MaterialRenderer {
       if (!mesh) {
         needsGeometryUpdate = true;
         
-        // Create simple mesh with texture (fallback to basic approach)
-        const geometry = new PIXI.Geometry();
+        // Create mesh with proper PixiJS v8 geometry construction
         const texture = await this.getBasicTexture(material);
-        
         if (!texture) return;
+        
+        // Triangulate and create geometry data upfront
+        const triangulated = triangulate(mask.points);
+        if (!triangulated) return;
+
+        const uvs = computeWorldUVs(
+          mask.points,
+          config.pxPerMeter,
+          mask.meta?.rotationDeg || 0,
+          mask.meta?.offsetX || 0,
+          mask.meta?.offsetY || 0
+        );
+
+        // Create mesh geometry compatible with PixiJS v8
+        const geometry = new PIXI.MeshGeometry({
+          positions: new Float32Array(triangulated.vertices),
+          uvs: new Float32Array(uvs),
+          indices: new Uint16Array(triangulated.indices)
+        });
         
         mesh = new PIXI.Mesh({ geometry, texture });
         
         if (mesh) {
           this.app.stage.addChild(mesh);
           this.meshes.set(mask.maskId, mesh);
+          console.info('[MaterialRenderer] Added mesh to stage:', mask.maskId, 'vertices:', triangulated.vertices.length/2);
         }
       }
 
@@ -203,30 +236,21 @@ export class MaterialRenderer {
     mask: MaskGeometry,
     config: RenderConfig
   ): Promise<void> {
-    // Triangulate polygon
-    const triangulated = triangulate(mask.points);
-    if (!triangulated) return;
+    // Geometry is now created in renderMaskMaterial, so this just updates texture
+    const material = this.getCurrentMaterial(mask);
+    if (material) {
+      const texture = await this.getBasicTexture(material);
+      if (texture && mesh.texture !== texture) {
+        mesh.texture = texture;
+        console.info('[MaterialRenderer] Updated mesh texture:', mask.maskId);
+      }
+    }
+  }
 
-    // Compute world-space UVs
-    const uvs = computeWorldUVs(
-      mask.points,
-      config.pxPerMeter,
-      mask.meta?.rotationDeg || 0,
-      mask.meta?.offsetX || 0,
-      mask.meta?.offsetY || 0
-    );
-
-    // Update geometry using v8 API - simplified approach
-    const geometry = mesh.geometry;
-    
-    // Create attribute data using PixiJS v8 API with usage
-    const positionBuffer = new PIXI.Buffer({ data: triangulated.vertices, usage: PIXI.BufferUsage.VERTEX });
-    const uvBuffer = new PIXI.Buffer({ data: uvs, usage: PIXI.BufferUsage.VERTEX });  
-    const indexBuffer = new PIXI.Buffer({ data: triangulated.indices, usage: PIXI.BufferUsage.INDEX });
-    
-    geometry.addAttribute('aPosition', positionBuffer, 2);
-    geometry.addAttribute('aUV', uvBuffer, 2);
-    geometry.addIndex(indexBuffer);
+  private getCurrentMaterial(mask: MaskGeometry): Material | null {
+    // This is a temporary helper - in the real implementation this would come from the mask's materialId
+    // For now, return null since material selection is handled elsewhere
+    return null;
   }
 
   private async getBasicTexture(material: Material): Promise<PIXI.Texture | null> {
