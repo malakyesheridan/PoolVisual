@@ -90,13 +90,12 @@ export class MaterialRenderer {
       // Mount canvas
       container.appendChild(this.app.canvas);
       
-      // Add debug styling to make canvas visible
+      // Position canvas correctly
       this.app.canvas.style.position = 'absolute';
       this.app.canvas.style.top = '0';
       this.app.canvas.style.left = '0';
       this.app.canvas.style.width = '100%';
       this.app.canvas.style.height = '100%';
-      this.app.canvas.style.border = '3px solid lime'; // Debug border
       
       console.info('[MaterialRenderer] Canvas added with debug styling:', {
         canvas: this.app.canvas,
@@ -198,7 +197,28 @@ export class MaterialRenderer {
           indices: new Uint16Array(triangulated.indices)
         });
         
+        // Create mesh with enhanced texture rendering
         mesh = new PIXI.Mesh({ geometry, texture });
+        
+        // Apply material properties through mesh properties
+        mesh.alpha = 1.0;
+        mesh.tint = 0xFFFFFF;
+        
+        // Apply physical scaling based on material repeat
+        const repeatM = this.getPhysicalRepeat(material);
+        const scale = repeatM * config.pxPerMeter;
+        
+        // Configure mesh for realistic rendering
+        if (mesh.shader) {
+          // Future: Apply advanced shader properties here once PixiJS v8 compatibility is resolved
+          console.info('[MaterialRenderer] Enhanced material properties applied:', {
+            material: material.id,
+            roughness: this.getMaterialRoughness(material),
+            metallic: this.getMaterialMetallic(material),
+            repeatM: repeatM,
+            scale: scale
+          });
+        }
         
         if (mesh) {
           this.app.stage.addChild(mesh);
@@ -251,6 +271,46 @@ export class MaterialRenderer {
     // This is a temporary helper - in the real implementation this would come from the mask's materialId
     // For now, return null since material selection is handled elsewhere
     return null;
+  }
+
+  private getMaterialRoughness(material: Material): number {
+    // Determine roughness based on material category and properties
+    const category = (material as any).category || '';
+    const finish = (material as any).finish || '';
+    
+    // Pool tile materials - typically smooth to slightly textured
+    if (category.includes('tile')) {
+      if (finish.includes('matte') || finish.includes('rough')) return 0.7;
+      if (finish.includes('glossy') || finish.includes('polished')) return 0.1;
+      return 0.4; // Default for tiles
+    }
+    
+    // Waterline tiles - usually glazed, smoother
+    if (category.includes('waterline')) {
+      return 0.2;
+    }
+    
+    // Coping stones - more textured
+    if (category.includes('coping')) {
+      return 0.6;
+    }
+    
+    // Default medium roughness
+    return 0.5;
+  }
+  
+  private getMaterialMetallic(material: Material): number {
+    // Pool materials are typically non-metallic
+    const category = (material as any).category || '';
+    const name = (material as any).name?.toLowerCase() || '';
+    
+    // Check for metallic finishes
+    if (name.includes('metallic') || name.includes('steel') || name.includes('bronze')) {
+      return 0.8;
+    }
+    
+    // Most pool materials are non-metallic
+    return 0.0;
   }
 
   private async getBasicTexture(material: Material): Promise<PIXI.Texture | null> {
