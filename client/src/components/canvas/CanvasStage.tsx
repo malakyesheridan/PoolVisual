@@ -169,17 +169,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     const updateRenderer = async () => {
       if (!renderV2Enabled || !materialRendererRef.current) return;
 
-      // Convert masks to WebGL format - convert screen coordinates to image coordinates
+      // Convert masks to WebGL format - use the same coordinate source as Konva outlines
       const webglMasks: MaskGeometry[] = getAllMasks()
-        .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
+        .filter(mask => mask.material_id && mask.kind === 'area' && mask.path?.points?.length)
         .map(mask => {
-          // Convert mask points to proper image coordinates for WebGL
-          // Points are stored in stage coordinate space, convert to image space
-          const imagePoints = mask.polygon!.map((point: { x: number; y: number }) => {
-            if (!photoTransform) return point;
-            // Convert from stage coordinate space to image coordinate space
-            return screenToImg(photoTransform, point.x, point.y);
-          });
+          // Use m.path.points (same as Konva outline) instead of mask.polygon
+          // These points are already in the correct coordinate space for PhotoSpace Groups
+          const imagePoints = mask.path.points;
           
           return {
             maskId: mask.id,
