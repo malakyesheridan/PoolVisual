@@ -231,12 +231,20 @@ export class MaterialRenderer {
         // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
-        // Apply photorealistic effects immediately after mesh creation
-        this.applyPhotorealisticEffects(mesh, texture, material);
-        
-        // Ensure mesh is visible (after effects are applied)
+        // Ensure mesh is visible first - get basic rendering working
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
+        mesh.alpha = 1.0;
+        
+        console.info('[MaterialRenderer] Basic mesh created, attempting photorealistic enhancement...');
+        
+        // Apply simple photorealistic effects safely
+        try {
+          this.applyPhotorealisticEffectsSafely(mesh, texture, material);
+          console.info('[MaterialRenderer] Photorealistic effects applied successfully');
+        } catch (error) {
+          console.warn('[MaterialRenderer] Photorealistic effects failed, using basic texture:', error);
+        }
         
         // Apply inverse image transform to mesh vertices to compensate for stage transform
         // With PhotoSpace Groups, masks are in image coordinate space
@@ -469,66 +477,52 @@ export class MaterialRenderer {
     return mesh;
   }
 
-  private applyPhotorealisticEffects(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
-    // Apply visual enhancements to make materials look photographed instead of flat overlays
+  private applyPhotorealisticEffectsSafely(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
+    // Apply visual enhancements safely with error checking
     
     // 1. Enhanced texture filtering for quality (PixiJS v8 compatible)
-    if (texture.source) {
-      texture.source.scaleMode = 'linear';
-      texture.source.mipmap = true;
+    try {
+      if (texture && texture.source) {
+        texture.source.scaleMode = 'linear';
+      }
+    } catch (error) {
+      console.warn('[MaterialRenderer] Failed to set texture properties:', error);
     }
     
-    // 2. Adjust material properties based on type for realism
+    // 2. Simple color enhancement based on material type
     const category = material?.category || '';
     
-    // Pool tile materials: slightly reflective with depth
-    if (category.includes('tile') || category.includes('waterline')) {
-      // Add subtle contrast and saturation for ceramic/glass tiles
-      const colorMatrix = new PIXI.filters.ColorMatrixFilter();
-      colorMatrix.contrast(1.15, false); // Increase contrast for depth
-      colorMatrix.saturate(0.95, false); // Slightly desaturate for realism
-      colorMatrix.brightness(1.02, false); // Slight brightness boost
-      
-      // Add subtle tint for underwater effect
-      const tintFilter = new PIXI.filters.ColorMatrixFilter();
-      tintFilter.matrix = [
-        1.0, 0.0, 0.0, 0.0, 0.0,  // Red
-        0.0, 1.05, 0.0, 0.0, 0.0,  // Green (slight boost)
-        0.0, 0.0, 1.08, 0.0, 0.0,  // Blue (subtle underwater tint)
-        0.0, 0.0, 0.0, 1.0, 0.0   // Alpha
-      ];
-      
-      mesh.filters = [colorMatrix, tintFilter];
-    }
-    // Coping materials: natural stone/concrete appearance
-    else if (category.includes('coping')) {
-      const colorMatrix = new PIXI.filters.ColorMatrixFilter();
-      colorMatrix.contrast(1.08, false);
-      colorMatrix.saturate(0.92, false); // Less saturated for stone
-      colorMatrix.brightness(0.98, false); // Slightly darker for depth
-      mesh.filters = [colorMatrix];
-    }
-    // Paving materials: weathered outdoor appearance
-    else if (category.includes('paving')) {
-      const colorMatrix = new PIXI.filters.ColorMatrixFilter();
-      colorMatrix.contrast(1.12, false);
-      colorMatrix.saturate(0.88, false); // Weathered look
-      colorMatrix.brightness(0.95, false); // Outdoor lighting
-      mesh.filters = [colorMatrix];
-    }
-    // Default enhancement for all materials
-    else {
-      const colorMatrix = new PIXI.filters.ColorMatrixFilter();
-      colorMatrix.contrast(1.1, false);
-      colorMatrix.saturate(0.98, false);
-      colorMatrix.brightness(1.0, false);
-      mesh.filters = [colorMatrix];
+    try {
+      // Use simple tint instead of complex filters for now
+      if (category.includes('tile') || category.includes('waterline')) {
+        // Subtle blue tint for underwater tiles
+        mesh.tint = 0xF0F8FF; // Alice blue tint
+        mesh.alpha = 0.98;
+        console.log('[MaterialRenderer] Applied tile tint');
+      } else if (category.includes('coping')) {
+        // Slight warm tint for stone
+        mesh.tint = 0xFFF8DC; // Cornsilk tint
+        mesh.alpha = 0.96;
+        console.log('[MaterialRenderer] Applied coping tint');
+      } else if (category.includes('paving')) {
+        // Weathered outdoor tint
+        mesh.tint = 0xF5F5DC; // Beige tint
+        mesh.alpha = 0.94;
+        console.log('[MaterialRenderer] Applied paving tint');
+      } else {
+        // Default: no tint, just ensure visibility
+        mesh.tint = 0xFFFFFF;
+        mesh.alpha = 1.0;
+        console.log('[MaterialRenderer] Applied default appearance');
+      }
+    } catch (error) {
+      console.warn('[MaterialRenderer] Failed to apply material effects:', error);
+      // Fallback to basic appearance
+      mesh.tint = 0xFFFFFF;
+      mesh.alpha = 1.0;
     }
     
-    // 3. Add subtle ambient occlusion effect around edges
-    mesh.alpha = 0.95; // Slight transparency for blending
-    
-    console.log(`[MaterialRenderer] Applied photorealistic effects for ${category} material`);
+    console.log(`[MaterialRenderer] Applied safe photorealistic effects for ${category} material`);
   }
 
   /**
@@ -537,8 +531,12 @@ export class MaterialRenderer {
   private updatePhotorealisticMesh(mesh: PIXI.Mesh, geometry: MaskGeometry, texture: PIXI.Texture, material: any): void {
     this.updateMesh(mesh, geometry, texture);
     
-    // Reapply photorealistic effects to updated mesh
-    this.applyPhotorealisticEffects(mesh, texture, material);
+    // Reapply safe photorealistic effects to updated mesh
+    try {
+      this.applyPhotorealisticEffectsSafely(mesh, texture, material);
+    } catch (error) {
+      console.warn('[MaterialRenderer] Failed to update photorealistic effects:', error);
+    }
   }
 
   private addDiagnosticAnchors(imgW: number, imgH: number): void {
