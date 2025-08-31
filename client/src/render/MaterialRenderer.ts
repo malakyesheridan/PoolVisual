@@ -32,6 +32,14 @@ export interface RenderConfig {
   pxPerMeter: number;
   stageScale: number;
   sceneSize: { width: number; height: number };
+  imageTransform?: {
+    x: number;
+    y: number;
+    scaleX: number;
+    scaleY: number;
+    imageWidth: number;
+    imageHeight: number;
+  };
 }
 
 export class MaterialRenderer {
@@ -217,9 +225,16 @@ export class MaterialRenderer {
           maxY: Math.max(...vertices.filter((_, i) => i % 2 === 1))
         };
         
-        // Don't transform mesh position - vertices are already in screen coordinates
-        mesh.position.set(0, 0);
-        mesh.scale.set(1, 1);
+        // Apply image transform to sync mesh with image position/scale
+        if (config?.imageTransform) {
+          const transform = config.imageTransform;
+          mesh.position.set(transform.x, transform.y);
+          mesh.scale.set(transform.scaleX, transform.scaleY);
+        } else {
+          // Fallback to original positioning
+          mesh.position.set(0, 0);
+          mesh.scale.set(1, 1);
+        }
         mesh.rotation = 0;
         
         // Debug mesh properties with coordinate analysis

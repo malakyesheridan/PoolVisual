@@ -174,17 +174,30 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
           meta: mask.material_meta
         }));
 
-      // Get render configuration
+      // Get render configuration with image transform information
       const pxPerMeter = getPxPerMeter() || 100; // Default if no calibration
       const config: RenderConfig = {
         pxPerMeter,
         stageScale: zoom,
-        sceneSize: stageDimensions
+        sceneSize: stageDimensions,
+        // Add image transform data for proper positioning
+        imageTransform: imageProps ? {
+          x: imageProps.x,
+          y: imageProps.y, 
+          scaleX: imageProps.scaleX,
+          scaleY: imageProps.scaleY,
+          imageWidth: imageProps.width,
+          imageHeight: imageProps.height
+        } : undefined
       };
 
       try {
-        // Convert materials record to array
-        const materialsArray = Object.values(materials);
+        // Convert materials record to array with proper type compatibility
+        const materialsArray = Object.values(materials).map(m => ({
+          ...m,
+          isActive: true,
+          createdAt: new Date().toISOString()
+        }));
         await materialRendererRef.current.renderMasks(webglMasks, materialsArray, config);
       } catch (error) {
         console.error('[CanvasStage] WebGL render failed:', error);
@@ -192,15 +205,15 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     };
 
     updateRenderer();
-  }, [masks, materials, zoom, stageDimensions, renderV2Enabled]);
+  }, [masks, materials, zoom, stageDimensions, renderV2Enabled, imageProps]);
 
   return (
     <div className={className} style={{ position: 'relative' }}>
-      {/* WebGL Layer - positioned below Konva */}
+      {/* WebGL Layer - positioned above background but below masks */}
       <div 
         id="gl-layer" 
         className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 1 }}
+        style={{ zIndex: 1.5 }}
       />
       
       {/* Konva Stage - positioned above WebGL */}
