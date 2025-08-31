@@ -164,15 +164,62 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     const updateRenderer = async () => {
       if (!renderV2Enabled || !materialRendererRef.current) return;
 
-      // Convert masks to WebGL format
+      // Convert masks to WebGL format with coordinate transformation
       const webglMasks: MaskGeometry[] = getAllMasks()
         .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
-        .map(mask => ({
-          maskId: mask.id,
-          points: mask.polygon!,
-          materialId: mask.material_id!,
-          meta: mask.material_meta
-        }));
+        .map(mask => {
+          // Transform mask points to account for current image scale/position
+          let transformedPoints = mask.polygon!;
+          
+          if (imageProps) {
+            // Calculate the transform needed to map mask coordinates to current image position/scale
+            const baseImageWidth = backgroundImage?.width || 800;
+            const baseImageHeight = backgroundImage?.height || 500;
+            
+            // Calculate the base scale when image was first loaded (to fit stage)
+            const imageAspect = baseImageWidth / baseImageHeight;
+            const stageAspect = stageDimensions.width / stageDimensions.height;
+            
+            let baseImageScaleX, baseImageScaleY;
+            if (imageAspect > stageAspect) {
+              baseImageScaleX = stageDimensions.width / baseImageWidth;
+              baseImageScaleY = stageDimensions.width / baseImageWidth;
+            } else {
+              baseImageScaleX = stageDimensions.height / baseImageHeight;
+              baseImageScaleY = stageDimensions.height / baseImageHeight;
+            }
+            
+            // Current total scale includes base fit + zoom
+            const totalScaleX = baseImageScaleX * imageProps.scaleX;
+            const totalScaleY = baseImageScaleY * imageProps.scaleY;
+            
+            // Calculate base image position (when zoom = 1)
+            const baseWidth = baseImageWidth * baseImageScaleX;
+            const baseHeight = baseImageHeight * baseImageScaleY;
+            const baseX = (stageDimensions.width - baseWidth) / 2;
+            const baseY = (stageDimensions.height - baseHeight) / 2;
+            
+            // Transform each point
+            transformedPoints = mask.polygon!.map(point => {
+              // Convert from current screen coords back to image-relative coords
+              const relativeX = (point.x - baseX - pan.x) / (baseImageScaleX * zoom);
+              const relativeY = (point.y - baseY - pan.y) / (baseImageScaleY * zoom);
+              
+              // Apply current image transform
+              const newX = relativeX * totalScaleX + imageProps.x;
+              const newY = relativeY * totalScaleY + imageProps.y;
+              
+              return { x: newX, y: newY };
+            });
+          }
+          
+          return {
+            maskId: mask.id,
+            points: transformedPoints,
+            materialId: mask.material_id!,
+            meta: mask.material_meta
+          };
+        });
 
       // Get render configuration with image transform information
       const pxPerMeter = getPxPerMeter() || 100; // Default if no calibration
@@ -277,11 +324,52 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
             
             const hasMaterial = !!(m as any).materialId || !!(m as any).material_id;
             
+            // Transform mask points for current image scale/position
+            let transformedPoints = m.path.points;
+            if (imageProps && backgroundImage) {
+              const baseImageWidth = backgroundImage.width;
+              const baseImageHeight = backgroundImage.height;
+              
+              // Calculate base scale to fit stage
+              const imageAspect = baseImageWidth / baseImageHeight;
+              const stageAspect = stageDimensions.width / stageDimensions.height;
+              
+              let baseImageScaleX, baseImageScaleY;
+              if (imageAspect > stageAspect) {
+                baseImageScaleX = stageDimensions.width / baseImageWidth;
+                baseImageScaleY = stageDimensions.width / baseImageWidth;
+              } else {
+                baseImageScaleX = stageDimensions.height / baseImageHeight;
+                baseImageScaleY = stageDimensions.height / baseImageHeight;
+              }
+              
+              // Calculate base image position (when zoom = 1)
+              const baseWidth = baseImageWidth * baseImageScaleX;
+              const baseHeight = baseImageHeight * baseImageScaleY;
+              const baseX = (stageDimensions.width - baseWidth) / 2;
+              const baseY = (stageDimensions.height - baseHeight) / 2;
+              
+              // Transform each point to match current image transform
+              transformedPoints = m.path.points.map(point => {
+                // Convert to image-relative coordinates
+                const relativeX = (point.x - baseX - pan.x) / (baseImageScaleX * zoom);
+                const relativeY = (point.y - baseY - pan.y) / (baseImageScaleY * zoom);
+                
+                // Apply current image transform
+                const totalScaleX = baseImageScaleX * imageProps.scaleX;
+                const totalScaleY = baseImageScaleY * imageProps.scaleY;
+                const newX = relativeX * totalScaleX + imageProps.x;
+                const newY = relativeY * totalScaleY + imageProps.y;
+                
+                return { x: newX, y: newY };
+              });
+            }
+            
             return (
               m.type==='area'
                 ? <Line 
                     key={m.id} 
-                    points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                    points={transformedPoints.flatMap(p=>[p.x,p.y])} 
                     closed 
                     fill={hasMaterial && renderV2Enabled ? 'transparent' : hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
                     stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
@@ -293,7 +381,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
                 : m.type==='waterline_band'
                   ? <Line 
                       key={m.id} 
-                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                      points={transformedPoints.flatMap(p=>[p.x,p.y])} 
                       stroke={isSelected || isNewSelected ? "#3b82f6" : "#8b5cf6"} 
                       strokeWidth={isSelected || isNewSelected ? 5 : 3}
                       onClick={handleSelect}
@@ -302,7 +390,7 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
                     />
                   : <Line 
                       key={m.id} 
-                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                      points={transformedPoints.flatMap(p=>[p.x,p.y])} 
                       stroke={isSelected || isNewSelected ? "#3b82f6" : "#f59e0b"} 
                       strokeWidth={isSelected || isNewSelected ? 5 : 3}
                       onClick={handleSelect}
