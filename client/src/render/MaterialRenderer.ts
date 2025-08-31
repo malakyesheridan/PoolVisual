@@ -232,20 +232,24 @@ export class MaterialRenderer {
           uvs: textureCoords, 
           indices: indices
         });
-        mesh = new PIXI.Mesh(geometry, texture);
+        // SAFETY: Use PixiJS v8 constructor syntax to avoid deprecation warnings
+        mesh = new PIXI.Mesh({ geometry, shader: new PIXI.MeshMaterial(texture) });
         
         // Ensure mesh visibility and basic settings
         mesh.visible = true;
         mesh.alpha = 1.0;
         mesh.tint = 0xFFFFFF;
         
-        // Force texture repeat
+        // SAFETY: Set texture repeat using PixiJS v8 API
         try {
           if (texture && texture.source) {
-            texture.source.addressMode = 'repeat';
+            texture.source.addressModeU = 'repeat';
+            texture.source.addressModeV = 'repeat';
+            texture.source.scaleMode = 'linear';
           }
         } catch (e) {
-          // Ignore if not supported
+          // SAFETY: Fallback - ignore if v8 API not available
+          console.warn('[PVQ][WARN] texture-repeat-fallback', e instanceof Error ? e.message : e);
         }
         
         console.info('[MaterialRenderer] Mesh created with texture:', texture.width, 'x', texture.height);
@@ -482,13 +486,13 @@ export class MaterialRenderer {
   }
 
   private applySimpleEnhancement(mesh: PIXI.Mesh, texture: PIXI.Texture, material: any): void {
-    // Apply basic visual enhancement without breaking rendering
+    // SAFETY: Basic visual enhancement handled above in mesh creation
     try {
       if (texture && texture.source) {
-        texture.source.scaleMode = 'linear';
+        // scaleMode already set during mesh creation
       }
     } catch (error) {
-      // Ignore texture setting errors
+      // SAFETY: Ignore texture setting errors
     }
     
     // Basic material-based appearance
