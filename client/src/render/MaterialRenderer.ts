@@ -224,8 +224,8 @@ export class MaterialRenderer {
     const uvBuffer = new PIXI.Buffer({ data: uvs, usage: PIXI.BufferUsage.VERTEX });  
     const indexBuffer = new PIXI.Buffer({ data: triangulated.indices, usage: PIXI.BufferUsage.INDEX });
     
-    geometry.addAttribute('aVertexPosition', positionBuffer);
-    geometry.addAttribute('aTextureCoord', uvBuffer);
+    geometry.addAttribute('aPosition', positionBuffer, 2);
+    geometry.addAttribute('aUV', uvBuffer, 2);
     geometry.addIndex(indexBuffer);
   }
 
