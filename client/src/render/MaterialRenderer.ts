@@ -141,10 +141,10 @@ export class MaterialRenderer {
     materials: Material[],
     config: RenderConfig
   ): Promise<void> {
-    // Apply image transform to sync WebGL with Konva stage
+    // Apply PhotoSpace transform to WebGL stage to match Konva coordinate system
     if (this.app?.stage && config?.imageTransform) {
       const transform = config.imageTransform;
-      // Apply PhotoSpace transform - originX/Y is the position, S is the scale
+      // Apply the same PhotoSpace transform that Konva uses
       this.app.stage.position.set(transform.x, transform.y);
       this.app.stage.scale.set(transform.scaleX, transform.scaleY);
       

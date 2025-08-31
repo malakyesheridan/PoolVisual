@@ -173,9 +173,13 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
       const webglMasks: MaskGeometry[] = getAllMasks()
         .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
         .map(mask => {
-          // Mask points are already in image coordinate space for this PhotoSpace system
-          // The PhotoSpace transform handles the conversion to screen coordinates
-          const imagePoints = mask.polygon!;
+          // Convert mask points to proper image coordinates for WebGL
+          // Points are stored in stage coordinate space, convert to image space
+          const imagePoints = mask.polygon!.map((point: { x: number; y: number }) => {
+            if (!photoTransform) return point;
+            // Convert from stage coordinate space to image coordinate space
+            return screenToImg(photoTransform, point.x, point.y);
+          });
           
           return {
             maskId: mask.id,
