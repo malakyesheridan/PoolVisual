@@ -195,31 +195,26 @@ export class MaterialRenderer {
         const geometry = new PIXI.MeshGeometry({
           positions: new Float32Array(triangulated.vertices),
           uvs: new Float32Array(uvs),
-          indices: new Uint16Array(triangulated.indices)
+          indices: new Uint32Array(triangulated.indices) // Fixed: use Uint32Array
         });
         
         // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
-        // Add a simple test sprite to verify canvas is working
-        const testSprite = new PIXI.Sprite(texture);
-        testSprite.position.set(100, 100);
-        testSprite.width = 50;
-        testSprite.height = 50;
-        testSprite.alpha = 0.8;
-        this.app.stage.addChild(testSprite);
+        // Remove test sprite - UV coordinates are now fixed
         
         // Ensure mesh is visible
         mesh.alpha = 1.0;
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Position mesh at the mask's actual screen coordinates
+        // Position mesh at the mask's actual screen coordinates (fix TypeScript iteration)
+        const vertices = Array.from(triangulated.vertices);
         const maskBounds = {
-          minX: Math.min(...triangulated.vertices.filter((_, i) => i % 2 === 0)),
-          maxX: Math.max(...triangulated.vertices.filter((_, i) => i % 2 === 0)),
-          minY: Math.min(...triangulated.vertices.filter((_, i) => i % 2 === 1)),
-          maxY: Math.max(...triangulated.vertices.filter((_, i) => i % 2 === 1))
+          minX: Math.min(...vertices.filter((_, i) => i % 2 === 0)),
+          maxX: Math.max(...vertices.filter((_, i) => i % 2 === 0)),
+          minY: Math.min(...vertices.filter((_, i) => i % 2 === 1)),
+          maxY: Math.max(...vertices.filter((_, i) => i % 2 === 1))
         };
         
         // Don't transform mesh position - vertices are already in screen coordinates
@@ -241,7 +236,7 @@ export class MaterialRenderer {
           },
           maskBounds,
           vertexSample: triangulated.vertices.slice(0, 10), // First 5 vertex coords
-          uvSample: uvs.slice(0, 10), // First 5 UV coords
+          uvSample: Array.from(uvs.slice(0, 10)), // First 5 UV coords (fix TypeScript)
           visible: mesh.visible,
           alpha: mesh.alpha
         });
@@ -262,7 +257,7 @@ export class MaterialRenderer {
             stageChildren: this.app.stage.children.length,
             meshPosition: { x: mesh.x, y: mesh.y },
             meshBounds: { width: mesh.width, height: mesh.height },
-            textureValid: texture && texture.valid,
+            textureValid: texture && texture.source,
             canvasSize: { width: this.app.screen.width, height: this.app.screen.height }
           });
           

@@ -23,36 +23,53 @@ export function computeWorldUVs(
     return new Float32Array();
   }
 
-  // Calculate polygon bounds and orientation
+  // Calculate polygon bounds for normalization
   const bounds = calculateBounds(points);
-  const basis = calculateLocalBasis(points, bounds);
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
 
-  // Convert rotation to radians
-  const rotationRad = (rotationDeg * Math.PI) / 180;
-  const cosR = Math.cos(rotationRad);
-  const sinR = Math.sin(rotationRad);
-
-  // Compute UVs for each vertex
+  // Compute UVs for each vertex using simple normalized coordinates
   const uvs = new Float32Array(points.length * 2);
   
   for (let i = 0; i < points.length; i++) {
     const point = points[i];
     
-    // Convert to world space (meters)
-    const worldX = (point.x - bounds.minX) / pxPerMeter;
-    const worldY = (point.y - bounds.minY) / pxPerMeter;
+    // Normalize to 0-1 range based on polygon bounds
+    let u = (point.x - bounds.minX) / width;
+    let v = (point.y - bounds.minY) / height;
     
-    // Apply local basis transformation
-    const localU = worldX * basis.uDir.x + worldY * basis.uDir.y;
-    const localV = worldX * basis.vDir.x + worldY * basis.vDir.y;
+    // Clamp to prevent texture sampling outside valid range
+    u = Math.max(0, Math.min(1, u));
+    v = Math.max(0, Math.min(1, v));
     
-    // Apply material rotation
-    const rotatedU = localU * cosR - localV * sinR;
-    const rotatedV = localU * sinR + localV * cosR;
+    // Apply rotation if specified (simple 2D rotation)
+    if (rotationDeg !== 0) {
+      const rotationRad = (rotationDeg * Math.PI) / 180;
+      const cosR = Math.cos(rotationRad);
+      const sinR = Math.sin(rotationRad);
+      
+      // Rotate around center (0.5, 0.5)
+      const centerU = u - 0.5;
+      const centerV = v - 0.5;
+      
+      const rotatedU = centerU * cosR - centerV * sinR;
+      const rotatedV = centerU * sinR + centerV * cosR;
+      
+      u = rotatedU + 0.5;
+      v = rotatedV + 0.5;
+    }
     
-    // Apply offsets and store
-    uvs[i * 2] = rotatedU + offsetX;
-    uvs[i * 2 + 1] = rotatedV + offsetY;
+    // Apply offsets (wrap to keep in 0-1 range)
+    u = (u + offsetX) % 1;
+    v = (v + offsetY) % 1;
+    
+    // Ensure positive values
+    if (u < 0) u += 1;
+    if (v < 0) v += 1;
+    
+    // Store UV coordinates
+    uvs[i * 2] = u;
+    uvs[i * 2 + 1] = v;
   }
 
   console.debug('[uv] Computed UVs:', {
@@ -61,7 +78,12 @@ export function computeWorldUVs(
     rotation: rotationDeg,
     offset: { x: offsetX, y: offsetY },
     bounds: bounds,
-    basis: basis
+    uvRange: {
+      u: [Math.min(...Array.from(uvs).filter((_, i) => i % 2 === 0)), 
+          Math.max(...Array.from(uvs).filter((_, i) => i % 2 === 0))],
+      v: [Math.min(...Array.from(uvs).filter((_, i) => i % 2 === 1)), 
+          Math.max(...Array.from(uvs).filter((_, i) => i % 2 === 1))]
+    }
   });
 
   return uvs;
