@@ -201,17 +201,33 @@ export class MaterialRenderer {
         // Create mesh with texture
         mesh = new PIXI.Mesh({ geometry, texture });
         
+        // Add a simple test sprite to verify canvas is working
+        const testSprite = new PIXI.Sprite(texture);
+        testSprite.position.set(100, 100);
+        testSprite.width = 50;
+        testSprite.height = 50;
+        testSprite.alpha = 0.8;
+        this.app.stage.addChild(testSprite);
+        
         // Ensure mesh is visible
         mesh.alpha = 1.0;
         mesh.visible = true;
         mesh.tint = 0xFFFFFF;
         
-        // Position mesh at origin (no transformations)
+        // Position mesh at the mask's actual screen coordinates
+        const maskBounds = {
+          minX: Math.min(...triangulated.vertices.filter((_, i) => i % 2 === 0)),
+          maxX: Math.max(...triangulated.vertices.filter((_, i) => i % 2 === 0)),
+          minY: Math.min(...triangulated.vertices.filter((_, i) => i % 2 === 1)),
+          maxY: Math.max(...triangulated.vertices.filter((_, i) => i % 2 === 1))
+        };
+        
+        // Don't transform mesh position - vertices are already in screen coordinates
         mesh.position.set(0, 0);
         mesh.scale.set(1, 1);
         mesh.rotation = 0;
         
-        // Debug mesh properties
+        // Debug mesh properties with coordinate analysis
         console.info('[MaterialRenderer] Mesh created with properties:', {
           vertices: triangulated.vertices.length / 2,
           triangles: triangulated.indices.length / 3,
@@ -223,6 +239,9 @@ export class MaterialRenderer {
             width: mesh.width,
             height: mesh.height
           },
+          maskBounds,
+          vertexSample: triangulated.vertices.slice(0, 10), // First 5 vertex coords
+          uvSample: uvs.slice(0, 10), // First 5 UV coords
           visible: mesh.visible,
           alpha: mesh.alpha
         });
