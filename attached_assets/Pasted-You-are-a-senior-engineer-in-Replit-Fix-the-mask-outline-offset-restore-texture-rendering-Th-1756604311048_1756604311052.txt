@@ -1,0 +1,223 @@
+You are a senior engineer in Replit. **Fix the mask outline offset & restore texture rendering**. The current bug: **WebGL texture renders at the correct place (image-space), but the Konva outline shifts left**; after the last change, texture stopped rendering. Root cause: **mismatched coordinate spaces and double/uneven transforms** between the Konva outline, WebGL stage, and the background photo.
+
+Deliverables in this order:
+1) **Rollback** any recent change that replaced WebGL vertices with `m.path.points` if it broke textures.
+2) **Unify on one source of truth**: store **all mask vertices in IMAGE SPACE** (`mask.pointsImg[]` in original image pixels).
+3) **Single PhotoSpace transform** `T = {S, originX, originY}` applied identically to:
+   - Konva `photoGroup` (that contains the background image + outlines)
+   - WebGL/Pixi `stage` (that draws textures)
+   - Nothing else. Stage scale remains 1; no extra offsets anywhere.
+4) **Inverse mapping** for pointer/drawing: `screen → image` using `T`.
+5) **Diagnostic overlay** that draws three anchor dots via BOTH renderers to confirm exact alignment.
+6) **Acceptance tests** at the end.
+
+---
+
+## A) PhotoSpace Transform (one source of truth)
+
+**client/src/render/photoTransform.ts**
+```ts
+export type PhotoTransform = { S:number; originX:number; originY:number };
+
+export function makeTransform(params: {
+  imgW:number; imgH:number;
+  containerW:number; containerH:number;
+  fitScale:number;    // base fit (contain or cover)
+  zoom:number;        // user zoom multiplier
+  panX:number; panY:number; // user pan in screen px
+}): PhotoTransform {
+  const S = params.fitScale * params.zoom;
+  const originX = params.panX + (params.containerW - params.imgW * S) / 2;
+  const originY = params.panY + (params.containerH - params.imgH * S) / 2;
+  return { S, originX, originY };
+}
+
+export function imgToScreen(T: PhotoTransform, xImg:number, yImg:number) {
+  return { x: T.originX + xImg * T.S, y: T.originY + yImg * T.S };
+}
+export function screenToImg(T: PhotoTransform, xScr:number, yScr:number) {
+  return { x: (xScr - T.originX) / T.S, y: (yScr - T.originY) / T.S };
+}
+Store shape (extend your editor store)
+
+ts
+Copy code
+type PhotoState = {
+  imgW:number; imgH:number;
+  containerW:number; containerH:number;
+  fitScale:number; zoom:number; panX:number; panY:number;
+};
+B) Normalize mask data to IMAGE SPACE
+On load / when opening a job
+If legacy masks were stored in screen space, convert once using the OLD transform T_old that was in effect when they were drawn:
+
+ts
+Copy code
+function migrateScreenToImage(pointsScreen: {x:number;y:number}[], T_old: PhotoTransform) {
+  return pointsScreen.map(p => screenToImg(T_old, p.x, p.y));
+}
+Then persist as mask.pointsImg: {xImg:number;yImg:number}[]. From now on, never store screen coords.
+
+C) Apply the same transform to both renderers (no double transforms)
+Konva Stage (do not scale Stage):
+
+tsx
+Copy code
+// CanvasStage.tsx
+<Stage width={containerW} height={containerH}>
+  <Layer listening>
+    <Group x={T.originX} y={T.originY} scaleX={T.S} scaleY={T.S}>
+      {/* Background photo drawn in IMAGE space */}
+      <KonvaImage image={imgEl} x={0} y={0} width={imgW} height={imgH} />
+
+      {/* Mask outlines drawn with IMAGE-SPACE vertices */}
+      {masks.map(m => {
+        const pts = m.pointsImg.flatMap(p => [p.xImg, p.yImg]);
+        return (
+          <Line
+            key={m.id}
+            points={pts}
+            closed
+            stroke={m.isSelected ? '#2563eb' : '#10b981'}
+            strokeWidth={(m.isSelected ? 3 : 2) / T.S}   // keep constant on screen
+            lineJoin="round"
+            lineCap="round"
+            // Important: NO extra x/y/scale on Line; it inherits Group transform.
+          />
+        );
+      })}
+    </Group>
+  </Layer>
+
+  {/* UI overlays that must not scale go outside the Group */}
+</Stage>
+WebGL/Pixi stage (choose one approach):
+
+Option 1 — Pixi stage positioning
+
+ts
+Copy code
+// MaterialRenderer.ts (called on every transform change)
+pixiApp.stage.position.set(T.originX, T.originY);
+pixiApp.stage.scale.set(T.S, T.S);
+
+// All material meshes use IMAGE-SPACE vertex positions (xImg, yImg) with no extra transforms.
+Option 2 — CSS transform (raw WebGL canvas)
+
+ts
+Copy code
+glCanvas.style.transformOrigin = '0 0';
+glCanvas.style.transform = `matrix(${T.S},0,0,${T.S},${T.originX},${T.originY})`;
+// Draw meshes with IMAGE-SPACE vertices (0..imgW, 0..imgH).
+Critical checks
+
+The background photo, Konva outlines, and WebGL meshes all live in image space and are transformed only by the same T.
+
+There must be no additional x/y/scale on KonvaImage, Line, or Pixi meshes.
+
+D) Pointer & draw tools use inverse mapping
+ts
+Copy code
+function onPointerDown(e:any) {
+  const pt = stage.getPointerPosition(); // screen space
+  const imgPt = screenToImg(T, pt.x, pt.y);
+  // use imgPt.x, imgPt.y for editing mask.pointsImg
+}
+E) Restore texture rendering & keep in sync
+Revert any change that swapped WebGL vertices to some m.path.points. Use only mask.pointsImg.
+
+Ensure texture UVs are computed from image-space positions + calibration (px/m).
+
+WebGL meshes are re-uploaded only when mask.pointsImg changes; otherwise update uniforms on pan/zoom (Pixi stage transform handles screen mapping).
+
+F) Diagnostic overlay (must add)
+Draw three anchor dots in BOTH renderers to guarantee transform equality.
+
+Konva (inside photoGroup)
+
+tsx
+Copy code
+<Circle x={0} y={0} radius={4/T.S} fill="#ff00aa" />
+<Circle x={imgW} y={0} radius={4/T.S} fill="#ff00aa" />
+<Circle x={0} y={imgH} radius={4/T.S} fill="#ff00aa" />
+WebGL/Pixi
+Draw three tiny colored sprites at (0,0), (imgW,0), (0,imgH).
+Acceptance: all six dots must overlap perfectly. If Konva dots are left-shifted relative to WebGL dots, T is not applied identically to both layers or one layer has extra offsets.
+
+G) Remove hidden “second transforms”
+Common culprits causing the left-shift:
+
+KonvaImage has its own x/y/scale in addition to the Group → remove; it must be (0,0) size (imgW,imgH).
+
+The mask Line nodes have extra x/y/scale set somewhere → reset to defaults.
+
+Pixi sprites/containers have additional position/scale besides stage.position/scale → reset them to zero/one.
+
+Stage-level scaling (Stage scaleX/scaleY ≠ 1) → set to 1. Only the photoGroup/WebGL stage should scale.
+
+Add a one-time assert log:
+
+ts
+Copy code
+console.info('[assert]', {
+  stageScale: stage.scaleX(),
+  photoGroup: { x: group.x(), y: group.y(), sx: group.scaleX(), sy: group.scaleY() },
+  imageNode: { x: img.x(), y: img.y(), sx: img.scaleX(), sy: img.scaleY() }
+});
+Expected: stageScale=1, imageNode.x=0/y=0/sx=1/sy=1.
+
+H) Zoom-around-cursor that preserves alignment
+When changing zoom, update panX/panY to keep the cursor’s image point fixed:
+
+ts
+Copy code
+const T0 = makeTransform({...zoom: z0});
+const imgPoint = screenToImg(T0, cursorX, cursorY);
+const z1 = clamp(z0 * (deltaY > 0 ? 1/1.06 : 1.06), 0.2, 6);
+const T1 = makeTransform({...zoom: z1});
+const s0 = imgToScreen(T0, imgPoint.x, imgPoint.y);
+const s1 = imgToScreen(T1, imgPoint.x, imgPoint.y);
+panX += (s0.x - s1.x);
+panY += (s0.y - s1.y);
+I) Minimal code hooks to change now
+Stage & Group
+
+Stage: scaleX=1, scaleY=1.
+
+One photoGroup with x=T.originX, y=T.originY, scaleX=scaleY=T.S.
+
+KonvaImage at (0,0) size (imgW,imgH) inside photoGroup.
+
+Mask outlines
+
+Render Line.points from mask.pointsImg (image-space), no extra x/y/scale.
+
+strokeWidth = base / T.S.
+
+WebGL
+
+pixiApp.stage.position = (T.originX, T.originY).
+
+pixiApp.stage.scale = (T.S, T.S).
+
+Mesh vertices = mask.pointsImg (image-space). No local transform on meshes.
+
+Events
+
+All pointer math via screenToImg(T, …).
+
+J) Acceptance Tests (must pass)
+Draw a mask at any zoom → apply material.
+
+Pan & zoom: photo, mask outline, and texture remain perfectly glued.
+
+Toggle diagnostic overlay: all Konva dots and WebGL dots overlap exactly.
+
+Resize container: fit recalculates; alignment holds.
+
+Apply second material to second mask: both remain aligned.
+
+No reappearance of the left shift; no texture disappearance.
+
+Final note
+Do not change the mask vertex source again. The only valid vertex array is mask.pointsImg (image-space). Both Konva outlines and WebGL meshes consume it, and both are mapped to the screen by the same T. This will fix the “mask jumps left, texture correct” regression and restore consistent rendering.

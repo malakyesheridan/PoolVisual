@@ -148,6 +148,9 @@ export class MaterialRenderer {
       this.app.stage.position.set(transform.x, transform.y);
       this.app.stage.scale.set(transform.scaleX, transform.scaleY);
       
+      // Add diagnostic anchor dots to verify alignment with Konva
+      this.addDiagnosticAnchors(transform.imageWidth, transform.imageHeight);
+      
       console.info('[MaterialRenderer] Applied PhotoSpace transform:', {
         position: { x: transform.x, y: transform.y },
         scale: { x: transform.scaleX, y: transform.scaleY }
@@ -427,6 +430,29 @@ export class MaterialRenderer {
     if (this.app) {
       this.app.ticker.start();
     }
+  }
+
+  private addDiagnosticAnchors(imgW: number, imgH: number): void {
+    if (!this.app) return;
+    
+    // Remove existing diagnostic anchors
+    this.app.stage.children = this.app.stage.children.filter(child => !child.label?.startsWith('diagnostic-'));
+    
+    // Create three anchor sprites at image corners to match Konva circles
+    const anchorPositions = [
+      { x: 0, y: 0, color: 0xff00aa },
+      { x: imgW, y: 0, color: 0xff00aa },
+      { x: 0, y: imgH, color: 0xff00aa }
+    ];
+    
+    anchorPositions.forEach((pos, i) => {
+      const graphics = new PIXI.Graphics();
+      graphics.circle(0, 0, 4); // 4px radius to match Konva
+      graphics.fill(pos.color);
+      graphics.position.set(pos.x, pos.y);
+      graphics.label = `diagnostic-anchor-${i}`;
+      this.app!.stage.addChild(graphics);
+    });
   }
 
   destroy(): void {

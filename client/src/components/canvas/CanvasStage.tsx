@@ -169,17 +169,20 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
     const updateRenderer = async () => {
       if (!renderV2Enabled || !materialRendererRef.current) return;
 
-      // Convert masks to WebGL format - use the same coordinate source as Konva outlines
+      // Convert masks to WebGL format - store vertices in IMAGE SPACE
       const webglMasks: MaskGeometry[] = getAllMasks()
-        .filter(mask => mask.material_id && mask.kind === 'area' && mask.path?.points?.length)
+        .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
         .map(mask => {
-          // Use m.path.points (same as Konva outline) instead of mask.polygon
-          // These points are already in the correct coordinate space for PhotoSpace Groups
-          const imagePoints = mask.path.points;
+          // Convert screen coordinates to image coordinates for unified coordinate system
+          const imagePoints = mask.polygon!.map((point: { x: number; y: number }) => {
+            if (!photoTransform) return point;
+            // Convert from screen space to image space - this normalizes all coordinates
+            return screenToImg(photoTransform, point.x, point.y);
+          });
           
           return {
             maskId: mask.id,
-            points: imagePoints,
+            points: imagePoints, // Now in image coordinate space
             materialId: mask.material_id!,
             meta: mask.material_meta
           };
@@ -296,6 +299,11 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
               scaleY={photoTransform.S}
               listening={true}
             >
+              {/* Diagnostic anchor dots to verify coordinate system alignment */}
+              <Circle x={0} y={0} radius={4 / photoTransform.S} fill="#ff00aa" />
+              <Circle x={photoSpace.imgW} y={0} radius={4 / photoTransform.S} fill="#ff00aa" />
+              <Circle x={0} y={photoSpace.imgH} radius={4 / photoTransform.S} fill="#ff00aa" />
+              
               {masks.map(m => {
             const isSelected = selectedMaskId === m.id;
             const isNewSelected = newSelectedMaskId === m.id;
@@ -322,7 +330,11 @@ export function CanvasStage({ className, width = 800, height = 600 }: CanvasStag
               m.type==='area'
                 ? <Line 
                     key={m.id} 
-                    points={m.path.points.flatMap(p=>[p.x,p.y])} 
+                    points={m.path.points.flatMap((p: { x: number; y: number }) => {
+                      // Convert to image space for unified coordinate system with WebGL
+                      const imgPt = screenToImg(photoTransform, p.x, p.y);
+                      return [imgPt.x, imgPt.y];
+                    })} 
                     closed 
                     fill={hasMaterial && renderV2Enabled ? 'transparent' : hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
                     stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
