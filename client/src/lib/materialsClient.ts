@@ -40,7 +40,7 @@ function normalizeInput(input: any) {
     grout_width_mm: num(input.grout_width_mm ?? input.groutWidthMm),
     thickness_mm: num(input.thickness_mm ?? input.thicknessMm),
     finish: input.finish ?? null,
-    texture_url: input.texture_url ?? input.textureUrl ?? null,
+    texture_url: input.texture_url ?? input.textureUrl ?? input.albedoURL ?? null,
     thumbnail_url: input.thumbnail_url ?? input.thumbnailUrl ?? null,
     supplier: input.supplier ?? 'PoolTile',
     source_url: input.source_url ?? input.sourceUrl ?? null,
@@ -67,7 +67,10 @@ async function tryPost(path: string, body: any) {
 
 async function tryGet(path: string) {
   console.log(`[client] → GET ${path}`);
-  const res = await fetch(`${API}${path}`, { credentials: 'include' });
+  const res = await fetch(`${API}${path}`, { 
+    credentials: 'include',
+    cache: 'no-store' // Always fetch fresh data
+  });
   const json = await res.json().catch(() => ({}));
   console.log(`[client] ← ${res.status}`, json);
   if (!res.ok) throw new Error(json?.message || json?.error || `${res.status}`);
@@ -75,10 +78,22 @@ async function tryGet(path: string) {
 }
 
 export async function resolveMaterialsEndpoint(): Promise<EndpointKind> {
-  if (resolved) return resolved;
-  try { await tryGet('/api/v2/materials'); resolved = 'v2'; } catch {
-    try { await tryGet('/api/materials'); resolved = 'v1'; } catch {
+  if (resolved) {
+    console.log('[MAT/CLIENT:ACTIVE]', { layer: resolved, baseUrl: API });
+    return resolved;
+  }
+  try { 
+    await tryGet('/api/v2/materials'); 
+    resolved = 'v2';
+    console.log('[MAT/CLIENT:ACTIVE]', { layer: 'api', baseUrl: API + '/api/v2/materials' });
+  } catch {
+    try { 
+      await tryGet('/api/materials'); 
+      resolved = 'v1';
+      console.log('[MAT/CLIENT:ACTIVE]', { layer: 'api', baseUrl: API + '/api/materials' });
+    } catch {
       resolved = 'force';
+      console.log('[MAT/CLIENT:ACTIVE]', { layer: 'fallback', baseUrl: API + '/api/materials/_force' });
     }
   }
   sessionStorage.setItem(SS_KEY, resolved);
@@ -127,6 +142,35 @@ export async function createMaterialClient(input: any): Promise<Material> {
     supplier: body.supplier ?? 'PoolTile', source_url: body.source_url ?? null, notes: body.notes ?? null
   };
   return await tryPost('/api/materials/_force', forceBody);
+}
+
+/** DELETE with fallback chain */
+export async function deleteMaterialClient(id: string): Promise<void> {
+  const kind = await resolveMaterialsEndpoint();
+
+  if (kind === 'v2') {
+    try { 
+      await fetch(`${API}/api/v2/materials/${id}`, { 
+        method: 'DELETE', 
+        credentials: 'include' 
+      });
+      return;
+    } catch {/*fallthrough*/}
+  }
+  if (kind === 'v1') {
+    try { 
+      await fetch(`${API}/api/materials/${id}`, { 
+        method: 'DELETE', 
+        credentials: 'include' 
+      });
+      return;
+    } catch {/*fallthrough*/}
+  }
+  // FORCE delete
+  await fetch(`${API}/api/materials/_force/${id}`, { 
+    method: 'DELETE', 
+    credentials: 'include' 
+  });
 }
 
 // Keep legacy exports for compatibility

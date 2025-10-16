@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="150" height="300" xmlns="http://www.w3.org/2000/svg">
+  <rect width="150" height="300" fill="transparent"/>
+  <rect x="0" y="0" width="150" height="300" fill="#6b7280" opacity="0.8"/>
+  <text x="75" y="150" text-anchor="middle" dominant-baseline="middle" 
+        font-family="Arial, sans-serif" font-size="15" 
+        fill="white" opacity="0.9">Garden Statue</text>
+</svg>

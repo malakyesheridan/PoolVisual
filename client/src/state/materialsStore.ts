@@ -22,6 +22,7 @@ type S = {
   lastLoadedAt?: number|null;
   hydrateMerge: (arr: Material[]) => void;      // MERGES; never clears on empty
   upsert: (m: Material) => void;
+  delete: (id: string) => void;
   all: () => Material[];
   byCategory: (c: Material['category']|'all') => Material[];
   reset: () => void; // for debugging
@@ -42,6 +43,10 @@ export const useMaterialsStore = create<S>()(
         set({ items: merged, lastLoadedAt: Date.now() });
       },
       upsert: (m) => set(s => ({ items: { ...s.items, [m.id]: m } })),
+      delete: (id) => set(s => {
+        const { [id]: deleted, ...rest } = s.items;
+        return { items: rest };
+      }),
       all: () => Object.values(get().items),
       byCategory: (c) => (c === 'all' ? Object.values(get().items) : Object.values(get().items).filter(i => i.category === c)),
       reset: () => set({ items: {}, lastLoadedAt: null })

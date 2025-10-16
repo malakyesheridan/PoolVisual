@@ -1,437 +1,161 @@
 /**
- * Canvas Stage - Reliable, Testable Implementation
- * One set of handlers, correct layer order
+ * Canvas Stage - Final Behavior Spec Implementation
+ * Auto Smart Blend, simplified UI, robust error handling
  */
 
-import { useRef, useEffect, useMemo, useState, useCallback } from 'react';
-import { Stage, Layer, Line, Circle, Image as KonvaImage, Group } from 'react-konva';
-import { Stage as StageType } from 'konva/lib/Stage';
-import useImage from 'use-image';
-import { useEditorStore } from '@/stores/editorSlice';
-import { useEditorStore as useNewEditorStore } from '@/state/editorStore';
-import { useMaterialsStore } from '@/state/materialsStore';
-import { InputRouter } from '@/editor/input/InputRouter';
-import { MaskTexture } from './MaskTexture';
-import { MaskShape } from './MaskShape';
-import { getAllMasks, getMaskById, patchMask, pushUndo, getPxPerMeter } from './modelBindings';
-import { MaterialRenderer, type MaskGeometry, type RenderConfig } from '@/render/MaterialRenderer';
-import { PhotoSpace, PhotoTransform, makeTransform, calculateFitScale, imgToScreen, screenToImg } from '@/render/photoTransform';
-import { usePhoto } from '@/state/photoTransformStore';
-import { PhotoCanvas } from './PhotoCanvas';
+import React, { useEffect, useRef, useState } from "react";
+import { Stage, Layer, Group, Line, Image as KonvaImage } from "react-konva";
+import useImage from "use-image";
+import { useMeasure } from "@/hooks/useMeasure";
+import { useEditorStore } from "@/stores/editorStore";
+import { DebugOverlay } from "./DebugOverlay";
 
-const BUILD_TIMESTAMP = new Date().toISOString();
-const RANDOM_ID = Math.random().toString(36).substring(2, 8);
+export default function CanvasStage() {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const { w: cw, h: ch } = useMeasure(wrapRef);
 
-console.log(`
-🎯 MOUNTED CANVAS AUDIT
-======================
-File: client/src/components/canvas/CanvasStage.tsx
-Build: ${BUILD_TIMESTAMP}
-ID: ${RANDOM_ID}
-======================
-`);
+  const {
+    setContainerSize, bg, photo, tool, masks, drawing, setPan, setZoomAtPoint,
+    addPoint, commitArea, cancelDrawing, startArea, fitToScreen, setTool, selectMask
+  } = useEditorStore(s => ({
+    setContainerSize: s.setContainerSize, bg: s.bg, photo: s.photo, tool: s.tool,
+    masks: s.masks, drawing: s.drawing, setPan: s.setPan, setZoomAtPoint: s.setZoomAtPoint,
+    addPoint: s.addPoint, commitArea: s.commitArea, cancelDrawing: s.cancelDrawing, startArea: s.startArea,
+    fitToScreen: s.fitToScreen, setTool: s.setTool, selectMask: s.selectMask
+  }));
 
-interface CanvasStageProps {
-  className?: string;
-  width?: number;
-  height?: number;
-}
-
-export function CanvasStage({ className, width = 800, height = 600 }: CanvasStageProps) {
-  const stageRef = useRef<StageType>(null);
-  const [stageDimensions, setStageDimensions] = useState({ width, height });
-  const materialRendererRef = useRef<MaterialRenderer | null>(null);
-  const [renderV2Enabled, setRenderV2Enabled] = useState(false); // SAFETY: Keep V1 active for zero regression
-  
-  // SAFETY: Feature flag for zero-regression rollback to V1
-  const RENDER_V2 = false; // Temporarily disable V2 while fixing import issues
-  
-  if (RENDER_V2) {
-    console.info('[PVQ] V2 render enabled - using PhotoCanvas system');
-    
-    return (
-      <div className="relative w-full h-full">
-        <PhotoCanvas 
-          photoUrl={photo?.originalUrl || ''} 
-          masks={masks || []} 
-          selectedMaskId={selectedMaskId}
-          materialForMask={(id: string) => {
-            const mask = masks?.find(m => m.id === id);
-            const matId = mask?.materialId;
-            return matId ? materials.find(m => m.id === matId) || null : null;
-          }}
-        />
-      </div>
-    );
-  }
-  
-
-  // Destructure state - individual selectors to prevent infinite loops
-  const masks = useEditorStore(s => s.masks);
-  const transient = useEditorStore(s => s.transient);
-  const calState = useEditorStore(s => s.calState);
-  const calTemp = useEditorStore(s => s.calTemp);
-  const activeTool = useEditorStore(s => s.activeTool);
-  const photo = useEditorStore(s => s.photo);
-  const zoom = useEditorStore(s => s.zoom);
-  const pan = useEditorStore(s => s.pan);
-  const selectedMaskId = useEditorStore(s => s.selectedMaskId);
-  const selectMask = useEditorStore(s => s.selectMask);
-
-  // New editor store for robust selection and material application
-  const newSelectedMaskId = useNewEditorStore(s => s.selectedMaskId);
-  const newSelectMask = useNewEditorStore(s => s.setSelectedMask);
-  const registerDeps = useNewEditorStore(s => (s as any).registerDeps);
-
-  // Register dependencies once - only if registerDeps exists
   useEffect(() => {
-    if (registerDeps && typeof registerDeps === 'function') {
-      registerDeps({
-        listMasks: getAllMasks,
-        getMask: getMaskById,
-        patchMask: patchMask,
-        pushUndo: pushUndo,
-        getPxPerMeter: getPxPerMeter,
-      });
-    }
-  }, [registerDeps]);
+    setContainerSize(cw, ch);
+  }, [cw, ch, setContainerSize]);
 
-  // Materials store for texture lookup
-  const materials = useMaterialsStore(s => s.items);
+  const [imageEl] = useImage(bg.url ?? "", "anonymous");
 
-  // Create InputRouter with store reference
-  const router = useMemo(() => new InputRouter(useEditorStore), []);
-
-  const [backgroundImage] = useImage(photo?.originalUrl || '', 'anonymous');
-
-  // Stage is draggable only when active tool is 'hand'
-  useEffect(()=>{ 
-    stageRef.current?.draggable(activeTool==='hand'); 
-  },[activeTool]);
-
-  // Update stage dimensions
+  // keyboard handlers
   useEffect(() => {
-    const updateStageDimensions = () => {
-      if (width && height) {
-        setStageDimensions({ width, height });
-      }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && drawing?.active) commitArea();
+      if (e.key === "Escape" && drawing?.active) cancelDrawing();
+      if (e.key === "0" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); fitToScreen(); }
+      if (e.key === "a" && !drawing) startArea();
+      if (e.key === "v") setTool("select");
+      if (e.key === " ") e.preventDefault();
     };
+    window.addEventListener("keydown", onKey, { passive: false });
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawing, commitArea, cancelDrawing, fitToScreen, startArea, setTool]);
 
-    updateStageDimensions();
-    window.addEventListener('resize', updateStageDimensions);
-    return () => window.removeEventListener('resize', updateStageDimensions);
-  }, [width, height]);
-
-  // Calculate PhotoSpace and canonical transform
-  const { photoSpace, photoTransform } = useMemo(() => {
-    if (!backgroundImage) return { photoSpace: null, photoTransform: null };
-
-    // Calculate fit scale to contain image in stage
-    const fitScale = calculateFitScale(
-      backgroundImage.width,
-      backgroundImage.height,
-      stageDimensions.width,
-      stageDimensions.height
-    );
-
-    const space: PhotoSpace = {
-      imgW: backgroundImage.width,
-      imgH: backgroundImage.height,
-      fitScale,
-      zoom,
-      panX: pan.x,
-      panY: pan.y
-    };
-
-    const transform = makeTransform({
-      ...space,
-      containerW: stageDimensions.width,
-      containerH: stageDimensions.height
-    });
-
-    return { photoSpace: space, photoTransform: transform };
-  }, [backgroundImage, stageDimensions, zoom, pan]);
-
-  // Initialize WebGL renderer
+  const [panning, setPanning] = useState(false);
   useEffect(() => {
-    const initRenderer = async () => {
-      try {
-        console.info('[CanvasStage] Starting WebGL renderer initialization...');
-        
-        if (!materialRendererRef.current) {
-          console.info('[CanvasStage] Creating MaterialRenderer instance...');
-          materialRendererRef.current = new MaterialRenderer();
-          
-          console.info('[CanvasStage] Calling initialize...');
-          const initialized = await materialRendererRef.current.initialize('gl-layer');
-          setRenderV2Enabled(initialized);
-          
-          if (initialized) {
-            console.info('🚀 [CanvasStage] WebGL V2 renderer ENABLED - photo-realistic materials active');
-            
-            // Subscribe to PhotoSpace transform updates for real-time WebGL panning
-            const unsubscribe = usePhoto.subscribe((state) => {
-              if (materialRendererRef.current) {
-                materialRendererRef.current.setTransform(state.T);
-              }
-            });
-            
-            // Store unsubscribe function for cleanup
-            (materialRendererRef.current as any).unsubscribeTransform = unsubscribe;
-          } else {
-            console.info('⚠️ [CanvasStage] WebGL V2 failed - using fallback Konva renderer');
-          }
-        }
-      } catch (error) {
-        console.error('[CanvasStage] WebGL initialization error:', error);
-        setRenderV2Enabled(false);
-      }
-    };
-
-    initRenderer();
-
-    return () => {
-      if (materialRendererRef.current) {
-        // Cleanup subscription
-        if ((materialRendererRef.current as any).unsubscribeTransform) {
-          (materialRendererRef.current as any).unsubscribeTransform();
-        }
-        materialRendererRef.current.destroy();
-        materialRendererRef.current = null;
-      }
-    };
+    const down = (e: KeyboardEvent) => { if (e.key === " ") setPanning(true); };
+    const up   = (e: KeyboardEvent) => { if (e.key === " ") setPanning(false); };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
   }, []);
 
-  // Update WebGL renderer when masks or materials change
-  // Update WebGL renderer when masks OR photoTransform changes
-  useEffect(() => {
-    const updateRenderer = async () => {
-      if (!renderV2Enabled || !materialRendererRef.current) return;
+  const ps = photo.space;
 
-      // Convert masks to WebGL format - store vertices in IMAGE SPACE
-      const webglMasks: MaskGeometry[] = getAllMasks()
-        .filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length)
-        .map(mask => {
-          // Convert screen coordinates to image coordinates for unified coordinate system
-          const imagePoints = mask.polygon!.map((point: { x: number; y: number }) => {
-            if (!photoTransform) return point;
-            // Convert from screen space to image space - this normalizes all coordinates
-            return screenToImg(photoTransform, point.x, point.y);
-          });
-          
-          return {
-            maskId: mask.id,
-            points: imagePoints, // Now in image coordinate space
-            materialId: mask.material_id!,
-            meta: mask.material_meta
-          };
-        });
+  const handleWheel = (e: any) => {
+    if (!ps) return;
+    e.evt.preventDefault();
+    const stage = e.target.getStage();
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+    setZoomAtPoint(e.evt.deltaY, pointer.x, pointer.y);
+  };
 
-      // Get render configuration using PhotoSpace transform
-      const pxPerMeter = getPxPerMeter() || 100; // Default if no calibration
-      
-      // Only create config if we have valid transform data
-      if (!photoSpace || !photoTransform) {
-        return; // Skip WebGL rendering without valid transforms
-      }
-      
-      const config: RenderConfig = {
-        pxPerMeter,
-        stageScale: zoom,
-        sceneSize: stageDimensions,
-        // PhotoSpace transform data for WebGL positioning
-        imageTransform: {
-          x: photoTransform.originX,
-          y: photoTransform.originY,
-          scaleX: photoTransform.S,
-          scaleY: photoTransform.S,
-          imageWidth: photoSpace.imgW,
-          imageHeight: photoSpace.imgH
-        }
-      };
+  const handleMouseDown = (e: any) => {
+    if (!ps) return;
+    const pointer = e.target.getStage().getPointerPosition();
+    if (!pointer) return;
+    if (panning || tool === "pan") {
+      (e.target.getStage() as any).__panning = pointer;
+      return;
+    }
+    if (tool === "area") {
+      addPoint(pointer.x, pointer.y);
+    }
+  };
 
-      try {
-        // Convert materials record to array with proper type compatibility
-        const materialsArray = Object.values(materials).map(m => ({
-          ...m,
-          isActive: true,
-          createdAt: new Date().toISOString()
-        }));
-        await materialRendererRef.current.renderMasks(webglMasks, materialsArray, config);
-      } catch (error) {
-        console.error('[CanvasStage] WebGL render failed:', error);
-      }
-    };
+  const handleMouseMove = (e: any) => {
+    if (!ps) return;
+    if (panning || tool === "pan") {
+      const st = e.target.getStage() as any;
+      const p0 = st.__panning;
+      if (!p0) return;
+      const p1 = st.getPointerPosition();
+      if (!p1) return;
+      setPan(p1.x - p0.x, p1.y - p0.y);
+      st.__panning = p1;
+    }
+  };
 
-    updateRenderer();
-  }, [masks, materials, zoom, stageDimensions, renderV2Enabled, photoSpace, photoTransform]);
+  const handleMouseUp = (e: any) => {
+    if (!ps) return;
+    const st = e.target.getStage() as any;
+    if (st.__panning) st.__panning = null;
+  };
 
   return (
-    <div className={className} style={{ position: 'relative' }}>
-      {/* Konva Stage - Base layer with image */}
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        <Stage
-        ref={stageRef}
-        width={stageDimensions.width} 
-        height={stageDimensions.height}
-        onMouseDown={e=>router.handleDown(stageRef.current!,e)}
-        onMouseMove={e=>router.handleMove(stageRef.current!,e)}
-        onMouseUp={e=>router.handleUp(stageRef.current!,e)}
-        onTouchStart={e=>router.handleDown(stageRef.current!,e)}
-        onTouchMove={e=>router.handleMove(stageRef.current!,e)}
-        onTouchEnd={e=>router.handleUp(stageRef.current!,e)}
+    <div ref={wrapRef} style={{ position: "relative", height: "calc(100vh - 140px)" }}>
+      <DebugOverlay />
+      <Stage width={cw} height={ch}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        listening={true}
       >
-        <Layer id="Background" listening={false}>
-          {backgroundImage && photoSpace && photoTransform && (
-            <Group
-              x={photoTransform.originX}
-              y={photoTransform.originY}
-              scaleX={photoTransform.S}
-              scaleY={photoTransform.S}
-              listening={false}
-            >
-              <KonvaImage
-                image={backgroundImage}
-                x={0}
-                y={0}
-                width={photoSpace.imgW}
-                height={photoSpace.imgH}
-                listening={false}
-              />
+        <Layer listening={true}>
+          {ps && (
+            <Group x={ps.panX} y={ps.panY} scaleX={ps.scale} scaleY={ps.scale} listening={true}>
+              {/* Background image */}
+              {imageEl && <KonvaImage image={imageEl} x={0} y={0} width={ps.imgW} height={ps.imgH} listening={false} />}
+
+              {/* Existing masks */}
+              {masks.map(m => (
+                <Line key={m.id}
+                  points={m.points}
+                  closed={m.closed}
+                  stroke="#2dd4bf"
+                  strokeWidth={2 / ps.scale}
+                  lineCap="round"
+                  lineJoin="round"
+                  fill="rgba(45,212,191,0.12)"
+                  onClick={() => selectMask(m.id)}
+                  listening={true}
+                />
+              ))}
+
+              {/* Drawing in progress */}
+              {drawing?.active && drawing.points.length >= 2 && (
+                <Line
+                  points={drawing.points}
+                  closed={false}
+                  stroke="#38bdf8"
+                  strokeWidth={2 / ps.scale}
+                  dash={[6 / ps.scale, 6 / ps.scale]}
+                  lineCap="round"
+                  lineJoin="round"
+                  listening={false}
+                />
+              )}
             </Group>
           )}
         </Layer>
-
-        <Layer id="MaskDrawing" listening>
-          {transient?.points?.length ? (
-            <Line
-              points={transient.points.flatMap(p=>[p.x,p.y])}
-              stroke="#22c55e" strokeWidth={2} closed={transient.tool==='area'}
-              opacity={0.9}
-            />
-          ):null}
-        </Layer>
-
-        {/* Material Layer - fallback to Konva when WebGL is disabled */}
-        {!renderV2Enabled && (
-          <Layer id="MaterialOverlay" listening={false}>
-            {getAllMasks().filter(mask => mask.material_id && mask.kind === 'area' && mask.polygon?.length).map((mask) => (
-              <MaskTexture
-                key={`material-${mask.id}`}
-                maskId={mask.id}
-                polygon={mask.polygon!}
-                materialId={mask.material_id!}
-                meta={mask.material_meta}
-              />
-            ))}
-          </Layer>
-        )}
-
-        {/* Enhanced Mask Selection - combine with existing masks layer to reduce layer count */}
-
-        <Layer id="Masks" listening>
-          {photoSpace && photoTransform && (
-            <Group
-              x={photoTransform.originX}
-              y={photoTransform.originY}
-              scaleX={photoTransform.S}
-              scaleY={photoTransform.S}
-              listening={true}
-            >
-              {/* Diagnostic anchor dots to verify coordinate system alignment */}
-              <Circle x={0} y={0} radius={4 / photoTransform.S} fill="#ff00aa" />
-              <Circle x={photoSpace.imgW} y={0} radius={4 / photoTransform.S} fill="#ff00aa" />
-              <Circle x={0} y={photoSpace.imgH} radius={4 / photoTransform.S} fill="#ff00aa" />
-              
-              {masks.map(m => {
-            const isSelected = selectedMaskId === m.id;
-            const isNewSelected = newSelectedMaskId === m.id;
-            const handleSelect = (e: any) => {
-              e.cancelBubble = true;
-              selectMask(m.id);
-              if (newSelectMask && typeof newSelectMask === 'function') {
-                newSelectMask(m.id);
-              }
-            };
-            
-            const hasMaterial = !!(m as any).materialId || !!(m as any).material_id;
-            
-            // Mask points should already be in image coordinate space
-            // The photoGroup handles coordinate transformation
-            
-            // Scale-invariant stroke widths and hit areas
-            const strokeWidth = (isSelected || isNewSelected ? 4 : 2) / photoTransform.S;
-            const strokeWidthWaterline = (isSelected || isNewSelected ? 5 : 3) / photoTransform.S;
-            const strokeWidthMeasure = (isSelected || isNewSelected ? 5 : 3) / photoTransform.S;
-            const hitWidth = 20 / photoTransform.S;
-            
-            return (
-              m.type==='area'
-                ? <Line 
-                    key={m.id} 
-                    points={m.path.points.flatMap((p: { x: number; y: number }) => {
-                      // Convert to image space for unified coordinate system with WebGL
-                      const imgPt = screenToImg(photoTransform, p.x, p.y);
-                      return [imgPt.x, imgPt.y];
-                    })} 
-                    closed 
-                    fill={hasMaterial && renderV2Enabled ? 'transparent' : hasMaterial ? 'transparent' : "rgba(16,185,129,.25)"} 
-                    stroke={isSelected || isNewSelected ? "#3b82f6" : "#10b981"} 
-                    strokeWidth={strokeWidth}
-                    onClick={handleSelect}
-                    onTap={handleSelect}
-                    hitStrokeWidth={hitWidth}
-                  />
-                : m.type==='waterline_band'
-                  ? <Line 
-                      key={m.id} 
-                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
-                      stroke={isSelected || isNewSelected ? "#3b82f6" : "#8b5cf6"} 
-                      strokeWidth={strokeWidthWaterline}
-                      onClick={handleSelect}
-                      onTap={handleSelect}
-                      hitStrokeWidth={hitWidth}
-                    />
-                  : <Line 
-                      key={m.id} 
-                      points={m.path.points.flatMap(p=>[p.x,p.y])} 
-                      stroke={isSelected || isNewSelected ? "#3b82f6" : "#f59e0b"} 
-                      strokeWidth={strokeWidthMeasure}
-                      onClick={handleSelect}
-                      onTap={handleSelect}
-                      hitStrokeWidth={hitWidth}
-                    />
-            );
-              })}
-            </Group>
-          )}
-        </Layer>
-
-        <Layer id="Calibration" listening>
-          {calState!=='idle' && calTemp?.a && (
-            <>
-              <Circle x={calTemp.a.x} y={calTemp.a.y} radius={5} fill="#3B82F6" />
-              {(calState==='placingB' && calTemp.preview) && (
-                <Line points={[calTemp.a.x,calTemp.a.y, calTemp.preview.x,calTemp.preview.y]} stroke="#60A5FA" dash={[8,6]} strokeWidth={2}/>
-              )}
-              {(calState==='lengthEntry' && calTemp.b) && (
-                <>
-                  <Line points={[calTemp.a.x,calTemp.a.y, calTemp.b.x,calTemp.b.y]} stroke="#2563EB" strokeWidth={3}/>
-                  <Circle x={calTemp.b.x} y={calTemp.b.y} radius={5} fill="#3B82F6" />
-                </>
-              )}
-            </>
-          )}
-        </Layer>
-        </Stage>
+      </Stage>
+      {/* Simple toolbar */}
+      <div style={{ position: "absolute", left: 12, top: 8 + 90, display: "flex", gap: 8, zIndex: 6 }}>
+        <button onClick={() => useEditorStore.getState().fitToScreen()}>Fit</button>
+        <button onClick={() => useEditorStore.getState().setTool("pan")}>Pan</button>
+        <button onClick={() => useEditorStore.getState().startArea()}>Area</button>
+        <button onClick={() => useEditorStore.getState().undo()}>Undo</button>
+        <button onClick={() => useEditorStore.getState().redo()}>Redo</button>
       </div>
-      
-      {/* WebGL Layer - positioned ABOVE Konva Stage to render on top */}
-      <div 
-        id="gl-layer" 
-        className="absolute inset-0 pointer-events-none"
-        style={{ zIndex: 2 }}
-      />
+      {/* Zoom label */}
+      <div style={{ position: "absolute", bottom: 8, left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.5)", color:"#fff", padding:"4px 8px", borderRadius:6 }}>
+        {ps && Number.isFinite(ps.scale) ? `${Math.round(ps.scale * 100)}%` : "100%"}
+      </div>
     </div>
   );
 }

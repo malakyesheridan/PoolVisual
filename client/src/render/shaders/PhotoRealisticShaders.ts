@@ -259,15 +259,12 @@ void main() {
  */
 export class PhotoRealisticMaterialShader extends PIXI.Shader {
     constructor() {
-        // Create geometry for the shader
-        const geometry = new PIXI.Geometry();
-        
         // Create uniform groups with proper PixiJS v8 types
         const materialUniforms = new PIXI.UniformGroup({
-            uDiffuseTexture: { value: PIXI.Texture.WHITE, type: 'texture' },
-            uNormalTexture: { value: PIXI.Texture.WHITE, type: 'texture' },
-            uRoughnessTexture: { value: PIXI.Texture.WHITE, type: 'texture' },
-            uSceneTexture: { value: PIXI.Texture.WHITE, type: 'texture' },
+            uDiffuseTexture: { value: PIXI.Texture.WHITE, type: 'sampler2D' },
+            uNormalTexture: { value: PIXI.Texture.WHITE, type: 'sampler2D' },
+            uRoughnessTexture: { value: PIXI.Texture.WHITE, type: 'sampler2D' },
+            uSceneTexture: { value: PIXI.Texture.WHITE, type: 'sampler2D' },
             
             // Material properties
             uRoughness: { value: 0.5, type: 'f32' },

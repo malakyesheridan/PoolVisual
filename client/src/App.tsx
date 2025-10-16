@@ -14,14 +14,23 @@ import Materials from "@/pages/materials";
 import MaterialsNew from "@/pages/MaterialsNew";
 import Jobs from "@/pages/jobs";
 import JobDetail from "@/pages/job-detail";
-import { CanvasEditorPage } from "@/pages/CanvasEditorPage";
+import CanvasEditorPage from "@/pages/CanvasEditorPage";
+import CanvasEditorV2Page from "@/pages/CanvasEditorV2Page";
+import NewEditorPage from "@/new_editor/NewEditorPage";
+import JobsNew from "@/pages/jobs-new";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
+import ProjectCanvasEditorPage from "@/pages/ProjectCanvasEditorPage";
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  
+  // Dev bypass for canvas-editor-v2 and new-editor
+  if (process.env.NODE_ENV === 'development' && (window.location.pathname === '/canvas-editor-v2' || window.location.pathname === '/new-editor')) {
+    return <>{children}</>;
+  }
   
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
@@ -68,7 +77,7 @@ function ProtectedRouter() {
           
           <Route path="/jobs/new">
             <ProtectedRoute>
-              <Jobs />
+              <JobsNew />
             </ProtectedRoute>
           </Route>
           
@@ -84,9 +93,27 @@ function ProtectedRouter() {
             </ProtectedRoute>
           </Route>
           
+          <Route path="/jobs/:jobId/photo/:photoId/edit">
+            <ProtectedRoute>
+              <ProjectCanvasEditorPage />
+            </ProtectedRoute>
+          </Route>
+          
           <Route path="/canvas-editor">
             <ProtectedRoute>
-              <CanvasEditorPage />
+              <Redirect to="/new-editor" />
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/canvas-editor-v2">
+            <ProtectedRoute>
+              <Redirect to="/new-editor" />
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/new-editor">
+            <ProtectedRoute>
+              <NewEditorPage />
             </ProtectedRoute>
           </Route>
           

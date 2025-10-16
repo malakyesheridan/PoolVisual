@@ -32,7 +32,7 @@ export async function apiRequest(
     
     // Handle authentication errors
     if (appError.code === 'UNAUTHORIZED') {
-      localStorage.removeItem('token');
+      // Clear session-based auth state
       window.location.href = '/login';
       toast.sessionExpired();
     }

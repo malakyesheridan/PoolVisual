@@ -539,19 +539,41 @@ export class MaterialRenderer {
   }
 
   destroy(): void {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-      this.resizeObserver = null;
-    }
+    try {
+      if (this.resizeObserver) {
+        try {
+          this.resizeObserver.disconnect();
+        } catch (e) {
+          console.warn("[MaterialRenderer] resizeObserver disconnect failed:", e);
+        }
+        this.resizeObserver = null;
+      }
 
-    if (this.app) {
-      this.app.destroy(true, true);
-      this.app = null;
-    }
+      if (this.app) {
+        try {
+          this.app.destroy(true, true);
+        } catch (e) {
+          console.warn("[MaterialRenderer] app destroy failed:", e);
+        }
+        this.app = null;
+      }
 
-    this.meshes.clear();
-    this.textureManager.destroy();
-    this.container = null;
+      try {
+        this.meshes.clear();
+      } catch (e) {
+        console.warn("[MaterialRenderer] meshes clear failed:", e);
+      }
+
+      try {
+        this.textureManager?.destroy?.();
+      } catch (e) {
+        console.warn("[MaterialRenderer] textureManager destroy failed:", e);
+      }
+
+      this.container = null;
+    } catch (e) {
+      console.warn("[MaterialRenderer] destroy failed:", e);
+    }
   }
 
   // Export functionality

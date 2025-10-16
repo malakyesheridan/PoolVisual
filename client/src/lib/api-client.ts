@@ -11,22 +11,21 @@ class ApiClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const { token } = useAuthStore.getState();
-    
     const config: RequestInit = {
       headers: {
         'Content-Type': 'application/json',
-        ...(token && { Authorization: `Bearer ${token}` }),
         ...options.headers,
       },
+      credentials: 'include', // Important for session cookies
       ...options,
     };
 
     const response = await fetch(`${this.baseURL}${endpoint}`, config);
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: response.statusText }));
-      throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      const ct = response.headers.get("content-type") || "";
+      const body = ct.includes("application/json") ? await response.json() : await response.text();
+      throw new Error(typeof body === "string" ? body : body?.error || "Request failed");
     }
 
     // Handle no-content responses
@@ -39,14 +38,14 @@ class ApiClient {
 
   // Auth
   async login(email: string, password: string) {
-    return this.request<{ user: any; token: string }>('/auth/login', {
+    return this.request<{ ok: boolean; user: any }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
   }
 
   async register(email: string, username: string, password: string) {
-    return this.request<{ user: any; token: string }>('/auth/register', {
+    return this.request<{ ok: boolean; user: any }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, username, password }),
     });
@@ -108,12 +107,9 @@ class ApiClient {
     if (additionalData?.height) formData.append('height', additionalData.height.toString());
     if (additionalData?.exifData) formData.append('exifData', JSON.stringify(additionalData.exifData));
 
-    const { token } = useAuthStore.getState();
     const response = await fetch(`${this.baseURL}/photos`, {
       method: 'POST',
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
+      credentials: 'include', // Important for session cookies
       body: formData,
     });
 
@@ -127,6 +123,10 @@ class ApiClient {
 
   async getPhoto(id: string) {
     return this.request<any>(`/photos/${id}`);
+  }
+
+  async getJobPhotos(jobId: string) {
+    return this.request<any[]>(`/jobs/${jobId}/photos`);
   }
 
   async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: any) {

@@ -28,7 +28,7 @@ const navigation = [
   },
   {
     name: 'Canvas Editor',
-    href: '/canvas-editor',
+    href: '/new-editor',
     icon: Edit3,
   },
   {

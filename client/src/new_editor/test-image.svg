@@ -1,0 +1,6 @@
+<svg width="800" height="600" xmlns="http://www.w3.org/2000/svg">
+  <rect width="800" height="600" fill="#87CEEB"/>
+  <circle cx="400" cy="300" r="100" fill="#FF6B6B"/>
+  <rect x="200" y="200" width="400" height="200" fill="#4ECDC4" opacity="0.7"/>
+  <text x="400" y="320" text-anchor="middle" fill="white" font-size="24" font-family="Arial">Test Pool Image</text>
+</svg>

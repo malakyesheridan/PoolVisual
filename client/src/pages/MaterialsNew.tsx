@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Search, Plus, Filter, Wrench, AlertCircle } from 'lucide-react';
+import { Search, Plus, Filter, Wrench, AlertCircle, MoreVertical, Trash2, Edit } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { Badge } from '../components/ui/badge';
-import { useMaterialsStore } from '../state/materialsStore';
 import { AddEditMaterialSheet } from '../components/materials/AddEditMaterialSheet';
-import { listMaterialsClient, createMaterialClient } from '../lib/materialsClient';
+import { listMaterialsClient, createMaterialClient, deleteMaterialClient } from '../lib/materialsClient';
 import { toast } from 'sonner';
+import { ensureLoaded, getAll, Material as UnifiedMaterial, getSourceInfo } from '../materials/registry';
+import { useMaterialsStore } from '../state/materialsStore';
+import { materialsEventBus } from '../lib/materialsEventBus';
 
 const categories = [
   { value: 'all', label: 'All Categories' },
@@ -19,27 +21,45 @@ const categories = [
 ];
 
 export default function MaterialsNew() {
-  const { all, byCategory, upsert, hydrateMerge } = useMaterialsStore();
-  
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'coping' | 'waterline_tile' | 'interior' | 'paving' | 'fencing'>('all');
   const [showAddSheet, setShowAddSheet] = useState(false);
+  const [editingMaterial, setEditingMaterial] = useState<UnifiedMaterial | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [testMode, setTestMode] = useState(false);
+  const [materials, setMaterials] = useState<Record<string, UnifiedMaterial>>({});
+  const [sourceInfo, setSourceInfo] = useState<{ type: string; url?: string; error?: string }>({ type: 'loading' });
   
-  // Get current materials and filtered list
-  const allMaterials = all();
-
-  // Load materials on mount
+  // Use materials store for CRUD operations
+  const { items: storeMaterials, hydrateMerge, upsert, delete: deleteFromStore } = useMaterialsStore();
+  
+  // Load materials from unified registry
   useEffect(() => {
     async function loadMaterials() {
       try {
         setLoading(true);
-        const materials = await listMaterialsClient();
-        hydrateMerge(materials); // Safe merge - won't clobber on empty
-        console.log('[materials-new] Loaded', materials.length, 'materials');
+        await ensureLoaded();
+        const allMaterials = getAll();
+        setMaterials(allMaterials);
+        setSourceInfo(getSourceInfo());
+        
+        // Also sync with the legacy store for compatibility
+        const materialsArray = Object.values(allMaterials);
+        hydrateMerge(materialsArray);
+        
+        console.log('[MAT/GRID:LOADED]', { count: materialsArray.length });
+        console.log('[MaterialsPage] loaded', { 
+          count: materialsArray.length, 
+          categories: materialsArray.reduce((acc, m) => {
+            acc[m.category] = (acc[m.category] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>),
+          source: getSourceInfo().type
+        });
       } catch (error: any) {
         console.error('[materials-new] Load failed:', error);
+        setSourceInfo({ type: 'ERROR', error: error.message });
       } finally {
         setLoading(false);
       }
@@ -47,12 +67,30 @@ export default function MaterialsNew() {
     loadMaterials();
   }, [hydrateMerge]);
 
-  // Get filtered materials
-  const filteredMaterials = byCategory(categoryFilter).filter(material =>
-    search === '' || 
-    material.name.toLowerCase().includes(search.toLowerCase()) ||
-    material.sku?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Listen for materials changes from other pages
+  useEffect(() => {
+    const unsubscribe = materialsEventBus.subscribe((event) => {
+      console.log('[MaterialsSync] editor refresh', event);
+      // Reload materials when changes occur
+      ensureLoaded().then(() => {
+        const allMaterials = getAll();
+        setMaterials(allMaterials);
+        hydrateMerge(Object.values(allMaterials));
+      });
+    });
+    
+    return unsubscribe;
+  }, [hydrateMerge]);
+
+  // Get filtered materials from unified registry
+  const allMaterials = Object.values(materials);
+  const filteredMaterials = allMaterials.filter(material => {
+    const matchesCategory = categoryFilter === 'all' || material.category === categoryFilter;
+    const matchesSearch = search === '' || 
+      material.name.toLowerCase().includes(search.toLowerCase()) ||
+      material.sku?.toLowerCase().includes(search.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   async function handleTestCreate() {
     setTestMode(true);
@@ -69,8 +107,16 @@ export default function MaterialsNew() {
       const result = await createMaterialClient(testMaterial);
       
       if (result?.id) {
+        // Update store and broadcast change
         upsert(result);
+        materialsEventBus.broadcastCreate([result.id]);
+        
+        // Refresh materials from unified registry
+        await ensureLoaded();
+        const updatedMaterials = getAll();
+        setMaterials(updatedMaterials);
         toast.success(`Test material created: ${result.name}`);
+        console.log('[MaterialsPage] create', result);
       } else {
         throw new Error('No ID returned from test create');
       }
@@ -81,6 +127,41 @@ export default function MaterialsNew() {
       setTestMode(false);
     }
   }
+
+  const handleDelete = async (id: string, name: string) => {
+    console.log('[MAT/DELETE:CLICK]', { id });
+    console.log('[Materials:Delete:Click]', { id, name });
+    
+    try {
+      await deleteMaterialClient(id);
+      console.log('[Materials:Delete:Persist:ok]', { id });
+      
+      // Update store and broadcast change
+      deleteFromStore(id);
+      const countAfter = Object.keys(storeMaterials).length - 1;
+      console.log('[Materials:Delete:Store]', { id, countAfter });
+      
+      materialsEventBus.broadcastDelete([id]);
+      console.log('[Materials:Delete:Broadcast]', { id });
+      
+      // Refresh the materials list
+      await ensureLoaded();
+      const allMaterials = getAll();
+      setMaterials(allMaterials);
+      
+      toast.success(`Deleted "${name}"`);
+      console.log('[MaterialsPage] delete', { id });
+    } catch (error: any) {
+      console.error('[Materials:Delete:Persist:err]', { id, error: error.message });
+      toast.error(`Delete failed: ${error.message}`);
+    }
+  };
+
+  const handleEdit = (material: UnifiedMaterial) => {
+    console.log('[MAT/EDIT:CLICK]', { id: material.id });
+    setEditingMaterial(material);
+    setShowAddSheet(true);
+  };
 
   return (
     <div className="bg-gray-50 dark:bg-gray-900">
@@ -94,7 +175,10 @@ export default function MaterialsNew() {
             </div>
             
             <Button 
-              onClick={() => setShowAddSheet(true)}
+              onClick={() => {
+                console.log('[MAT/CREATE:CLICK]');
+                setShowAddSheet(true);
+              }}
               className="bg-blue-600 hover:bg-blue-700 text-white"
               data-testid="button-add-material"
             >
@@ -182,12 +266,16 @@ export default function MaterialsNew() {
               >
                 {/* Texture/Thumbnail */}
                 <div className="aspect-square bg-gray-100 dark:bg-gray-700 rounded-t-lg relative overflow-hidden">
-                  {material.textureUrl || material.thumbnailUrl ? (
+                  {material.albedoURL ? (
                     <img
-                      src={material.textureUrl || material.thumbnailUrl || ''}
+                      src={`${material.albedoURL}?v=${Date.now()}`}
                       alt={material.name}
                       className="w-full h-full object-cover"
+                      crossOrigin="anonymous"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
                       onError={(e) => {
+                        console.warn('[MaterialMissingThumbnail]', { id: material.id, name: material.name, albedoURL: material.albedoURL });
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
@@ -197,10 +285,33 @@ export default function MaterialsNew() {
                     </div>
                   )}
                   
-                  <div className="absolute top-2 right-2">
+                  <div className="absolute top-2 right-2 flex gap-1">
                     <Badge variant="secondary" className="text-xs">
                       {categories.find(c => c.value === material.category)?.label || material.category}
                     </Badge>
+                    
+                    {/* Actions menu */}
+                    <div className="relative group">
+                      <button className="p-1 bg-white/80 hover:bg-white rounded shadow-sm">
+                        <MoreVertical className="w-3 h-3" />
+                      </button>
+                      <div className="absolute right-0 top-full mt-1 bg-white rounded shadow-lg border opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                        <button
+                          onClick={() => handleEdit(material)}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 w-full text-left"
+                        >
+                          <Edit className="w-3 h-3" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteConfirm({ id: material.id, name: material.name })}
+                          className="flex items-center gap-2 px-3 py-2 text-sm hover:bg-gray-50 w-full text-left text-red-600"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -244,11 +355,16 @@ export default function MaterialsNew() {
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center gap-4">
                 <span className="text-gray-600">
-                  API: <code className="bg-gray-200 px-1 rounded">force</code>
+                  Source: <code className="bg-gray-200 px-1 rounded">{sourceInfo.type}</code>
                 </span>
                 <span className="text-gray-600">
                   Materials: <strong>{allMaterials.length}</strong>
                 </span>
+                {sourceInfo.url && (
+                  <span className="text-gray-600">
+                    URL: <code className="bg-gray-200 px-1 rounded">{sourceInfo.url}</code>
+                  </span>
+                )}
               </div>
               
               <Button
@@ -266,10 +382,46 @@ export default function MaterialsNew() {
       )}
 
       {/* Add Material Sheet */}
-      <AddEditMaterialSheet
-        open={showAddSheet}
-        onClose={() => setShowAddSheet(false)}
+      <AddEditMaterialSheet 
+        open={showAddSheet} 
+        onClose={() => {
+          setShowAddSheet(false);
+          setEditingMaterial(null);
+        }}
+        initial={editingMaterial}
       />
+
+      {/* Delete Confirmation Dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              Delete Material
+            </h3>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Delete <strong>"{deleteConfirm.name}"</strong>? This cannot be undone.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button 
+                variant="outline" 
+                onClick={() => setDeleteConfirm(null)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive"
+                onClick={() => {
+                  handleDelete(deleteConfirm.id, deleteConfirm.name);
+                  setDeleteConfirm(null);
+                }}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

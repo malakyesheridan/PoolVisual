@@ -36,8 +36,12 @@ export default function Login() {
 
     try {
       const response = await apiClient.login(formData.email, formData.password);
-      login(response.user, response.token);
-      navigate('/dashboard');
+      if (response.ok) {
+        login(response.user);
+        navigate('/dashboard');
+      } else {
+        setError('Login failed');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -62,8 +66,12 @@ export default function Login() {
         formData.username, 
         formData.password
       );
-      login(response.user, response.token);
-      navigate('/dashboard');
+      if (response.ok) {
+        login(response.user);
+        navigate('/dashboard');
+      } else {
+        setError('Registration failed');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {

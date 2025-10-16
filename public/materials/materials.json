@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "updatedAt": "2025-01-27T00:00:00Z",
+  "materials": [
+    {
+      "id": "luna_wavy_23mm",
+      "name": "Luna Wavy 23mm",
+      "category": "waterline_tile",
+      "thumbnailURL": "/materials/thumbs/waterline_tile_blue_01.svg",
+      "albedoURL": "/materials/textures/waterline_tile_blue_01.svg",
+      "physicalRepeatM": 0.023,
+      "defaultTileScale": 1.0,
+      "costPerSquareMeter": 45.00,
+      "currency": "AUD",
+      "thicknessMm": 23,
+      "finish": "wavy"
+    },
+    {
+      "id": "white_wavy_23mm",
+      "name": "White Wavy 23mm",
+      "category": "waterline_tile",
+      "thumbnailURL": "/materials/thumbs/waterline_tile_white_01.svg",
+      "albedoURL": "/materials/textures/waterline_tile_white_01.svg",
+      "physicalRepeatM": 0.023,
+      "defaultTileScale": 1.0,
+      "costPerSquareMeter": 42.00,
+      "currency": "AUD",
+      "thicknessMm": 23,
+      "finish": "wavy"
+    }
+  ]
+}

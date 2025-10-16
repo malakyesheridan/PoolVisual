@@ -22,7 +22,7 @@ const navItems: NavItem[] = [
     icon: Briefcase
   },
   {
-    href: '/canvas-editor',
+    href: '/new-editor',
     label: 'Editor',
     icon: Edit
   },

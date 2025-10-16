@@ -125,6 +125,29 @@ export function registerMaterialRoutesV2(app: Express) {
     }
   });
 
+  // Delete material endpoint
+  app.delete('/api/materials/:id', async (req, res) => {
+    const id = req.params.id;
+    console.log('[materials] DELETE /api/materials/' + id);
+    
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'MISSING_ID', 
+        message: 'Material ID is required' 
+      });
+    }
+    
+    try {
+      await storage.deleteMaterial(id);
+      console.log('[materials] ✅ Deleted material:', id);
+      res.status(204).send();
+      
+    } catch (err: any) {
+      console.error('[materials] ❌ Delete failed:', err);
+      res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
+    }
+  });
+
   // Debug endpoints
   app.get('/api/_health', (req, res) => {
     res.json({ ok: true, ts: Date.now() });

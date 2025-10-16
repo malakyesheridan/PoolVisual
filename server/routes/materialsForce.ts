@@ -104,4 +104,27 @@ export function materialsForceRoutes(app: Express) {
       res.status(500).json({ error: 'DB_INSERT_FAILED', message: err.message });
     }
   });
+
+  // Force delete endpoint
+  app.delete('/api/materials/_force/:id', async (req, res) => {
+    const id = req.params.id;
+    console.log('[force] DELETE /api/materials/_force/' + id);
+    
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'MISSING_ID', 
+        message: 'Material ID is required' 
+      });
+    }
+    
+    try {
+      await storage.deleteMaterial(id);
+      console.log('[force] ✅ Deleted material:', id);
+      res.status(204).send();
+      
+    } catch (err: any) {
+      console.error('[force] ❌ Delete failed:', err);
+      res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
+    }
+  });
 }

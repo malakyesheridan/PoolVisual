@@ -19,7 +19,28 @@
     "@typescript-eslint/no-unnecessary-type-assertion": "error",
     "@typescript-eslint/prefer-nullish-coalescing": "error",
     "@typescript-eslint/prefer-optional-chain": "error",
-    "no-console": "warn"
+    "no-console": "warn",
+    "no-use-before-define": ["error", { "functions": false, "classes": true, "variables": true }],
+    "@typescript-eslint/no-use-before-define": ["error"],
+    "id-denylist": [
+      "error",
+      {
+        "deny": [
+          {
+            "name": "fitScale",
+            "message": "Use PhotoSpace.scale instead of fitScale"
+          },
+          {
+            "name": "photoTransformStore",
+            "message": "Use useEditorStore instead of photoTransformStore"
+          },
+          {
+            "name": "usePhotoTransform",
+            "message": "Use useEditorStore instead of usePhotoTransform"
+          }
+        ]
+      }
+    ]
   },
   "ignorePatterns": ["dist/", "node_modules/", "*.js"]
 }

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Group, Line, Circle, Rect, Text } from 'react-konva';
+import { Group, Line, Circle, Rect, Text, Shape } from 'react-konva';
 import { EditorMask, Vec2 } from '@shared/schema';
 
 interface MaskRendererProps {
@@ -23,14 +23,9 @@ export function MaskRenderer({
   imageHeight 
 }: MaskRendererProps) {
   const getStrokeColor = () => {
-    if (isSelected) return '#3b82f6'; // blue-500
-    
-    switch (mask.type) {
-      case 'area': return '#10b981'; // emerald-500
-      case 'linear': return '#f59e0b'; // amber-500  
-      case 'waterline_band': return '#8b5cf6'; // violet-500
-      default: return '#6b7280'; // gray-500
-    }
+    // Only show stroke when selected
+    if (isSelected) return '#2563eb'; // blue-500
+    return 'transparent'; // No stroke when not selected
   };
 
   const getFillColor = () => {
@@ -50,15 +45,36 @@ export function MaskRenderer({
     const points = mask.polygon.points.flatMap(p => [p.x, p.y]);
     
     return (
-      <Group>
+      <Group
+        name="mask-shape"
+        listening={true}
+        isMask={true} // custom attr
+        maskId={mask.id} // for centralized handler
+      >
+        {/* Invisible hit area covering entire mask */}
+        <Shape
+          sceneFunc={(context, shape) => {
+            context.beginPath();
+            context.moveTo(points[0], points[1]);
+            for (let i = 2; i < points.length; i += 2) {
+              context.lineTo(points[i], points[i + 1]);
+            }
+            context.closePath();
+            context.fillStrokeShape(shape);
+          }}
+          fill="rgba(0,0,0,0)" // completely transparent
+          stroke="rgba(0,0,0,0)" // completely transparent
+          listening={true}
+          maskId={mask.id} // for centralized handler
+        />
+        {/* Visible outline with fill */}
         <Line
           points={points}
           fill={getFillColor()}
           stroke={getStrokeColor()}
-          strokeWidth={isSelected ? 3 : 2}
+          strokeWidth={isSelected ? 1.5 : 0}
           closed={true}
-          onClick={onSelect}
-          onTap={onSelect}
+          listening={false} // let the hit area handle clicks
           perfectDrawEnabled={false}
           shadowEnabled={false}
         />

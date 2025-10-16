@@ -1,3 +1,6 @@
+
+import { MockStorage } from './mockStorage';
+
 import { 
   User, 
   InsertUser, 
@@ -15,6 +18,8 @@ import {
   InsertQuote,
   QuoteItem,
   InsertQuoteItem,
+  CalibrationMeta,
+  Settings,
   users,
   orgs,
   orgMembers,
@@ -24,21 +29,27 @@ import {
   materials,
   masks,
   quotes,
-  quoteItems,
-  laborRules,
-  publicLinks
+  quoteItems
 } from "@shared/schema";
-import { drizzle } from "drizzle-orm/neon-http";
-import { neon } from "@neondatabase/serverless";
-import { eq, and, desc, sql, or } from "drizzle-orm";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { pool } from './db';
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is required");
 }
 
-const connection = neon(process.env.DATABASE_URL);
-const db = drizzle(connection);
+// Create drizzle db instance only if pool exists
+const db = pool ? drizzle(pool) : null;
+
+// Helper function to check if database is available
+function ensureDb() {
+  if (!db) {
+    throw new Error("Database not available");
+  }
+  return db;
+}
 
 export interface IStorage {
   // Users
@@ -50,6 +61,7 @@ export interface IStorage {
   getOrg(id: string): Promise<Org | undefined>;
   createOrg(org: InsertOrg, userId: string): Promise<Org>;
   getUserOrgs(userId: string): Promise<Org[]>;
+  getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined>;
   
   // Jobs
   createJob(job: InsertJob): Promise<Job>;
@@ -59,12 +71,13 @@ export interface IStorage {
   // Photos
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   getPhoto(id: string): Promise<Photo | undefined>;
-  updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: any): Promise<Photo>;
-  updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: any[]; stdevPct?: number }): Promise<Photo>;
-  getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: any[]; stdevPct?: number } | null>;
+  updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo>;
+  updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number }): Promise<Photo>;
+  getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number } | null>;
   
   // Materials
-  getMaterials(orgId: string, category?: string): Promise<Material[]>;
+  getAllMaterials(): Promise<Material[]>;
+  getMaterials(orgId?: string, category?: string): Promise<Material[]>;
   createMaterial(material: InsertMaterial): Promise<Material>;
   updateMaterial(id: string, material: Partial<Material>): Promise<Material>;
   deleteMaterial(id: string): Promise<void>;
@@ -83,8 +96,8 @@ export interface IStorage {
   updateQuote(id: string, updates: Partial<Quote>): Promise<Quote>;
   
   // Settings
-  getOrgSettings(orgId: string): Promise<any>;
-  updateOrgSettings(orgId: string, settings: any): Promise<any>;
+  getOrgSettings(orgId: string): Promise<Settings | undefined>;
+  updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -134,7 +147,16 @@ export class PostgresStorage implements IStorage {
       .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
       .where(eq(orgMembers.userId, userId));
     
-    return result.map(r => r.org);
+    return result.map((r) => r.org);
+  }
+
+  async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
+    const [orgMember] = await db
+      .select()
+      .from(orgMembers)
+      .where(and(eq(orgMembers.userId, userId), eq(orgMembers.orgId, orgId)));
+    
+    return orgMember;
   }
 
   async createJob(insertJob: InsertJob): Promise<Job> {
@@ -161,7 +183,7 @@ export class PostgresStorage implements IStorage {
     return photo;
   }
 
-  async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: any): Promise<Photo> {
+  async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo> {
     const [photo] = await db
       .update(photos)
       .set({ 
@@ -207,7 +229,7 @@ export class PostgresStorage implements IStorage {
     }
     
     const ppm = parseFloat(photo.calibrationPixelsPerMeter);
-    const meta = photo.calibrationMetaJson as any;
+    const meta = photo.calibrationMetaJson as CalibrationMeta;
     
     if (meta?.samples) {
       // V2 format
@@ -227,34 +249,48 @@ export class PostgresStorage implements IStorage {
   }
 
   async getAllMaterials(): Promise<Material[]> {
-    // Get ALL materials without org filtering for debugging
-    return await db.select().from(materials)
-      .where(eq(materials.isActive, true))
-      .orderBy(desc(materials.createdAt));
+    try {
+      return await db.select().from(materials)
+        .where(eq(materials.isActive, true))
+        .orderBy(desc(materials.createdAt));
+    } catch (error) {
+      console.error('[Storage] Failed to get all materials:', error);
+      throw new Error(`Failed to get materials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
-    const conditions = [eq(materials.isActive, true)];
-
-    // Handle org filtering - if no orgId provided, get all materials
+    let query = db.select().from(materials).where(eq(materials.isActive, true));
+    
+    // Filter by organization if provided
     if (orgId) {
-      conditions.push(or(eq(materials.orgId, orgId), eq(materials.orgId, null)));
+      query = query.where(and(eq(materials.isActive, true), eq(materials.orgId, orgId)));
+    } else {
+      // If no orgId, return global materials (orgId is null)
+      query = query.where(and(eq(materials.isActive, true), sql`${materials.orgId} IS NULL`));
     }
-
+    
+    // Filter by category if provided
     if (category) {
-      conditions.push(eq(materials.category, category as any));
+      query = query.where(and(
+        eq(materials.isActive, true),
+        orgId ? eq(materials.orgId, orgId) : sql`${materials.orgId} IS NULL`,
+        eq(materials.category, category)
+      ));
     }
-
-    return await db.select().from(materials)
-      .where(and(...conditions))
-      .orderBy(desc(materials.createdAt));
+    
+    return await query.orderBy(desc(materials.createdAt));
   }
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
-    const [material] = await db.insert(materials).values(insertMaterial).returning();
-    if (!material) throw new Error('Failed to create material');
-    console.log('[materials] created id=' + material.id + ' name=' + material.name);
-    return material;
+    try {
+      const [material] = await db.insert(materials).values(insertMaterial).returning();
+      console.log('[materials] created id=' + material.id + ' name=' + material.name);
+      return material;
+    } catch (error) {
+      console.error('[Storage] Failed to create material:', error);
+      throw new Error(`Failed to create material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   async updateMaterial(id: string, updates: Partial<Material>): Promise<Material> {
@@ -268,7 +304,9 @@ export class PostgresStorage implements IStorage {
   }
 
   async deleteMaterial(id: string): Promise<void> {
-    await db.update(materials).set({ isActive: false }).where(eq(materials.id, id));
+    await ensureDb().update(materials)
+      .set({ isActive: false })
+      .where(eq(materials.id, id));
   }
 
   async createMask(insertMask: InsertMask): Promise<Mask> {
@@ -320,19 +358,47 @@ export class PostgresStorage implements IStorage {
     return quote;
   }
 
-  async getOrgSettings(orgId: string): Promise<any> {
+  async getOrgSettings(orgId: string): Promise<Settings | undefined> {
     const [setting] = await db.select().from(settings).where(eq(settings.orgId, orgId));
     return setting;
   }
 
-  async updateOrgSettings(orgId: string, updates: any): Promise<any> {
+  async updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings> {
     const [setting] = await db
       .update(settings)
       .set(updates)
       .where(eq(settings.orgId, orgId))
       .returning();
+    if (!setting) {
+      throw new Error('Failed to update organization settings');
+    }
     return setting;
   }
 }
 
-export const storage = new PostgresStorage();
+// Use MockStorage in no-DB mode, PostgresStorage otherwise
+let storage: IStorage;
+
+async function initializeStorage() {
+  try {
+    if (process.env.NO_DB_MODE === 'true') {
+      console.log('[Storage] Using MockStorage (no-DB mode)');
+      storage = new MockStorage();
+    } else {
+      console.log('[Storage] Using PostgresStorage');
+      storage = new PostgresStorage();
+      
+      // Test database connection synchronously during initialization
+      await db.select().from(materials).limit(1);
+      console.log('[Storage] Database connection test passed');
+    }
+  } catch (error) {
+    console.error('[Storage] Failed to initialize PostgresStorage, falling back to MockStorage:', error);
+    storage = new MockStorage();
+  }
+}
+
+// Initialize storage synchronously
+await initializeStorage();
+
+export { storage };

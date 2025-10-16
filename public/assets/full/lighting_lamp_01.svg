@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="150" height="250" xmlns="http://www.w3.org/2000/svg">
+  <rect width="150" height="250" fill="transparent"/>
+  <rect x="0" y="0" width="150" height="250" fill="#ffffff" opacity="0.8"/>
+  <text x="75" y="125" text-anchor="middle" dominant-baseline="middle" 
+        font-family="Arial, sans-serif" font-size="15" 
+        fill="white" opacity="0.9">Pool Lamp</text>
+</svg>

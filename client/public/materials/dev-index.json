@@ -1,0 +1,47 @@
+[
+  {
+    "id": "ceramic-tile",
+    "name": "Ceramic Tile",
+    "category": "tile",
+    "tags": ["ceramic", "tile", "bathroom", "indoor"],
+    "albedoURL": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRjNGNEY2Ii8+CjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iI0U1RTdFQSIvPgo8cmVjdCB4PSIzMiIgeT0iMzIiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgZmlsbD0iI0U1RTdFQSIvPgo8cmVjdCB4PSIzMiIgeT0iMCIgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiBmaWxsPSIjRjNGNEY2Ii8+CjxyZWN0IHg9IjAiIHk9IjMyIiB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIGZpbGw9IiNGM0Y0RjYiLz4KPHN2Zz4=",
+    "physicalRepeatM": 0.3,
+    "defaultTileScale": 0.5
+  },
+  {
+    "id": "natural-stone",
+    "name": "Natural Stone",
+    "category": "stone",
+    "tags": ["stone", "natural", "outdoor", "patio"],
+    "albedoURL": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjNjc3NDc0Ii8+CjxjaXJjbGUgY3g9IjE2IiBjeT0iMTYiIHI9IjQiIGZpbGw9IiM1NzU3NTciLz4KPGNpcmNsZSBjeD0iNDgiIGN5PSIyMCIgcj0iMyIgZmlsbD0iIzU3NTc1NyIvPgo8Y2lyY2xlIGN4PSIzMiIgY3k9IjQwIiByPSI1IiBmaWxsPSIjNTc1NzU3Ii8+CjxjaXJjbGUgY3g9IjEyIiBjeT0iNDgiIHI9IjIiIGZpbGw9IiM1NzU3NTciLz4KPGNpcmNsZSBjeD0iNTIiIGN5PSI1MiIgcj0iNCIgZmlsbD0iIzU3NTc1NyIvPgo8L3N2Zz4=",
+    "physicalRepeatM": 0.4,
+    "defaultTileScale": 0.3
+  },
+  {
+    "id": "wood-deck",
+    "name": "Wood Decking",
+    "category": "wood",
+    "tags": ["wood", "deck", "outdoor", "patio"],
+    "albedoURL": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjOEQ2QjM5Ii8+CjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSI2NCIgaGVpZ2h0PSI4IiBmaWxsPSIjN0M1QjI5Ii8+CjxyZWN0IHg9IjAiIHk9IjE2IiB3aWR0aD0iNjQiIGhlaWdodD0iOCIgZmlsbD0iIzdDNUIyOSIvPgo8cmVjdCB4PSIwIiB5PSIzMiIgd2lkdGg9IjY0IiBoZWlnaHQ9IjgiIGZpbGw9IiM3QzVCMjkiLz4KPHJlY3QgeD0iMCIgeT0iNDgiIHdpZHRoPSI2NCIgaGVpZ2h0PSI4IiBmaWxsPSIjN0M1QjI5Ii8+CjxsaW5lIHgxPSIwIiB5MT0iMCIgeDI9IjY0IiB5Mj0iMCIgc3Ryb2tlPSIjNjQ0NjM0IiBzdHJva2Utd2lkdGg9IjEiLz4KPGxpbmUgeDE9IjAiIHkxPSIxNiIgeDI9IjY0IiB5Mj0iMTYiIHN0cm9rZT0iIzY0NDYzNCIgc3Ryb2tlLXdpZHRoPSIxIi8+CjxsaW5lIHgxPSIwIiB5MT0iMzIiIHgyPSI2NCIgeTI9IjMyIiBzdHJva2U9IiM2NDQ2MzQiIHN0cm9rZS13aWR0aD0iMSIvPgo8bGluZSB4MT0iMCIgeTE9IjQ4IiB4Mj0iNjQiIHkyPSI0OCIgc3Ryb2tlPSIjNjQ0NjM0IiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+",
+    "physicalRepeatM": 0.2,
+    "defaultTileScale": 0.4
+  },
+  {
+    "id": "marble-white",
+    "name": "White Marble",
+    "category": "stone",
+    "tags": ["marble", "white", "luxury", "indoor"],
+    "albedoURL": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjRkZGRkZGIi8+CjxwYXRoIGQ9Ik0xNiAxNkwyMCAyMEwyNCAxNkwyOCAyMEwzMiAxNkwzNiAyMEw0MCAxNkw0NCAyMEw0OCAxNkw1MiAyMEw1NiAxNkw2MCAyMEw2NCAxNlYyMEw2MCAyNEw1NiAyMEw1MiAyNEw0OCAyMEw0NCAyNEw0MCAyMEwzNiAyNEwzMiAyMEwyOCAyNEwyNCAyMEwyMCAyNEwxNiAyMFYxNloiIGZpbGw9IiNGNUY1RjUiLz4KPHBhdGggZD0iTTIwIDI0TDI0IDI4TDI4IDI0TDMyIDI4TDM2IDI0TDQwIDI4TDQ0IDI0TDQ4IDI4TDUyIDI0TDU2IDI4TDU2IDI0VjI4WiIgZmlsbD0iI0Y1RjVGNiIvPgo8L3N2Zz4=",
+    "physicalRepeatM": 0.5,
+    "defaultTileScale": 0.6
+  },
+  {
+    "id": "brick-red",
+    "name": "Red Brick",
+    "category": "brick",
+    "tags": ["brick", "red", "outdoor", "wall"],
+    "albedoURL": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjQzUzMzMzIi8+CjxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIzMiIgaGVpZ2h0PSIxNiIgZmlsbD0iI0E4MjgyOCIvPgo8cmVjdCB4PSIzMiIgeT0iMTYiIHdpZHRoPSIzMiIgaGVpZ2h0PSIxNiIgZmlsbD0iI0E4MjgyOCIvPgo8cmVjdCB4PSIwIiB5PSIzMiIgd2lkdGg9IjMyIiBoZWlnaHQ9IjE2IiBmaWxsPSIjQTgyODI4Ii8+CjxyZWN0IHg9IjMyIiB5PSI0OCIgd2lkdGg9IjMyIiBoZWlnaHQ9IjE2IiBmaWxsPSIjQTgyODI4Ii8+CjxsaW5lIHgxPSIwIiB5MT0iMTYiIHgyPSI2NCIgeTI9IjE2IiBzdHJva2U9IiM5NzI3MjciIHN0cm9rZS13aWR0aD0iMSIvPgo8bGluZSB4MT0iMCIgeTE9IjMyIiB4Mj0iNjQiIHkyPSIzMiIgc3Ryb2tlPSIjOTcyNzI3IiBzdHJva2Utd2lkdGg9IjEiLz4KPGxpbmUgeDE9IjAiIHkxPSI0OCIgeDI9IjY0IiB5Mj0iNDgiIHN0cm9rZT0iIzk3MjcyNyIgc3Ryb2tlLXdpZHRoPSIxIi8+Cjwvc3ZnPg==",
+    "physicalRepeatM": 0.25,
+    "defaultTileScale": 0.7
+  }
+]

@@ -48,9 +48,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Calculate proper repeatPx from calibration and material properties
     const ppm = Math.max(1, state.getCalibrationPxPerMeter()); // pixels per meter from calibration
     const repeatM = 
-      (material.physicalRepeatM && material.physicalRepeatM > 0) ? parseFloat(material.physicalRepeatM) :
-      (material.sheetWidthMm ? material.sheetWidthMm / 1000 :
-      (material.tileWidthMm ? material.tileWidthMm / 1000 : 0.30));
+      (material.physical_repeat_m && material.physical_repeat_m > 0) ? parseFloat(material.physical_repeat_m.toString()) :
+      (material.sheet_width_mm ? material.sheet_width_mm / 1000 :
+      (material.tile_width_mm ? material.tile_width_mm / 1000 : 0.30));
 
     const repeatPx = repeatM * ppm; // <- this is meta.scale
     const meta = { scale: repeatPx, rotationDeg: 0, offsetX: 0, offsetY: 0 };

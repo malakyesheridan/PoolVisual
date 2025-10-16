@@ -8,40 +8,42 @@ import { FileText, Calculator, DollarSign, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { useEditorStore } from '@/stores/editorSlice';
+import { useEditorStore } from '@/stores/editorStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useMaskStore } from '@/maskcore/store';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/lib/api-client';
 
 export function QuoteGenerator() {
   const [isGenerating, setIsGenerating] = useState(false);
   
-  const store = useEditorStore();
-  const { 
-    masks, 
-    editorState, 
-    jobId, 
-    photoId, 
-    computeMetrics, 
-    maskMaterials,
-    generateQuote 
-  } = store || {};
-  
+  const { masks, photo } = useEditorStore();
+  const { project, currentPhoto } = useProjectStore();
+  const { masks: maskStoreMasks, CREATE_QUOTE, ADD_QUOTE_ITEM, SET_ACTIVE_QUOTE } = useMaskStore();
   const { toast } = useToast();
   
-  const isCalibrated = editorState?.calibration && editorState.calibration.pixelsPerMeter > 0;
+  const isCalibrated = photo?.space?.calibration && photo.space.calibration.pixelsPerMeter > 0;
   
-  // Calculate total estimated cost
+  // Calculate total estimated cost using mask store data
   const calculateTotalCost = () => {
     let total = 0;
     let hasItems = false;
     
-    if (masks && maskMaterials && computeMetrics) {
-      masks.forEach(mask => {
-        const materialSettings = maskMaterials[mask.id];
-        if (materialSettings?.materialId) {
+    if (maskStoreMasks && Object.keys(maskStoreMasks).length > 0) {
+      Object.values(maskStoreMasks).forEach(mask => {
+        if (mask.materialId && mask.isVisible !== false) {
           hasItems = true;
-          const metrics = computeMetrics(mask.id);
-          // TODO: Get actual material price and calculate cost
-          // total += metrics.estimatedCost || 0;
+          // Calculate area and cost
+          const areaPixels = calculatePolygonArea(mask.pts);
+          const pixelsPerMeter = photo?.space?.calibration?.pixelsPerMeter || 100;
+          const area = areaPixels / (pixelsPerMeter * pixelsPerMeter);
+          
+          // TODO: Get actual material price from API
+          const materialCost = 50; // Placeholder
+          const laborCost = 25; // Placeholder
+          const markup = 1.3; // 30% markup
+          
+          total += (materialCost + laborCost) * area * markup;
         }
       });
     }
@@ -49,17 +51,38 @@ export function QuoteGenerator() {
     return { total, hasItems };
   };
 
+  // Helper function to calculate polygon area
+  const calculatePolygonArea = (points: any[]): number => {
+    if (points.length < 3) return 0;
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      area += points[i].x * points[j].y;
+      area -= points[j].x * points[i].y;
+    }
+    return Math.abs(area) / 2;
+  };
+
   const { total, hasItems } = calculateTotalCost();
   
-  const masksWithMaterials = (masks || []).filter(mask => 
-    maskMaterials?.[mask.id]?.materialId
+  const masksWithMaterials = Object.values(maskStoreMasks || {}).filter(mask => 
+    mask.materialId && mask.isVisible !== false
   );
 
   const handleGenerateQuote = async () => {
-    if (!jobId || !photoId) {
+    if (!project) {
       toast({
-        title: "Error",
-        description: "Job ID or Photo ID missing",
+        title: "No Project",
+        description: "Please select a project to generate quotes for",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!masksWithMaterials.length) {
+      toast({
+        title: "No Materials Assigned",
+        description: "Please assign materials to masks before generating quotes",
         variant: "destructive",
       });
       return;
@@ -74,26 +97,49 @@ export function QuoteGenerator() {
       return;
     }
 
-    if (masksWithMaterials.length === 0) {
-      toast({
-        title: "No Materials Assigned",
-        description: "Please assign materials to masks before generating quotes",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsGenerating(true);
     
     try {
-      await generateQuote?.(jobId!, photoId!);
+      // Create quote via API
+      const quoteData = {
+        jobId: project.jobId,
+        status: 'draft',
+        subtotal: total,
+        gst: total * 0.1, // 10% GST
+        total: total * 1.1,
+        depositPct: 0.3, // 30% deposit
+        validityDays: 30
+      };
+
+      const quote = await apiClient.createQuote(quoteData);
+      
+      // Create quote items for each mask
+      for (const mask of masksWithMaterials) {
+        const areaPixels = calculatePolygonArea(mask.pts);
+        const pixelsPerMeter = photo?.space?.calibration?.pixelsPerMeter || 100;
+        const area = areaPixels / (pixelsPerMeter * pixelsPerMeter);
+        
+        const itemData = {
+          quoteId: quote.id,
+          kind: 'material',
+          materialId: mask.materialId,
+          description: `Material for ${mask.name || 'mask'}`,
+          unit: 'm2',
+          qty: area,
+          unitPrice: 50, // TODO: Get from material API
+          lineTotal: area * 50
+        };
+
+        await apiClient.addQuoteItem(quote.id, itemData);
+      }
       
       toast({
         title: "Quote Generated",
-        description: "Draft quote has been created successfully",
+        description: `Quote created successfully for ${project.name}`,
         variant: "default",
       });
     } catch (error) {
+      console.error('Quote generation failed:', error);
       toast({
         title: "Generation Failed",
         description: "Unable to generate quote. Please try again.",

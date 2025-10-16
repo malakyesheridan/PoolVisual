@@ -485,3 +485,30 @@ export type Quote = typeof quotes.$inferSelect;
 export type InsertQuote = z.infer<typeof insertQuoteSchema>;
 export type QuoteItem = typeof quoteItems.$inferSelect;
 export type InsertQuoteItem = z.infer<typeof insertQuoteItemSchema>;
+
+// Calibration metadata schema
+export const CalibrationMetaSchema = z.object({
+  samples: z.array(z.object({
+    x1: z.number(),
+    y1: z.number(),
+    x2: z.number(),
+    y2: z.number(),
+    distance: z.number(),
+    pixels: z.number()
+  })),
+  stdevPct: z.number().optional(),
+  method: z.string().optional()
+});
+
+export type CalibrationMeta = z.infer<typeof CalibrationMetaSchema>;
+
+// Settings schema for organization settings
+export const SettingsSchema = z.object({
+  currencyCode: z.string().default("AUD"),
+  taxRate: z.number().default(0.10),
+  depositDefaultPct: z.number().default(0.30),
+  validityDays: z.number().default(30),
+  pdfTerms: z.string().optional()
+});
+
+export type Settings = z.infer<typeof SettingsSchema>;

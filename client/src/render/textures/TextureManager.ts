@@ -3,7 +3,6 @@
  * SAFETY: Always returns HTMLImageElement - real texture or 256x256 checkerboard fallback
  * NEVER throws; NEVER leaves caller with no image
  */
-const API = import.meta.env.VITE_API_BASE_URL || '';
 
 function makeChecker(size = 256): HTMLCanvasElement {
   // SAFETY: Zero-dependency checkerboard fallback
@@ -64,6 +63,50 @@ export interface TextureOptions {
   mipmaps?: boolean;
   anisotropicFiltering?: boolean;
   wrapMode?: string;
+}
+
+type AnyTexture =
+  | { destroy?: () => void; dispose?: () => void }
+  | HTMLImageElement
+  | ImageBitmap
+  | any;
+
+function safeDispose(tex: AnyTexture) {
+  try {
+    if (!tex) return;
+
+    // PIXI-like
+    if (typeof tex.destroy === "function") {
+      tex.destroy();
+      return;
+    }
+
+    // THREE-like
+    if (typeof tex.dispose === "function") {
+      tex.dispose();
+      return;
+    }
+
+    // DOM image created via ObjectURL
+    if (typeof Image !== "undefined" && tex instanceof Image) {
+      const src = tex.getAttribute?.("src") || (tex as any).src;
+      if (src && typeof src === "string" && src.startsWith("blob:")) {
+        try { URL.revokeObjectURL(src); } catch {}
+      }
+      // No explicit destroy; GC will collect
+      return;
+    }
+
+    // ImageBitmap
+    if (typeof (tex as any).close === "function") {
+      (tex as any).close();
+      return;
+    }
+
+    // else: no-op
+  } catch (err) {
+    console.warn("[TextureManager] safeDispose error:", err);
+  }
 }
 
 export class TextureManager {
@@ -236,21 +279,26 @@ export class TextureManager {
    * @param materialId Optional specific material to clear, or all if not specified
    */
   clearCache(materialId?: string): void {
-    if (materialId) {
-      // Clear specific material textures
-      const keysToDelete: string[] = [];
-      this.textureCache.forEach((texture, key) => {
-        if (key.startsWith(`${materialId}_`)) {
-          texture.destroy(true);
-          keysToDelete.push(key);
-        }
-      });
-      
-      keysToDelete.forEach(key => this.textureCache.delete(key));
-    } else {
-      // Clear all textures
-      this.textureCache.forEach(texture => texture.destroy(true));
-      this.textureCache.clear();
+    try {
+      if (materialId) {
+        // Clear specific material textures
+        const keysToDelete: string[] = [];
+        this.textureCache.forEach((texture, key) => {
+          if (key.startsWith(`${materialId}_`)) {
+            safeDispose(texture);
+            keysToDelete.push(key);
+          }
+        });
+        
+        keysToDelete.forEach(key => this.textureCache.delete(key));
+      } else {
+        // Clear all textures
+        this.textureCache.forEach(texture => safeDispose(texture));
+        this.textureCache.clear();
+      }
+    } catch (e) {
+      console.warn("[TextureManager] clearCache failed:", e);
+      // keep going; never throw
     }
   }
 
@@ -273,7 +321,17 @@ export class TextureManager {
   }
 
   destroy(): void {
-    this.clearCache();
-    this.loadingPromises.clear();
+    try {
+      this.clearCache();
+    } catch (e) {
+      console.warn("[TextureManager] destroy failed:", e);
+    } finally {
+      // Clean up loading promises safely
+      try {
+        this.loadingPromises.clear();
+      } catch (e) {
+        console.warn("[TextureManager] loadingPromises cleanup failed:", e);
+      }
+    }
   }
 }

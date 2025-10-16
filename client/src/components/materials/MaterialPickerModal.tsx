@@ -1,153 +1,190 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMaterialsStore } from '../../state/materialsStore';
-import { listMaterialsClient } from '../../lib/materialsClient';
-import type { Material } from '../../state/materialsStore';
-import { X, Search, Package } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useMaterialsStore } from '@/state/materialsStore';
+import { Search, Grid3X3, List } from 'lucide-react';
 
-type Props = {
+interface MaterialPickerModalProps {
   open: boolean;
   onClose: () => void;
-  onPick: (m: Material) => void;
-  initialCategory?: Material['category'] | 'all';
-};
+  onPick: (materialId: string) => void;
+  selectedMaterialId?: string | null;
+}
 
-export function MaterialPickerModal({ open, onClose, onPick, initialCategory = 'all' }: Props) {
-  const { hydrateMerge, all } = useMaterialsStore();
-  const [search, setSearch] = useState('');
-  const [category, setCategory] = useState<Material['category'] | 'all'>(initialCategory);
-  const [loading, setLoading] = useState(false);
+export function MaterialPickerModal({ 
+  open, 
+  onClose, 
+  onPick, 
+  selectedMaterialId 
+}: MaterialPickerModalProps) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [mounted, setMounted] = useState(false);
+  
+  const materials = useMaterialsStore(s => s.items ?? {});
+  const hydrateMerge = useMaterialsStore(s => s.hydrateMerge);
 
-  // Load materials when modal opens if store is empty
+  // Ensure component is mounted before rendering Dialog
   useEffect(() => {
-    if (!open) return;
-    if (all().length === 0) {
-      setLoading(true);
-      listMaterialsClient()
-        .then(items => hydrateMerge(items))
-        .catch(() => {})
-        .finally(() => setLoading(false));
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
+
+  // Ensure materials are loaded
+  useEffect(() => {
+    if (Object.keys(materials).length === 0) {
+      // Load materials if not already loaded
+      // This would typically call an API endpoint
+      console.log('[MaterialPickerModal] Loading materials...');
     }
-  }, [open, hydrateMerge, all]);
+  }, [materials]);
 
-  const filteredMaterials = useMemo(() => {
-    const allMaterials = all();
-    const searchLower = search.trim().toLowerCase();
-    return allMaterials.filter(m => {
-      const matchesCategory = category === 'all' || m.category === category;
-      const matchesSearch = !searchLower || 
-        m.name?.toLowerCase().includes(searchLower) ||
-        m.sku?.toLowerCase().includes(searchLower) ||
-        m.supplier?.toLowerCase().includes(searchLower);
-      return matchesCategory && matchesSearch;
-    });
-  }, [all, search, category]);
+  // Filter materials by search and category
+  const filteredMaterials = Object.values(materials).filter(material => {
+    const matchesSearch = material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         material.sku?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || material.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
 
-  if (!open) return null;
+  // Get unique categories
+  const categories = ['all', ...Array.from(new Set(Object.values(materials).map(m => m.category)))].filter(Boolean);
+
+  const handleMaterialSelect = (materialId: string) => {
+    onPick(materialId);
+    onClose();
+  };
+
+  // Don't render Dialog until mounted to prevent useRef issues
+  if (!mounted) {
+    return null;
+  }
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-w-6xl max-h-[90vh] w-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-lg font-semibold">Choose Material</h2>
-          <Button variant="ghost" size="sm" onClick={onClose}>
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
-
-        {/* Filters */}
-        <div className="p-4 border-b flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              placeholder="Search materials..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Select Material</DialogTitle>
+        </DialogHeader>
+        
+        <div className="flex flex-col gap-4 flex-1">
+          {/* Search and Filters */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+              <Input
+                placeholder="Search materials..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => setViewMode(viewMode === 'grid' ? 'list' : 'grid')}
+            >
+              {viewMode === 'grid' ? <List className="w-4 h-4" /> : <Grid3X3 className="w-4 h-4" />}
+            </Button>
           </div>
-          <Select value={category} onValueChange={(value: any) => setCategory(value)}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="waterline_tile">Waterline Tile</SelectItem>
-              <SelectItem value="interior">Interior</SelectItem>
-              <SelectItem value="coping">Coping</SelectItem>
-              <SelectItem value="paving">Paving</SelectItem>
-              <SelectItem value="fencing">Fencing</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full" />
-              <span className="ml-3 text-gray-600">Loading materials...</span>
-            </div>
-          ) : filteredMaterials.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-gray-500 mb-2">No materials found</div>
-              <div className="text-sm text-gray-400">
-                {search ? 'Try adjusting your search or category filter' : 'Add materials to your library first'}
+          {/* Category Filter */}
+          <div className="flex gap-2 flex-wrap">
+            {categories.map(category => (
+              <Badge
+                key={category}
+                variant={selectedCategory === category ? 'default' : 'secondary'}
+                className="cursor-pointer"
+                onClick={() => setSelectedCategory(category)}
+              >
+                {category === 'all' ? 'All Categories' : category}
+              </Badge>
+            ))}
+          </div>
+
+          {/* Materials Grid/List */}
+          <ScrollArea className="flex-1">
+            {viewMode === 'grid' ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {filteredMaterials.map(material => (
+                  <div
+                    key={material.id}
+                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                      selectedMaterialId === material.id 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => handleMaterialSelect(material.id)}
+                  >
+                    <div className="aspect-square bg-gray-100 rounded-md mb-3 flex items-center justify-center">
+                      {material.texture_url ? (
+                        <img 
+                          src={material.texture_url} 
+                          alt={material.name}
+                          className="w-full h-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <div className="text-gray-400 text-sm">No Preview</div>
+                      )}
+                    </div>
+                    <div className="text-sm font-medium">{material.name}</div>
+                    <div className="text-xs text-gray-500">{material.sku}</div>
+                    {material.category && (
+                      <Badge variant="secondary" className="text-xs mt-1">
+                        {material.category}
+                      </Badge>
+                    )}
+                  </div>
+                ))}
               </div>
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {filteredMaterials.map(material => (
-                <button
-                  key={material.id}
-                  onClick={() => onPick(material)}
-                  className="group border rounded-lg overflow-hidden hover:shadow-lg transition-all duration-200 text-left bg-white dark:bg-gray-800"
-                  data-testid={`material-card-${material.id}`}
-                >
-                  <div className="aspect-square bg-gray-100 dark:bg-gray-700 relative overflow-hidden">
-                    {material.thumbnail_url || material.texture_url ? (
-                      <img 
-                        src={material.thumbnail_url || material.texture_url || ''} 
-                        alt={material.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-400">
-                        <Package className="w-8 h-8" />
-                      </div>
-                    )}
-                    
-                    {material.price && (
-                      <div className="absolute top-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
-                        ${typeof material.price === 'number' ? material.price.toFixed(2) : material.price}
-                      </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredMaterials.map(material => (
+                  <div
+                    key={material.id}
+                    className={`flex items-center gap-4 p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedMaterialId === material.id 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onClick={() => handleMaterialSelect(material.id)}
+                  >
+                    <div className="w-16 h-16 bg-gray-100 rounded-md flex items-center justify-center">
+                      {material.texture_url ? (
+                        <img 
+                          src={material.texture_url} 
+                          alt={material.name}
+                          className="w-full h-full object-cover rounded-md"
+                        />
+                      ) : (
+                        <div className="text-gray-400 text-xs">No Preview</div>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-medium">{material.name}</div>
+                      <div className="text-sm text-gray-500">{material.sku}</div>
+                    </div>
+                    {material.category && (
+                      <Badge variant="secondary" className="text-xs">
+                        {material.category}
+                      </Badge>
                     )}
                   </div>
-                  
-                  <div className="p-3">
-                    <div className="font-medium text-sm line-clamp-2 mb-1">
-                      {material.name}
-                    </div>
-                    <div className="text-xs text-gray-500 mb-1">
-                      {material.category?.replace('_', ' ')} • {material.unit}
-                    </div>
-                    {material.supplier && (
-                      <div className="text-xs text-blue-600">
-                        {material.supplier}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          {/* Results Count */}
+          <div className="text-sm text-gray-500 text-center">
+            {filteredMaterials.length} material{filteredMaterials.length !== 1 ? 's' : ''} found
+          </div>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

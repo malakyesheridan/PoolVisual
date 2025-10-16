@@ -1,4 +1,5 @@
 import { PropsWithChildren } from 'react';
+import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
@@ -11,7 +12,8 @@ import {
   Settings,
   User,
   LogOut,
-  Palette
+  Palette,
+  Bell
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -22,6 +24,127 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { useStatusSyncStore } from '@/stores/statusSyncStore';
+import { NotificationPanel } from '@/components/notifications/NotificationPanel';
+
+// Notifications Bell Component
+function NotificationsBell() {
+  const { 
+    notifications, 
+    smartNotifications, 
+    notificationGroups,
+    getNotificationStats 
+  } = useStatusSyncStore();
+  const [isOpen, setIsOpen] = React.useState(false);
+  
+  const stats = getNotificationStats();
+  const unreadCount = notifications.filter(n => !n.read).length;
+  const smartUnreadCount = smartNotifications.filter(n => !n.read).length;
+  const totalUnreadCount = unreadCount + smartUnreadCount;
+  
+  return (
+    <div className="relative">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="relative h-8 w-8 p-0"
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <Bell className="h-4 w-4" />
+        {totalUnreadCount > 0 && (
+          <Badge 
+            variant="destructive" 
+            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+          >
+            {totalUnreadCount > 99 ? '99+' : totalUnreadCount}
+          </Badge>
+        )}
+      </Button>
+      
+      {isOpen && (
+        <div className="absolute right-0 top-full mt-2 w-96 z-50">
+          <div className="bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">Notifications</h3>
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs text-slate-500">{totalUnreadCount} unread</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    ×
+                  </Button>
+                </div>
+              </div>
+            </div>
+            
+            <div className="max-h-96 overflow-y-auto">
+              {/* Smart Notifications Summary */}
+              {smartNotifications.length > 0 && (
+                <div className="p-3 border-b border-slate-100">
+                  <div className="text-xs font-medium text-slate-700 mb-2">Smart Notifications</div>
+                  <div className="space-y-2">
+                    {smartNotifications.slice(0, 3).map((notification) => (
+                      <div key={notification.id} className="text-xs text-slate-600 p-2 bg-slate-50 rounded">
+                        <div className="font-medium">{notification.title}</div>
+                        <div className="text-slate-500">{notification.message}</div>
+                      </div>
+                    ))}
+                    {smartNotifications.length > 3 && (
+                      <div className="text-xs text-blue-600 text-center py-1">
+                        +{smartNotifications.length - 3} more smart notifications
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* Regular Notifications */}
+              <div className="p-3">
+                <div className="text-xs font-medium text-slate-700 mb-2">Recent Notifications</div>
+                {notifications.length === 0 ? (
+                  <div className="text-xs text-slate-500 text-center py-4">
+                    No notifications
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {notifications.slice(0, 5).map((notification) => (
+                      <div key={notification.id} className="text-xs text-slate-600 p-2 bg-slate-50 rounded">
+                        <div className="font-medium">{notification.message}</div>
+                        <div className="text-slate-500">
+                          {new Date(notification.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-3 border-t border-slate-200 bg-slate-50">
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => {
+                  setIsOpen(false);
+                  // Navigate to dashboard notifications tab
+                  window.location.href = '/dashboard#notifications';
+                }}
+              >
+                View All Notifications
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function AppShell({ children }: PropsWithChildren) {
   const [location] = useLocation();
@@ -30,7 +153,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
     { to: '/jobs', label: 'Jobs', icon: Briefcase },
-    { to: '/canvas-editor', label: 'Canvas Editor', icon: Palette },
+    { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/materials', label: 'Materials', icon: Package },
     { to: '/quotes', label: 'Quotes', icon: FileText },
   ];
@@ -58,6 +181,9 @@ export function AppShell({ children }: PropsWithChildren) {
           
           {/* User Menu */}
           <div className="ml-auto flex items-center gap-2">
+            {/* Notifications Bell */}
+            <NotificationsBell />
+            
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>

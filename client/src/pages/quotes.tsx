@@ -18,7 +18,10 @@ import {
   Share,
   DollarSign,
   Plus,
-  Filter
+  Filter,
+  User,
+  Calendar,
+  MoreHorizontal
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { formatCurrency } from "@/lib/measurement-utils";
@@ -42,6 +45,17 @@ export default function Quotes() {
     queryFn: () => quoteId ? apiClient.getQuote(quoteId) : Promise.resolve(null),
     enabled: !!quoteId,
   });
+
+  const { data: quotes = [], isLoading: quotesLoading } = useQuery({
+    queryKey: ['/api/quotes', selectedOrgId],
+    queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
+    enabled: !!selectedOrgId,
+  });
+
+  const filteredQuotes = quotes.filter(quote =>
+    quote.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    quote.id.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const recalculateQuoteMutation = useMutation({
     mutationFn: (id: string) => apiClient.recalculateQuote(id),
@@ -240,7 +254,7 @@ export default function Quotes() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">Total Quotes</p>
                   <p className="text-2xl font-bold text-slate-900" data-testid="stat-total-quotes">
-                    12
+                    {quotes.length}
                   </p>
                 </div>
                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -254,13 +268,29 @@ export default function Quotes() {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-slate-600">Pending</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-pending-quotes">
-                    3
+                  <p className="text-sm font-medium text-slate-600">Draft</p>
+                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-draft-quotes">
+                    {quotes.filter(q => q.status === 'draft').length}
                   </p>
                 </div>
-                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <Send className="w-5 h-5 text-yellow-600" />
+                <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-gray-600" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-600">Sent</p>
+                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-sent-quotes">
+                    {quotes.filter(q => q.status === 'sent').length}
+                  </p>
+                </div>
+                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Send className="w-5 h-5 text-blue-600" />
                 </div>
               </div>
             </CardContent>
@@ -272,27 +302,11 @@ export default function Quotes() {
                 <div>
                   <p className="text-sm font-medium text-slate-600">Accepted</p>
                   <p className="text-2xl font-bold text-slate-900" data-testid="stat-accepted-quotes">
-                    7
+                    {quotes.filter(q => q.status === 'accepted').length}
                   </p>
                 </div>
                 <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
                   <DollarSign className="w-5 h-5 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Total Value</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-total-value">
-                    {formatCurrency(87650)}
-                  </p>
-                </div>
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <DollarSign className="w-5 h-5 text-purple-600" />
                 </div>
               </div>
             </CardContent>
@@ -305,17 +319,103 @@ export default function Quotes() {
             <CardTitle>Recent Quotes</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="p-8 text-center">
-              <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes found</h3>
-              <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
-                Create your first quote from a job with photos and measurements.
-              </p>
-              <Button data-testid="button-create-first-quote">
-                <Plus className="w-4 h-4 mr-2" />
-                Create Your First Quote
-              </Button>
-            </div>
+            {quotesLoading ? (
+              <div className="p-8 text-center">
+                <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                <p className="text-slate-500">Loading quotes...</p>
+              </div>
+            ) : filteredQuotes.length === 0 ? (
+              <div className="p-8 text-center">
+                <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes found</h3>
+                <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
+                  {searchTerm ? 'No quotes match your search criteria.' : 'Create your first quote from a job with photos and measurements.'}
+                </p>
+                <Button data-testid="button-create-first-quote">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Quote
+                </Button>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {filteredQuotes.map((quote) => (
+                  <div 
+                    key={quote.id}
+                    className="p-6 hover:bg-slate-50 transition-colors cursor-pointer"
+                    onClick={() => navigate(`/quotes/${quote.id}`)}
+                    data-testid={`quote-item-${quote.id}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-medium text-slate-900" data-testid={`text-quote-id-${quote.id}`}>
+                            Quote #{quote.id.slice(-8).toUpperCase()}
+                          </h3>
+                          <Badge 
+                            className={`text-xs ${getStatusColor(quote.status)}`}
+                            data-testid={`badge-quote-status-${quote.id}`}
+                          >
+                            {quote.status}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center gap-4 text-sm text-slate-600">
+                          {quote.clientName && (
+                            <div className="flex items-center gap-1">
+                              <User className="w-4 h-4" />
+                              <span data-testid={`text-client-name-${quote.id}`}>{quote.clientName}</span>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-1">
+                            <Calendar className="w-4 h-4" />
+                            <span data-testid={`text-created-${quote.id}`}>
+                              {formatDistanceToNow(new Date(quote.createdAt), { addSuffix: true })}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className="font-medium text-slate-900" data-testid={`text-quote-total-${quote.id}`}>
+                            {formatCurrency(parseFloat(quote.total || '0'))}
+                          </p>
+                          <p className="text-sm text-slate-600">
+                            {quote.items?.length || 0} items
+                          </p>
+                        </div>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/quotes/${quote.id}`);
+                          }}
+                          data-testid={`button-view-quote-${quote.id}`}
+                        >
+                          <Eye className="w-4 h-4 mr-1" />
+                          View
+                        </Button>
+                        
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // TODO: Add quote menu functionality
+                          }}
+                          data-testid={`button-quote-menu-${quote.id}`}
+                        >
+                          <MoreHorizontal className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

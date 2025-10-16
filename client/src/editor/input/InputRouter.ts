@@ -4,6 +4,7 @@
  */
 
 import type Konva from 'konva';
+import { screenToImg } from '@/render/photoTransform';
 
 export const isCalActive = (s:any)=> s.calState==='placingA' || s.calState==='placingB' || s.calState==='lengthEntry';
 
@@ -18,8 +19,19 @@ export class InputRouter {
   private pt(stage:Konva.Stage){ 
     const p=stage.getPointerPosition(); 
     if(!p) return null; 
-    const t=stage.getAbsoluteTransform().copy().invert(); 
-    return t.point(p); 
+    
+    // Get the photo transform from the store
+    const s = this.store.getState();
+    if (!s.photoSpace) return null;
+    
+    // Convert screen coordinates to image coordinates
+    const T = {
+      S: s.photoSpace.scale,
+      originX: s.photoSpace.panX + (s.containerSize.width - s.photoSpace.imgW * s.photoSpace.scale) / 2,
+      originY: s.photoSpace.panY + (s.containerSize.height - s.photoSpace.imgH * s.photoSpace.scale) / 2
+    };
+    
+    return screenToImg(T, p.x, p.y);
   }
   
   handleDown(stage:Konva.Stage,e:any){ 

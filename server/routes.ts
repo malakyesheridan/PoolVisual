@@ -1,7 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { registerTextureProxyRoutes } from './routes/textureProxy';
-import healthRoutes from "./routes/health.js";
+import healthRoutes from "./routes/health";
 import { storage } from "./storage";
 import { 
   insertUserSchema, 
@@ -16,15 +16,16 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+// JWT removed - using session-based authentication
 import multer from "multer";
 import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
 import { registerMaterialRoutes } from "./materialRoutes";
 import { registerMaterialRoutesV2 } from "./routes/materials";
+import { scenes } from "./routes/scenes";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default-dev-secret';
+// JWT_SECRET removed - using session-based authentication
 
 // File upload configuration
 const upload = multer({
@@ -48,25 +49,15 @@ interface AuthenticatedRequest extends Request {
   orgId?: string;
 }
 
-// Middleware to verify JWT token
-const authenticateToken = async (req: AuthenticatedRequest, res: any, next: any) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ message: 'Access token required' });
+// Middleware to verify session authentication
+const authenticateSession = async (req: AuthenticatedRequest, res: any, next: any) => {
+  if (!req.session?.user) {
+    return res.status(401).json({ message: 'Authentication required' });
   }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    req.user = await storage.getUser(decoded.userId);
-    if (!req.user) {
-      return res.status(401).json({ message: 'Invalid token' });
-    }
-    next();
-  } catch (error) {
-    return res.status(403).json({ message: 'Invalid or expired token' });
-  }
+  
+  // Set user from session
+  req.user = req.session.user;
+  next();
 };
 
 // Middleware to verify organization membership
@@ -118,6 +109,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { registerImportRoutes } = await import('./importRoutes');
   registerImportRoutes(app);
   
+  // Register scenes routes (project save/load)
+  app.use("/api/scenes", scenes);
+  
+  // Register fallback routes for no-DB mode
+  const { registerFallbackRoutes } = await import('./routes/fallbackRoutes');
+  registerFallbackRoutes(app);
+  
   // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
     try {
@@ -148,7 +146,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const existingUser = await storage.getUserByEmail(userData.email);
       
       if (existingUser) {
-        return res.status(400).json({ message: "User already exists with this email" });
+        return res.status(400).json({ ok: false, error: "User already exists with this email" });
       }
 
       const hashedPassword = await bcrypt.hash(userData.password, 12);
@@ -157,50 +155,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         password: hashedPassword
       });
 
-      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-      
       res.json({ 
-        user: { id: user.id, email: user.email, username: user.username },
-        token 
+        ok: true,
+        user: { id: user.id, email: user.email, username: user.username }
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ 
-          message: "Validation error", 
-          errors: error.errors 
+          ok: false,
+          error: "Validation error", 
+          details: error.errors 
         });
       }
-      res.status(500).json({ message: (error as Error).message });
+      console.error('[auth/register] DB error:', error);
+      res.status(500).json({ ok: false, error: (error as Error).message });
     }
   });
 
-  app.post("/api/auth/login", async (req: any, res: any) => {
-    try {
-      const { email, password } = req.body;
-      
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password required" });
-      }
-      
-      const user = await storage.getUserByEmail(email);
-      
-      if (!user || !await bcrypt.compare(password, user.password)) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-
-      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-      
-      res.json({ 
-        user: { id: user.id, email: user.email, username: user.username },
-        token 
-      });
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
-    }
-  });
+  // Login endpoint removed - using session-based auth from server/index.ts
 
   // Organization endpoints
-  app.post("/api/orgs", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/orgs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const orgData = insertOrgSchema.parse(req.body);
       const org = await storage.createOrg(orgData, req.user.id);
@@ -216,7 +191,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/me/orgs", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/me/orgs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const orgs = await storage.getUserOrgs(req.user.id);
       res.json(orgs);
@@ -226,7 +201,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Organization invitation endpoint
-  app.post("/api/orgs/:orgId/invite", authenticateToken, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/orgs/:orgId/invite", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
       const { email, role } = req.body;
       
@@ -248,7 +223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Jobs endpoints
-  app.post("/api/jobs", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/jobs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const jobData = insertJobSchema.parse(req.body);
       
@@ -260,7 +235,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied to this organization" });
       }
 
-      const job = await storage.createJob(jobData);
+      // Get the user's org member ID for this organization
+      const orgMember = await storage.getOrgMember(req.user.id, jobData.orgId);
+      if (!orgMember) {
+        return res.status(403).json({ message: "User is not a member of this organization" });
+      }
+
+      // Set the correct createdBy field and ensure status is set
+      const jobToCreate = {
+        ...jobData,
+        createdBy: orgMember.id,
+        status: jobData.status || 'new'
+      };
+
+      const job = await storage.createJob(jobToCreate);
       res.json(job);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -273,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/jobs", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/jobs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const { orgId, status, q } = req.query;
       if (!orgId) {
@@ -309,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/jobs/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/jobs/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const jobId = req.params.id;
       if (!jobId) {
@@ -335,7 +323,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Photos endpoints
-  app.post("/api/photos", authenticateToken, upload.single('photo'), async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/photos", authenticateSession, upload.single('photo'), async (req: AuthenticatedRequest, res: any) => {
     try {
       const { jobId, width, height, exifData } = req.body;
       
@@ -374,7 +362,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/photos/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/photos/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const photoId = req.params.id;
       if (!photoId) {
@@ -405,7 +393,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/photos/:id/calibration", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/photos/:id/calibration", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const photoId = req.params.id;
       if (!photoId) {
@@ -506,7 +494,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/materials", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/materials", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const materialData = insertMaterialSchema.parse(req.body);
       
@@ -533,7 +521,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/materials/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.patch("/api/materials/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const updates = req.body;
       
@@ -559,7 +547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/materials/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.delete("/api/materials/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Similar access check as above
       await storage.deleteMaterial(req.params.id);
@@ -570,7 +558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Masks endpoints
-  app.post("/api/masks", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/masks", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const maskData = insertMaskSchema.parse(req.body);
       
@@ -605,7 +593,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/masks", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/masks", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const { photoId } = req.query;
       if (!photoId) {
@@ -637,7 +625,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/masks/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.delete("/api/masks/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Add access verification here
       await storage.deleteMask(req.params.id);
@@ -648,7 +636,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Quotes endpoints
-  app.post("/api/quotes", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/quotes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const quoteData = insertQuoteSchema.parse(req.body);
       
@@ -678,7 +666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/quotes/:id", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/quotes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const quote = await storage.getQuote(req.params.id);
       if (!quote) {
@@ -705,7 +693,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/quotes/:id/items", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/quotes/:id/items", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const itemData = insertQuoteItemSchema.parse({
         ...req.body,
@@ -743,7 +731,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/quotes/:id/recalculate", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/quotes/:id/recalculate", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Verify quote access
       const quote = await storage.getQuote(req.params.id);
@@ -785,7 +773,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/quotes/:id/send", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/quotes/:id/send", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Verify access and send quote
       const quote = await storage.getQuote(req.params.id);
@@ -811,7 +799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/quotes/:id/accept", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/quotes/:id/accept", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const quote = await storage.getQuote(req.params.id);
       if (!quote) {
@@ -853,7 +841,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // You can add external payment integration endpoints here if needed
 
   // Settings endpoints
-  app.get("/api/settings/:orgId", authenticateToken, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/settings/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
       const settings = await storage.getOrgSettings(req.params.orgId);
       res.json(settings || {
@@ -868,7 +856,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/settings/:orgId", authenticateToken, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
+  app.patch("/api/settings/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
       const updates = req.body;
       const settings = await storage.updateOrgSettings(req.params.orgId, updates);
@@ -879,7 +867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Image composition endpoint (for before/after generation)
-  app.post("/api/photos/:id/composite", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Verify photo access
       const photo = await storage.getPhoto(req.params.id);
@@ -901,7 +889,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/photos/:id/composite", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Return composite URLs if ready
       res.json({
@@ -916,7 +904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Notifications endpoints
-  app.get("/api/notifications", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/notifications", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // This would get user notifications from storage
       res.json([]);
@@ -925,7 +913,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/notifications/mark-read", authenticateToken, async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/notifications/mark-read", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const { notificationIds } = req.body;
       // Mark notifications as read

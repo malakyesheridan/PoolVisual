@@ -9,9 +9,8 @@ interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
-  login: (user: User, token: string) => void;
+  login: (user: User) => void;
   logout: () => void;
 }
 
@@ -19,13 +18,12 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      token: null,
-      isAuthenticated: false,
-      login: (user, token) => {
-        set({ user, token, isAuthenticated: true });
+      isAuthenticated: process.env.NODE_ENV === 'development', // DEV BYPASS: Auto-authenticate in dev
+      login: (user) => {
+        set({ user, isAuthenticated: true });
       },
       logout: () => {
-        set({ user: null, token: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false });
       },
     }),
     {

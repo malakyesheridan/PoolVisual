@@ -202,6 +202,8 @@ export function applyBondPattern(
     const u = uvs[i];
     const v = uvs[i + 1];
 
+    if (u === undefined || v === undefined) continue;
+
     switch (bond) {
       case 'brick50':
         // Offset every other row by half tile width

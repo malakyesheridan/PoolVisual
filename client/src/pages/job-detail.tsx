@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
+import { queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { 
   ArrowLeft, 
   Camera, 
@@ -16,20 +18,88 @@ import {
   FileText,
   Upload,
   Edit,
-  Trash2
+  Trash2,
+  Plus,
+  Eye,
+  Send
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { formatCurrency } from "@/lib/measurement-utils";
 
 export default function JobDetail() {
   const [, params] = useRoute('/jobs/:id');
   const [, navigate] = useLocation();
   const jobId = params?.id;
+  const { toast } = useToast();
 
   const { data: job, isLoading } = useQuery({
     queryKey: ['/api/jobs', jobId],
     queryFn: () => jobId ? apiClient.getJob(jobId) : Promise.resolve(null),
     enabled: !!jobId,
   });
+
+  const { data: quotes = [], isLoading: quotesLoading } = useQuery({
+    queryKey: ['/api/quotes', jobId],
+    queryFn: () => jobId ? apiClient.getQuotes(job?.orgId || '', { jobId }) : Promise.resolve([]),
+    enabled: !!jobId && !!job?.orgId,
+  });
+
+  const { data: photos = [], isLoading: photosLoading } = useQuery({
+    queryKey: ['/api/jobs', jobId, 'photos'],
+    queryFn: () => jobId ? apiClient.getJobPhotos(jobId) : Promise.resolve([]),
+    enabled: !!jobId,
+  });
+
+  const createQuoteMutation = useMutation({
+    mutationFn: (data: any) => apiClient.createQuote(data),
+    onSuccess: (quote) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes', jobId] });
+      toast({
+        title: "Quote created",
+        description: "The quote has been created successfully.",
+      });
+      navigate(`/quotes/${quote.id}`);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error creating quote",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const uploadPhotoMutation = useMutation({
+    mutationFn: ({ file, jobId }: { file: File; jobId: string }) => 
+      apiClient.uploadPhoto(file, jobId),
+    onSuccess: (photo) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos'] });
+      toast({
+        title: "Photo uploaded",
+        description: "The photo has been uploaded successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error uploading photo",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && jobId) {
+      uploadPhotoMutation.mutate({ file, jobId });
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
 
   if (isLoading) {
     return (
@@ -79,6 +149,37 @@ export default function JobDetail() {
     }
   };
 
+  const getQuoteStatusColor = (status: string) => {
+    switch (status) {
+      case 'draft': return 'bg-gray-100 text-gray-800';
+      case 'sent': return 'bg-blue-100 text-blue-800';
+      case 'accepted': return 'bg-green-100 text-green-800';
+      case 'declined': return 'bg-red-100 text-red-800';
+      default: return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const handleCreateQuote = () => {
+    if (!job) return;
+    
+    const quoteData = {
+      jobId: job.id,
+      orgId: job.orgId,
+      clientName: job.clientName,
+      clientEmail: job.clientEmail,
+      clientPhone: job.clientPhone,
+      address: job.address,
+      status: 'draft',
+      items: [],
+      subtotal: '0',
+      gst: '0',
+      total: '0',
+      depositPct: '0.3'
+    };
+
+    createQuoteMutation.mutate(quoteData);
+  };
+
   return (
     <div className="bg-slate-50">      
       <div className="max-w-4xl mx-auto px-6 py-8">
@@ -114,9 +215,13 @@ export default function JobDetail() {
               <Edit className="w-4 h-4 mr-2" />
               Edit Job
             </Button>
-            <Button data-testid="button-create-quote">
+            <Button 
+              onClick={handleCreateQuote}
+              disabled={createQuoteMutation.isPending}
+              data-testid="button-create-quote"
+            >
               <FileText className="w-4 h-4 mr-2" />
-              Create Quote
+              {createQuoteMutation.isPending ? 'Creating...' : 'Create Quote'}
             </Button>
           </div>
         </div>
@@ -130,25 +235,99 @@ export default function JobDetail() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <Camera className="w-5 h-5" />
-                  Photos
+                  Photos ({photos.length})
                 </CardTitle>
-                <Button size="sm" data-testid="button-upload-photo">
+                <Button 
+                  size="sm" 
+                  data-testid="button-upload-photo"
+                  onClick={handleUploadClick}
+                  disabled={uploadPhotoMutation.isPending}
+                >
                   <Upload className="w-4 h-4 mr-2" />
-                  Upload Photo
+                  {uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center">
-                  <Camera className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-slate-900 mb-2">No photos uploaded yet</h3>
-                  <p className="text-slate-500 mb-4" data-testid="text-no-photos">
-                    Upload site photos to start creating estimates and visual mock-ups
-                  </p>
-                  <Button data-testid="button-upload-first-photo">
-                    <Upload className="w-4 h-4 mr-2" />
-                    Upload Your First Photo
-                  </Button>
-                </div>
+                {photosLoading ? (
+                  <div className="text-center p-8">
+                    <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-slate-500">Loading photos...</p>
+                  </div>
+                ) : photos.length === 0 ? (
+                  <div className="border-2 border-dashed border-slate-200 rounded-lg p-8 text-center">
+                    <Camera className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No photos uploaded yet</h3>
+                    <p className="text-slate-500 mb-4" data-testid="text-no-photos">
+                      Upload site photos to start creating estimates and visual mock-ups
+                    </p>
+                    <Button 
+                      data-testid="button-upload-first-photo"
+                      onClick={handleUploadClick}
+                      disabled={uploadPhotoMutation.isPending}
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      {uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Your First Photo'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {photos.map((photo) => (
+                      <div 
+                        key={photo.id}
+                        className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
+                      >
+                        <div className="aspect-video bg-slate-100 relative">
+                          {photo.thumbnailUrl ? (
+                            <img 
+                              src={photo.thumbnailUrl} 
+                              alt={photo.name || 'Photo'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <Camera className="w-8 h-8 text-slate-400" />
+                            </div>
+                          )}
+                          
+                          {/* Edit Button Overlay */}
+                          <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-20 transition-all duration-200 flex items-center justify-center">
+                            <Button
+                              size="sm"
+                              className="opacity-0 hover:opacity-100 transition-opacity duration-200"
+                              onClick={() => navigate(`/jobs/${jobId}/photo/${photo.id}/edit`)}
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit
+                            </Button>
+                          </div>
+                        </div>
+                        
+                        <div className="p-3">
+                          <h4 className="font-medium text-slate-900 truncate">
+                            {photo.name || `Photo ${photo.id.slice(-8)}`}
+                          </h4>
+                          <p className="text-sm text-slate-500">
+                            {formatDistanceToNow(new Date(photo.uploadedAt || photo.createdAt), { addSuffix: true })}
+                          </p>
+                          
+                          {/* Photo Status Indicators */}
+                          <div className="flex items-center gap-2 mt-2">
+                            {photo.canvasState && (
+                              <Badge variant="secondary" className="text-xs">
+                                Has Canvas Work
+                              </Badge>
+                            )}
+                            {photo.lastModified && photo.lastModified !== photo.uploadedAt && (
+                              <Badge variant="outline" className="text-xs">
+                                Modified
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -157,21 +336,105 @@ export default function JobDetail() {
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="w-5 h-5" />
-                  Quotes
+                  Quotes ({quotes.length})
                 </CardTitle>
-                <Button size="sm" data-testid="button-create-new-quote">
-                  <FileText className="w-4 h-4 mr-2" />
+                <Button 
+                  size="sm" 
+                  onClick={handleCreateQuote}
+                  disabled={createQuoteMutation.isPending}
+                  data-testid="button-create-new-quote"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
                   New Quote
                 </Button>
               </CardHeader>
               <CardContent>
-                <div className="text-center p-8">
-                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes created yet</h3>
-                  <p className="text-slate-500" data-testid="text-no-quotes">
-                    Create quotes after uploading photos and marking areas for renovation
-                  </p>
-                </div>
+                {quotesLoading ? (
+                  <div className="text-center p-8">
+                    <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-slate-500">Loading quotes...</p>
+                  </div>
+                ) : quotes.length === 0 ? (
+                  <div className="text-center p-8">
+                    <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes created yet</h3>
+                    <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
+                      Create quotes after uploading photos and marking areas for renovation
+                    </p>
+                    <Button 
+                      onClick={handleCreateQuote}
+                      disabled={createQuoteMutation.isPending}
+                      data-testid="button-create-first-quote"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Create Your First Quote
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {quotes.map((quote) => (
+                      <div 
+                        key={quote.id}
+                        className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                        onClick={() => navigate(`/quotes/${quote.id}`)}
+                        data-testid={`quote-item-${quote.id}`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <h4 className="font-medium text-slate-900" data-testid={`text-quote-id-${quote.id}`}>
+                              Quote #{quote.id.slice(-8).toUpperCase()}
+                            </h4>
+                            <p className="text-sm text-slate-600">
+                              Created {formatDistanceToNow(new Date(quote.createdAt), { addSuffix: true })}
+                            </p>
+                          </div>
+                          <Badge className={getQuoteStatusColor(quote.status)} data-testid={`badge-quote-status-${quote.id}`}>
+                            {quote.status}
+                          </Badge>
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="font-medium text-slate-900" data-testid={`text-quote-total-${quote.id}`}>
+                              {formatCurrency(parseFloat(quote.total || '0'))}
+                            </p>
+                            <p className="text-sm text-slate-600">
+                              {quote.items?.length || 0} items
+                            </p>
+                          </div>
+                          
+                          <div className="flex items-center gap-1">
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/quotes/${quote.id}`);
+                              }}
+                              data-testid={`button-view-quote-${quote.id}`}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            
+                            {quote.status === 'draft' && (
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // TODO: Implement send quote functionality
+                                }}
+                                data-testid={`button-send-quote-${quote.id}`}
+                              >
+                                <Send className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -303,6 +566,15 @@ export default function JobDetail() {
           </div>
         </div>
       </div>
+      
+      {/* Hidden file input for photo upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoUpload}
+        className="hidden"
+      />
     </div>
   );
 }

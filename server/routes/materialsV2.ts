@@ -71,6 +71,55 @@ export function materialsV2Routes(app: Express) {
   app.get('/api/v2/_probe', (req, res) => {
     res.json({ ok: true, ts: Date.now(), env: process.env.NODE_ENV });
   });
+
+  // Test database connection
+  app.get('/api/v2/_test-db', async (req, res) => {
+    try {
+      // Simple test query to verify database connection
+      const result = await storage.getMaterials();
+      res.json({ 
+        ok: true, 
+        count: result.length,
+        message: `Database connection working. Found ${result.length} materials.`
+      });
+    } catch (error: any) {
+      console.error('[v2/_test-db] Database test failed:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: error.message,
+        stack: error.stack 
+      });
+    }
+  });
+
+  // Check if materials table exists and has data
+  app.get('/api/v2/_check-materials', async (req, res) => {
+    try {
+      // Try to get all materials without any filters
+      const allMaterials = await storage.getAllMaterials();
+      res.json({ 
+        ok: true, 
+        count: allMaterials.length,
+        materials: allMaterials.slice(0, 5).map(m => ({
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          orgId: m.orgId,
+          textureUrl: m.textureUrl,
+          thumbnailUrl: m.thumbnailUrl,
+          isActive: m.isActive
+        })),
+        message: `Found ${allMaterials.length} total materials in database.`
+      });
+    } catch (error: any) {
+      console.error('[v2/_check-materials] Check failed:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: error.message,
+        stack: error.stack 
+      });
+    }
+  });
   
   app.post('/api/v2/_echo', (req, res) => {
     res.json({ got: req.body, timestamp: Date.now() });
@@ -136,11 +185,58 @@ export function materialsV2Routes(app: Express) {
   // List materials for hydration
   app.get('/api/v2/materials', async (req, res) => {
     try {
-      const materials = await storage.getMaterials('default'); // Use existing storage
+      console.log('[v2/materials] Starting materials fetch...');
+      
+      // Get all materials regardless of orgId - this is for the canvas editor
+      const materials = await storage.getMaterials(); // No orgId = get all materials
+      
+      console.log(`[v2/materials] Successfully fetched ${materials.length} materials`);
+      
+      // Log first few materials for debugging
+      if (materials.length > 0) {
+        console.log('[v2/materials] Sample materials:', materials.slice(0, 3).map(m => ({
+          id: m.id,
+          name: m.name,
+          category: m.category,
+          textureUrl: m.textureUrl,
+          thumbnailUrl: m.thumbnailUrl
+        })));
+      } else {
+        console.log('[v2/materials] No materials found in database');
+      }
+      
       res.json({ items: materials });
     } catch (error: any) {
-      console.error('[v2/materials] List failed:', error);
-      res.status(500).json({ error: 'LIST_FAILED', message: error.message });
+      console.error('[v2/materials] List failed with error:', error);
+      console.error('[v2/materials] Error stack:', error.stack);
+      res.status(500).json({ 
+        error: 'LIST_FAILED', 
+        message: error.message,
+        details: error.stack 
+      });
+    }
+  });
+
+  // Delete material endpoint
+  app.delete('/api/v2/materials/:id', async (req, res) => {
+    const id = req.params.id;
+    console.log('[v2/materials] DELETE /api/v2/materials/' + id);
+    
+    if (!id) {
+      return res.status(400).json({ 
+        error: 'MISSING_ID', 
+        message: 'Material ID is required' 
+      });
+    }
+    
+    try {
+      await storage.deleteMaterial(id);
+      console.log('[v2/materials] ✅ Deleted material:', id);
+      res.status(204).send();
+      
+    } catch (err: any) {
+      console.error('[v2/materials] ❌ Delete failed:', err);
+      res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
     }
   });
 }

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { createMaterialClient } from '../../lib/materialsClient';
 import { useMaterialsStore } from '../../state/materialsStore';
+import { materialsEventBus } from '../../lib/materialsEventBus';
 import { toast } from 'sonner';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
@@ -32,8 +33,8 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
     grout_width_mm: initial?.grout_width_mm ?? '',
     thickness_mm: initial?.thickness_mm ?? '',
     finish: initial?.finish ?? '',
-    texture_url: initial?.texture_url ?? '',
-    thumbnail_url: initial?.thumbnail_url ?? '',
+    texture_url: initial?.texture_url ?? initial?.albedoURL ?? '',
+    thumbnail_url: initial?.thumbnail_url ?? initial?.thumbnailURL ?? '',
     supplier: initial?.supplier ?? 'PoolTile',
     source_url: initial?.source_url ?? '',
     notes: initial?.notes ?? ''
@@ -42,7 +43,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
   const [prefillUrl, setPrefillUrl] = useState('');
   const [prefillLoading, setPrefillLoading] = useState(false);
 
-  const requiredOk = useMemo(() => !!form.name && !!form.category && !!form.unit, [form]);
+  const requiredOk = useMemo(() => !!form.name && !!form.category && !!form.unit && !!form.texture_url, [form]);
 
   const updateForm = (updates: any) => {
     setForm((f: any) => ({ ...f, ...updates }));
@@ -112,7 +113,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
   async function onSave(e?: React.FormEvent) {
     e?.preventDefault();
     if (!requiredOk) { 
-      toast.error('Name, Category, and Unit are required'); 
+      toast.error('Name, Category, Unit, and Texture URL are required'); 
       return; 
     }
     
@@ -127,6 +128,13 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
       
       // Update store immediately
       upsert(row);
+      
+      // Broadcast change
+      if (initial?.id) {
+        materialsEventBus.broadcastUpdate([row.id]);
+      } else {
+        materialsEventBus.broadcastCreate([row.id]);
+      }
       
       toast.success(`Saved "${row.name}"`);
       onClose();
@@ -146,7 +154,9 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
       <div className="relative bg-white dark:bg-zinc-900 w-full h-full md:max-w-4xl md:h-[85vh] md:rounded-2xl shadow-xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
-          <div className="font-semibold text-lg">Add Material</div>
+          <div className="font-semibold text-lg">
+            {initial?.id ? 'Edit Material' : 'Add Material'}
+          </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="w-4 h-4" />
           </Button>
@@ -357,7 +367,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
         {/* Footer */}
         <div className="border-t p-4 flex justify-between items-center">
           <div className="text-sm text-gray-500">
-            {!requiredOk && <span className="text-red-500">* Required fields missing</span>}
+            {!requiredOk && <span className="text-red-500">* Required fields: Name, Category, Unit, Texture URL</span>}
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={onClose}>

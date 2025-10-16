@@ -62,9 +62,9 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             Jobs
           </Link>
           <Link 
-            href="/canvas-editor"
+            href="/new-editor"
             className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              currentPage === 'canvas-editor' 
+              currentPage === 'new-editor' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
             }`} 

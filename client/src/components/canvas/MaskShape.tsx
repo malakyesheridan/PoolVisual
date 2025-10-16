@@ -16,11 +16,7 @@ export function MaskShape({ id, kind, polygon=[], isSelected, color='#2dd4bf' }:
 
   const points = useMemo(() => polygon.flatMap(p => [p.x, p.y]), [polygon]);
 
-  // fat hit area to make taps reliable
-  const onSelect = (e:any) => {
-    e.cancelBubble = true;
-    selectMask(id);
-  };
+  // Individual mask handlers removed - using centralized stage handler
 
   if (kind !== 'area') {
     // TODO: render linear/band shapes similarly; selection handler remains the same
@@ -28,11 +24,39 @@ export function MaskShape({ id, kind, polygon=[], isSelected, color='#2dd4bf' }:
   }
 
   return (
-    <Group onMouseDown={onSelect} onTouchStart={onSelect} onClick={onSelect}>
-      <Line points={points} closed stroke={isSelected ? color : '#10b981'}
-            strokeWidth={isSelected ? 3 : 2} lineJoin="round" lineCap="round" listening={false} />
-      {/* An invisible wide stroke to make selection easy */}
-      <Line points={points} closed stroke="rgba(0,0,0,0)" strokeWidth={18} hitStrokeWidth={18} />
+    <Group
+      name="mask-shape"
+      listening={true}
+      isMask={true} // custom attr
+      maskId={id} // for centralized handler
+    >
+      {/* Invisible hit area covering entire mask */}
+      <Shape
+        sceneFunc={(context, shape) => {
+          context.beginPath();
+          context.moveTo(points[0], points[1]);
+          for (let i = 2; i < points.length; i += 2) {
+            context.lineTo(points[i], points[i + 1]);
+          }
+          context.closePath();
+          context.fillStrokeShape(shape);
+        }}
+        fill="rgba(0,0,0,0)" // completely transparent
+        stroke="rgba(0,0,0,0)" // completely transparent
+        listening={true}
+        maskId={id} // for centralized handler
+      />
+      {/* Visible outline */}
+      <Line 
+        points={points} 
+        closed 
+        stroke={isSelected ? '#2563eb' : 'rgba(0,0,0,0)'}
+        strokeWidth={isSelected ? 1.5 : 0}
+        lineJoin="round" 
+        lineCap="round" 
+        listening={false} // let the hit area handle clicks
+        perfectDrawEnabled={false}
+      />
     </Group>
   );
 }

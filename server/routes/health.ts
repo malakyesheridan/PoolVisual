@@ -3,8 +3,8 @@
  */
 
 import { Router } from 'express';
-import { withHandler } from '../lib/routeWrapper.js';
-import { AppError } from '../lib/errors.js';
+import { withHandler } from '../lib/routeWrapper';
+import { AppError } from '../lib/errors';
 
 const router = Router();
 
