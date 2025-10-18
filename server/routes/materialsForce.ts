@@ -98,6 +98,7 @@ export function materialsForceRoutes(app: Express) {
       
       console.log('[force] ✅ Created material:', material.id, material.name);
       res.status(201).json(material);
+      return;
       
     } catch (err: any) {
       console.error('[force] ❌ Insert failed:', err);
@@ -121,6 +122,7 @@ export function materialsForceRoutes(app: Express) {
       await storage.deleteMaterial(id);
       console.log('[force] ✅ Deleted material:', id);
       res.status(204).send();
+      return;
       
     } catch (err: any) {
       console.error('[force] ❌ Delete failed:', err);

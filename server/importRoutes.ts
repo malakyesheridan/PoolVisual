@@ -51,6 +51,7 @@ export function registerImportRoutes(app: Express) {
       }
       
       res.json(result);
+      return;
 
     } catch (error) {
       console.error('Prefill error:', error);
@@ -75,6 +76,7 @@ export function registerImportRoutes(app: Express) {
       const result = ImportService.parseProductText(text);
       
       res.json(result);
+      return;
 
     } catch (error) {
       console.error('Parse text error:', error);
@@ -121,6 +123,7 @@ export function registerImportRoutes(app: Express) {
           thumbnailUrl: textureResult.thumbnailUrl,
           physicalRepeatM: textureResult.physicalRepeatM
         });
+        return;
 
       } catch (processingError) {
         // Cleanup temp file on error

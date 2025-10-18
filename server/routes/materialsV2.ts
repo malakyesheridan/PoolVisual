@@ -172,6 +172,7 @@ export function materialsV2Routes(app: Express) {
       
       console.log('[v2/materials] ✅ Created material:', material.id, material.name);
       res.status(201).json(material);
+      return;
       
     } catch (error: any) {
       console.error('[v2/materials] ❌ DB_INSERT_FAILED:', error);
@@ -206,6 +207,7 @@ export function materialsV2Routes(app: Express) {
       }
       
       res.json({ items: materials });
+      return;
     } catch (error: any) {
       console.error('[v2/materials] List failed with error:', error);
       console.error('[v2/materials] Error stack:', error.stack);

@@ -114,6 +114,7 @@ export function registerMaterialRoutesV2(app: Express) {
       
       console.log('[materials] Created material:', material.id, material.name);
       res.status(201).json(material);
+      return;
       
     } catch (error: any) {
       console.error('[materials] DB_INSERT_FAILED:', error);
@@ -140,6 +141,7 @@ export function registerMaterialRoutesV2(app: Express) {
       await storage.deleteMaterial(id);
       console.log('[materials] ✅ Deleted material:', id);
       res.status(204).send();
+      return;
       
     } catch (err: any) {
       console.error('[materials] ❌ Delete failed:', err);
