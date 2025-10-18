@@ -5,7 +5,8 @@ import {
   User, 
   InsertUser, 
   Org, 
-  InsertOrg, 
+  InsertOrg,
+  OrgMember,
   Job, 
   InsertJob, 
   Photo, 
@@ -104,37 +105,37 @@ export interface IStorage {
 export class PostgresStorage implements IStorage {
   
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const [user] = await ensureDb().select().from(users).where(eq(users.id, id));
     return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    const [user] = await ensureDb().select().from(users).where(eq(users.email, email));
     return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await db.insert(users).values(insertUser).returning();
+    const [user] = await ensureDb().insert(users).values(insertUser).returning();
     return user;
   }
 
   async getOrg(id: string): Promise<Org | undefined> {
-    const [org] = await db.select().from(orgs).where(eq(orgs.id, id));
+    const [org] = await ensureDb().select().from(orgs).where(eq(orgs.id, id));
     return org;
   }
 
   async createOrg(insertOrg: InsertOrg, userId: string): Promise<Org> {
-    const [org] = await db.insert(orgs).values(insertOrg).returning();
+    const [org] = await ensureDb().insert(orgs).values(insertOrg).returning();
     
     // Create org member record for owner
-    await db.insert(orgMembers).values({
+    await ensureDb().insert(orgMembers).values({
       orgId: org.id,
       userId,
       role: "owner"
     });
     
     // Create default settings
-    await db.insert(settings).values({
+    await ensureDb().insert(settings).values({
       orgId: org.id
     });
     
@@ -161,26 +162,26 @@ export class PostgresStorage implements IStorage {
   }
 
   async createJob(insertJob: InsertJob): Promise<Job> {
-    const [job] = await db.insert(jobs).values(insertJob).returning();
+    const [job] = await ensureDb().insert(jobs).values(insertJob).returning();
     return job;
   }
 
   async getJob(id: string): Promise<Job | undefined> {
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+    const [job] = await ensureDb().select().from(jobs).where(eq(jobs.id, id));
     return job;
   }
 
   async getJobs(orgId: string): Promise<Job[]> {
-    return await db.select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt));
+    return await ensureDb().select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt));
   }
 
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
-    const [photo] = await db.insert(photos).values(insertPhoto).returning();
+    const [photo] = await ensureDb().insert(photos).values(insertPhoto).returning();
     return photo;
   }
 
   async getPhoto(id: string): Promise<Photo | undefined> {
-    const [photo] = await db.select().from(photos).where(eq(photos.id, id));
+    const [photo] = await ensureDb().select().from(photos).where(eq(photos.id, id));
     return photo;
   }
 
@@ -217,7 +218,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: any[]; stdevPct?: number } | null> {
-    const [photo] = await db.select({
+    const [photo] = await ensureDb().select({
       calibrationPixelsPerMeter: photos.calibrationPixelsPerMeter,
       calibrationMetaJson: photos.calibrationMetaJson
     })
@@ -251,7 +252,7 @@ export class PostgresStorage implements IStorage {
 
   async getAllMaterials(): Promise<Material[]> {
     try {
-      return await db.select().from(materials)
+      return await ensureDb().select().from(materials)
         .where(eq(materials.isActive, true))
         .orderBy(desc(materials.createdAt));
     } catch (error) {
@@ -261,7 +262,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
-    let query = db.select().from(materials).where(eq(materials.isActive, true));
+    let query = ensureDb().select().from(materials).where(eq(materials.isActive, true));
     
     // Filter by organization if provided
     if (orgId) {
@@ -285,7 +286,7 @@ export class PostgresStorage implements IStorage {
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
     try {
-      const [material] = await db.insert(materials).values(insertMaterial).returning();
+      const [material] = await ensureDb().insert(materials).values(insertMaterial).returning();
       console.log('[materials] created id=' + material.id + ' name=' + material.name);
       return material;
     } catch (error) {
@@ -311,20 +312,20 @@ export class PostgresStorage implements IStorage {
   }
 
   async createMask(insertMask: InsertMask): Promise<Mask> {
-    const [mask] = await db.insert(masks).values(insertMask).returning();
+    const [mask] = await ensureDb().insert(masks).values(insertMask).returning();
     return mask;
   }
 
   async getMasksByPhoto(photoId: string): Promise<Mask[]> {
-    return await db.select().from(masks).where(eq(masks.photoId, photoId));
+    return await ensureDb().select().from(masks).where(eq(masks.photoId, photoId));
   }
 
   async deleteMask(id: string): Promise<void> {
-    await db.delete(masks).where(eq(masks.id, id));
+    await ensureDb().delete(masks).where(eq(masks.id, id));
   }
 
   async createQuote(insertQuote: InsertQuote): Promise<Quote> {
-    const [quote] = await db.insert(quotes).values({
+    const [quote] = await ensureDb().insert(quotes).values({
       ...insertQuote,
       publicToken: randomUUID()
     }).returning();
@@ -332,22 +333,22 @@ export class PostgresStorage implements IStorage {
   }
 
   async getQuote(id: string): Promise<Quote | undefined> {
-    const [quote] = await db.select().from(quotes).where(eq(quotes.id, id));
+    const [quote] = await ensureDb().select().from(quotes).where(eq(quotes.id, id));
     return quote;
   }
 
   async getQuoteByToken(token: string): Promise<Quote | undefined> {
-    const [quote] = await db.select().from(quotes).where(eq(quotes.publicToken, token));
+    const [quote] = await ensureDb().select().from(quotes).where(eq(quotes.publicToken, token));
     return quote;
   }
 
   async addQuoteItem(insertItem: InsertQuoteItem): Promise<QuoteItem> {
-    const [item] = await db.insert(quoteItems).values(insertItem).returning();
+    const [item] = await ensureDb().insert(quoteItems).values(insertItem).returning();
     return item;
   }
 
   async getQuoteItems(quoteId: string): Promise<QuoteItem[]> {
-    return await db.select().from(quoteItems).where(eq(quoteItems.quoteId, quoteId));
+    return await ensureDb().select().from(quoteItems).where(eq(quoteItems.quoteId, quoteId));
   }
 
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {
@@ -360,7 +361,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async getOrgSettings(orgId: string): Promise<Settings | undefined> {
-    const [setting] = await db.select().from(settings).where(eq(settings.orgId, orgId));
+    const [setting] = await ensureDb().select().from(settings).where(eq(settings.orgId, orgId));
     return setting;
   }
 
@@ -390,7 +391,7 @@ async function initializeStorage() {
       storage = new PostgresStorage();
       
       // Test database connection synchronously during initialization
-      await db.select().from(materials).limit(1);
+      await ensureDb().select().from(materials).limit(1);
       console.log('[Storage] Database connection test passed');
     }
   } catch (error) {

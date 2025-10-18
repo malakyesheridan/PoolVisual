@@ -18,7 +18,7 @@ import {
   InsertQuote,
   QuoteItem,
   InsertQuoteItem,
-  OrgMember
+  orgMembers
 } from "@shared/schema";
 
 export class MockStorage {

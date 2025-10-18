@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import { randomUUID } from 'crypto';
+import { eq } from 'drizzle-orm';
 import { storage } from '../storage';
 
 export function materialsForceRoutes(app: Express) {

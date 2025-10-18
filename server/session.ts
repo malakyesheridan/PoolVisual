@@ -1,5 +1,5 @@
-import type { IronSessionOptions } from "iron-session";
-export const sessionOptions: IronSessionOptions = {
+import type { SessionOptions } from "iron-session";
+export const sessionOptions: SessionOptions = {
   cookieName: "pv.session",
   password: process.env.SESSION_SECRET || "dev_dev_dev_dev_dev_dev_dev_dev_dev_dev_32+chars",
   cookieOptions: {
