@@ -7,7 +7,6 @@ import {
   insertUserSchema, 
   insertOrgSchema, 
   insertJobSchema, 
-  insertPhotoSchema,
   insertMaterialSchema,
   insertMaskSchema,
   insertQuoteSchema,
@@ -18,7 +17,6 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 // JWT removed - using session-based authentication
 import multer from "multer";
-import path from "path";
 import { randomUUID } from "crypto";
 import express from "express";
 import { registerMaterialRoutes } from "./materialRoutes";
@@ -120,7 +118,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/health", async (req, res) => {
     try {
       // Test database connection
-      const testUser = await storage.getUser('00000000-0000-0000-0000-000000000000');
+      await storage.getUser('00000000-0000-0000-0000-000000000000');
       
       res.json({ 
         status: "healthy",
@@ -442,10 +440,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (calibrationData.samples) {
         // V2 format
-        const updatedPhoto = await storage.updatePhotoCalibrationV2(photoId, {
+        await storage.updatePhotoCalibrationV2(photoId, {
           ppm: calibrationData.ppm,
-          samples: calibrationData.samples,
-          stdevPct: calibrationData.stdevPct
+          samples: calibrationData.samples.map(sample => ({
+            x1: sample.a.x,
+            y1: sample.a.y,
+            x2: sample.b.x,
+            y2: sample.b.y,
+            distance: sample.meters,
+            pixels: Math.sqrt(Math.pow(sample.b.x - sample.a.x, 2) + Math.pow(sample.b.y - sample.a.y, 2))
+          })),
+          stdevPct: calibrationData.stdevPct ?? 0
         });
         res.json({
           ...calibrationData,
@@ -453,7 +458,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } else {
         // V1 format  
-        const updatedPhoto = await storage.updatePhotoCalibration(photoId, calibrationData.pixelsPerMeter, calibrationData.meta);
+        const updatedPhoto = await storage.updatePhotoCalibration(photoId, calibrationData.ppm, {
+          samples: [],
+          stdevPct: calibrationData.stdevPct ?? 0
+        });
         res.json(updatedPhoto);
       }
     } catch (error) {
@@ -484,7 +492,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const searchTerm = (q as string).toLowerCase();
         materials = materials.filter(material => 
           material.name.toLowerCase().includes(searchTerm) ||
-          material.sku.toLowerCase().includes(searchTerm)
+          (material.sku && material.sku.toLowerCase().includes(searchTerm))
         );
       }
 
@@ -525,8 +533,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const updates = req.body;
       
+      const materialId = req.params.id;
+      if (!materialId) {
+        return res.status(400).json({ message: "Material ID is required" });
+      }
+      
       // Get existing material to check ownership
-      const existingMaterial = await storage.updateMaterial(req.params.id, {});
+      const existingMaterial = await storage.updateMaterial(materialId, {});
       if (!existingMaterial) {
         return res.status(404).json({ message: "Material not found" });
       }
@@ -540,7 +553,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const material = await storage.updateMaterial(req.params.id, updates);
+      const materialId = req.params.id;
+      if (!materialId) {
+        return res.status(400).json({ message: "Material ID is required" });
+      }
+      
+      const material = await storage.updateMaterial(materialId, updates);
       res.json(material);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -549,8 +567,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/materials/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      const materialId = req.params.id;
+      if (!materialId) {
+        return res.status(400).json({ message: "Material ID is required" });
+      }
+      
       // Similar access check as above
-      await storage.deleteMaterial(req.params.id);
+      await storage.deleteMaterial(materialId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -595,13 +618,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/masks", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { photoId } = req.query;
+      const photoId = req.query.photoId as string;
       if (!photoId) {
         return res.status(400).json({ message: "photoId parameter is required" });
       }
 
       // Verify photo access
-      const photo = await storage.getPhoto(photoId as string);
+      const photo = await storage.getPhoto(photoId);
       if (!photo) {
         return res.status(404).json({ message: "Photo not found" });
       }
