@@ -7,11 +7,7 @@ export function materialsForceRoutes(app: Express) {
   app.get('/api/_materials/debug', async (req, res) => {
     try {
       // Use the same direct query pattern as force save for consistency
-      const materials = await storage.createMaterial.__storage__.db
-        .select()
-        .from(storage.createMaterial.__storage__.materials)
-        .where(eq(storage.createMaterial.__storage__.materials.isActive, true))
-        .limit(10);
+      const materials = await storage.getAllMaterials();
       
       res.json({ 
         ok: true, 
