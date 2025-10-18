@@ -17,15 +17,14 @@ import {
   Quote,
   InsertQuote,
   QuoteItem,
-  InsertQuoteItem,
-  orgMembers
+  InsertQuoteItem
 } from "@shared/schema";
 
 export class MockStorage {
   private jobs: Job[] = [];
   private users: User[] = [];
   private orgs: Org[] = [];
-  private orgMembers: OrgMember[] = [];
+  private orgMembers: Array<{ orgId: string; userId: string; role: string }> = [];
   private photos: Photo[] = [];
   private materials: Material[] = [];
   private masks: Mask[] = [];
@@ -64,8 +63,14 @@ export class MockStorage {
   async createOrg(insertOrg: InsertOrg, userId: string): Promise<Org> {
     const org: Org = {
       id: this.generateId(),
-      ...insertOrg,
-      createdAt: new Date()
+      name: insertOrg.name,
+      createdAt: new Date(),
+      logoUrl: insertOrg.logoUrl ?? null,
+      abn: insertOrg.abn ?? null,
+      contactEmail: insertOrg.contactEmail ?? null,
+      contactPhone: insertOrg.contactPhone ?? null,
+      address: insertOrg.address ?? null,
+      brandColors: insertOrg.brandColors ?? null
     };
     this.orgs.push(org);
     
@@ -90,17 +95,15 @@ export class MockStorage {
     return this.orgs.filter(o => memberOrgIds.includes(o.id));
   }
 
-  async createOrgMember(insertMember: any): Promise<OrgMember> {
-    const member: OrgMember = {
-      id: this.generateId(),
-      ...insertMember,
-      createdAt: new Date()
+  async createOrgMember(insertMember: { orgId: string; userId: string; role: string }): Promise<{ orgId: string; userId: string; role: string }> {
+    const member = {
+      ...insertMember
     };
     this.orgMembers.push(member);
     return member;
   }
 
-  async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
+  async getOrgMember(userId: string, orgId: string): Promise<{ orgId: string; userId: string; role: string } | undefined> {
     return this.orgMembers.find(m => m.userId === userId && m.orgId === orgId);
   }
 
@@ -108,8 +111,14 @@ export class MockStorage {
   async createJob(insertJob: InsertJob): Promise<Job> {
     const job: Job = {
       id: this.generateId(),
-      ...insertJob,
-      createdAt: new Date()
+      createdAt: new Date(),
+      status: insertJob.status ?? 'new',
+      address: insertJob.address ?? null,
+      orgId: insertJob.orgId,
+      clientName: insertJob.clientName,
+      clientPhone: insertJob.clientPhone ?? null,
+      clientEmail: insertJob.clientEmail ?? null,
+      createdBy: insertJob.createdBy
     };
     this.jobs.push(job);
     return job;
@@ -127,8 +136,14 @@ export class MockStorage {
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
     const photo: Photo = {
       id: this.generateId(),
-      ...insertPhoto,
-      createdAt: new Date()
+      createdAt: new Date(),
+      jobId: insertPhoto.jobId,
+      originalUrl: insertPhoto.originalUrl,
+      width: insertPhoto.width,
+      height: insertPhoto.height,
+      exifJson: insertPhoto.exifJson ?? null,
+      calibrationPixelsPerMeter: insertPhoto.calibrationPixelsPerMeter ?? null,
+      calibrationMetaJson: insertPhoto.calibrationMetaJson ?? null
     };
     this.photos.push(photo);
     return photo;
@@ -142,8 +157,28 @@ export class MockStorage {
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
     const material: Material = {
       id: this.generateId(),
-      ...insertMaterial,
-      createdAt: new Date()
+      createdAt: new Date(),
+      name: insertMaterial.name,
+      category: insertMaterial.category,
+      unit: insertMaterial.unit,
+      finish: insertMaterial.finish ?? null,
+      orgId: insertMaterial.orgId ?? null,
+      supplier: insertMaterial.supplier ?? null,
+      sourceUrl: insertMaterial.sourceUrl ?? null,
+      sku: insertMaterial.sku ?? null,
+      pricePerUnit: insertMaterial.pricePerUnit ?? null,
+      color: insertMaterial.color ?? null,
+      texture: insertMaterial.texture ?? null,
+      pattern: insertMaterial.pattern ?? null,
+      size: insertMaterial.size ?? null,
+      thickness: insertMaterial.thickness ?? null,
+      weight: insertMaterial.weight ?? null,
+      durability: insertMaterial.durability ?? null,
+      maintenance: insertMaterial.maintenance ?? null,
+      installation: insertMaterial.installation ?? null,
+      warranty: insertMaterial.warranty ?? null,
+      notes: insertMaterial.notes ?? null,
+      isActive: insertMaterial.isActive ?? true
     };
     this.materials.push(material);
     return material;
@@ -160,8 +195,16 @@ export class MockStorage {
   async createMask(insertMask: InsertMask): Promise<Mask> {
     const mask: Mask = {
       id: this.generateId(),
-      ...insertMask,
-      createdAt: new Date()
+      createdAt: new Date(),
+      type: insertMask.type,
+      createdBy: insertMask.createdBy,
+      photoId: insertMask.photoId,
+      pathJson: insertMask.pathJson,
+      bandHeightM: insertMask.bandHeightM ?? null,
+      areaM2: insertMask.areaM2 ?? null,
+      perimeterM: insertMask.perimeterM ?? null,
+      materialId: insertMask.materialId ?? null,
+      calcMetaJson: insertMask.calcMetaJson ?? null
     };
     this.masks.push(mask);
     return mask;
@@ -217,10 +260,11 @@ export class MockStorage {
     const photo = this.photos.find(p => p.id === photoId);
     if (!photo || !photo.calibrationMetaJson) return null;
     
+    const meta = photo.calibrationMetaJson as any;
     return {
       ppm: parseFloat(photo.calibrationPixelsPerMeter || '0'),
-      samples: photo.calibrationMetaJson.samples || [],
-      stdevPct: photo.calibrationMetaJson.stdevPct
+      samples: meta.samples || [],
+      stdevPct: meta.stdevPct
     };
   }
 
@@ -228,8 +272,16 @@ export class MockStorage {
   async createQuote(insertQuote: InsertQuote): Promise<Quote> {
     const quote: Quote = {
       id: this.generateId(),
-      ...insertQuote,
       createdAt: new Date(),
+      status: insertQuote.status ?? 'draft',
+      jobId: insertQuote.jobId,
+      subtotal: insertQuote.subtotal ?? null,
+      gst: insertQuote.gst ?? null,
+      total: insertQuote.total ?? null,
+      depositPct: insertQuote.depositPct ?? null,
+      pdfUrl: insertQuote.pdfUrl ?? null,
+      publicToken: insertQuote.publicToken ?? null,
+      validUntil: insertQuote.validUntil ?? null,
       updatedAt: new Date()
     };
     this.quotes.push(quote);
@@ -247,8 +299,17 @@ export class MockStorage {
   async addQuoteItem(insertItem: InsertQuoteItem): Promise<QuoteItem> {
     const item: QuoteItem = {
       id: this.generateId(),
-      ...insertItem,
-      createdAt: new Date()
+      createdAt: new Date(),
+      unit: insertItem.unit ?? null,
+      materialId: insertItem.materialId ?? null,
+      calcMetaJson: insertItem.calcMetaJson ?? null,
+      quoteId: insertItem.quoteId,
+      kind: insertItem.kind,
+      laborRuleId: insertItem.laborRuleId ?? null,
+      description: insertItem.description,
+      qty: insertItem.qty ?? null,
+      unitPrice: insertItem.unitPrice ?? null,
+      lineTotal: insertItem.lineTotal ?? null
     };
     this.quoteItems.push(item);
     return item;
@@ -263,13 +324,26 @@ export class MockStorage {
     if (index === -1) {
       throw new Error('Quote not found');
     }
-    this.quotes[index] = { ...this.quotes[index], ...updates, updatedAt: new Date() };
-    return this.quotes[index];
+    
+    const existingQuote = this.quotes[index];
+    const updatedQuote: Quote = {
+      ...existingQuote,
+      ...updates,
+      updatedAt: new Date()
+    };
+    
+    this.quotes[index] = updatedQuote;
+    return updatedQuote;
   }
 
   async updateOrgSettings(orgId: string, updates: any): Promise<any> {
     // Mock implementation - just return the updates
-    return { orgId, ...updates };
+    return { 
+      orgId, 
+      ...updates,
+      taxRate: updates.taxRate?.toString() ?? '0.10',
+      depositDefaultPct: updates.depositDefaultPct?.toString() ?? '0.30'
+    };
   }
 
   async getOrgSettings(orgId: string): Promise<any> {
@@ -277,8 +351,8 @@ export class MockStorage {
     return {
       orgId,
       currencyCode: 'AUD',
-      taxRate: 0.10,
-      depositDefaultPct: 0.30,
+      taxRate: '0.10',
+      depositDefaultPct: '0.30',
       validityDays: 30
     };
   }
