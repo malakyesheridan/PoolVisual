@@ -90,7 +90,7 @@ export class AppError extends Error {
     
     this.name = 'AppError';
     this.code = code;
-    this.cause = options.cause;
+    this.cause = options.cause ?? undefined;
     this.meta = options.meta ?? undefined;
     this.timestamp = new Date().toISOString();
     this.requestId = options.requestId ?? undefined;
@@ -136,10 +136,10 @@ export class AppError extends Error {
       code: this.code,
       message: this.message,
       stack: this.stack,
-      cause: this.cause,
-      meta: this.meta,
+      cause: this.cause ?? undefined,
+      meta: this.meta ?? undefined,
       timestamp: this.timestamp,
-      requestId: this.requestId
+      requestId: this.requestId ?? undefined
     };
   }
 }
@@ -176,11 +176,11 @@ export function conflict(message?: string, meta?: Record<string, unknown>): AppE
 }
 
 export function internal(message?: string, cause?: unknown, meta?: Record<string, unknown>): AppError {
-  return new AppError('INTERNAL_ERROR', message, { cause, meta: meta ?? undefined });
+  return new AppError('INTERNAL_ERROR', message, { cause: cause ?? undefined, meta: meta ?? undefined });
 }
 
 export function networkError(message?: string, cause?: unknown): AppError {
-  return new AppError('NETWORK_ERROR', message, { cause });
+  return new AppError('NETWORK_ERROR', message, { cause: cause ?? undefined });
 }
 
 export function timeoutError(message?: string): AppError {
