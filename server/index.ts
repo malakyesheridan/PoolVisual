@@ -112,6 +112,39 @@ const startServer = (app: import('express').Express, port: number) =>
   });
 
   // Auth routes (defined before other routes)
+  // POST /api/auth/register { email, password, username }
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, password, username } = req.body || {};
+      if (!email || !password || !username) {
+        return res.status(400).json({ ok: false, error: "Email, password, and username required" });
+      }
+
+      // In no-DB mode, return a mock user for development
+      if (process.env.NO_DB_MODE === 'true') {
+        req.session.user = { id: 'dev-user', email: email, username: username };
+        await req.session.save();
+        return res.json({ ok: true, user: req.session.user });
+      }
+
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(409).json({ ok: false, error: "User with this email already exists" });
+      }
+
+      // Hash password and create user
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const user = await storage.createUser({ email, password: hashedPassword, username });
+      
+      req.session.user = { id: user.id, email: user.email, username: user.username };
+      await req.session.save();
+      return res.json({ ok: true, user: req.session.user });
+    } catch (e: any) {
+      return res.status(500).json({ ok: false, error: e?.message || "Registration failed" });
+    }
+  });
+
   // POST /api/auth/login { email, password }
   app.post("/api/auth/login", async (req, res) => {
     try {
