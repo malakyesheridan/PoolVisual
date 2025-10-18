@@ -6,7 +6,6 @@ import {
   InsertUser, 
   Org, 
   InsertOrg,
-  OrgMember,
   Job, 
   InsertJob, 
   Photo, 
@@ -116,6 +115,7 @@ export class PostgresStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const [user] = await ensureDb().insert(users).values(insertUser).returning();
+    if (!user) throw new Error("Failed to create user");
     return user;
   }
 
@@ -126,6 +126,7 @@ export class PostgresStorage implements IStorage {
 
   async createOrg(insertOrg: InsertOrg, userId: string): Promise<Org> {
     const [org] = await ensureDb().insert(orgs).values(insertOrg).returning();
+    if (!org) throw new Error("Failed to create organization");
     
     // Create org member record for owner
     await ensureDb().insert(orgMembers).values({
@@ -163,6 +164,7 @@ export class PostgresStorage implements IStorage {
 
   async createJob(insertJob: InsertJob): Promise<Job> {
     const [job] = await ensureDb().insert(jobs).values(insertJob).returning();
+    if (!job) throw new Error("Failed to create job");
     return job;
   }
 
@@ -177,6 +179,7 @@ export class PostgresStorage implements IStorage {
 
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
     const [photo] = await ensureDb().insert(photos).values(insertPhoto).returning();
+    if (!photo) throw new Error("Failed to create photo");
     return photo;
   }
 
@@ -186,7 +189,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo> {
-    const [photo] = await db
+    const [photo] = await ensureDb()
       .update(photos)
       .set({ 
         calibrationPixelsPerMeter: pixelsPerMeter.toString(),
@@ -194,11 +197,12 @@ export class PostgresStorage implements IStorage {
       })
       .where(eq(photos.id, id))
       .returning();
+    if (!photo) throw new Error("Failed to update photo");
     return photo;
   }
 
   async updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: any[]; stdevPct?: number }): Promise<Photo> {
-    const [photo] = await db
+    const [photo] = await ensureDb()
       .update(photos)
       .set({
         calibrationPixelsPerMeter: calibration.ppm.toString(),
@@ -287,6 +291,7 @@ export class PostgresStorage implements IStorage {
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
     try {
       const [material] = await ensureDb().insert(materials).values(insertMaterial).returning();
+      if (!material) throw new Error("Failed to create material");
       console.log('[materials] created id=' + material.id + ' name=' + material.name);
       return material;
     } catch (error) {
@@ -313,6 +318,7 @@ export class PostgresStorage implements IStorage {
 
   async createMask(insertMask: InsertMask): Promise<Mask> {
     const [mask] = await ensureDb().insert(masks).values(insertMask).returning();
+    if (!mask) throw new Error("Failed to create mask");
     return mask;
   }
 
@@ -329,6 +335,7 @@ export class PostgresStorage implements IStorage {
       ...insertQuote,
       publicToken: randomUUID()
     }).returning();
+    if (!quote) throw new Error("Failed to create quote");
     return quote;
   }
 
@@ -344,6 +351,7 @@ export class PostgresStorage implements IStorage {
 
   async addQuoteItem(insertItem: InsertQuoteItem): Promise<QuoteItem> {
     const [item] = await ensureDb().insert(quoteItems).values(insertItem).returning();
+    if (!item) throw new Error("Failed to create quote item");
     return item;
   }
 
@@ -352,11 +360,12 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {
-    const [quote] = await db
+    const [quote] = await ensureDb()
       .update(quotes)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(quotes.id, id))
       .returning();
+    if (!quote) throw new Error("Failed to update quote");
     return quote;
   }
 
@@ -366,7 +375,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings> {
-    const [setting] = await db
+    const [setting] = await ensureDb()
       .update(settings)
       .set(updates)
       .where(eq(settings.orgId, orgId))
