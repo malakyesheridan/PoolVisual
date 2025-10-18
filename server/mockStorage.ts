@@ -266,6 +266,8 @@ export class MockStorage {
     if (index === -1) throw new Error('Material not found');
     
     const existingMaterial = this.materials[index];
+    if (!existingMaterial) throw new Error('Material not found');
+    
     const updatedMaterial: Material = {
       id: existingMaterial.id,
       name: updates.name !== undefined ? updates.name : existingMaterial.name,
