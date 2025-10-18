@@ -122,6 +122,7 @@ export function registerMaterialRoutesV2(app: Express) {
         error: 'DB_INSERT_FAILED', 
         message: error.message 
       });
+      return;
     }
   });
 
@@ -146,6 +147,7 @@ export function registerMaterialRoutesV2(app: Express) {
     } catch (err: any) {
       console.error('[materials] ❌ Delete failed:', err);
       res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
+      return;
     }
   });
 

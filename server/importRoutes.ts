@@ -58,6 +58,7 @@ export function registerImportRoutes(app: Express) {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to prefill data' 
       });
+      return;
     }
   });
 
@@ -83,6 +84,7 @@ export function registerImportRoutes(app: Express) {
       res.status(500).json({ 
         error: 'Failed to parse text' 
       });
+      return;
     }
   });
 
@@ -136,6 +138,7 @@ export function registerImportRoutes(app: Express) {
       res.status(500).json({ 
         error: error instanceof Error ? error.message : 'Failed to process image from URL' 
       });
+      return;
     }
   });
 }

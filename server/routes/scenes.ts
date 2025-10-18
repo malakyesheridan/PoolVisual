@@ -22,6 +22,7 @@ scenes.get("/", requireAuth, requireDb, async (req, res) => {
     res.json({ ok: true, scenes: rows });
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
+    return;
   }
 });
 
@@ -30,11 +31,12 @@ scenes.get("/:id", requireAuth, requireDb, async (req, res) => {
     const rows = await db!.execute(sql`
       SELECT id,name,state,updated_at FROM scenes WHERE id=${req.params.id} AND user_id=${req.session.user!.id}
     `);
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "not found" });
-    res.json({ ok: true, scene: rows[0] });
+    if (!rows.rows[0]) return res.status(404).json({ ok: false, error: "not found" });
+    res.json({ ok: true, scene: rows.rows[0] });
     return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
+    return;
   }
 });
 
@@ -46,10 +48,11 @@ scenes.post("/", requireAuth, requireDb, async (req, res) => {
     const rows = await db!.execute(sql`
       INSERT INTO scenes (user_id,name,state) VALUES (${req.session.user!.id},${name},${state}) RETURNING id,name,updated_at
     `);
-    res.json({ ok: true, scene: rows[0] });
+    res.json({ ok: true, scene: rows.rows[0] });
     return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
+    return;
   }
 });
 
@@ -59,11 +62,12 @@ scenes.put("/:id", requireAuth, requireDb, async (req, res) => {
     const rows = await db!.execute(sql`
       UPDATE scenes SET name=COALESCE(${name},name), state=COALESCE(${state},state), updated_at=now() WHERE id=${req.params.id} AND user_id=${req.session.user!.id} RETURNING id,name,updated_at
     `);
-    if (!rows[0]) return res.status(404).json({ ok: false, error: "not found" });
-    res.json({ ok: true, scene: rows[0] });
+    if (!rows.rows[0]) return res.status(404).json({ ok: false, error: "not found" });
+    res.json({ ok: true, scene: rows.rows[0] });
     return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
+    return;
   }
 });
 
@@ -76,5 +80,6 @@ scenes.delete("/:id", requireAuth, requireDb, async (req, res) => {
     return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
+    return;
   }
 });
