@@ -20,6 +20,15 @@ import {
   InsertQuoteItem
 } from "@shared/schema";
 
+// Define OrgMember type for mock storage
+type OrgMember = {
+  id: string;
+  orgId: string;
+  userId: string;
+  role: string;
+  createdAt: Date;
+};
+
 export class MockStorage {
   private jobs: Job[] = [];
   private users: User[] = [];
@@ -322,6 +331,8 @@ export class MockStorage {
       depositPct: insertQuote.depositPct ?? null,
       pdfUrl: insertQuote.pdfUrl ?? null,
       publicToken: insertQuote.publicToken ?? null,
+      stripePaymentIntentId: insertQuote.stripePaymentIntentId ?? null,
+      validityDays: insertQuote.validityDays ?? 30,
       updatedAt: new Date()
     };
     this.quotes.push(quote);
