@@ -190,7 +190,7 @@ export class ImportService {
           const srcsetEntries = srcset.split(',').map(entry => {
             const [url, widthStr] = entry.trim().split(' ');
             const width = parseInt(widthStr?.replace('w', '') || '0');
-            return { url: url.trim(), width };
+            return { url: url?.trim() || '', width };
           });
           
           const largest = srcsetEntries.reduce((best, current) => 
@@ -283,7 +283,7 @@ export class ImportService {
     // Per m² patterns
     REGEX_PATTERNS.perM2.lastIndex = 0;
     const perM2Match = REGEX_PATTERNS.perM2.exec(fullText);
-    if (perM2Match) {
+    if (perM2Match && perM2Match[1]) {
       price = parseFloat(perM2Match[1].replace(/,/g, ''));
       priceRaw = perM2Match[0];
       unit = 'm2';
@@ -330,7 +330,7 @@ export class ImportService {
       }
     }
     
-    return { price: wooPrice, priceRaw: wooPrice?.toString(), unit, priceSource };
+    return { price: wooPrice ?? 0, priceRaw: wooPrice?.toString(), unit, priceSource };
   }
   
   /**
