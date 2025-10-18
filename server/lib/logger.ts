@@ -59,7 +59,7 @@ class ServerLogger {
       ...(userId && { userId }),
       ...(organizationId && { organizationId }),
       ...(meta && Object.keys(meta).length > 0 && { meta }),
-      ...(err && { err: this.serializeError(err) })
+      ...(err ? { err: this.serializeError(err) } : {})
     };
 
     return JSON.stringify(logObject);
@@ -181,7 +181,7 @@ class ServerLogger {
         requestId: context?.requestId || error.requestId,
         userId: context?.userId,
         organizationId: context?.organizationId,
-        meta: { ...error.meta, ...context?.meta }
+        meta: { ...error.meta, ...(context?.meta || {}) }
       });
     } else {
       this.error({
@@ -190,7 +190,7 @@ class ServerLogger {
         requestId: context?.requestId,
         userId: context?.userId,
         organizationId: context?.organizationId,
-        meta: context?.meta
+        meta: context?.meta || {}
       });
     }
   }
