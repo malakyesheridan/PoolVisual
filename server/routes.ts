@@ -804,7 +804,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Get tax rate from org settings
       const orgSettings = await storage.getOrgSettings(job.orgId);
-      const taxRate = parseFloat(orgSettings?.taxRate ?? "0.10");
+      const taxRate = parseFloat(String(orgSettings?.taxRate ?? "0.10"));
       
       const gst = Math.round(subtotal * taxRate * 100) / 100;
       const total = Math.round((subtotal + gst) * 100) / 100;
@@ -868,7 +868,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const depositAmount = parseFloat(quote.total || '0') * parseFloat(quote.depositPct || '0.3');
       
       // Update quote status to accepted
-      await storage.updateQuote(req.params.id, {
+      await storage.updateQuote(quoteId, {
         status: 'accepted'
       });
 
@@ -896,6 +896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const items = await storage.getQuoteItems(quote.id);
       res.json({ ...quote, items });
+      return;
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -907,7 +908,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Settings endpoints
   app.get("/api/settings/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const settings = await storage.getOrgSettings(req.params.orgId);
+      const orgId = req.params.orgId;
+      if (!orgId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+      
+      const settings = await storage.getOrgSettings(orgId);
       res.json(settings || {
         currencyCode: 'AUD',
         taxRate: '0.10',
@@ -922,9 +928,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch("/api/settings/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
+      const orgId = req.params.orgId;
+      if (!orgId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+      
       const updates = req.body;
-      const settings = await storage.updateOrgSettings(req.params.orgId, updates);
+      const settings = await storage.updateOrgSettings(orgId, updates);
       res.json(settings);
+      return;
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

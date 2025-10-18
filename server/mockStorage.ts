@@ -103,8 +103,17 @@ export class MockStorage {
     return member;
   }
 
-  async getOrgMember(userId: string, orgId: string): Promise<{ orgId: string; userId: string; role: string } | undefined> {
-    return this.orgMembers.find(m => m.userId === userId && m.orgId === orgId);
+  async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
+    const member = this.orgMembers.find(m => m.userId === userId && m.orgId === orgId);
+    if (!member) return undefined;
+    
+    return {
+      id: this.generateId(), // Generate a unique ID for the member
+      orgId: member.orgId,
+      userId: member.userId,
+      role: member.role,
+      createdAt: new Date()
+    };
   }
 
   // Job methods
@@ -247,8 +256,37 @@ export class MockStorage {
     const index = this.materials.findIndex(m => m.id === id);
     if (index === -1) throw new Error('Material not found');
     
-    this.materials[index] = { ...this.materials[index], ...updates };
-    return this.materials[index];
+    const existingMaterial = this.materials[index];
+    const updatedMaterial: Material = {
+      ...existingMaterial,
+      ...(updates.name !== undefined && { name: updates.name }),
+      ...(updates.category !== undefined && { category: updates.category }),
+      ...(updates.unit !== undefined && { unit: updates.unit }),
+      ...(updates.finish !== undefined && { finish: updates.finish }),
+      ...(updates.orgId !== undefined && { orgId: updates.orgId }),
+      ...(updates.supplier !== undefined && { supplier: updates.supplier }),
+      ...(updates.sourceUrl !== undefined && { sourceUrl: updates.sourceUrl }),
+      ...(updates.sku !== undefined && { sku: updates.sku }),
+      ...(updates.cost !== undefined && { cost: updates.cost }),
+      ...(updates.price !== undefined && { price: updates.price }),
+      ...(updates.wastagePct !== undefined && { wastagePct: updates.wastagePct }),
+      ...(updates.marginPct !== undefined && { marginPct: updates.marginPct }),
+      ...(updates.color !== undefined && { color: updates.color }),
+      ...(updates.tileWidthMm !== undefined && { tileWidthMm: updates.tileWidthMm }),
+      ...(updates.tileHeightMm !== undefined && { tileHeightMm: updates.tileHeightMm }),
+      ...(updates.sheetWidthMm !== undefined && { sheetWidthMm: updates.sheetWidthMm }),
+      ...(updates.sheetHeightMm !== undefined && { sheetHeightMm: updates.sheetHeightMm }),
+      ...(updates.thicknessMm !== undefined && { thicknessMm: updates.thicknessMm }),
+      ...(updates.groutWidthMm !== undefined && { groutWidthMm: updates.groutWidthMm }),
+      ...(updates.textureUrl !== undefined && { textureUrl: updates.textureUrl }),
+      ...(updates.thumbnailUrl !== undefined && { thumbnailUrl: updates.thumbnailUrl }),
+      ...(updates.physicalRepeatM !== undefined && { physicalRepeatM: updates.physicalRepeatM }),
+      ...(updates.notes !== undefined && { notes: updates.notes }),
+      ...(updates.isActive !== undefined && { isActive: updates.isActive })
+    };
+    
+    this.materials[index] = updatedMaterial;
+    return updatedMaterial;
   }
 
   async getAllMaterials(): Promise<Material[]> {
@@ -284,7 +322,6 @@ export class MockStorage {
       depositPct: insertQuote.depositPct ?? null,
       pdfUrl: insertQuote.pdfUrl ?? null,
       publicToken: insertQuote.publicToken ?? null,
-      validUntil: insertQuote.validUntil ?? null,
       updatedAt: new Date()
     };
     this.quotes.push(quote);
@@ -331,7 +368,15 @@ export class MockStorage {
     const existingQuote = this.quotes[index];
     const updatedQuote: Quote = {
       ...existingQuote,
-      ...updates,
+      ...(updates.status !== undefined && { status: updates.status }),
+      ...(updates.subtotal !== undefined && { subtotal: updates.subtotal }),
+      ...(updates.gst !== undefined && { gst: updates.gst }),
+      ...(updates.total !== undefined && { total: updates.total }),
+      ...(updates.depositPct !== undefined && { depositPct: updates.depositPct }),
+      ...(updates.pdfUrl !== undefined && { pdfUrl: updates.pdfUrl }),
+      ...(updates.publicToken !== undefined && { publicToken: updates.publicToken }),
+      ...(updates.stripePaymentIntentId !== undefined && { stripePaymentIntentId: updates.stripePaymentIntentId }),
+      ...(updates.validityDays !== undefined && { validityDays: updates.validityDays }),
       updatedAt: new Date()
     };
     

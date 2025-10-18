@@ -306,7 +306,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateMaterial(id: string, updates: Partial<Material>): Promise<Material> {
-    const [material] = await db
+    const [material] = await ensureDb()
       .update(materials)
       .set(updates)
       .where(eq(materials.id, id))
