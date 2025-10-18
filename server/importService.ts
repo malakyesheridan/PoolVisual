@@ -1,6 +1,5 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { z } from 'zod';
 import { chromium } from 'playwright';
 
 // Result interfaces
@@ -510,14 +509,14 @@ export class ImportService {
       }
       
       // Normalize price
-      let normalizedPrice = priceData.price;
+      let normalizedPrice = priceData.price ?? 0;
       let unit = priceData.unit || parsed.unit;
       let priceUnit = priceData.unit;
       
       // Convert per-sheet to per-m² if we have sheet dimensions
       if (priceData.unit === 'sheet' && parsed.sheetW && parsed.sheetH) {
         const sheetAreaM2 = (parsed.sheetW * parsed.sheetH) / 1000000;
-        normalizedPrice = priceData.price! / sheetAreaM2;
+        normalizedPrice = (priceData.price ?? 0) / sheetAreaM2;
         priceUnit = 'm2';
         unit = 'm2';
       }
