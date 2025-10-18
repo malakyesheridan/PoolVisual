@@ -267,31 +267,32 @@ export class MockStorage {
     
     const existingMaterial = this.materials[index];
     const updatedMaterial: Material = {
-      ...existingMaterial,
-      ...(updates.name !== undefined && { name: updates.name }),
-      ...(updates.category !== undefined && { category: updates.category }),
-      ...(updates.unit !== undefined && { unit: updates.unit }),
-      ...(updates.finish !== undefined && { finish: updates.finish }),
-      ...(updates.orgId !== undefined && { orgId: updates.orgId }),
-      ...(updates.supplier !== undefined && { supplier: updates.supplier }),
-      ...(updates.sourceUrl !== undefined && { sourceUrl: updates.sourceUrl }),
-      ...(updates.sku !== undefined && { sku: updates.sku }),
-      ...(updates.cost !== undefined && { cost: updates.cost }),
-      ...(updates.price !== undefined && { price: updates.price }),
-      ...(updates.wastagePct !== undefined && { wastagePct: updates.wastagePct }),
-      ...(updates.marginPct !== undefined && { marginPct: updates.marginPct }),
-      ...(updates.color !== undefined && { color: updates.color }),
-      ...(updates.tileWidthMm !== undefined && { tileWidthMm: updates.tileWidthMm }),
-      ...(updates.tileHeightMm !== undefined && { tileHeightMm: updates.tileHeightMm }),
-      ...(updates.sheetWidthMm !== undefined && { sheetWidthMm: updates.sheetWidthMm }),
-      ...(updates.sheetHeightMm !== undefined && { sheetHeightMm: updates.sheetHeightMm }),
-      ...(updates.thicknessMm !== undefined && { thicknessMm: updates.thicknessMm }),
-      ...(updates.groutWidthMm !== undefined && { groutWidthMm: updates.groutWidthMm }),
-      ...(updates.textureUrl !== undefined && { textureUrl: updates.textureUrl }),
-      ...(updates.thumbnailUrl !== undefined && { thumbnailUrl: updates.thumbnailUrl }),
-      ...(updates.physicalRepeatM !== undefined && { physicalRepeatM: updates.physicalRepeatM }),
-      ...(updates.notes !== undefined && { notes: updates.notes }),
-      ...(updates.isActive !== undefined && { isActive: updates.isActive })
+      id: existingMaterial.id,
+      name: updates.name !== undefined ? updates.name : existingMaterial.name,
+      createdAt: existingMaterial.createdAt,
+      orgId: updates.orgId !== undefined ? updates.orgId : existingMaterial.orgId,
+      supplier: updates.supplier !== undefined ? updates.supplier : existingMaterial.supplier,
+      sourceUrl: updates.sourceUrl !== undefined ? updates.sourceUrl : existingMaterial.sourceUrl,
+      sku: updates.sku !== undefined ? updates.sku : existingMaterial.sku,
+      category: updates.category !== undefined ? updates.category : existingMaterial.category,
+      unit: updates.unit !== undefined ? updates.unit : existingMaterial.unit,
+      finish: updates.finish !== undefined ? updates.finish : existingMaterial.finish,
+      cost: updates.cost !== undefined ? updates.cost : existingMaterial.cost,
+      price: updates.price !== undefined ? updates.price : existingMaterial.price,
+      wastagePct: updates.wastagePct !== undefined ? updates.wastagePct : existingMaterial.wastagePct,
+      marginPct: updates.marginPct !== undefined ? updates.marginPct : existingMaterial.marginPct,
+      color: updates.color !== undefined ? updates.color : existingMaterial.color,
+      tileWidthMm: updates.tileWidthMm !== undefined ? updates.tileWidthMm : existingMaterial.tileWidthMm,
+      tileHeightMm: updates.tileHeightMm !== undefined ? updates.tileHeightMm : existingMaterial.tileHeightMm,
+      sheetWidthMm: updates.sheetWidthMm !== undefined ? updates.sheetWidthMm : existingMaterial.sheetWidthMm,
+      sheetHeightMm: updates.sheetHeightMm !== undefined ? updates.sheetHeightMm : existingMaterial.sheetHeightMm,
+      thicknessMm: updates.thicknessMm !== undefined ? updates.thicknessMm : existingMaterial.thicknessMm,
+      groutWidthMm: updates.groutWidthMm !== undefined ? updates.groutWidthMm : existingMaterial.groutWidthMm,
+      textureUrl: updates.textureUrl !== undefined ? updates.textureUrl : existingMaterial.textureUrl,
+      thumbnailUrl: updates.thumbnailUrl !== undefined ? updates.thumbnailUrl : existingMaterial.thumbnailUrl,
+      physicalRepeatM: updates.physicalRepeatM !== undefined ? updates.physicalRepeatM : existingMaterial.physicalRepeatM,
+      notes: updates.notes !== undefined ? updates.notes : existingMaterial.notes,
+      isActive: updates.isActive !== undefined ? updates.isActive : existingMaterial.isActive
     };
     
     this.materials[index] = updatedMaterial;
@@ -378,16 +379,18 @@ export class MockStorage {
     
     const existingQuote = this.quotes[index];
     const updatedQuote: Quote = {
-      ...existingQuote,
-      ...(updates.status !== undefined && { status: updates.status }),
-      ...(updates.subtotal !== undefined && { subtotal: updates.subtotal }),
-      ...(updates.gst !== undefined && { gst: updates.gst }),
-      ...(updates.total !== undefined && { total: updates.total }),
-      ...(updates.depositPct !== undefined && { depositPct: updates.depositPct }),
-      ...(updates.pdfUrl !== undefined && { pdfUrl: updates.pdfUrl }),
-      ...(updates.publicToken !== undefined && { publicToken: updates.publicToken }),
-      ...(updates.stripePaymentIntentId !== undefined && { stripePaymentIntentId: updates.stripePaymentIntentId }),
-      ...(updates.validityDays !== undefined && { validityDays: updates.validityDays }),
+      id: existingQuote.id,
+      createdAt: existingQuote.createdAt,
+      status: updates.status !== undefined ? updates.status : existingQuote.status,
+      jobId: updates.jobId !== undefined ? updates.jobId : existingQuote.jobId,
+      subtotal: updates.subtotal !== undefined ? updates.subtotal : existingQuote.subtotal,
+      gst: updates.gst !== undefined ? updates.gst : existingQuote.gst,
+      total: updates.total !== undefined ? updates.total : existingQuote.total,
+      depositPct: updates.depositPct !== undefined ? updates.depositPct : existingQuote.depositPct,
+      pdfUrl: updates.pdfUrl !== undefined ? updates.pdfUrl : existingQuote.pdfUrl,
+      publicToken: updates.publicToken !== undefined ? updates.publicToken : existingQuote.publicToken,
+      stripePaymentIntentId: updates.stripePaymentIntentId !== undefined ? updates.stripePaymentIntentId : existingQuote.stripePaymentIntentId,
+      validityDays: updates.validityDays !== undefined ? updates.validityDays : existingQuote.validityDays,
       updatedAt: new Date()
     };
     
@@ -447,9 +450,9 @@ export class MockStorage {
       sku: 'TRV-SIL-001',
       category: 'coping',
       unit: 'lm',
-      price: 85.00,
-      defaultWastagePct: 8.0,
-      defaultMarginPct: 25.0,
+      price: '85.00',
+      wastagePct: '8.0',
+      marginPct: '25.0',
       isActive: true
     });
 
@@ -458,9 +461,9 @@ export class MockStorage {
       sku: 'GLM-BLU-001',
       category: 'waterline_tile',
       unit: 'm2',
-      price: 160.00,
-      defaultWastagePct: 10.0,
-      defaultMarginPct: 35.0,
+      price: '160.00',
+      wastagePct: '10.0',
+      marginPct: '35.0',
       isActive: true
     });
 

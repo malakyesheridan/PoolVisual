@@ -945,8 +945,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Image composition endpoint (for before/after generation)
   app.post("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
       // Verify photo access
-      const photo = await storage.getPhoto(req.params.id);
+      const photo = await storage.getPhoto(photoId);
       if (!photo) {
         return res.status(404).json({ message: "Photo not found" });
       }
@@ -960,6 +965,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         status: 'queued',
         message: 'Composite generation started'
       });
+      return;
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
