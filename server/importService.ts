@@ -199,7 +199,7 @@ export class ImportService {
             { url: '', width: 0 }
           );
           
-          if (largest.width > bestWidth) {
+          if (largest.width > bestWidth && largest.url) {
             bestSrcsetUrl = largest.url;
             bestWidth = largest.width;
           }
@@ -295,7 +295,7 @@ export class ImportService {
     // Per lm patterns
     REGEX_PATTERNS.perLM.lastIndex = 0;
     const perLMMatch = REGEX_PATTERNS.perLM.exec(fullText);
-    if (perLMMatch) {
+    if (perLMMatch && perLMMatch[1]) {
       price = parseFloat(perLMMatch[1].replace(/,/g, ''));
       priceRaw = perLMMatch[0];
       unit = 'lm';
@@ -306,7 +306,7 @@ export class ImportService {
     // Per sheet patterns (will convert to m² later)
     REGEX_PATTERNS.perSheet.lastIndex = 0;
     const perSheetMatch = REGEX_PATTERNS.perSheet.exec(fullText);
-    if (perSheetMatch) {
+    if (perSheetMatch && perSheetMatch[1]) {
       price = parseFloat(perSheetMatch[1].replace(/,/g, ''));
       priceRaw = perSheetMatch[0];
       unit = 'sheet';
@@ -317,10 +317,10 @@ export class ImportService {
     // Per box with coverage
     REGEX_PATTERNS.perBox.lastIndex = 0;
     const perBoxMatch = REGEX_PATTERNS.perBox.exec(fullText);
-    if (perBoxMatch) {
+    if (perBoxMatch && perBoxMatch[1]) {
       REGEX_PATTERNS.covers.lastIndex = 0;
       const coversMatch = REGEX_PATTERNS.covers.exec(fullText);
-      if (coversMatch) {
+      if (coversMatch && coversMatch[2]) {
         const boxPrice = parseFloat(perBoxMatch[1].replace(/,/g, ''));
         const coverage = parseFloat(coversMatch[2].replace(/,/g, ''));
         price = boxPrice / coverage;
@@ -534,17 +534,17 @@ export class ImportService {
         allImageUrls: allImageUrls.length > 0 ? allImageUrls : undefined,
         source_url: url,
         sizes: {
-          sheetW: parsed.sheetW || undefined,
-          sheetH: parsed.sheetH || undefined,
-          tileW: parsed.tileW || undefined,
-          tileH: parsed.tileH || undefined,
-          thickness: parsed.thickness || undefined,
-          grout: parsed.grout || undefined
+          sheetW: parsed.sheetW ?? undefined,
+          sheetH: parsed.sheetH ?? undefined,
+          tileW: parsed.tileW ?? undefined,
+          tileH: parsed.tileH ?? undefined,
+          thickness: parsed.thickness ?? undefined,
+          grout: parsed.grout ?? undefined
         },
         finish: parsed.finish,
         categoryHint,
         unit,
-        normalizedPrice,
+        normalizedPrice: normalizedPrice ?? undefined,
         priceUnit,
         physical_repeat_m: physicalRepeatM,
         priceSource: priceData.priceSource

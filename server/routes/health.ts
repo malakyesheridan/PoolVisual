@@ -113,7 +113,7 @@ router.post('/health/error', withHandler(async (req, res) => {
       throw new Error(message); // Generic error
   }
 }, {
-  bodySchema: undefined // Allow any body for testing
+  // Allow any body for testing
 }));
 
 /**

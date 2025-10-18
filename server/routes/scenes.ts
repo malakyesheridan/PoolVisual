@@ -32,6 +32,7 @@ scenes.get("/:id", requireAuth, requireDb, async (req, res) => {
     `);
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not found" });
     res.json({ ok: true, scene: rows[0] });
+    return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -46,6 +47,7 @@ scenes.post("/", requireAuth, requireDb, async (req, res) => {
       INSERT INTO scenes (user_id,name,state) VALUES (${req.session.user!.id},${name},${state}) RETURNING id,name,updated_at
     `);
     res.json({ ok: true, scene: rows[0] });
+    return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -59,6 +61,7 @@ scenes.put("/:id", requireAuth, requireDb, async (req, res) => {
     `);
     if (!rows[0]) return res.status(404).json({ ok: false, error: "not found" });
     res.json({ ok: true, scene: rows[0] });
+    return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
   }
@@ -70,6 +73,7 @@ scenes.delete("/:id", requireAuth, requireDb, async (req, res) => {
       DELETE FROM scenes WHERE id=${req.params.id} AND user_id=${req.session.user!.id}
     `);
     res.json({ ok: true });
+    return;
   } catch (error: any) {
     res.status(500).json({ ok: false, error: error.message });
   }
