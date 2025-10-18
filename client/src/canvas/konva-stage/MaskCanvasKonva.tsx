@@ -43,6 +43,51 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     lastTarget: null,
     lastTime: 0
   });
+
+  // RAF throttling for mouse move events
+  const mouseMoveLockRef = useRef<boolean>(false);
+  
+  // Device detection for adaptive sensitivity
+  const deviceTypeRef = useRef<'mouse' | 'trackpad' | 'touch'>('mouse');
+  const lastPointerTypeRef = useRef<string>('');
+  const movementHistoryRef = useRef<number[]>([]);
+  const lastMoveTimeRef = useRef<number>(0);
+  
+  // Device-adaptive sensitivity settings
+  const getDeviceSettings = useCallback(() => {
+    const deviceType = deviceTypeRef.current;
+    
+    switch (deviceType) {
+      case 'trackpad':
+        return {
+          minDistance: 30,        // Smaller dead zone for trackpads
+          maxDistance: 150,       // Smaller max distance
+          minSmoothingFactor: 0.7, // Less aggressive smoothing
+          maxSmoothingFactor: 1.0, // Full sensitivity at distance
+          maxRotationPerFrame: 15, // Higher rotation cap for trackpads
+          sensitivityMultiplier: 1.5 // Boost sensitivity for trackpads
+        };
+      case 'touch':
+        return {
+          minDistance: 20,        // Very small dead zone for touch
+          maxDistance: 100,       // Small max distance
+          minSmoothingFactor: 0.8, // Minimal smoothing for touch
+          maxSmoothingFactor: 1.0, // Full sensitivity
+          maxRotationPerFrame: 20, // Highest rotation cap for touch
+          sensitivityMultiplier: 2.0 // Highest sensitivity for touch
+        };
+      case 'mouse':
+      default:
+        return {
+          minDistance: 50,        // Original values for mouse
+          maxDistance: 200,       // Original values for mouse
+          minSmoothingFactor: 0.3, // Original smoothing
+          maxSmoothingFactor: 1.0, // Original smoothing
+          maxRotationPerFrame: 5,  // Original rotation cap
+          sensitivityMultiplier: 1.0 // No multiplier for mouse
+        };
+    }
+  }, []);
   
   // State for calibration line visualization
   const [calibrationPoints, setCalibrationPoints] = React.useState<{x: number, y: number}[]>([]);
@@ -136,6 +181,12 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
 
   // Handle pointer events
   const handlePointerDown = useCallback((e: Konva.KonvaEventObject<PointerEvent>) => {
+    // Don't interfere with double-click events
+    if (e.evt.detail === 2) {
+      console.log('[PointerDown] Skipping - double-click detected');
+      return;
+    }
+    
     if (!activeTool || activeTool === 'select') return;
 
     const stage = e.target.getStage();
@@ -289,6 +340,12 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
 
   // Handle double-click for point editing
   const handleStageDoubleClick = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    console.log('[DoubleClick] RAW EVENT FIRED!', {
+      type: e.evt.type,
+      target: e.target,
+      timestamp: Date.now()
+    });
+    
     e.evt.preventDefault();
     e.evt.stopPropagation();
     
@@ -298,17 +355,38 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     const { CANCEL_MASK_DRAG } = useMaskStore.getState();
     CANCEL_MASK_DRAG();
     
+    // Clear triple-click timer to prevent interference
+    const clickCounter = clickCounterRef.current;
+    if (clickCounter.timer) {
+      clearTimeout(clickCounter.timer);
+      clickCounter.timer = null;
+      clickCounter.count = 0;
+      clickCounter.lastTarget = null;
+    }
+    
     console.log('[DoubleClick] Event triggered', {
       targetClass: target.getClassName(),
       targetName: target.name(),
       eventType: e.evt.type,
       timestamp: Date.now(),
-      targetId: target.id()
+      targetId: target.id(),
+      clickCounter: clickCounterRef.current.count,
+      stageSize: e.target.getStage()?.size(),
+      allMasks: Object.keys(useMaskStore.getState().masks)
     });
     
     // Check if we clicked on a mask - be more flexible with target detection
     const isMaskShape = target.getClassName() === 'Shape' && target.name()?.startsWith('mask-');
     const isMaskLine = target.getClassName() === 'Line' && target.name()?.startsWith('mask-');
+    
+    console.log('[DoubleClick] Mask detection', {
+      isMaskShape,
+      isMaskLine,
+      className: target.getClassName(),
+      name: target.name(),
+      id: target.id(),
+      willProcess: isMaskShape || isMaskLine
+    });
     
     if (isMaskShape || isMaskLine) {
       // Try multiple ways to get the mask ID
@@ -337,6 +415,20 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
       if (mask && !mask.isLocked) {
         console.log('[Point Editing] Entering point editing mode for mask:', maskId);
         ENTER_POINT_EDITING(maskId);
+        
+        // Visual feedback - briefly highlight the mask
+        const stage = e.target.getStage();
+        if (stage) {
+          const shape = stage.findOne(`mask-${maskId}`);
+          if (shape) {
+            shape.stroke('#00ff00'); // Green highlight
+            shape.strokeWidth(3);
+            setTimeout(() => {
+              shape.stroke('#2563eb'); // Back to blue
+              shape.strokeWidth(1.5);
+            }, 500);
+          }
+        }
       } else {
         console.log('[DoubleClick] Cannot enter edit mode:', {
           maskExists: !!mask,
@@ -349,6 +441,20 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
         name: target.name(),
         id: target.id()
       });
+      
+      // TEST: Try to enter point editing mode on any target for debugging
+      if (target.getClassName() === 'Stage') {
+        console.log('[DoubleClick] TEST: Double-clicked on stage - checking for any masks');
+        const { masks } = useMaskStore.getState();
+        const maskIds = Object.keys(masks);
+        if (maskIds.length > 0) {
+          console.log('[DoubleClick] TEST: Found masks, trying to edit first one:', maskIds[0]);
+          const { ENTER_POINT_EDITING } = useMaskStore.getState();
+          ENTER_POINT_EDITING(maskIds[0]);
+        } else {
+          console.log('[DoubleClick] TEST: No masks found in store');
+        }
+      }
     }
   }, []);
 
@@ -409,13 +515,21 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        console.log('[ESC Key] ESC pressed, checking modes');
         const { pointEditingMode, EXIT_POINT_EDITING, moveState, EXIT_MOVE_MODE } = useMaskStore.getState();
+        console.log('[ESC Key] Current state', {
+          pointEditingMode,
+          moveStateIsMoveMode: moveState.isMoveMode
+        });
+        
         if (pointEditingMode) {
-          console.log('[Point Editing] Exiting point editing mode');
+          console.log('[ESC Key] Exiting point editing mode');
           EXIT_POINT_EDITING();
         } else if (moveState.isMoveMode) {
-          console.log('[Move Mode] Exiting move mode');
+          console.log('[ESC Key] Exiting move mode');
           EXIT_MOVE_MODE();
+        } else {
+          console.log('[ESC Key] No active mode to exit');
         }
       } else if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
         // Toggle grid visibility with 'G' key
@@ -432,7 +546,50 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
 
   // Centralized stage handler with event delegation
   const handleStageMouseDown = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
+    // Don't interfere with double-click events
+    if (e.evt.detail === 2) {
+      console.log('[MouseDown] Skipping - double-click detected');
+      return;
+    }
+    
     const target = e.target as Konva.Node;
+    
+    // Don't interfere with point editing mode for mask-level interactions
+    const { pointEditingMode } = useMaskStore.getState();
+    if (pointEditingMode) {
+      // Allow button interactions (move/rotate buttons) but prevent mask interactions
+      const isButtonClick = target.getClassName() === 'Circle' && 
+                           (target.name()?.includes('move-button') || target.name()?.includes('rotate-button'));
+      
+      if (!isButtonClick) {
+        console.log('[MouseDown] Skipping - point editing mode active (not a button)');
+        return;
+      }
+      
+      console.log('[MouseDown] Allowing button interaction in point editing mode');
+    }
+    
+    // Detect device type for adaptive sensitivity
+    const pointerType = (e.evt as any).pointerType || 'mouse';
+    if (pointerType !== lastPointerTypeRef.current) {
+      lastPointerTypeRef.current = pointerType;
+      
+      // Map pointer types to our device categories
+      if (pointerType === 'touch') {
+        deviceTypeRef.current = 'touch';
+      } else if (pointerType === 'pen' || pointerType === 'mouse') {
+        // Enhanced trackpad detection using navigator API
+        const isTrackpad = (navigator as any).userAgentData?.mobile === false && 
+                          (navigator as any).userAgentData?.platform === 'macOS' ||
+                          /Mac|Trackpad/i.test(navigator.userAgent);
+        
+        deviceTypeRef.current = isTrackpad ? 'trackpad' : 'mouse';
+      } else {
+        deviceTypeRef.current = 'mouse';
+      }
+      
+      console.log('[DeviceDetection] Detected device type:', deviceTypeRef.current, 'from pointer type:', pointerType);
+    }
 
     // Check if this is a control button click - if so, don't interfere
     let isButtonClick = false;
@@ -473,6 +630,7 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     }
     
     // Set timer to check for triple-click after double-click has had time to fire
+    // Increased delay to ensure double-click events are not interfered with
     clickCounter.timer = setTimeout(() => {
       if (clickCounter.count >= 3) {
         console.log('[TripleClick] Detected via timer');
@@ -480,7 +638,7 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
       }
       clickCounter.count = 0;
       clickCounter.lastTarget = null;
-    }, 500); // Wait for double-click to fire first
+    }, 800); // Increased delay to avoid interfering with double-click
 
     // Get fresh calibration mode state to avoid stale closures
     const currentCalibrationMode = useEditorStore.getState().calibrationMode;
@@ -615,8 +773,19 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     }
     
     // Phase 1: Check if this is a control point click (don't deselect)
-    if (target.getClassName() === 'Circle' && target.getParent()?.getClassName() === 'Group') {
-      console.log('[ControlPoint] Click detected on control point, not deselecting');
+    // Enhanced control point detection
+    const isControlPoint = target.getClassName() === 'Circle' && 
+                          (target.getParent()?.getClassName() === 'Group' || 
+                           target.name()?.includes('control-point') ||
+                           target.getParent()?.name()?.includes('control-point'));
+    
+    if (isControlPoint) {
+      console.log('[ControlPoint] Click detected on control point, not deselecting', {
+        targetClass: target.getClassName(),
+        targetName: target.name(),
+        parentClass: target.getParent()?.getClassName(),
+        parentName: target.getParent()?.name()
+      });
       return; // Let the control point handle its own events
     }
     
@@ -627,15 +796,33 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
       const { pointEditingMode, editingMaskId, masks, moveState, START_MOVE_DRAG, EXIT_MOVE_MODE } = useMaskStore.getState();
       const mask = masks[maskId];
       
-      // Don't allow moving if in point editing mode or mask is locked
-      if (pointEditingMode || mask?.isLocked) {
-        console.log('[MaskClick] Skipping move mode - point editing mode or locked mask', {
-          pointEditingMode,
-          editingMaskId,
-          maskLocked: mask?.isLocked
-        });
-        handleUnifiedSelect(maskId);
-        return;
+      // Special handling for point editing mode
+      if (pointEditingMode && editingMaskId === maskId) {
+        // If we're in point editing mode for this mask, only allow control point interactions
+        // If it's not a control point, treat it as a background click
+        if (!isControlPoint) {
+          console.log('[PointEditing] Non-control-point click in edit mode - treating as background click', {
+            targetClass: target.getClassName(),
+            targetName: target.name(),
+            maskId
+          });
+          // Fall through to background click handling
+        } else {
+          console.log('[PointEditing] Control point click in edit mode - allowing');
+          return;
+        }
+      } else {
+        // Normal mask click handling
+        // Don't allow moving if in point editing mode or mask is locked
+        if (pointEditingMode || mask?.isLocked) {
+          console.log('[MaskClick] Skipping move mode - point editing mode or locked mask', {
+            pointEditingMode,
+            editingMaskId,
+            maskLocked: mask?.isLocked
+          });
+          handleUnifiedSelect(maskId);
+          return;
+        }
       }
       
       // Check if we're in move mode for this mask
@@ -664,6 +851,14 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     }
     
     // Phase 3: If not mask/asset/control point click, deselect all and exit move/rotate mode
+    console.log('[BackgroundClick] Detected background click', {
+      targetClass: target.getClassName(),
+      targetName: target.name(),
+      targetId: target.id(),
+      isControlPoint,
+      maskId: getMaskIdFromTarget(target)
+    });
+    
     const { moveState, rotateState, EXIT_MOVE_MODE, EXIT_ROTATE_MODE } = useMaskStore.getState();
     if (moveState.isMoveMode) {
       console.log('[BackgroundClick] Exiting move mode');
@@ -677,18 +872,59 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     console.log('[DeselectAll]', { 
       reason: 'background-click',
       selectionRoute: 'background',
-      transformerAttached: false
+      transformerAttached: false,
+      pointEditingMode: useMaskStore.getState().pointEditingMode,
+      editingMaskId: useMaskStore.getState().editingMaskId
     });
     deselectAll();
   }, [getMaskIdFromTarget, handleUnifiedSelect, assetPlaceMode, camera, dispatch, handleTripleClick]);
 
   // Handle mouse move for move mode and rotate mode drag operations
   const handleStageMouseMove = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    const { moveState, rotateState, UPDATE_MOVE_DRAG, UPDATE_ROTATE_DRAG, masks } = useMaskStore.getState();
+    // Don't interfere with point editing mode for mask-level interactions
+    const { pointEditingMode, moveState, rotateState } = useMaskStore.getState();
+    if (pointEditingMode) {
+      // Allow move/rotate drag operations if they're already in progress
+      if (!moveState.isDragging && !rotateState.isDragging) {
+        return;
+      }
+      console.log('[MouseMove] Allowing move/rotate drag in point editing mode');
+    }
     
-    const stage = e.target.getStage();
-    const pointerPosition = stage.getPointerPosition();
-    if (!pointerPosition) return;
+    // RAF throttling to prevent excessive updates
+    if (mouseMoveLockRef.current) return;
+    mouseMoveLockRef.current = true;
+    
+    requestAnimationFrame(() => {
+      mouseMoveLockRef.current = false;
+      
+      // Enhanced trackpad detection based on movement patterns
+      const now = performance.now();
+      const timeSinceLastMove = now - lastMoveTimeRef.current;
+      lastMoveTimeRef.current = now;
+      
+      // Track movement frequency and magnitude for trackpad detection
+      if (timeSinceLastMove > 0 && timeSinceLastMove < 50) { // High frequency movements
+        movementHistoryRef.current.push(timeSinceLastMove);
+        if (movementHistoryRef.current.length > 10) {
+          movementHistoryRef.current.shift();
+        }
+        
+        // If we have enough samples and high frequency, likely trackpad
+        if (movementHistoryRef.current.length >= 5) {
+          const avgInterval = movementHistoryRef.current.reduce((a, b) => a + b, 0) / movementHistoryRef.current.length;
+          if (avgInterval < 20 && deviceTypeRef.current === 'mouse') { // High frequency = trackpad
+            deviceTypeRef.current = 'trackpad';
+            console.log('[DeviceDetection] Refined to trackpad based on movement pattern');
+          }
+        }
+      }
+      
+      const { moveState, rotateState, UPDATE_MOVE_DRAG, UPDATE_ROTATE_DRAG, masks } = useMaskStore.getState();
+      
+      const stage = e.target.getStage();
+      const pointerPosition = stage.getPointerPosition();
+      if (!pointerPosition) return;
     
     // Handle move mode dragging
     if (moveState.isDragging && moveState.moveModeMaskId && moveState.dragStartPos) {
@@ -701,13 +937,15 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
         y: currentImagePos.y - moveState.dragStartPos.y
       };
       
-      console.log('[MoveDrag]', { 
-        maskId: moveState.moveModeMaskId, 
-        delta, 
-        currentPos: currentImagePos,
-        startPos: moveState.dragStartPos,
-        pointerPos: pointerPosition
-      });
+      // Only log in development mode and throttle to avoid performance impact
+      if (process.env.NODE_ENV === 'development' && Math.random() < 0.1) {
+        console.log('[MoveDrag]', { 
+          maskId: moveState.moveModeMaskId, 
+          delta, 
+          currentPos: currentImagePos,
+          startPos: moveState.dragStartPos
+        });
+      }
       
       // Update mask position
       UPDATE_MOVE_DRAG(moveState.moveModeMaskId, delta);
@@ -749,42 +987,65 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
       if (deltaAngle > 180) deltaAngle -= 360;
       if (deltaAngle < -180) deltaAngle += 360;
       
-      // Apply progressive smoothing based on distance from center
-      const distanceFromCenter = Math.sqrt(dx * dx + dy * dy);
-      const minDistance = 50; // Minimum distance for full sensitivity
-      const maxDistance = 200; // Maximum distance for reduced sensitivity
+      // Apply device-adaptive smoothing based on distance from center
+      const distanceSquared = dx * dx + dy * dy;
+      const distanceFromCenter = Math.sqrt(distanceSquared);
       
-      // Calculate smoothing factor based on distance
-      let smoothingFactor = 1.0;
-      if (distanceFromCenter < minDistance) {
-        // Too close to center - reduce sensitivity significantly
-        smoothingFactor = 0.3;
-      } else if (distanceFromCenter < maxDistance) {
-        // Progressive smoothing
-        smoothingFactor = 0.3 + (0.7 * (distanceFromCenter - minDistance) / (maxDistance - minDistance));
+      // Get device-specific settings
+      const settings = getDeviceSettings();
+      let smoothingFactor = settings.maxSmoothingFactor;
+      
+      if (distanceFromCenter < settings.minDistance) {
+        smoothingFactor = settings.minSmoothingFactor;
+      } else if (distanceFromCenter < settings.maxDistance) {
+        // Use linear interpolation between min and max smoothing
+        const ratio = (distanceFromCenter - settings.minDistance) / (settings.maxDistance - settings.minDistance);
+        smoothingFactor = settings.minSmoothingFactor + 
+          (settings.maxSmoothingFactor - settings.minSmoothingFactor) * ratio;
       }
       
-      // Apply smoothing and cap maximum rotation per frame
-      const smoothedDeltaAngle = Math.max(-5, Math.min(5, deltaAngle * smoothingFactor));
+      // Apply device-adaptive smoothing and rotation cap
+      const adjustedDeltaAngle = deltaAngle * smoothingFactor * settings.sensitivityMultiplier;
+      const smoothedDeltaAngle = Math.max(-settings.maxRotationPerFrame, 
+        Math.min(settings.maxRotationPerFrame, adjustedDeltaAngle));
       
-      console.log('[RotateDrag]', { 
-        maskId: rotateState.rotateModeMaskId, 
-        deltaAngle: smoothedDeltaAngle, 
-        currentAngle,
-        startAngle: rotateState.dragStartAngle,
-        pointerPos: pointerPosition,
-        screenCenter,
-        rawDelta: deltaAngle
-      });
+      // Only log in development mode and throttle to avoid performance impact
+      if (process.env.NODE_ENV === 'development' && Math.random() < 0.1) {
+        console.log('[RotateDrag]', { 
+          maskId: rotateState.rotateModeMaskId, 
+          deltaAngle: smoothedDeltaAngle, 
+          currentAngle,
+          startAngle: rotateState.dragStartAngle,
+          rawDelta: deltaAngle
+        });
+      }
       
       // Update mask rotation with smoothed delta
       UPDATE_ROTATE_DRAG(rotateState.rotateModeMaskId, smoothedDeltaAngle);
     }
+    });
   }, [screenToImageLocal, imgFit]);
 
   // Handle mouse up for move mode and rotate mode drag operations
   const handleStageMouseUp = useCallback((e: Konva.KonvaEventObject<MouseEvent>) => {
-    const { moveState, rotateState, END_MOVE_DRAG, END_ROTATE_DRAG } = useMaskStore.getState();
+    // Don't interfere with point editing mode for mask-level interactions
+    const { pointEditingMode, moveState, rotateState, END_MOVE_DRAG, END_ROTATE_DRAG } = useMaskStore.getState();
+    if (pointEditingMode) {
+      // Allow move/rotate drag operations to complete
+      if (moveState.isDragging && moveState.moveModeMaskId) {
+        console.log('[MoveDragEnd]', { maskId: moveState.moveModeMaskId });
+        END_MOVE_DRAG(moveState.moveModeMaskId);
+      }
+      
+      if (rotateState.isDragging && rotateState.rotateModeMaskId) {
+        console.log('[RotateDragEnd]', { maskId: rotateState.rotateModeMaskId });
+        END_ROTATE_DRAG(rotateState.rotateModeMaskId);
+      }
+      
+      return; // Don't process other mouse up events in point editing mode
+    }
+    
+    const { END_MOVE_DRAG: END_MOVE_DRAG_FALLBACK, END_ROTATE_DRAG: END_ROTATE_DRAG_FALLBACK } = useMaskStore.getState();
     
     if (moveState.isDragging && moveState.moveModeMaskId) {
       console.log('[MoveDragEnd]', { maskId: moveState.moveModeMaskId });

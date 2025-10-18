@@ -93,10 +93,7 @@ export function deselectAll(): void {
   maskStore.SELECT(null);
   assetStore.setSelectedAsset(null);
   
-  // Also exit point editing mode when deselecting
-  if (maskStore.pointEditingMode) {
-    maskStore.EXIT_POINT_EDITING();
-  }
+  // Note: SELECT(null) will handle exiting point editing mode automatically
 }
 
 /**

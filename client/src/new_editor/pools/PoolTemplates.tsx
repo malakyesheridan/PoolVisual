@@ -105,48 +105,72 @@ export function PoolTemplates({ onTemplateApply }: PoolTemplatesProps) {
   }
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <h3 className="text-lg font-semibold mb-4">Pool Templates</h3>
-      
-      {/* Source info */}
-      <div className="mb-4 p-2 border rounded text-sm bg-green-50 border-green-200">
-        <div className="font-medium text-green-800">
-          Template Library Enabled
+    <div className="h-full flex flex-col">
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 p-4 border-b bg-white">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Templates</h3>
+          {!loading && (
+            <div className="text-xs text-gray-500">
+              {templates.length} templates ({templateSource.getSourceInfo().type})
+            </div>
+          )}
         </div>
-        <div className="text-green-600">
-          Source: {templateSource.getSourceInfo().type} ({templateSource.getSourceInfo().url})
+      </div>
+
+      {/* Source info */}
+      <div className="flex-shrink-0 p-4 border-b bg-green-50">
+        <div className="text-sm">
+          <div className="font-medium text-green-800">
+            Template Library Enabled
+          </div>
+          <div className="text-green-600">
+            Source: {templateSource.getSourceInfo().type} ({templateSource.getSourceInfo().url})
+          </div>
         </div>
       </div>
 
       {/* Search and Filter */}
-      <div className="mb-4 space-y-2">
-        <input
-          type="text"
-          placeholder="Search templates..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        
-        {categories.length > 0 && (
-          <select
-            value={selectedCategory}
-            onChange={(e) => setSelectedCategory(e.target.value as TemplateCategory | '')}
+      <div className="flex-shrink-0 p-4 border-b bg-gray-50">
+        <div className="space-y-2">
+          <input
+            type="text"
+            placeholder="Search templates..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All Categories</option>
-            {categories.map(category => (
-              <option key={category} value={category}>
-                {category.charAt(0).toUpperCase() + category.slice(1)}
-              </option>
-            ))}
-          </select>
-        )}
-        
-        <div className="text-xs text-gray-500">
-          Showing {filteredTemplates.length} of {templates.length} templates
+          />
+          
+          {categories.length > 0 && (
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value as TemplateCategory | '')}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">All Categories</option>
+              {categories.map(category => (
+                <option key={category} value={category}>
+                  {category.charAt(0).toUpperCase() + category.slice(1)}
+                </option>
+              ))}
+            </select>
+          )}
+          
+          <div className="text-xs text-gray-500">
+            Showing {filteredTemplates.length} of {templates.length} templates
+          </div>
         </div>
       </div>
+
+      {/* Contextual Message */}
+      <div className="flex-shrink-0 p-4 border-b bg-purple-50">
+        <div className="text-sm text-purple-700">
+          <strong>Apply templates</strong> to quickly set up pool designs
+        </div>
+      </div>
+
+      {/* Templates Grid - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-4">
 
       {/* Template Grid */}
       <div className="space-y-3">
@@ -229,6 +253,7 @@ export function PoolTemplates({ onTemplateApply }: PoolTemplatesProps) {
             </div>
           ))
         )}
+      </div>
       </div>
     </div>
   );

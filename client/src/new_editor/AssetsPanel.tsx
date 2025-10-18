@@ -1,83 +1,51 @@
 import { useState, useEffect } from 'react';
 import { useEditorStore } from './store';
 import { Asset } from './types';
-
-interface AssetDef {
-  id: string;
-  name: string;
-  url: string;
-  width: number;
-  height: number;
-  category: string;
-}
-
-// Asset definitions - same as in AssetsLayerKonva
-const ASSET_DEFINITIONS: Record<string, AssetDef> = {
-  'tree_palm_01': {
-    id: 'tree_palm_01',
-    name: 'Palm Tree',
-    url: '/assets/full/tree_palm_01.svg',
-    width: 400,
-    height: 600,
-    category: 'Trees'
-  },
-  'tree_oak_01': {
-    id: 'tree_oak_01',
-    name: 'Oak Tree',
-    url: '/assets/full/tree_oak_01.svg',
-    width: 500,
-    height: 700,
-    category: 'Trees'
-  },
-  'tree_pine_01': {
-    id: 'tree_pine_01',
-    name: 'Pine Tree',
-    url: '/assets/full/tree_pine_01.svg',
-    width: 350,
-    height: 550,
-    category: 'Trees'
-  },
-  'furniture_chair_01': {
-    id: 'furniture_chair_01',
-    name: 'Pool Chair',
-    url: '/assets/full/furniture_chair_01.svg',
-    width: 200,
-    height: 300,
-    category: 'Furniture'
-  },
-  'furniture_table_01': {
-    id: 'furniture_table_01',
-    name: 'Pool Table',
-    url: '/assets/full/furniture_table_01.svg',
-    width: 300,
-    height: 200,
-    category: 'Furniture'
-  }
-};
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from '../components/ui/tooltip';
+import { useUnifiedAssetStore, useAssetSelectors } from '../stores/unifiedAssetStore';
 
 export function AssetsPanel() {
   const { assets, selectedAssetId, dispatch } = useEditorStore();
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Get unique categories
-  const categories = ['All', ...new Set(Object.values(ASSET_DEFINITIONS).map(def => def.category))];
+  // Use unified asset store
+  const { loadAssets, recordUsage, setSearchQuery: setStoreSearchQuery, setCategoryFilter } = useUnifiedAssetStore();
+  const { filteredAssets, categories } = useAssetSelectors();
 
-  // Filter assets by category
-  const filteredAssets = selectedCategory === 'All' 
-    ? Object.values(ASSET_DEFINITIONS)
-    : Object.values(ASSET_DEFINITIONS).filter(def => def.category === selectedCategory);
+  // Load assets on mount
+  useEffect(() => {
+    loadAssets();
+  }, [loadAssets]);
 
-  const handleAssetSelect = (defId: string) => {
-    console.log('[AssetsPanel] Asset selected for placement:', defId);
+  // Sync search and category filters
+  useEffect(() => {
+    setStoreSearchQuery(searchQuery);
+  }, [searchQuery, setStoreSearchQuery]);
+
+  useEffect(() => {
+    setCategoryFilter(selectedCategory);
+  }, [selectedCategory, setCategoryFilter]);
+
+  const handleAssetSelect = (assetId: string) => {
+    console.log('[AssetsPanel] Asset selected for placement:', assetId);
     
-    // Set place mode
-    dispatch({ type: 'SET_ASSET_PLACE_MODE', payload: { defId } });
+    // Record usage in unified store
+    recordUsage(assetId);
+    
+    // Set place mode with asset ID
+    dispatch({ type: 'SET_ASSET_PLACE_MODE', payload: { defId: assetId } });
     
     // Change cursor to indicate placement mode
     document.body.style.cursor = 'crosshair';
     
-    console.log('[AssetsPanel] Asset place mode activated:', defId);
+    console.log('[AssetsPanel] Asset place mode activated:', assetId);
   };
 
   const handleCanvasClick = (event: React.MouseEvent) => {
@@ -129,13 +97,14 @@ export function AssetsPanel() {
   // No need for global click listener
 
   return (
-    <div className="h-full flex flex-col">
+    <TooltipProvider>
+      <div className="h-full flex flex-col">
       {/* Header - Fixed */}
       <div className="flex-shrink-0 p-4 border-b bg-white">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Assets</h3>
           <div className="text-xs text-gray-500">
-            {Object.keys(ASSET_DEFINITIONS).length} assets
+            {filteredAssets.length} assets
           </div>
         </div>
       </div>
@@ -159,26 +128,74 @@ export function AssetsPanel() {
         </div>
       </div>
 
+      {/* Search Input */}
+      <div className="flex-shrink-0 p-4 border-b bg-gray-50">
+        <input
+          type="text"
+          placeholder="Search assets..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
+      </div>
+
+      {/* Contextual Message */}
+      <div className="flex-shrink-0 p-4 border-b bg-green-50">
+        <div className="text-sm text-green-700">
+          <strong>Click an asset</strong> to place it on the canvas
+        </div>
+      </div>
+
       {/* Scrollable Asset Grid */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-2 gap-2">
-          {filteredAssets.map((assetDef) => (
-            <button
-              key={assetDef.id}
-              onClick={() => handleAssetSelect(assetDef.id)}
-              className="p-2 border border-gray-200 rounded text-left hover:border-blue-300 hover:bg-blue-50 transition-colors"
-            >
-              {/* Asset Preview */}
-              <div className="w-full h-16 bg-gray-100 rounded mb-2 flex items-center justify-center text-xs text-gray-500">
-                {assetDef.name}
-              </div>
-              
-              <div className="text-sm font-medium">{assetDef.name}</div>
-              <div className="text-xs text-gray-500">
-                {assetDef.width}×{assetDef.height}px
-              </div>
-              <div className="text-xs text-gray-400">{assetDef.category}</div>
-            </button>
+          {filteredAssets.map((asset) => (
+            <Tooltip key={asset.id}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => handleAssetSelect(asset.id)}
+                  className="p-2 border border-gray-200 rounded text-left hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                >
+                  {/* Asset Preview */}
+                  <div className="w-full h-16 bg-gray-100 rounded mb-2 flex items-center justify-center overflow-hidden">
+                    <img 
+                      src={asset.thumbnailUrl} 
+                      alt={asset.name}
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        // Fallback to text if image fails to load
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const fallback = target.nextElementSibling as HTMLElement;
+                        if (fallback) {
+                          fallback.style.display = 'flex';
+                        }
+                      }}
+                    />
+                    <div className="hidden text-xs text-gray-500 items-center justify-center">{asset.name}</div>
+                  </div>
+                  
+                  <div className="text-sm font-medium">{asset.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {asset.dimensions.width}×{asset.dimensions.height}px
+                  </div>
+                  <div className="text-xs text-gray-400">{asset.category}</div>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="text-center">
+                  <div className="font-medium">{asset.name}</div>
+                  <div className="text-xs text-gray-300">{asset.category}</div>
+                  <div className="text-xs text-gray-400">{asset.dimensions.width}×{asset.dimensions.height}px</div>
+                  {asset.price && (
+                    <div className="text-xs text-green-600">${asset.price}</div>
+                  )}
+                  {asset.description && (
+                    <div className="text-xs text-gray-400 mt-1">{asset.description}</div>
+                  )}
+                </div>
+              </TooltipContent>
+            </Tooltip>
           ))}
         </div>
       </div>
@@ -190,7 +207,7 @@ export function AssetsPanel() {
             <h4 className="text-sm font-medium text-gray-700 mb-2">Placed Assets ({assets.length})</h4>
             <div className="space-y-1 max-h-32 overflow-y-auto">
               {assets.map((asset) => {
-                const def = ASSET_DEFINITIONS[asset.defId];
+                const unifiedAsset = useUnifiedAssetStore.getState().assets[asset.defId];
                 return (
                   <div
                     key={asset.id}
@@ -201,7 +218,7 @@ export function AssetsPanel() {
                     }`}
                     onClick={() => dispatch({ type: 'SET_SELECTED_ASSET', payload: asset.id })}
                   >
-                    <div className="font-medium">{def?.name || asset.defId}</div>
+                    <div className="font-medium">{unifiedAsset?.name || asset.defId}</div>
                     <div className="text-gray-500">
                       Scale: {(asset.scale * 100).toFixed(0)}% | 
                       Pos: ({asset.x}, {asset.y})
@@ -219,7 +236,7 @@ export function AssetsPanel() {
         <div className="flex-shrink-0 p-4 bg-blue-50 border-t border-blue-200">
           <div className="text-sm text-blue-700">
             <strong>Place Mode:</strong> Click on canvas to place{' '}
-            {ASSET_DEFINITIONS[useEditorStore.getState().assetPlaceMode!.defId]?.name}
+            {useUnifiedAssetStore.getState().assets[useEditorStore.getState().assetPlaceMode!.defId]?.name || useEditorStore.getState().assetPlaceMode!.defId}
           </div>
           <button
             onClick={() => {
@@ -232,6 +249,7 @@ export function AssetsPanel() {
           </button>
         </div>
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

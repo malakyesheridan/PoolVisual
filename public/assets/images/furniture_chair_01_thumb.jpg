@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="50" height="75" viewBox="0 0 50 75" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="50" height="75" fill="#f8f9fa"/>
+  
+  <!-- Pool Chair Frame -->
+  <rect x="5" y="12" width="40" height="5" fill="#C0C0C0" rx="2"/>
+  <rect x="5" y="50" width="40" height="5" fill="#C0C0C0" rx="2"/>
+  
+  <!-- Chair Back -->
+  <rect x="8" y="12" width="34" height="38" fill="#FFFFFF" stroke="#C0C0C0" stroke-width="1" rx="2"/>
+  
+  <!-- Chair Seat -->
+  <rect x="8" y="50" width="34" height="20" fill="#FFFFFF" stroke="#C0C0C0" stroke-width="1" rx="2"/>
+  
+  <!-- Chair Legs -->
+  <rect x="10" y="70" width="3" height="5" fill="#C0C0C0"/>
+  <rect x="37" y="70" width="3" height="5" fill="#C0C0C0"/>
+  
+  <!-- Cushion -->
+  <rect x="10" y="52" width="30" height="15" fill="#E6F3FF" stroke="#B3D9FF" stroke-width="0.5" rx="1"/>
+</svg>

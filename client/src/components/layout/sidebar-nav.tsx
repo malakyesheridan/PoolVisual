@@ -32,8 +32,8 @@ const navigation = [
     icon: Edit3,
   },
   {
-    name: 'Materials',
-    href: '/materials',
+    name: 'Library',
+    href: '/library',
     icon: Package,
   },
   {

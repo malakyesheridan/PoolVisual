@@ -154,7 +154,7 @@ export function AppShell({ children }: PropsWithChildren) {
     { to: '/dashboard', label: 'Dashboard', icon: Home },
     { to: '/jobs', label: 'Jobs', icon: Briefcase },
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
-    { to: '/materials', label: 'Materials', icon: Package },
+    { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: 'Quotes', icon: FileText },
   ];
 

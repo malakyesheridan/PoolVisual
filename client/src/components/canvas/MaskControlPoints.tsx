@@ -30,40 +30,12 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
   console.log('[MaskControlPoints] Rendering control points for mask:', mask.id, 'with', mask.pts.length, 'points');
 
   // Convert image coordinates to screen coordinates
+  // In point editing mode, mask is flattened (no position/rotation transformations)
   const pointsToScreen = (pts: Pt[]) => {
-    const positionOffset = mask.position || { x: 0, y: 0 };
-    const rotation = mask.rotation || 0;
-    
-    // Calculate mask center for rotation
-    const maskCenter = {
-      x: pts.reduce((sum, pt) => sum + pt.x, 0) / pts.length,
-      y: pts.reduce((sum, pt) => sum + pt.y, 0) / pts.length
-    };
-    
-    // Helper function to rotate a point around center
-    const rotatePoint = (pt: Pt, center: { x: number; y: number }, angle: number) => {
-      if (angle === 0) return pt;
-      
-      const cos = Math.cos(angle * Math.PI / 180);
-      const sin = Math.sin(angle * Math.PI / 180);
-      const dx = pt.x - center.x;
-      const dy = pt.y - center.y;
-      
-      return {
-        x: center.x + dx * cos - dy * sin,
-        y: center.y + dx * sin + dy * cos
-      };
-    };
-    
-    return pts.map(pt => {
-      // Apply rotation first
-      const rotatedPt = rotatePoint(pt, maskCenter, rotation);
-      // Then apply position offset and convert to screen coordinates
-      return {
-        x: (rotatedPt.x + positionOffset.x) * imgFit.imgScale + imgFit.originX,
-        y: (rotatedPt.y + positionOffset.y) * imgFit.imgScale + imgFit.originY
-      };
-    });
+    return pts.map(pt => ({
+      x: pt.x * imgFit.imgScale + imgFit.originX,
+      y: pt.y * imgFit.imgScale + imgFit.originY
+    }));
   };
 
   // Snap to grid if enabled
@@ -78,6 +50,12 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
   };
 
   const screenPoints = pointsToScreen(mask.pts);
+  
+  console.log('[MaskControlPoints] Screen points calculated', {
+    maskId: mask.id,
+    screenPointsCount: screenPoints.length,
+    originalPointsCount: mask.pts.length
+  });
 
   // Generate edge lines between points
   const edgeLines: JSX.Element[] = [];
@@ -115,12 +93,16 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
             onMouseEnter={() => setHoveredPointIndex(index)}
             onMouseLeave={() => setHoveredPointIndex(null)}
             onDragStart={(e) => {
-              console.log('[ControlPoint] Drag start', { maskId: mask.id, pointIndex: index });
+              console.log('[ControlPoint] Drag start', { maskId: mask.id, pointIndex: index, target: e.target });
               e.evt.stopPropagation(); // Prevent event from bubbling up
+              e.evt.preventDefault(); // Prevent default behavior
               // Create undo snapshot before starting drag
               dispatch({ type: 'SNAPSHOT' });
             }}
             onDragMove={(e) => {
+              e.evt.stopPropagation(); // Prevent event from bubbling up to mask handlers
+              e.evt.preventDefault(); // Prevent default behavior
+              
               const stage = e.target.getStage();
               if (!stage) return;
               
@@ -148,6 +130,9 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
               UPDATE_MASK_POINT(mask.id, index, snappedPoint);
             }}
             onDragEnd={(e) => {
+              e.evt.stopPropagation(); // Prevent event from bubbling up to mask handlers
+              e.evt.preventDefault(); // Prevent default behavior
+              
               console.log('[ControlPoint] Drag end', { maskId: mask.id, pointIndex: index });
               // Final position update
               const stage = e.target.getStage();

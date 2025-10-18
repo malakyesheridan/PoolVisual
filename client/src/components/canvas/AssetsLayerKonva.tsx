@@ -22,14 +22,14 @@ const ASSET_DEFINITIONS: Record<string, AssetDef> = {
   'tree_palm_01': {
     id: 'tree_palm_01',
     name: 'Palm Tree',
-    url: '/assets/full/tree_palm_01.svg',
+    url: '/assets/trees/palm_01.svg',
     width: 400,
     height: 600
   },
   'tree_oak_01': {
     id: 'tree_oak_01',
     name: 'Oak Tree',
-    url: '/assets/full/tree_oak_01.svg',
+    url: '/assets/trees/oak_01.svg',
     width: 500,
     height: 700
   },

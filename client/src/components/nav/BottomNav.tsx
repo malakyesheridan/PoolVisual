@@ -27,8 +27,8 @@ const navItems: NavItem[] = [
     icon: Edit
   },
   {
-    href: '/materials',
-    label: 'Materials',
+    href: '/library',
+    label: 'Library',
     icon: Package
   },
   {

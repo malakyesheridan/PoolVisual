@@ -73,15 +73,15 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             Canvas Editor
           </Link>
           <Link 
-            href="/materials"
+            href="/library"
             className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              currentPage === 'materials' 
+              currentPage === 'library' 
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
             }`} 
-            data-testid="link-materials"
+            data-testid="link-library"
           >
-            Materials
+            Library
           </Link>
           <Link 
             href="/quotes"

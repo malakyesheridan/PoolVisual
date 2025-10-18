@@ -63,48 +63,61 @@ export function MaskManagementPanel({ className = '' }: MaskManagementPanelProps
   }, [selectedId, masks, maskArray, DELETE]);
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-lg p-4 ${className}`}>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-semibold text-gray-900">Mask Management</h3>
-        <div className="flex items-center space-x-1">
-          <button
-            onClick={() => setShowCreateGroup(true)}
-            className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
-            title="Create group"
-          >
-            <FolderPlus size={14} />
-          </button>
+    <div className={`h-full flex flex-col ${className}`}>
+      {/* Header - Fixed */}
+      <div className="flex-shrink-0 p-4 border-b bg-white">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold">Masks</h3>
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setShowCreateGroup(true)}
+              className="p-1 text-gray-400 hover:text-gray-600 rounded transition-colors"
+              title="Create group"
+            >
+              <FolderPlus size={16} />
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Create Group Input */}
       {showCreateGroup && (
-        <div className="mb-4 p-2 bg-gray-50 rounded-lg">
+        <div className="flex-shrink-0 p-4 border-b bg-gray-50">
           <input
             type="text"
             placeholder="Group name..."
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             onKeyDown={handleKeyPress}
-            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
             autoFocus
           />
           <div className="flex justify-end space-x-2 mt-2">
             <button
               onClick={() => setShowCreateGroup(false)}
-              className="px-2 py-1 text-xs text-gray-600 hover:text-gray-800"
+              className="px-3 py-1 text-sm text-gray-600 hover:text-gray-800"
             >
               Cancel
             </button>
             <button
               onClick={handleCreateGroup}
-              className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
             >
               Create
             </button>
           </div>
         </div>
       )}
+
+      {/* Contextual Message */}
+      <div className="flex-shrink-0 p-4 border-b bg-orange-50">
+        <div className="text-sm text-orange-700">
+          <strong>Manage masks</strong> - organize, rename, and delete
+        </div>
+      </div>
+
+      {/* Mask List - Scrollable */}
+      <div className="flex-1 overflow-y-auto p-4">
 
       {/* Groups and Masks */}
       <div className="space-y-3">
@@ -170,6 +183,7 @@ export function MaskManagementPanel({ className = '' }: MaskManagementPanelProps
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

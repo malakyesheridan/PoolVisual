@@ -115,7 +115,7 @@ export function QuickActions({ className = '', projectId }: QuickActionsProps) {
   };
 
   const handleManageMaterials = () => {
-    navigate('/materials');
+    navigate('/library');
   };
 
   const handleAddPhoto = () => {
@@ -267,7 +267,7 @@ export function QuickActions({ className = '', projectId }: QuickActionsProps) {
               onClick={handleManageMaterials}
             >
               <Package className="w-4 h-4 mr-2" />
-              Materials
+              Library
             </Button>
             <Button 
               variant="outline" 

@@ -128,6 +128,15 @@ export function MaterialsPanel() {
         </div>
       </div>
       
+      {/* Contextual Message */}
+      {!selectedId && (
+        <div className="flex-shrink-0 p-4 border-b bg-blue-50">
+          <div className="text-sm text-blue-700">
+            <strong>Select a mask</strong> to assign materials
+          </div>
+        </div>
+      )}
+      
       {/* Scrollable Material Grid */}
       <div className="flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-2 gap-2">

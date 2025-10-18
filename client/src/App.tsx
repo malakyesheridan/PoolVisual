@@ -12,6 +12,7 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Materials from "@/pages/materials";
 import MaterialsNew from "@/pages/MaterialsNew";
+import Library from "@/pages/Library";
 import Jobs from "@/pages/jobs";
 import JobDetail from "@/pages/job-detail";
 import CanvasEditorPage from "@/pages/CanvasEditorPage";
@@ -65,7 +66,13 @@ function ProtectedRouter() {
           
           <Route path="/materials">
             <ProtectedRoute>
-              <MaterialsNew />
+              <Library />
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/library">
+            <ProtectedRoute>
+              <Library />
             </ProtectedRoute>
           </Route>
           

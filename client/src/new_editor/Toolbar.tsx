@@ -10,13 +10,46 @@ import {
   handleDropEvent, 
   handleDragOverEvent 
 } from './photoUpload';
-import { Upload, Maximize2, MousePointer, Square, Undo2, Redo2, Download, Bug, ZoomIn, ZoomOut, Ruler, Eye, EyeOff, DollarSign } from 'lucide-react';
+import { Upload, Maximize2, MousePointer, Square, Undo2, Redo2, Download, ZoomIn, ZoomOut, Ruler, Eye, EyeOff, DollarSign, Key, FileText, ChevronDown, Save } from 'lucide-react';
 import { PV_PRECISE_MASKS } from './featureFlags';
 import { CalibrationTool } from './CalibrationTool';
+import { KeyLegend } from './KeyLegend';
+import { useMaskStore } from '../maskcore/store';
+import { useProjectStore } from '../stores/projectStore';
+import { useUnifiedTemplateStore } from '../stores/unifiedTemplateStore';
+import { useLocation } from 'wouter';
+import { toast } from 'sonner';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator 
+} from '../components/ui/dropdown-menu';
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from '../components/ui/tooltip';
 
 export function Toolbar() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCalibrationTool, setShowCalibrationTool] = useState(false);
+  const [showKeyLegend, setShowKeyLegend] = useState(false);
+  const [, navigate] = useLocation();
+  
+  // Handle ESC key to close legend
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && showKeyLegend) {
+        setShowKeyLegend(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showKeyLegend]);
   
   const {
     photoSpace,
@@ -30,6 +63,7 @@ export function Toolbar() {
     dispatch,
     getState
   } = useEditorStore();
+  const { addTemplate } = useUnifiedTemplateStore();
 
   // Update zoom label when photoSpace scale changes
   useEffect(() => {
@@ -655,40 +689,207 @@ export function Toolbar() {
     }
   };
 
+  const handleCreateQuoteFromCanvas = async () => {
+    const { project, currentPhoto } = useProjectStore.getState();
+    const { masks, calibration, CREATE_QUOTE, ADD_QUOTE_ITEM, SET_ACTIVE_QUOTE } = useMaskStore.getState();
+    
+    if (!project || !currentPhoto) {
+      toast.error('No project context available');
+      return;
+    }
+
+    try {
+      // Generate quote name with timestamp
+      const timestamp = new Date().toLocaleDateString();
+      const quoteName = `${project.name} - ${currentPhoto.name} - ${timestamp}`;
+      
+      // Create quote
+      const quoteId = CREATE_QUOTE(quoteName);
+      
+      // Auto-populate with canvas data
+      const masksWithMaterials = Object.values(masks).filter(mask => 
+        mask.materialId && mask.isVisible !== false
+      );
+      
+      // Add all canvas items to quote
+      for (const mask of masksWithMaterials) {
+        ADD_QUOTE_ITEM(quoteId, mask.id, mask.materialId, calibration.pixelsPerMeter);
+      }
+      
+      // Set as active quote
+      SET_ACTIVE_QUOTE(quoteId);
+      
+      // Navigate to quotes page
+      navigate('/quotes');
+      
+      toast.success(`Quote "${quoteName}" created with ${masksWithMaterials.length} items`);
+      
+    } catch (error) {
+      console.error('Error creating quote:', error);
+      toast.error('Failed to create quote');
+    }
+  };
+
+  const handleSaveAsTemplate = () => {
+    try {
+      const state = getState();
+      
+      // Extract current design data
+      const masks = state.masks || [];
+      const assets = state.assets || [];
+      const materials = state.materials || [];
+      
+      if (masks.length === 0) {
+        toast.error('No pool design found. Please create a pool mask first.');
+        return;
+      }
+      
+      // Get the main pool mask (largest one)
+      const mainMask = masks.reduce((largest, current) => {
+        const currentArea = calculateMaskArea(current.points);
+        const largestArea = calculateMaskArea(largest.points);
+        return currentArea > largestArea ? current : largest;
+      });
+      
+      // Calculate pool dimensions
+      const bounds = calculateMaskBounds(mainMask.points);
+      const width = bounds.maxX - bounds.minX;
+      const height = bounds.maxY - bounds.minY;
+      
+      // Determine pool type based on shape
+      const aspectRatio = width / height;
+      let poolType: 'rect' | 'lap' | 'kidney' | 'freeform' = 'rect';
+      
+      if (aspectRatio > 3) {
+        poolType = 'lap';
+      } else if (masks.length > 1) {
+        poolType = 'freeform';
+      }
+      
+      // Create template data
+      const templateData = {
+        name: `Pool Design ${new Date().toLocaleDateString()}`,
+        description: `Custom pool design with ${masks.length} mask(s) and ${assets.length} asset(s)`,
+        category: poolType === 'lap' ? 'lap' : poolType === 'freeform' ? 'freeform' : 'rectangular' as any,
+        tags: ['custom', 'canvas-created'],
+        thumbnailUrl: state.imageUrl || '/assets/pools/default-thumb.png',
+        poolGeometry: {
+          type: poolType,
+          dimensions: { width: Math.round(width), height: Math.round(height) },
+          cornerRadius: 20,
+        },
+        materials: {
+          coping: materials.find(m => m.category === 'coping')?.id,
+          waterline: materials.find(m => m.category === 'waterline_tile')?.id,
+          interior: materials.find(m => m.category === 'interior')?.id,
+          paving: materials.find(m => m.category === 'paving')?.id,
+        },
+        assets: assets.map(asset => ({
+          assetId: asset.defId,
+          position: { x: asset.x, y: asset.y },
+          scale: asset.scale || 1,
+          rotation: asset.rotation || 0,
+        })),
+        complexity: masks.length > 2 ? 'High' : masks.length > 1 ? 'Medium' : 'Low' as any,
+        size: width > 1000 ? 'Large' : width > 600 ? 'Medium' : 'Small' as any,
+        estimatedCost: materials.reduce((sum, material) => {
+          const mask = masks.find(m => m.materialId === material.id);
+          const area = mask ? calculateMaskArea(mask.points) : 0;
+          return sum + (area * (material.price || 0));
+        }, 0),
+      };
+      
+      // Save template
+      const templateId = addTemplate(templateData);
+      
+      toast.success('Template saved successfully!');
+      
+      // Navigate to Library to view the new template
+      navigate('/library');
+      
+    } catch (error) {
+      console.error('Failed to save template:', error);
+      toast.error('Failed to save template');
+    }
+  };
+
+  // Helper functions
+  const calculateMaskArea = (points: any[]) => {
+    if (points.length < 3) return 0;
+    
+    let area = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      area += points[i].x * points[j].y;
+      area -= points[j].x * points[i].y;
+    }
+    return Math.abs(area) / 2;
+  };
+
+  const calculateMaskBounds = (points: any[]) => {
+    if (points.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    
+    let minX = points[0].x, minY = points[0].y, maxX = points[0].x, maxY = points[0].y;
+    
+    for (const point of points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
+    
+    return { minX, minY, maxX, maxY };
+  };
+
   return (
-    <div className="bg-white border-b border-gray-200 px-6 py-3">
-      <div className="flex items-center justify-between">
-        {/* Left Section: File Operations */}
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-            title="Upload Image"
-          >
-            <Upload size={16} />
-            <span className="font-medium">Upload</span>
-          </button>
-          
-          <button
-            onClick={handleFit}
-            disabled={state !== 'ready'}
-            className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Fit to View"
-          >
-            <Maximize2 size={16} />
-            <span className="font-medium">Fit</span>
-          </button>
-          
-          <button
-            onClick={() => setShowCalibrationTool(true)}
-            disabled={state !== 'ready'}
-            className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-            title="Calibrate Measurements"
-          >
-            <Ruler size={16} />
-            <span className="font-medium">Calibrate</span>
-          </button>
-        </div>
+    <TooltipProvider>
+      <div className="bg-white border-b border-gray-200 px-6 py-3">
+        <div className="flex items-center justify-between">
+          {/* Left Section: File Operations */}
+          <div className="flex items-center space-x-3">
+            {/* File Dropdown Menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                  title="File Operations"
+                >
+                  <FileText size={16} />
+                  <span className="font-medium">File</span>
+                  <ChevronDown size={14} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start">
+                <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Upload Image
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={handleFit}
+                  disabled={state !== 'ready'}
+                >
+                  <Maximize2 className="mr-2 h-4 w-4" />
+                  Fit to View
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={() => setShowCalibrationTool(true)}
+                  disabled={state !== 'ready'}
+                >
+                  <Ruler className="mr-2 h-4 w-4" />
+                  Calibrate Measurements
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem 
+                  onClick={handleSaveAsTemplate}
+                  disabled={state !== 'ready'}
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  Save as Template
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         
         {/* Center Section: Tools */}
         <div className="flex items-center space-x-3">
@@ -747,11 +948,11 @@ export function Toolbar() {
         
         {/* Right Section: Status & Actions */}
         <div className="flex items-center space-x-3">
-          {/* Calibration Status */}
-          <div className={`px-3 py-2 rounded-lg text-sm font-medium ${
+          {/* Compact Status Badge */}
+          <div className={`px-2 py-1 rounded text-xs font-medium ${
             calibration.isCalibrated 
-              ? 'bg-green-50 text-green-700 border border-green-200' 
-              : 'bg-yellow-50 text-yellow-700 border border-yellow-200'
+              ? 'bg-green-100 text-green-700' 
+              : 'bg-yellow-100 text-yellow-700'
           }`}>
             {calibration.isCalibrated 
               ? `✓ ${calibration.pixelsPerMeter.toFixed(0)} px/m` 
@@ -759,53 +960,84 @@ export function Toolbar() {
             }
           </div>
           
-          {/* Measurement Toggles */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+          {/* Icon-only Action Buttons with Tooltips */}
+          <div className="flex items-center space-x-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleToggleMeasurements}
+                  className={`p-2 rounded-lg transition-colors ${
+                    measurements.showMeasurements
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  {measurements.showMeasurements ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Toggle Measurements</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleToggleCosts}
+                  className={`p-2 rounded-lg transition-colors ${
+                    measurements.showCosts
+                      ? 'bg-green-100 text-green-600'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+                  }`}
+                >
+                  <DollarSign size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Toggle Costs</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleUndo}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <Undo2 size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Undo (Ctrl+Z)</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleRedo}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <Redo2 size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Redo (Ctrl+Shift+Z)</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            {/* Create Quote Button */}
             <button
-              onClick={handleToggleMeasurements}
-              className={`flex items-center space-x-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                measurements.showMeasurements
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-              title="Toggle Measurements"
+              onClick={handleCreateQuoteFromCanvas}
+              disabled={state !== 'ready'}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+              title="Create Quote from Canvas"
             >
-              {measurements.showMeasurements ? <Eye size={14} /> : <EyeOff size={14} />}
-              <span>Measurements</span>
+              <FileText size={16} />
+              <span className="font-medium">Create Quote</span>
             </button>
             
-            <button
-              onClick={handleToggleCosts}
-              className={`flex items-center space-x-1 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                measurements.showCosts
-                  ? 'bg-white text-green-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-              title="Toggle Costs"
-            >
-              <DollarSign size={14} />
-              <span>Costs</span>
-            </button>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex items-center space-x-2">
-            <button
-              onClick={handleUndo}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Undo (Ctrl+Z)"
-            >
-              <Undo2 size={16} />
-            </button>
-            
-            <button
-              onClick={handleRedo}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Redo (Ctrl+Shift+Z)"
-            >
-              <Redo2 size={16} />
-            </button>
-            
+            {/* Keep Export prominent */}
             <button
               onClick={handleExport}
               disabled={state !== 'ready'}
@@ -816,18 +1048,19 @@ export function Toolbar() {
               <span className="font-medium">Export</span>
             </button>
             
-            {/* Dev Toggle - Only in development */}
-            {import.meta.env.DEV && (
-              <button
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('toggleDevOverlay'));
-                }}
-                className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                title="Toggle Dev Overlay (`)"
-              >
-                <Bug size={16} />
-              </button>
-            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowKeyLegend(true)}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <Key size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Show Canvas Controls Legend</p>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
       </div>
@@ -845,6 +1078,13 @@ export function Toolbar() {
       {showCalibrationTool && (
         <CalibrationTool onClose={() => setShowCalibrationTool(false)} />
       )}
-    </div>
+      
+      {/* Key Legend Modal */}
+      <KeyLegend 
+        isOpen={showKeyLegend} 
+        onClose={() => setShowKeyLegend(false)} 
+      />
+      </div>
+    </TooltipProvider>
   );
 }

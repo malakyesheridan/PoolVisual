@@ -3,18 +3,24 @@ import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
 import { MaterialsPanel } from './MaterialsPanel';
 import { AssetsPanel } from './AssetsPanel';
-import { DevOverlay } from './DevOverlay';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { MaskManagementPanel } from '../components/mask/MaskManagementPanel';
-import { QuotePanel } from '../components/quote/QuotePanel';
+import { UnifiedTemplatesPanel } from './UnifiedTemplatesPanel';
 import { useEditorStore } from './store';
+import { Package, Image, Square, FileText } from 'lucide-react';
+import { 
+  Tooltip, 
+  TooltipContent, 
+  TooltipProvider, 
+  TooltipTrigger 
+} from '../components/ui/tooltip';
 
 export function NewEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const { dispatch, getState } = useEditorStore();
-  const [activeTab, setActiveTab] = React.useState<'materials' | 'assets' | 'masks' | 'quotes'>('materials');
+  const [activeTab, setActiveTab] = React.useState<'materials' | 'assets' | 'templates' | 'masks'>('materials');
   
   // Sidebar width state with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
@@ -309,60 +315,83 @@ export function NewEditor() {
           className="h-full overflow-hidden flex flex-col bg-white border-l border-gray-200"
         >
           {/* Tab Navigation */}
-          <div className="flex border-b bg-white">
-            <button
-              className={`flex-1 px-3 py-2 text-sm font-medium ${
-                activeTab === 'materials'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              onClick={() => setActiveTab('materials')}
-            >
-              Materials
-            </button>
-            <button
-              className={`flex-1 px-3 py-2 text-sm font-medium ${
-                activeTab === 'assets'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              onClick={() => setActiveTab('assets')}
-            >
-              Assets
-            </button>
-            <button
-              className={`flex-1 px-3 py-2 text-sm font-medium ${
-                activeTab === 'masks'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              onClick={() => setActiveTab('masks')}
-            >
-              Masks
-            </button>
-            <button
-              className={`flex-1 px-3 py-2 text-sm font-medium ${
-                activeTab === 'quotes'
-                  ? 'text-blue-600 border-b-2 border-blue-600'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-              onClick={() => setActiveTab('quotes')}
-            >
-              Quotes
-            </button>
-          </div>
+          <TooltipProvider>
+            <div className="flex border-b bg-white">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
+                      activeTab === 'materials'
+                        ? 'text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('materials')}
+                  >
+                    <Package size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Materials</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
+                      activeTab === 'assets'
+                        ? 'text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('assets')}
+                  >
+                    <Image size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Assets</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
+                      activeTab === 'templates'
+                        ? 'text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('templates')}
+                  >
+                    <FileText size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Templates</TooltipContent>
+              </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
+                      activeTab === 'masks'
+                        ? 'text-blue-600 border-b-2 border-blue-600'
+                        : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                    onClick={() => setActiveTab('masks')}
+                  >
+                    <Square size={16} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Masks</TooltipContent>
+              </Tooltip>
+            </div>
+          </TooltipProvider>
           
           {/* Tab Content */}
           <div className="flex-1 overflow-auto min-h-0">
             {activeTab === 'materials' && <MaterialsPanel />}
             {activeTab === 'assets' && <AssetsPanel />}
+            {activeTab === 'templates' && <UnifiedTemplatesPanel />}
             {activeTab === 'masks' && <MaskManagementPanel />}
-            {activeTab === 'quotes' && <QuotePanel />}
           </div>
         </div>
       </div>
-      
-      <DevOverlay />
       
       {/* DEV Build Chip - Phase 0 */}
     </div>

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Line, Shape, Group } from 'react-konva';
 import { MaskControlButtons } from './MaskControlButtons';
+import { useMaskStore } from '../../maskcore/store';
 
 interface Props {
   masks: Record<string, { id: string; pts: { x: number; y: number }[] }>;
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export function MaskPolygonsLayer({ masks, selectedId, onSelect, imgFit }: Props) {
+  const { pointEditingMode, editingMaskId } = useMaskStore();
+  
   return (
     <>
       {Object.entries(masks).map(([maskId, mask]) => {
@@ -18,48 +21,63 @@ export function MaskPolygonsLayer({ masks, selectedId, onSelect, imgFit }: Props
         // Skip hidden masks
         if (mask.isVisible === false) return null;
 
-        // Convert image coordinates to screen coordinates for rendering
-        // Apply position offset and rotation if mask has been transformed
-        const positionOffset = mask.position || { x: 0, y: 0 };
-        const rotation = mask.rotation || 0;
+        // Check if this mask is in point editing mode
+        const isInPointEditing = pointEditingMode && editingMaskId === maskId;
         
-        // Calculate mask center for rotation
-        const maskCenter = {
-          x: mask.pts.reduce((sum, pt) => sum + pt.x, 0) / mask.pts.length,
-          y: mask.pts.reduce((sum, pt) => sum + pt.y, 0) / mask.pts.length
-        };
-        
-        // Helper function to rotate a point around center
-        const rotatePoint = (pt: { x: number; y: number }, center: { x: number; y: number }, angle: number) => {
-          if (angle === 0) return pt;
-          
-          const cos = Math.cos(angle * Math.PI / 180);
-          const sin = Math.sin(angle * Math.PI / 180);
-          const dx = pt.x - center.x;
-          const dy = pt.y - center.y;
-          
-          return {
-            x: center.x + dx * cos - dy * sin,
-            y: center.y + dx * sin + dy * cos
-          };
-        };
-        
-        const points = mask.pts.flatMap(pt => {
-          // Apply rotation first
-          const rotatedPt = rotatePoint(pt, maskCenter, rotation);
-          
+        let points;
+        if (isInPointEditing) {
+          // In point editing mode, mask is already flattened - use points as-is
           if (imgFit) {
-            // Apply position offset to the rotated point, then convert to screen coordinates
-            const offsetX = rotatedPt.x + positionOffset.x;
-            const offsetY = rotatedPt.y + positionOffset.y;
-            const screenX = offsetX * imgFit.imgScale + imgFit.originX;
-            const screenY = offsetY * imgFit.imgScale + imgFit.originY;
-            return [screenX, screenY];
+            points = mask.pts.flatMap(pt => [
+              pt.x * imgFit.imgScale + imgFit.originX,
+              pt.y * imgFit.imgScale + imgFit.originY
+            ]);
           } else {
-            // Fallback to direct coordinates with offset
-            return [rotatedPt.x + positionOffset.x, rotatedPt.y + positionOffset.y];
+            points = mask.pts.flatMap(pt => [pt.x, pt.y]);
           }
-        });
+        } else {
+          // Normal mode - apply position offset and rotation if mask has been transformed
+          const positionOffset = mask.position || { x: 0, y: 0 };
+          const rotation = mask.rotation || 0;
+          
+          // Calculate mask center for rotation
+          const maskCenter = {
+            x: mask.pts.reduce((sum, pt) => sum + pt.x, 0) / mask.pts.length,
+            y: mask.pts.reduce((sum, pt) => sum + pt.y, 0) / mask.pts.length
+          };
+          
+          // Helper function to rotate a point around center
+          const rotatePoint = (pt: { x: number; y: number }, center: { x: number; y: number }, angle: number) => {
+            if (angle === 0) return pt;
+            
+            const cos = Math.cos(angle * Math.PI / 180);
+            const sin = Math.sin(angle * Math.PI / 180);
+            const dx = pt.x - center.x;
+            const dy = pt.y - center.y;
+            
+            return {
+              x: center.x + dx * cos - dy * sin,
+              y: center.y + dx * sin + dy * cos
+            };
+          };
+          
+          points = mask.pts.flatMap(pt => {
+            // Apply rotation first
+            const rotatedPt = rotatePoint(pt, maskCenter, rotation);
+            
+            if (imgFit) {
+              // Apply position offset to the rotated point, then convert to screen coordinates
+              const offsetX = rotatedPt.x + positionOffset.x;
+              const offsetY = rotatedPt.y + positionOffset.y;
+              const screenX = offsetX * imgFit.imgScale + imgFit.originX;
+              const screenY = offsetY * imgFit.imgScale + imgFit.originY;
+              return [screenX, screenY];
+            } else {
+              // Fallback to direct coordinates with offset
+              return [rotatedPt.x + positionOffset.x, rotatedPt.y + positionOffset.y];
+            }
+          });
+        }
         
         const isSelected = selectedId === maskId;
 

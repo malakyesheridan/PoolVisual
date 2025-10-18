@@ -129,6 +129,11 @@ interface MaskState {
   // Point Editing State (additive - no impact on existing functionality)
   pointEditingMode: boolean;
   editingMaskId: string | null;
+  // Store original transformations when entering point editing mode
+  originalMaskTransform: {
+    position: Pt | null;
+    rotation: number | null;
+  } | null;
   // Move State (additive - no impact on existing functionality)
   moveState: {
     isMoveMode: boolean;
@@ -144,6 +149,14 @@ interface MaskState {
     isDragging: boolean;
     dragStartAngle: number | null;
     dragStartRotation: number | null;
+  };
+  // Drag State (for general drag operations)
+  dragState: {
+    isDragging: boolean;
+    draggingMaskId: string | null;
+    dragStartPos: Pt | null;
+    dragStartOffset: Pt | null;
+    dragTimer: NodeJS.Timeout | null;
   };
 }
 
@@ -226,6 +239,8 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   // Point Editing State (additive - no impact on existing functionality)
   pointEditingMode: false,
   editingMaskId: null,
+  // Store original transformations when entering point editing mode
+  originalMaskTransform: null,
   // Move State (additive - no impact on existing functionality)
   moveState: {
     isMoveMode: false,
@@ -241,6 +256,14 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     isDragging: false,
     dragStartAngle: null,
     dragStartRotation: null,
+  },
+  // Drag State (for general drag operations)
+  dragState: {
+    isDragging: false,
+    draggingMaskId: null,
+    dragStartPos: null,
+    dragStartOffset: null,
+    dragTimer: null,
   },
 
   BEGIN: () => {
@@ -303,8 +326,18 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       createdAt: now,
       lastModified: now,
       color: undefined,
-      notes: undefined
+      notes: undefined,
+      // Explicitly set position and rotation to default values
+      position: { x: 0, y: 0 },
+      rotation: 0
     };
+    
+    console.log('[FINALIZE] Creating mask with explicit position/rotation', {
+      maskId: finalizedMask.id,
+      position: finalizedMask.position,
+      rotation: finalizedMask.rotation,
+      ptsCount: finalizedMask.pts.length
+    });
     
     set({
       masks: {
@@ -321,6 +354,56 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   },
 
   SELECT: (id) => {
+    const { pointEditingMode, editingMaskId, originalMaskTransform } = get();
+    
+    // If deselecting (id is null) and we're in point editing mode, exit it
+    if (id === null && pointEditingMode) {
+      console.log('[SELECT] Deselecting mask, exiting point editing mode');
+      
+      // Restore original transformations if we have them
+      if (originalMaskTransform && editingMaskId) {
+        const { masks } = get();
+        const mask = masks[editingMaskId];
+        if (mask) {
+          const restoredMask = {
+            ...mask,
+            position: originalMaskTransform.position,
+            rotation: originalMaskTransform.rotation,
+            lastModified: Date.now()
+          };
+          
+          set({
+            selectedId: null,
+            pointEditingMode: false,
+            editingMaskId: null,
+            originalMaskTransform: null,
+            masks: {
+              ...masks,
+              [editingMaskId]: restoredMask
+            }
+          });
+          return;
+        }
+      }
+      
+      // Fallback: just exit point editing mode
+      set({
+        selectedId: null,
+        pointEditingMode: false,
+        editingMaskId: null,
+        originalMaskTransform: null
+      });
+      return;
+    }
+    
+    // Normal selection
+    console.log('[SELECT] Normal selection', {
+      selectedId: id,
+      maskExists: id ? !!get().masks[id] : false,
+      maskPosition: id ? get().masks[id]?.position : null,
+      maskRotation: id ? get().masks[id]?.rotation : null
+    });
+    
     set({
       selectedId: id
     });
@@ -869,13 +952,84 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     
     // Only allow editing if mask exists and is not locked
     if (mask && !mask.isLocked) {
+      // Store original transformations
+      const originalTransform = {
+        position: mask.position || { x: 0, y: 0 },
+        rotation: mask.rotation || 0
+      };
+      
+      console.log('[ENTER_POINT_EDITING] DEBUG - Storing original transform', {
+        maskId,
+        originalPosition: originalTransform.position,
+        originalRotation: originalTransform.rotation,
+        maskPosition: mask.position,
+        maskRotation: mask.rotation
+      });
+      
+      // Flatten the mask by applying transformations to points
+      // This moves the points to their current visual position
+      const flattenedPoints = mask.pts.map(pt => {
+        const positionOffset = mask.position || { x: 0, y: 0 };
+        const rotation = mask.rotation || 0;
+        
+        // Calculate mask center for rotation
+        const maskCenter = {
+          x: mask.pts.reduce((sum, p) => sum + p.x, 0) / mask.pts.length,
+          y: mask.pts.reduce((sum, p) => sum + p.y, 0) / mask.pts.length
+        };
+        
+        // Apply rotation
+        if (rotation !== 0) {
+          const cos = Math.cos(rotation * Math.PI / 180);
+          const sin = Math.sin(rotation * Math.PI / 180);
+          const dx = pt.x - maskCenter.x;
+          const dy = pt.y - maskCenter.y;
+          
+          const rotatedPt = {
+            x: maskCenter.x + dx * cos - dy * sin,
+            y: maskCenter.y + dx * sin + dy * cos
+          };
+          
+          // Apply position offset
+          return {
+            x: rotatedPt.x + positionOffset.x,
+            y: rotatedPt.y + positionOffset.y
+          };
+        } else {
+          // Just apply position offset
+          return {
+            x: pt.x + positionOffset.x,
+            y: pt.y + positionOffset.y
+          };
+        }
+      });
+      
+      // Update mask with flattened points and reset transformations
+      const flattenedMask = {
+        ...mask,
+        pts: flattenedPoints,
+        position: { x: 0, y: 0 },
+        rotation: 0,
+        lastModified: Date.now()
+      };
+      
       const newState = {
         pointEditingMode: true,
         editingMaskId: maskId,
-        selectedId: maskId // Select the mask when entering edit mode
+        selectedId: maskId, // Select the mask when entering edit mode
+        originalMaskTransform: originalTransform,
+        masks: {
+          ...masks,
+          [maskId]: flattenedMask
+        }
       };
       
-      console.log('[ENTER_POINT_EDITING] Setting new state:', newState);
+      console.log('[ENTER_POINT_EDITING] Flattened mask for editing', {
+        originalTransform,
+        flattenedPointsCount: flattenedPoints.length,
+        newMaskTransform: { position: flattenedMask.position, rotation: flattenedMask.rotation }
+      });
+      
       set(newState);
     } else {
       console.log('[ENTER_POINT_EDITING] Cannot enter edit mode:', {
@@ -886,9 +1040,74 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   },
 
   EXIT_POINT_EDITING: () => {
+    const { originalMaskTransform, editingMaskId, masks } = get();
+    
+    console.log('[EXIT_POINT_EDITING] DEBUG - Current state', {
+      originalMaskTransform,
+      editingMaskId,
+      maskExists: editingMaskId ? !!masks[editingMaskId] : false,
+      currentMaskState: editingMaskId ? {
+        position: masks[editingMaskId]?.position,
+        rotation: masks[editingMaskId]?.rotation,
+        ptsCount: masks[editingMaskId]?.pts?.length
+      } : null
+    });
+    
+    if (originalMaskTransform && editingMaskId) {
+      const mask = masks[editingMaskId];
+      if (mask) {
+        console.log('[EXIT_POINT_EDITING] DEBUG - Before restoration', {
+          maskId: editingMaskId,
+          currentPosition: mask.position,
+          currentRotation: mask.rotation,
+          originalPosition: originalMaskTransform.position,
+          originalRotation: originalMaskTransform.rotation,
+          willRestoreTo: {
+            position: originalMaskTransform.position,
+            rotation: originalMaskTransform.rotation
+          }
+        });
+        
+        // DON'T restore position/rotation - the points are already in the correct visual position
+        // Just exit point editing mode and keep the flattened state
+        const restoredMask = {
+          ...mask,
+          // Keep position and rotation at zero since points are already transformed
+          position: { x: 0, y: 0 },
+          rotation: 0,
+          lastModified: Date.now()
+        };
+        
+        console.log('[EXIT_POINT_EDITING] DEBUG - After restoration (keeping flattened state)', {
+          maskId: editingMaskId,
+          restoredPosition: restoredMask.position,
+          restoredRotation: restoredMask.rotation,
+          positionChange: {
+            x: restoredMask.position.x - (mask.position?.x || 0),
+            y: restoredMask.position.y - (mask.position?.y || 0)
+          },
+          rotationChange: restoredMask.rotation - (mask.rotation || 0)
+        });
+        
+        set({
+          pointEditingMode: false,
+          editingMaskId: null,
+          originalMaskTransform: null,
+          masks: {
+            ...masks,
+            [editingMaskId]: restoredMask
+          }
+        });
+        return;
+      }
+    }
+    
+    // Fallback: just exit without restoration
+    console.log('[EXIT_POINT_EDITING] DEBUG - Fallback exit (no restoration)');
     set({
       pointEditingMode: false,
-      editingMaskId: null
+      editingMaskId: null,
+      originalMaskTransform: null
     });
   },
 
@@ -969,7 +1188,9 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
 
   // Drag Actions (additive - no impact on existing functionality)
   START_MASK_DRAG: (maskId, startPos) => {
-    const { masks, dragState } = get();
+    const state = get();
+    const { masks } = state;
+    const dragState = state.dragState || {};
     const mask = masks[maskId];
     
     if (!mask || mask.isLocked) {
@@ -1005,7 +1226,9 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   },
 
   UPDATE_MASK_DRAG: (maskId, delta) => {
-    const { masks, dragState } = get();
+    const state = get();
+    const { masks } = state;
+    const dragState = state.dragState || {};
     const mask = masks[maskId];
     
     if (!mask || !dragState.isDragging || dragState.draggingMaskId !== maskId) {
@@ -1033,7 +1256,9 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   },
 
   END_MASK_DRAG: (maskId) => {
-    const { masks, dragState } = get();
+    const state = get();
+    const { masks } = state;
+    const dragState = state.dragState || {};
     const mask = masks[maskId];
     
     if (!mask || !dragState.isDragging || dragState.draggingMaskId !== maskId) {
@@ -1062,7 +1287,8 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
   },
 
   CANCEL_MASK_DRAG: () => {
-    const { dragState } = get();
+    const state = get();
+    const dragState = state.dragState || {};
     
     // Clear any pending drag timer
     if (dragState.dragTimer) {
@@ -1155,7 +1381,13 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       y: (moveState.dragStartOffset?.y || 0) + delta.y
     };
     
-    console.log('[UPDATE_MOVE_DRAG]', { maskId, delta, newPosition });
+    console.log('[UPDATE_MOVE_DRAG] DEBUG', { 
+      maskId, 
+      delta, 
+      dragStartOffset: moveState.dragStartOffset,
+      currentPosition: mask.position,
+      newPosition 
+    });
     
     set({
       masks: {

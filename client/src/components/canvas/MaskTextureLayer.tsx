@@ -12,6 +12,8 @@ interface Props {
 export function MaskTextureLayer({ stageScale, imgFit }: Props) {
   const masks = useMaskStore(state => state.masks);
   const selectedId = useMaskStore(state => state.selectedId);
+  const pointEditingMode = useMaskStore(state => state.pointEditingMode);
+  const editingMaskId = useMaskStore(state => state.editingMaskId);
   const [materialsLoaded, setMaterialsLoaded] = useState(false);
 
   // Load materials once
@@ -46,44 +48,54 @@ export function MaskTextureLayer({ stageScale, imgFit }: Props) {
             return null;
           }
 
-          // Apply position offset and rotation to mask points for texture rendering
-          const positionOffset = mask.position || { x: 0, y: 0 };
-          const rotation = mask.rotation || 0;
+          // Check if this mask is in point editing mode
+          const isInPointEditing = pointEditingMode && editingMaskId === maskId;
           
-          // Calculate mask center for rotation
-          const maskCenter = {
-            x: mask.pts.reduce((sum, pt) => sum + pt.x, 0) / mask.pts.length,
-            y: mask.pts.reduce((sum, pt) => sum + pt.y, 0) / mask.pts.length
-          };
-          
-          // Helper function to rotate a point around center
-          const rotatePoint = (pt: { x: number; y: number }, center: { x: number; y: number }, angle: number) => {
-            if (angle === 0) return pt;
+          let adjustedPts;
+          if (isInPointEditing) {
+            // In point editing mode, mask is already flattened - use points as-is
+            adjustedPts = mask.pts;
+            console.log('[MaskTextureLayer] Using flattened points for texture in point editing mode', { maskId });
+          } else {
+            // Normal mode - apply position offset and rotation to mask points for texture rendering
+            const positionOffset = mask.position || { x: 0, y: 0 };
+            const rotation = mask.rotation || 0;
             
-            const cos = Math.cos(angle * Math.PI / 180);
-            const sin = Math.sin(angle * Math.PI / 180);
-            const dx = pt.x - center.x;
-            const dy = pt.y - center.y;
+            // Calculate mask center for rotation
+            const maskCenter = {
+              x: mask.pts.reduce((sum, pt) => sum + pt.x, 0) / mask.pts.length,
+              y: mask.pts.reduce((sum, pt) => sum + pt.y, 0) / mask.pts.length
+            };
             
-            return {
-              x: center.x + dx * cos - dy * sin,
-              y: center.y + dx * sin + dy * cos
+            // Helper function to rotate a point around center
+            const rotatePoint = (pt: { x: number; y: number }, center: { x: number; y: number }, angle: number) => {
+              if (angle === 0) return pt;
+              
+              const cos = Math.cos(angle * Math.PI / 180);
+              const sin = Math.sin(angle * Math.PI / 180);
+              const dx = pt.x - center.x;
+              const dy = pt.y - center.y;
+              
+              return {
+                x: center.x + dx * cos - dy * sin,
+                y: center.y + dx * sin + dy * cos
+              };
             };
-          };
-          
-          const adjustedPts = mask.pts.map(pt => {
-            // Apply rotation first
-            const rotatedPt = rotatePoint(pt, maskCenter, rotation);
-            // Then apply position offset
-            return {
-              x: rotatedPt.x + positionOffset.x,
-              y: rotatedPt.y + positionOffset.y
-            };
-          });
+            
+            adjustedPts = mask.pts.map(pt => {
+              // Apply rotation first
+              const rotatedPt = rotatePoint(pt, maskCenter, rotation);
+              // Then apply position offset
+              return {
+                x: rotatedPt.x + positionOffset.x,
+                y: rotatedPt.y + positionOffset.y
+              };
+            });
+          }
 
           return (
             <MaskTexture
-              key={`${maskId}-${mask.pts.length}-${mask.lastModified || 0}-${positionOffset.x}-${positionOffset.y}-${rotation}`}
+              key={`${maskId}-${mask.pts.length}-${mask.lastModified || 0}-${isInPointEditing ? 'editing' : 'normal'}`}
               maskId={maskId}
               pts={adjustedPts}
               stageScale={stageScale}
