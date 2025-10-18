@@ -1,5 +1,4 @@
 import type { Express } from 'express';
-import { eq } from 'drizzle-orm';
 import { storage } from '../storage';
 
 export function materialsForceRoutes(app: Express) {
@@ -99,6 +98,7 @@ export function materialsForceRoutes(app: Express) {
     } catch (err: any) {
       console.error('[force] ❌ Insert failed:', err);
       res.status(500).json({ error: 'DB_INSERT_FAILED', message: err.message });
+      return;
     }
   });
 
@@ -123,6 +123,7 @@ export function materialsForceRoutes(app: Express) {
     } catch (err: any) {
       console.error('[force] ❌ Delete failed:', err);
       res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
+      return;
     }
   });
 }

@@ -180,6 +180,7 @@ export function materialsV2Routes(app: Express) {
         error: 'DB_INSERT_FAILED', 
         message: error.message 
       });
+      return;
     }
   });
 
@@ -235,10 +236,12 @@ export function materialsV2Routes(app: Express) {
       await storage.deleteMaterial(id);
       console.log('[v2/materials] ✅ Deleted material:', id);
       res.status(204).send();
+      return;
       
     } catch (err: any) {
       console.error('[v2/materials] ❌ Delete failed:', err);
       res.status(500).json({ error: 'DB_DELETE_FAILED', message: err.message });
+      return;
     }
   });
 }
