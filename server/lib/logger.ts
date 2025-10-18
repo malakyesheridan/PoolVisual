@@ -185,7 +185,7 @@ class ServerLogger {
           msg: context?.msg || error.message,
           code: error.code,
           err: error,
-          requestId: context?.requestId || error.requestId,
+          requestId: (context?.requestId || error.requestId) ?? undefined,
           meta: { ...error.meta, ...(context?.meta || {}) }
         });
       }
