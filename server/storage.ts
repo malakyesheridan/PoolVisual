@@ -441,6 +441,8 @@ async function initializeStorage() {
 }
 
 // Initialize storage synchronously
-await initializeStorage();
+(async () => {
+  await initializeStorage();
+})();
 
 export { storage };
