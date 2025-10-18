@@ -4,11 +4,12 @@
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
   "framework": null,
-  "functions": {
-    "dist/index.js": {
-      "runtime": "@vercel/node@3.0.7"
+  "builds": [
+    {
+      "src": "dist/index.js",
+      "use": "@vercel/node@3.0.7"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/api/(.*)",
