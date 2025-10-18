@@ -44,6 +44,9 @@ const startServer = (app: import('express').Express, port: number) =>
     }
   });
 
+// Export the Express app for Vercel
+let app: express.Express;
+
 (async () => {
   // Pick the first free port from candidates, otherwise let getPort choose any
   const chosenPort = await getPort({ port: CANDIDATES });
@@ -54,7 +57,7 @@ const startServer = (app: import('express').Express, port: number) =>
     global.__httpServer__ = undefined;
   }
 
-  const app = express();
+  app = express();
 
   // Add CORS middleware
   app.use(cors({ origin: true, credentials: true }));
@@ -275,3 +278,6 @@ const startServer = (app: import('express').Express, port: number) =>
     console.warn(`ℹ️ Requested PORT=${BASE_PORT} was busy. Using free port ${chosenPort} instead.`);
   }
 })();
+
+// Export the Express app for Vercel deployment
+export default app;
