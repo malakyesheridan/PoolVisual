@@ -169,8 +169,8 @@ export function withHandler(handler: HandlerFunction, config: HandlerConfig = {}
         logger.info({
           msg: 'Request completed successfully',
           requestId,
-          userId: req.userId,
-          organizationId: req.organizationId,
+          userId: req.userId ?? undefined,
+          organizationId: req.organizationId ?? undefined,
           meta: {
             method: req.method,
             url: req.url,
@@ -214,8 +214,8 @@ function handleError(
     code: appError.code,
     err: appError,
     requestId,
-    userId: req.userId,
-    organizationId: req.organizationId,
+    userId: req.userId ?? undefined,
+    organizationId: req.organizationId ?? undefined,
     meta: {
       method: req.method,
       url: req.url,
