@@ -178,20 +178,65 @@ class ServerLogger {
         msg: context?.msg || error.message,
         code: error.code,
         err: error,
-        requestId: context?.requestId || error.requestId,
-        userId: context?.userId,
-        organizationId: context?.organizationId,
         meta: { ...error.meta, ...(context?.meta || {}) }
       });
+      if (context?.requestId || error.requestId) {
+        this.error({
+          msg: context?.msg || error.message,
+          code: error.code,
+          err: error,
+          requestId: context?.requestId || error.requestId,
+          meta: { ...error.meta, ...(context?.meta || {}) }
+        });
+      }
+      if (context?.userId) {
+        this.error({
+          msg: context?.msg || error.message,
+          code: error.code,
+          err: error,
+          userId: context.userId,
+          meta: { ...error.meta, ...(context?.meta || {}) }
+        });
+      }
+      if (context?.organizationId) {
+        this.error({
+          msg: context?.msg || error.message,
+          code: error.code,
+          err: error,
+          organizationId: context.organizationId,
+          meta: { ...error.meta, ...(context?.meta || {}) }
+        });
+      }
     } else {
       this.error({
         msg: context?.msg || 'Unexpected error occurred',
         err: error,
-        requestId: context?.requestId,
-        userId: context?.userId,
-        organizationId: context?.organizationId,
         meta: context?.meta || {}
       });
+      if (context?.requestId) {
+        this.error({
+          msg: context?.msg || 'Unexpected error occurred',
+          err: error,
+          requestId: context.requestId,
+          meta: context?.meta || {}
+        });
+      }
+      if (context?.userId) {
+        this.error({
+          msg: context?.msg || 'Unexpected error occurred',
+          err: error,
+          userId: context.userId,
+          meta: context?.meta || {}
+        });
+      }
+      if (context?.organizationId) {
+        this.error({
+          msg: context?.msg || 'Unexpected error occurred',
+          err: error,
+          organizationId: context.organizationId,
+          meta: context?.meta || {}
+        });
+      }
     }
   }
 }
