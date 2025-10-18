@@ -166,18 +166,21 @@ export function withHandler(handler: HandlerFunction, config: HandlerConfig = {}
         const duration = Number(process.hrtime.bigint() - startTime) / 1000000; // Convert to milliseconds
         
         // Log successful response
-        logger.info({
+        const logData: any = {
           msg: 'Request completed successfully',
           requestId,
-          userId: req.userId ?? undefined,
-          organizationId: req.organizationId ?? undefined,
           meta: {
             method: req.method,
             url: req.url,
             statusCode: 200,
             duration: `${duration.toFixed(2)}ms`
           }
-        });
+        };
+        
+        if (req.userId) logData.userId = req.userId;
+        if (req.organizationId) logData.organizationId = req.organizationId;
+        
+        logger.info(logData);
 
         res.status(200).json({
           ok: true,
@@ -209,13 +212,11 @@ function handleError(
     : undefined;
 
   // Log error with context
-  logger.error({
+  const errorLogData: any = {
     msg: 'Request failed',
     code: appError.code,
     err: appError,
     requestId,
-    userId: req.userId ?? undefined,
-    organizationId: req.organizationId ?? undefined,
     meta: {
       method: req.method,
       url: req.url,
@@ -224,7 +225,12 @@ function handleError(
       userAgent: req.get('user-agent'),
       ip: req.ip
     }
-  });
+  };
+  
+  if (req.userId) errorLogData.userId = req.userId;
+  if (req.organizationId) errorLogData.organizationId = req.organizationId;
+  
+  logger.error(errorLogData);
 
   // Don't send response if already sent
   if (res.headersSent) {

@@ -36,6 +36,15 @@ import { randomUUID } from "crypto";
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { pool } from './db';
 
+// Define OrgMember type
+type OrgMember = {
+  id: string;
+  orgId: string;
+  userId: string;
+  role: string;
+  createdAt: Date;
+};
+
 // Only require DATABASE_URL if not in no-DB mode
 if (!process.env.DATABASE_URL && process.env.NO_DB_MODE !== 'true') {
   throw new Error("DATABASE_URL is required");
@@ -144,7 +153,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async getUserOrgs(userId: string): Promise<Org[]> {
-    const result = await db
+    const result = await ensureDb()
       .select({ org: orgs })
       .from(orgMembers)
       .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
@@ -154,7 +163,7 @@ export class PostgresStorage implements IStorage {
   }
 
   async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
-    const [orgMember] = await db
+    const [orgMember] = await ensureDb()
       .select()
       .from(orgMembers)
       .where(and(eq(orgMembers.userId, userId), eq(orgMembers.orgId, orgId)));
@@ -278,7 +287,7 @@ export class PostgresStorage implements IStorage {
     
     // Filter by category if provided
     if (category) {
-      conditions.push(eq(materials.category, category));
+      conditions.push(eq(materials.category, category as any));
     }
     
     return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
