@@ -242,7 +242,7 @@ export class PostgresStorage implements IStorage {
       return {
         ppm,
         samples: meta.samples,
-        stdevPct: meta.stdevPct
+        stdevPct: meta.stdevPct ?? 0
       };
     } else {
       // Legacy V1 format - return empty for now since we can't reconstruct samples
@@ -266,26 +266,22 @@ export class PostgresStorage implements IStorage {
   }
 
   async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
-    let query = ensureDb().select().from(materials).where(eq(materials.isActive, true));
+    let conditions = [eq(materials.isActive, true)];
     
     // Filter by organization if provided
     if (orgId) {
-      query = query.where(and(eq(materials.isActive, true), eq(materials.orgId, orgId)));
+      conditions.push(eq(materials.orgId, orgId));
     } else {
       // If no orgId, return global materials (orgId is null)
-      query = query.where(and(eq(materials.isActive, true), sql`${materials.orgId} IS NULL`));
+      conditions.push(sql`${materials.orgId} IS NULL`);
     }
     
     // Filter by category if provided
     if (category) {
-      query = query.where(and(
-        eq(materials.isActive, true),
-        orgId ? eq(materials.orgId, orgId) : sql`${materials.orgId} IS NULL`,
-        eq(materials.category, category)
-      ));
+      conditions.push(eq(materials.category, category));
     }
     
-    return await query.orderBy(desc(materials.createdAt));
+    return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
   }
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
@@ -371,19 +367,45 @@ export class PostgresStorage implements IStorage {
 
   async getOrgSettings(orgId: string): Promise<Settings | undefined> {
     const [setting] = await ensureDb().select().from(settings).where(eq(settings.orgId, orgId));
-    return setting;
+    if (!setting) return undefined;
+    
+    return {
+      currencyCode: setting.currencyCode,
+      taxRate: parseFloat(setting.taxRate),
+      depositDefaultPct: parseFloat(setting.depositDefaultPct),
+      validityDays: setting.validityDays,
+      pdfTerms: setting.pdfTerms ?? undefined
+    };
   }
 
   async updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings> {
+    const dbUpdates: any = { ...updates };
+    
+    // Convert numbers to strings for database storage
+    if (updates.taxRate !== undefined) {
+      dbUpdates.taxRate = updates.taxRate.toString();
+    }
+    if (updates.depositDefaultPct !== undefined) {
+      dbUpdates.depositDefaultPct = updates.depositDefaultPct.toString();
+    }
+    
     const [setting] = await ensureDb()
       .update(settings)
-      .set(updates)
+      .set(dbUpdates)
       .where(eq(settings.orgId, orgId))
       .returning();
     if (!setting) {
       throw new Error('Failed to update organization settings');
     }
-    return setting;
+    
+    // Convert back to Settings type
+    return {
+      currencyCode: setting.currencyCode,
+      taxRate: parseFloat(setting.taxRate),
+      depositDefaultPct: parseFloat(setting.depositDefaultPct),
+      validityDays: setting.validityDays,
+      pdfTerms: setting.pdfTerms ?? undefined
+    };
   }
 }
 
