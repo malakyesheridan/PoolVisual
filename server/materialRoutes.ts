@@ -1,7 +1,5 @@
 import type { Express, Request } from "express";
 import multer from "multer";
-import { randomUUID } from "crypto";
-import path from "path";
 import { textureProcessor } from "./textureProcessor";
 import { ImportService } from "./importService";
 import { storage } from "./storage";

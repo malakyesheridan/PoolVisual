@@ -137,7 +137,7 @@ export class TextureProcessor {
     ]);
 
     // Create blend mask for seam blending
-    const blendMask = await this.createSeamBlendMask(size);
+    await this.createSeamBlendMask(size);
     
     // Blend the original and offset images
     const originalBuffer = await image.png().toBuffer();
@@ -148,15 +148,12 @@ export class TextureProcessor {
       .composite([
         {
           input: offsetBuffer,
-          blend: 'overlay',
-          opacity: 0.3
+          blend: 'overlay'
         }
       ]);
   }
 
   private async createSeamBlendMask(size: number): Promise<Buffer> {
-    const blendWidth = 48; // pixels for blend zone
-    
     // Create a cross-shaped mask for blending seams
     const mask = sharp({
       create: {

@@ -3,15 +3,6 @@ import * as cheerio from 'cheerio';
 import { z } from 'zod';
 import { chromium } from 'playwright';
 
-// Parsing schemas
-const ImportPrefillSchema = z.object({
-  url: z.string().url()
-});
-
-const TextParseSchema = z.object({
-  text: z.string().min(1)
-});
-
 // Result interfaces
 export interface ParsedSizes {
   sheetW?: number;
@@ -282,7 +273,7 @@ export class ImportService {
     const wooPrice = amounts.length > 0 ? Math.max(...amounts) : null;
     
     // Check for unit indicators in price area
-    const priceContext = $('.summary .price, .product_meta').text();
+    $('.summary .price, .product_meta').text();
     
     // Look for specific price patterns in full text
     let price = wooPrice;
