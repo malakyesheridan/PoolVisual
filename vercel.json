@@ -6,7 +6,7 @@
   "framework": null,
   "functions": {
     "dist/index.js": {
-      "runtime": "nodejs18.x"
+      "runtime": "@vercel/node@3.0.7"
     }
   },
   "routes": [
