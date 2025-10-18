@@ -441,7 +441,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (calibrationData.samples) {
         // V2 format
         await storage.updatePhotoCalibrationV2(photoId, {
-          ppm: calibrationData.ppm,
+          ppm: calibrationData.ppm ?? 0,
           samples: calibrationData.samples.map(sample => ({
             x1: sample.a.x,
             y1: sample.a.y,
@@ -458,7 +458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       } else {
         // V1 format  
-        const updatedPhoto = await storage.updatePhotoCalibration(photoId, calibrationData.ppm, {
+        const updatedPhoto = await storage.updatePhotoCalibration(photoId, calibrationData.ppm ?? 0, {
           samples: [],
           stdevPct: calibrationData.stdevPct ?? 0
         });
@@ -553,12 +553,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      const materialId = req.params.id;
-      if (!materialId) {
+      const materialId2 = req.params.id;
+      if (!materialId2) {
         return res.status(400).json({ message: "Material ID is required" });
       }
       
-      const material = await storage.updateMaterial(materialId, updates);
+      const material = await storage.updateMaterial(materialId2, updates);
       res.json(material);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -650,8 +650,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete("/api/masks/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      const maskId = req.params.id;
+      if (!maskId) {
+        return res.status(400).json({ message: "Mask ID is required" });
+      }
+      
       // Add access verification here
-      await storage.deleteMask(req.params.id);
+      await storage.deleteMask(maskId);
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -691,7 +696,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/quotes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const quote = await storage.getQuote(req.params.id);
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const quote = await storage.getQuote(quoteId);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found" });
       }
@@ -724,7 +734,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Verify quote access
-      const quote = await storage.getQuote(req.params.id);
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const quote = await storage.getQuote(quoteId);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found" });
       }
@@ -757,7 +772,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/quotes/:id/recalculate", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Verify quote access
-      const quote = await storage.getQuote(req.params.id);
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const quote = await storage.getQuote(quoteId);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found" });
       }
@@ -774,17 +794,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const items = await storage.getQuoteItems(req.params.id);
+      const quoteId2 = req.params.id;
+      if (!quoteId2) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const items = await storage.getQuoteItems(quoteId2);
       const subtotal = items.reduce((sum, item) => sum + parseFloat(item.lineTotal || "0"), 0);
       
       // Get tax rate from org settings
       const orgSettings = await storage.getOrgSettings(job.orgId);
-      const taxRate = parseFloat(orgSettings?.taxRate || "0.10");
+      const taxRate = parseFloat(orgSettings?.taxRate ?? "0.10");
       
       const gst = Math.round(subtotal * taxRate * 100) / 100;
       const total = Math.round((subtotal + gst) * 100) / 100;
 
-      const updatedQuote = await storage.updateQuote(req.params.id, {
+      const updatedQuote = await storage.updateQuote(quoteId, {
         subtotal: subtotal.toFixed(2),
         gst: gst.toFixed(2),
         total: total.toFixed(2)
@@ -799,7 +824,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/quotes/:id/send", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       // Verify access and send quote
-      const quote = await storage.getQuote(req.params.id);
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const quote = await storage.getQuote(quoteId);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found" });
       }
@@ -809,7 +839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 2. Send email via Resend
       // 3. Update quote status to 'sent'
       
-      const updatedQuote = await storage.updateQuote(req.params.id, {
+      const updatedQuote = await storage.updateQuote(quoteId, {
         status: 'sent'
       });
 
@@ -817,6 +847,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: "Quote sent successfully",
         quote: updatedQuote
       });
+      return;
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -824,7 +855,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/quotes/:id/accept", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const quote = await storage.getQuote(req.params.id);
+      const quoteId = req.params.id;
+      if (!quoteId) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+      
+      const quote = await storage.getQuote(quoteId);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found" });
       }
@@ -848,7 +884,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Public share endpoint
   app.get("/api/share/q/:token", async (req, res) => {
     try {
-      const quote = await storage.getQuoteByToken(req.params.token);
+      const token = req.params.token;
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+      
+      const quote = await storage.getQuoteByToken(token);
       if (!quote) {
         return res.status(404).json({ message: "Quote not found or link expired" });
       }
@@ -938,7 +979,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/notifications/mark-read", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { notificationIds } = req.body;
       // Mark notifications as read
       res.json({ success: true });
     } catch (error) {
@@ -981,7 +1021,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Pipe the response
-      response.body?.pipe(res);
+      if (response.body) {
+        const reader = response.body.getReader();
+        const pump = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              res.write(value);
+            }
+            res.end();
+          } catch (error) {
+            res.end();
+          }
+        };
+        pump();
+      } else {
+        res.end();
+      }
     } catch (error: any) {
       console.error('[texture-proxy]', error);
       res.status(500).json({ error: 'Proxy error', message: error.message });
