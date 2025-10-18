@@ -91,9 +91,9 @@ export class AppError extends Error {
     this.name = 'AppError';
     this.code = code;
     this.cause = options.cause;
-    this.meta = options.meta;
+    this.meta = options.meta ?? undefined;
     this.timestamp = new Date().toISOString();
-    this.requestId = options.requestId;
+    this.requestId = options.requestId ?? undefined;
 
     // Maintain proper stack trace
     if (Error.captureStackTrace) {
@@ -122,8 +122,8 @@ export class AppError extends Error {
       ok: false,
       code: this.code,
       message: this.message,
-      requestId: this.requestId,
-      details: this.meta
+      requestId: this.requestId ?? undefined,
+      details: this.meta ?? undefined
     };
   }
 
@@ -155,28 +155,28 @@ export function isAppError(error: unknown): error is AppError {
  * Error factory functions for common cases
  */
 export function badRequest(message?: string, meta?: Record<string, unknown>): AppError {
-  return new AppError('VALIDATION_ERROR', message, { meta });
+  return new AppError('VALIDATION_ERROR', message, { meta: meta ?? undefined });
 }
 
 export function unauthorized(message?: string, meta?: Record<string, unknown>): AppError {
-  return new AppError('UNAUTHORIZED', message, { meta });
+  return new AppError('UNAUTHORIZED', message, { meta: meta ?? undefined });
 }
 
 export function forbidden(message?: string, meta?: Record<string, unknown>): AppError {
-  return new AppError('FORBIDDEN', message, { meta });
+  return new AppError('FORBIDDEN', message, { meta: meta ?? undefined });
 }
 
 export function notFound(resource?: string, meta?: Record<string, unknown>): AppError {
   const message = resource ? `${resource} not found` : undefined;
-  return new AppError('NOT_FOUND', message, { meta });
+  return new AppError('NOT_FOUND', message, { meta: meta ?? undefined });
 }
 
 export function conflict(message?: string, meta?: Record<string, unknown>): AppError {
-  return new AppError('CONFLICT', message, { meta });
+  return new AppError('CONFLICT', message, { meta: meta ?? undefined });
 }
 
 export function internal(message?: string, cause?: unknown, meta?: Record<string, unknown>): AppError {
-  return new AppError('INTERNAL_ERROR', message, { cause, meta });
+  return new AppError('INTERNAL_ERROR', message, { cause, meta: meta ?? undefined });
 }
 
 export function networkError(message?: string, cause?: unknown): AppError {
@@ -188,7 +188,7 @@ export function timeoutError(message?: string): AppError {
 }
 
 export function uploadError(message?: string, meta?: Record<string, unknown>): AppError {
-  return new AppError('UPLOAD_ERROR', message, { meta });
+  return new AppError('UPLOAD_ERROR', message, { meta: meta ?? undefined });
 }
 
 /**
@@ -202,22 +202,22 @@ export function parseError(error: unknown, requestId?: string): AppError {
   if (error instanceof Error) {
     // Handle specific error types
     if (error.name === 'AbortError') {
-      return new AppError('ABORT_ERROR', 'Request was cancelled', { cause: error, requestId });
+      return new AppError('ABORT_ERROR', 'Request was cancelled', { cause: error, requestId: requestId ?? undefined });
     }
     
     if (error.name === 'TimeoutError') {
-      return new AppError('TIMEOUT_ERROR', 'Request timed out', { cause: error, requestId });
+      return new AppError('TIMEOUT_ERROR', 'Request timed out', { cause: error, requestId: requestId ?? undefined });
     }
 
     // Handle network errors
     if (error.message.includes('fetch') || error.message.includes('network')) {
-      return new AppError('NETWORK_ERROR', error.message, { cause: error, requestId });
+      return new AppError('NETWORK_ERROR', error.message, { cause: error, requestId: requestId ?? undefined });
     }
 
     // Generic error
-    return new AppError('INTERNAL_ERROR', error.message, { cause: error, requestId });
+    return new AppError('INTERNAL_ERROR', error.message, { cause: error, requestId: requestId ?? undefined });
   }
 
   // Unknown error type
-  return new AppError('INTERNAL_ERROR', 'An unexpected error occurred', { cause: error, requestId });
+  return new AppError('INTERNAL_ERROR', 'An unexpected error occurred', { cause: error, requestId: requestId ?? undefined });
 }
