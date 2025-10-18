@@ -380,6 +380,10 @@ export class MockStorage {
     }
     
     const existingQuote = this.quotes[index];
+    if (!existingQuote) {
+      throw new Error('Quote not found');
+    }
+    
     const updatedQuote: Quote = {
       id: existingQuote.id,
       createdAt: existingQuote.createdAt,
