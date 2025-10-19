@@ -169,5 +169,8 @@
     "*.{ts,tsx,js,jsx}": [
       "eslint --fix"
     ]
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
