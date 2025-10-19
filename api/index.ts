@@ -204,17 +204,22 @@ app.get('/api/import/prefill', async (req, res) => {
   }
 });
 
+// In-memory storage for materials (mock)
+let materialsStore: any[] = [];
+
 // Materials endpoints
 app.get('/api/materials', (req, res) => {
-  res.json({ materials: [] }); // Mock empty array for now
+  res.json({ materials: materialsStore });
 });
 
 app.post('/api/materials', (req, res) => {
-  res.json({ ok: true, material: req.body });
+  const material = { ...req.body, id: 'material-' + Date.now() };
+  materialsStore.push(material);
+  res.json({ ok: true, material });
 });
 
 app.get('/api/v2/materials', (req, res) => {
-  res.json({ materials: [] }); // Mock empty array for now
+  res.json({ materials: materialsStore });
 });
 
 app.post('/api/v2/materials', (req, res) => {
@@ -222,6 +227,7 @@ app.post('/api/v2/materials', (req, res) => {
   const material = req.body;
   console.log('Saving material:', material);
   const savedMaterial = { ...material, id: 'material-' + Date.now() };
+  materialsStore.push(savedMaterial);
   res.status(201).json(savedMaterial);
 });
 
@@ -230,6 +236,7 @@ app.post('/api/materials/_force', (req, res) => {
   const material = req.body;
   console.log('Force saving material:', material);
   const savedMaterial = { ...material, id: 'material-' + Date.now() };
+  materialsStore.push(savedMaterial);
   res.status(201).json(savedMaterial);
 });
 
