@@ -209,7 +209,7 @@ let materialsStore: any[] = [];
 
 // Materials endpoints
 app.get('/api/materials', (req, res) => {
-  res.json({ materials: materialsStore });
+  res.json({ items: materialsStore });
 });
 
 app.post('/api/materials', (req, res) => {
@@ -219,7 +219,7 @@ app.post('/api/materials', (req, res) => {
 });
 
 app.get('/api/v2/materials', (req, res) => {
-  res.json({ materials: materialsStore });
+  res.json({ items: materialsStore });
 });
 
 app.post('/api/v2/materials', (req, res) => {
