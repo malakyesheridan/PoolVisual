@@ -332,7 +332,7 @@ export class ImportService {
     
     return { 
       price: wooPrice ?? 0, 
-      priceRaw: wooPrice?.toString() ?? undefined, 
+      priceRaw: wooPrice?.toString() || undefined, 
       unit: unit || undefined, 
       priceSource: priceSource || undefined 
     };
