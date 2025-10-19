@@ -174,69 +174,38 @@ class ServerLogger {
     meta?: Record<string, unknown>;
   }): void {
     if (isAppError(error)) {
-      this.error({
+      const logData: any = {
         msg: context?.msg || error.message,
         code: error.code,
         err: error,
         meta: { ...error.meta, ...(context?.meta || {}) }
-      });
+      };
       if (context?.requestId || error.requestId) {
-        this.error({
-          msg: context?.msg || error.message,
-          code: error.code,
-          err: error,
-          requestId: (context?.requestId || error.requestId) ?? undefined,
-          meta: { ...error.meta, ...(context?.meta || {}) }
-        });
+        logData.requestId = (context?.requestId || error.requestId) ?? undefined;
       }
       if (context?.userId) {
-        this.error({
-          msg: context?.msg || error.message,
-          code: error.code,
-          err: error,
-          userId: context.userId,
-          meta: { ...error.meta, ...(context?.meta || {}) }
-        });
+        logData.userId = context.userId;
       }
       if (context?.organizationId) {
-        this.error({
-          msg: context?.msg || error.message,
-          code: error.code,
-          err: error,
-          organizationId: context.organizationId,
-          meta: { ...error.meta, ...(context?.meta || {}) }
-        });
+        logData.organizationId = context.organizationId;
       }
+      this.error(logData);
     } else {
-      this.error({
+      const logData: any = {
         msg: context?.msg || 'Unexpected error occurred',
         err: error,
         meta: context?.meta || {}
-      });
+      };
       if (context?.requestId) {
-        this.error({
-          msg: context?.msg || 'Unexpected error occurred',
-          err: error,
-          requestId: context.requestId,
-          meta: context?.meta || {}
-        });
+        logData.requestId = context.requestId;
       }
       if (context?.userId) {
-        this.error({
-          msg: context?.msg || 'Unexpected error occurred',
-          err: error,
-          userId: context.userId,
-          meta: context?.meta || {}
-        });
+        logData.userId = context.userId;
       }
       if (context?.organizationId) {
-        this.error({
-          msg: context?.msg || 'Unexpected error occurred',
-          err: error,
-          organizationId: context.organizationId,
-          meta: context?.meta || {}
-        });
+        logData.organizationId = context.organizationId;
       }
+      this.error(logData);
     }
   }
 }
