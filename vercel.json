@@ -4,6 +4,11 @@
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
   "framework": null,
+  "functions": {
+    "api/index.ts": {
+      "runtime": "@vercel/node@3.0.7"
+    }
+  },
   "routes": [
     {
       "src": "/api/(.*)",
