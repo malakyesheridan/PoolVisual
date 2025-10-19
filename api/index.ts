@@ -4,6 +4,8 @@ import cors from 'cors';
 import { getIronSession } from "iron-session";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
+import axios from 'axios';
+import * as cheerio from 'cheerio';
 
 // Session configuration
 const sessionOptions = {
@@ -119,6 +121,110 @@ app.get('/api/health', (_req, res) => {
     nodeEnv: process.env.NODE_ENV || 'development',
     hotReload: 'working!'
   });
+});
+
+// Import prefill endpoint
+app.get('/api/import/prefill', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ 
+        error: "Invalid URL", 
+        details: "URL parameter is required" 
+      });
+    }
+
+    // Simple web scraping for product data
+    const response = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000
+    });
+
+    const $ = cheerio.load(response.data);
+    
+    // Extract basic product information
+    const name = $('h1.product_title, .product-title, h1').first().text().trim() || 
+                 $('meta[property="og:title"]').attr('content') || 
+                 'Unknown Product';
+    
+    const price = $('.price, .woocommerce-Price-amount').first().text().trim() || 
+                 $('meta[property="product:price:amount"]').attr('content') || 
+                 '0.00';
+    
+    const sku = $('.sku, .product-sku').first().text().trim() || 
+                $('meta[property="product:retailer_item_id"]').attr('content') || 
+                '';
+    
+    const imageUrl = $('.woocommerce-product-gallery__image img, .product-image img').first().attr('src') ||
+                    $('meta[property="og:image"]').attr('content') ||
+                    '';
+
+    // Determine category based on URL or content
+    let category = 'waterline_tile'; // default
+    if (url.includes('coping') || name.toLowerCase().includes('coping')) {
+      category = 'coping';
+    } else if (url.includes('paving') || name.toLowerCase().includes('paving')) {
+      category = 'paving';
+    } else if (url.includes('fencing') || name.toLowerCase().includes('fencing')) {
+      category = 'fencing';
+    } else if (url.includes('interior') || name.toLowerCase().includes('interior')) {
+      category = 'interior';
+    }
+
+    // Extract dimensions from text content
+    const pageText = $('body').text();
+    const sizeMatch = pageText.match(/(\d{2,4})\s*[x×]\s*(\d{2,4})\s*mm/);
+    const thicknessMatch = pageText.match(/(\d{1,2})\s*mm/);
+    
+    const result = {
+      name: name,
+      sku: sku,
+      price: price.replace(/[^\d.,]/g, ''),
+      priceRaw: price,
+      imageUrl: imageUrl,
+      category: category,
+      sizes: {
+        ...(sizeMatch && { sheetW: parseInt(sizeMatch[1]), sheetH: parseInt(sizeMatch[2]) }),
+        ...(thicknessMatch && { thickness: parseInt(thicknessMatch[1]) })
+      },
+      source_url: url
+    };
+
+    res.json(result);
+    return;
+
+  } catch (error) {
+    console.error('Prefill error:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to prefill data' 
+    });
+    return;
+  }
+});
+
+// Materials endpoints
+app.get('/api/materials', (req, res) => {
+  res.json({ materials: [] }); // Mock empty array for now
+});
+
+app.post('/api/materials', (req, res) => {
+  res.json({ ok: true, material: req.body });
+});
+
+app.get('/api/v2/materials', (req, res) => {
+  res.json({ materials: [] }); // Mock empty array for now
+});
+
+// Organization endpoints
+app.get('/api/me/orgs', (req, res) => {
+  res.json({ orgs: [] }); // Mock empty array for now
+});
+
+// Last materials endpoint
+app.get('/api/_materials/last', (req, res) => {
+  res.json({ materials: [] }); // Mock empty array for now
 });
 
 // Catch-all handler for unmatched routes
