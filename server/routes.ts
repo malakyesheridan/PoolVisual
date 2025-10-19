@@ -899,6 +899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return;
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
+      return;
     }
   });
 
