@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { createMaterialClient } from '../../lib/materialsClient';
 import { useMaterialsStore } from '../../state/materialsStore';
 import { materialsEventBus } from '../../lib/materialsEventBus';
@@ -48,6 +48,34 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
   const updateForm = (updates: any) => {
     setForm((f: any) => ({ ...f, ...updates }));
   };
+
+  // Update form when initial prop changes (for editing)
+  useEffect(() => {
+    if (initial) {
+      setForm({
+        name: initial.name || '',
+        sku: initial.sku || '',
+        category: initial.category || 'waterline_tile',
+        unit: initial.unit || 'm2',
+        price: initial.price ?? '',
+        cost: initial.cost ?? '',
+        wastage_pct: initial.wastage_pct ?? '8',
+        margin_pct: initial.margin_pct ?? '',
+        sheet_width_mm: initial.sheet_width_mm ?? '',
+        sheet_height_mm: initial.sheet_height_mm ?? '',
+        tile_width_mm: initial.tile_width_mm ?? '',
+        tile_height_mm: initial.tile_height_mm ?? '',
+        grout_width_mm: initial.grout_width_mm ?? '',
+        thickness_mm: initial.thickness_mm ?? '',
+        finish: initial.finish ?? '',
+        texture_url: initial.texture_url ?? initial.albedoURL ?? '',
+        thumbnail_url: initial.thumbnail_url ?? initial.thumbnailURL ?? '',
+        supplier: initial.supplier ?? 'PoolTile',
+        source_url: initial.source_url ?? '',
+        notes: initial.notes ?? ''
+      });
+    }
+  }, [initial]);
 
   async function handlePrefill() {
     if (!prefillUrl.trim()) {

@@ -264,6 +264,43 @@ app.post('/api/materials/upload-texture-from-url', async (req, res) => {
   }
 });
 
+// Texture proxy endpoint to avoid CORS issues
+app.get('/api/texture', async (req, res) => {
+  try {
+    const { url } = req.query;
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL parameter is required' });
+    }
+
+    // Fetch the image from the external URL
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+      },
+      timeout: 10000
+    });
+
+    // Set appropriate headers
+    res.set({
+      'Content-Type': response.headers['content-type'] || 'image/jpeg',
+      'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET',
+      'Access-Control-Allow-Headers': 'Content-Type'
+    });
+
+    // Pipe the image data to the response
+    response.data.pipe(res);
+
+  } catch (error) {
+    console.error('Texture proxy error:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to fetch texture' 
+    });
+  }
+});
+
 // Organization endpoints
 app.get('/api/me/orgs', (req, res) => {
   res.json({ orgs: [] }); // Mock empty array for now
