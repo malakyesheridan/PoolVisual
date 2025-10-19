@@ -221,14 +221,16 @@ app.post('/api/v2/materials', (req, res) => {
   // Save new material
   const material = req.body;
   console.log('Saving material:', material);
-  res.json({ ok: true, material: { ...material, id: 'material-' + Date.now() } });
+  const savedMaterial = { ...material, id: 'material-' + Date.now() };
+  res.status(201).json(savedMaterial);
 });
 
 app.post('/api/materials/_force', (req, res) => {
   // Force save material (fallback)
   const material = req.body;
   console.log('Force saving material:', material);
-  res.json({ ok: true, material: { ...material, id: 'material-' + Date.now() } });
+  const savedMaterial = { ...material, id: 'material-' + Date.now() };
+  res.status(201).json(savedMaterial);
 });
 
 app.post('/api/materials/upload-texture-from-url', async (req, res) => {
