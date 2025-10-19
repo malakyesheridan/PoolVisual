@@ -18,24 +18,36 @@ async function loadViaFetchObjectURL(src: string): Promise<HTMLImageElement> {
   });
 }
 
-/** Loads an image as same-origin (no taint). Falls back to backend proxy if needed. */
+/** Loads an image as same-origin (no taint). Uses proxy for external URLs. */
 export function loadTextureImage(src: string): Promise<HTMLImageElement> {
   if (!src) return Promise.reject(new Error('empty src'));
   if (imgCache.has(src)) return Promise.resolve(imgCache.get(src)!);
   if (inflight.has(src)) return inflight.get(src)!;
 
+  // Check if URL is external and use proxy preemptively
+  const isExternalUrl = (url: string): boolean => {
+    try {
+      const urlObj = new URL(url);
+      const currentOrigin = window.location.origin;
+      return urlObj.origin !== currentOrigin;
+    } catch {
+      return false;
+    }
+  };
+
   const p = (async () => {
     try {
-      const img = await loadViaFetchObjectURL(src);
+      // Use proxy for external URLs to avoid CORS errors
+      const urlToLoad = isExternalUrl(src) 
+        ? `/api/texture?url=${encodeURIComponent(src)}`
+        : src;
+      
+      const img = await loadViaFetchObjectURL(urlToLoad);
       imgCache.set(src, img);
       return img;
-    } catch {
-      // fallback to proxy
-      const API = import.meta.env.VITE_API_BASE_URL || '';
-      const proxied = `${API}/api/texture?url=${encodeURIComponent(src)}`;
-      const img = await loadViaFetchObjectURL(proxied);
-      imgCache.set(src, img);
-      return img;
+    } catch (error) {
+      console.error('[loadTextureImage] Failed to load image:', src, error);
+      throw error;
     }
   })();
 

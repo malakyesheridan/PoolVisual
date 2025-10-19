@@ -19,15 +19,30 @@ async function loadBlobAsImage(url: string): Promise<HTMLImageElement> {
 export async function loadTextureImage(src: string): Promise<HTMLImageElement> {
   if (!src) throw new Error('empty src');
   if (cache.has(src)) return cache.get(src)!;
+  
+  // Check if URL is external and use proxy preemptively
+  const isExternalUrl = (url: string): boolean => {
+    try {
+      const urlObj = new URL(url);
+      const currentOrigin = window.location.origin;
+      return urlObj.origin !== currentOrigin;
+    } catch {
+      return false;
+    }
+  };
+
   try {
-    const img = await loadBlobAsImage(src);
+    // Use proxy for external URLs to avoid CORS errors
+    const urlToLoad = isExternalUrl(src) 
+      ? `${API}/api/texture?url=${encodeURIComponent(src)}`
+      : src;
+    
+    const img = await loadBlobAsImage(urlToLoad);
     cache.set(src, img);
     return img;
-  } catch {
-    const proxied = `${API}/api/texture?url=${encodeURIComponent(src)}`;
-    const img = await loadBlobAsImage(proxied);
-    cache.set(src, img);
-    return img;
+  } catch (error) {
+    console.error('[loadTextureImage] Failed to load image:', src, error);
+    throw error;
   }
 }
 
