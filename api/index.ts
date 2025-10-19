@@ -217,6 +217,44 @@ app.get('/api/v2/materials', (req, res) => {
   res.json({ materials: [] }); // Mock empty array for now
 });
 
+app.post('/api/v2/materials', (req, res) => {
+  // Save new material
+  const material = req.body;
+  console.log('Saving material:', material);
+  res.json({ ok: true, material: { ...material, id: 'material-' + Date.now() } });
+});
+
+app.post('/api/materials/_force', (req, res) => {
+  // Force save material (fallback)
+  const material = req.body;
+  console.log('Force saving material:', material);
+  res.json({ ok: true, material: { ...material, id: 'material-' + Date.now() } });
+});
+
+app.post('/api/materials/upload-texture-from-url', async (req, res) => {
+  try {
+    const { imageUrl } = req.body;
+    if (!imageUrl) {
+      return res.status(400).json({ error: 'Image URL is required' });
+    }
+
+    // For now, return a mock response
+    res.json({
+      textureUrl: imageUrl,
+      thumbnailUrl: imageUrl,
+      physicalRepeatM: 1.0
+    });
+    return;
+
+  } catch (error) {
+    console.error('Upload texture error:', error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : 'Failed to upload texture' 
+    });
+    return;
+  }
+});
+
 // Organization endpoints
 app.get('/api/me/orgs', (req, res) => {
   res.json({ orgs: [] }); // Mock empty array for now
