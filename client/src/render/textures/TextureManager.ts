@@ -133,8 +133,13 @@ export class TextureManager {
       return this.loadingPromises.get(cacheKey)!;
     }
 
+    // Use texture proxy for external URLs
+    const proxiedUrl = url.startsWith('http') && !url.startsWith(window.location.origin)
+      ? `/api/texture?url=${encodeURIComponent(url)}`
+      : url;
+
     // Start loading
-    const loadPromise = loadImageSafe(url);
+    const loadPromise = loadImageSafe(proxiedUrl);
     this.loadingPromises.set(cacheKey, loadPromise);
 
     try {

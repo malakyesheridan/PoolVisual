@@ -247,8 +247,13 @@ export class SimpleMaterialRenderer {
         ? `${window.location.origin}${textureUrl}` 
         : textureUrl;
 
+      // Use texture proxy for external URLs
+      const proxiedUrl = resolvedUrl.startsWith('http') && !resolvedUrl.startsWith(window.location.origin)
+        ? `/api/texture?url=${encodeURIComponent(resolvedUrl)}`
+        : resolvedUrl;
+
       // Load texture using PixiJS Assets
-      const texture = await PIXI.Assets.load(resolvedUrl);
+      const texture = await PIXI.Assets.load(proxiedUrl);
       
       if (texture) {
         this.textureCache.set(textureUrl, texture);

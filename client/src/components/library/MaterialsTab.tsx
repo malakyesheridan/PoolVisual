@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { ensureLoaded, getAll, Material as UnifiedMaterial, getSourceInfo } from '../../materials/registry';
 import { useMaterialsStore } from '../../state/materialsStore';
 import { materialsEventBus } from '../../lib/materialsEventBus';
+import { getProxiedTextureUrl } from '../../lib/textureProxy';
 
 const categories = [
   { value: 'all', label: 'All Categories' },
@@ -251,7 +252,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                 <div className="aspect-square bg-gray-100 rounded-t-lg relative overflow-hidden">
                   {material.albedoURL ? (
                     <img
-                      src={`${material.albedoURL}?v=${Date.now()}`}
+                      src={getProxiedTextureUrl(`${material.albedoURL}?v=${Date.now()}`)}
                       alt={material.name}
                       className="w-full h-full object-cover"
                       crossOrigin="anonymous"
