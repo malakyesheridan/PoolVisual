@@ -77,8 +77,8 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
 
   // Listen for materials changes from other pages
   useEffect(() => {
-    const unsubscribe = materialsEventBus.subscribe('materialsChanged', async () => {
-      console.log('[MaterialsTab] Materials changed, refreshing...');
+    const unsubscribe = materialsEventBus.subscribe(async (event) => {
+      console.log('[MaterialsTab] Materials changed, refreshing...', event);
       await ensureLoaded();
       const allMaterials = getAll();
       setMaterials(allMaterials);

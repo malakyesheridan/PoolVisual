@@ -4,18 +4,18 @@
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
   "framework": null,
-  "routes": [
+  "rewrites": [
     {
-      "src": "/api/(.*)",
-      "dest": "/api/index.ts"
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
     },
     {
-      "src": "/materials/(.*)",
-      "dest": "/dist/public/materials/$1"
+      "source": "/materials/(.*)",
+      "destination": "/materials/$1"
     },
     {
-      "src": "/(.*)",
-      "dest": "/dist/public/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
