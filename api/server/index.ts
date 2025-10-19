@@ -1,14 +1,13 @@
-import { VercelRequest, VercelResponse } from '@vercel/node';
 import express from "express";
 import cors from 'cors';
 import { getIronSession } from "iron-session";
 import rateLimit from "express-rate-limit";
-import { sessionOptions } from "./server/session";
+import { sessionOptions } from "./session";
 import bcrypt from "bcryptjs";
-import { storage } from "./server/storage";
-import { registerRoutes } from "./server/routes";
-import { serveStatic, log } from "./server/vite";
-import { errorHandler, notFoundHandler, requestIdMiddleware } from "./server/lib/routeWrapper";
+import { storage } from "./storage";
+import { registerRoutes } from "./routes";
+import { serveStatic, log } from "./vite";
+import { errorHandler, notFoundHandler, requestIdMiddleware } from "./lib/routeWrapper";
 
 // Type augmentation for Express Request
 declare global {
@@ -211,7 +210,5 @@ app.use(notFoundHandler);
 // Add centralized error handler last
 app.use(errorHandler);
 
-// Vercel serverless function handler
-export default (req: VercelRequest, res: VercelResponse) => {
-  return app(req, res);
-};
+// Export the Express app for Vercel
+export default app;
