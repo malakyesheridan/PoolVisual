@@ -2,12 +2,12 @@ import express from "express";
 import cors from 'cors';
 import { getIronSession } from "iron-session";
 import rateLimit from "express-rate-limit";
-import { sessionOptions } from "./session";
+import { sessionOptions } from "../server/session";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage";
-import { registerRoutes } from "./routes";
-import { serveStatic, log } from "./vite";
-import { errorHandler, notFoundHandler, requestIdMiddleware } from "./lib/routeWrapper";
+import { storage } from "../server/storage";
+import { registerRoutes } from "../server/routes";
+import { serveStatic, log } from "../server/vite";
+import { errorHandler, notFoundHandler, requestIdMiddleware } from "../server/lib/routeWrapper";
 
 // Type augmentation for Express Request
 declare global {
