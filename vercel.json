@@ -4,13 +4,6 @@
   "outputDirectory": "dist/public",
   "installCommand": "npm install",
   "framework": null,
-  "builds": [
-    {
-      "src": "api/index.ts",
-      "use": "@vercel/node",
-      "config": { "runtime": "nodejs18.x" }
-    }
-  ],
   "routes": [
     {
       "src": "/api/(.*)",

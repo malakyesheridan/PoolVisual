@@ -1,3 +1,4 @@
+import { VercelRequest, VercelResponse } from '@vercel/node';
 import express from "express";
 import cors from 'cors';
 import { getIronSession } from "iron-session";
@@ -210,5 +211,7 @@ app.use(notFoundHandler);
 // Add centralized error handler last
 app.use(errorHandler);
 
-// Export the Express app for Vercel
-export default app;
+// Vercel serverless function handler
+export default (req: VercelRequest, res: VercelResponse) => {
+  return app(req, res);
+};
