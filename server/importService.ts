@@ -530,12 +530,12 @@ export class ImportService {
       const physicalRepeatM = this.calculatePhysicalRepeat(parsed);
       
       return {
-        name: name || undefined,
-        sku: sku || undefined,
+        ...(name && { name }),
+        ...(sku && { sku }),
         price: normalizedPrice,
-        priceRaw: priceData.priceRaw,
-        imageUrl: primaryImage,
-        allImageUrls: allImageUrls.length > 0 ? allImageUrls : undefined,
+        ...(priceData.priceRaw && { priceRaw: priceData.priceRaw }),
+        ...(primaryImage && { imageUrl: primaryImage }),
+        ...(allImageUrls.length > 0 && { allImageUrls }),
         source_url: url,
         sizes: {
           ...(parsed.sheetW !== undefined && { sheetW: parsed.sheetW }),
@@ -545,13 +545,13 @@ export class ImportService {
           ...(parsed.thickness !== undefined && { thickness: parsed.thickness }),
           ...(parsed.grout !== undefined && { grout: parsed.grout })
         },
-        finish: parsed.finish,
-        categoryHint,
-        unit,
-        normalizedPrice: normalizedPrice ?? undefined,
-        priceUnit,
-        physical_repeat_m: physicalRepeatM,
-        priceSource: priceData.priceSource
+        ...(parsed.finish && { finish: parsed.finish }),
+        ...(categoryHint && { categoryHint }),
+        ...(unit && { unit }),
+        ...(normalizedPrice !== undefined && { normalizedPrice }),
+        ...(priceUnit && { priceUnit }),
+        ...(physicalRepeatM !== undefined && { physical_repeat_m: physicalRepeatM }),
+        ...(priceData.priceSource && { priceSource: priceData.priceSource })
       };
       
     } catch (error) {

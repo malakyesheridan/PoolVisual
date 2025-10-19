@@ -128,8 +128,8 @@ export class AppError extends Error {
       ok: false,
       code: this.code,
       message: this.message,
-      requestId: this.requestId ?? undefined,
-      details: this.meta ?? undefined
+      ...(this.requestId && { requestId: this.requestId }),
+      ...(this.meta && { details: this.meta })
     };
   }
 
@@ -183,13 +183,13 @@ export function conflict(message?: string, meta?: Record<string, unknown>): AppE
 
 export function internal(message?: string, cause?: unknown, meta?: Record<string, unknown>): AppError {
   return new AppError('INTERNAL_ERROR', message, { 
-    ...(cause && { cause }), 
+    ...(cause !== undefined && { cause }), 
     ...(meta && { meta }) 
   });
 }
 
 export function networkError(message?: string, cause?: unknown): AppError {
-  return new AppError('NETWORK_ERROR', message, { ...(cause && { cause }) });
+  return new AppError('NETWORK_ERROR', message, { ...(cause !== undefined && { cause }) });
 }
 
 export function timeoutError(message?: string): AppError {
