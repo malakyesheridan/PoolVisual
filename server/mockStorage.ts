@@ -441,7 +441,7 @@ export class MockStorage {
       contactEmail: 'contact@testpool.com',
       contactPhone: '+61 400 123 456',
       address: '123 Test Street, Test City'
-    });
+    }, user.id);
 
     // Create org member
     await this.createOrgMember({

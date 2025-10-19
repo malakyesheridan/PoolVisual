@@ -332,9 +332,9 @@ export class ImportService {
     
     return { 
       price: wooPrice ?? 0, 
-      priceRaw: wooPrice?.toString() || undefined, 
-      unit: unit || undefined, 
-      priceSource: priceSource || undefined 
+      ...(wooPrice?.toString() && { priceRaw: wooPrice.toString() }),
+      ...(unit && { unit }),
+      ...(priceSource && { priceSource })
     };
   }
   
@@ -538,12 +538,12 @@ export class ImportService {
         allImageUrls: allImageUrls.length > 0 ? allImageUrls : undefined,
         source_url: url,
         sizes: {
-          sheetW: parsed.sheetW ?? undefined,
-          sheetH: parsed.sheetH ?? undefined,
-          tileW: parsed.tileW ?? undefined,
-          tileH: parsed.tileH ?? undefined,
-          thickness: parsed.thickness ?? undefined,
-          grout: parsed.grout ?? undefined
+          ...(parsed.sheetW !== undefined && { sheetW: parsed.sheetW }),
+          ...(parsed.sheetH !== undefined && { sheetH: parsed.sheetH }),
+          ...(parsed.tileW !== undefined && { tileW: parsed.tileW }),
+          ...(parsed.tileH !== undefined && { tileH: parsed.tileH }),
+          ...(parsed.thickness !== undefined && { thickness: parsed.thickness }),
+          ...(parsed.grout !== undefined && { grout: parsed.grout })
         },
         finish: parsed.finish,
         categoryHint,
