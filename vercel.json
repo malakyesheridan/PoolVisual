@@ -1,14 +1,9 @@
 {
   "version": 2,
   "name": "poolvisual",
+  "buildCommand": "npm run vercel-build",
+  "outputDirectory": "dist/public",
   "builds": [
-    {
-      "src": "package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist/public"
-      }
-    },
     {
       "src": "server/index.ts",
       "use": "@vercel/node",
