@@ -18,8 +18,6 @@ async function getViteImports() {
   return { createViteServer, createLogger };
 }
 
-const viteLogger = createLogger ? createLogger() : null;
-
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
