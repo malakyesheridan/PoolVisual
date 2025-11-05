@@ -94,6 +94,10 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     }
   }, [effectiveJobId]);
 
+  // Track unsaved changes
+  const currentMaskState = JSON.stringify(getState().masks);
+  const hasUnsavedChanges = currentMaskState !== lastSavedMaskState;
+
   // Listen for masks loaded event to update saved state
   useEffect(() => {
     const handleMasksLoaded = (event: CustomEvent<{ photoId: string; maskCount: number }>) => {
