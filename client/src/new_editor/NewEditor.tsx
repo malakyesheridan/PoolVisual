@@ -317,18 +317,33 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
               // Update ref to track which photo we loaded masks for
               lastLoadedPhotoIdRef.current = photoIdToUse;
               
-              console.log('[NewEditor] Successfully loaded', Object.keys(convertedMasks).length, 'masks into store for photo', photoIdToUse);
-            } else {
-              // No masks from server - ensure store is cleared
-              lastLoadedPhotoIdRef.current = photoIdToUse;
-              console.log('[NewEditor] No masks found for photo:', photoIdToUse);
-            }
+            console.log('[NewEditor] Successfully loaded', Object.keys(convertedMasks).length, 'masks into store for photo', photoIdToUse);
+            
+            // Dispatch event to notify Toolbar to update lastSavedMaskState
+            window.dispatchEvent(new CustomEvent('masksLoaded', { 
+              detail: { photoId: photoIdToUse, maskCount: Object.keys(convertedMasks).length } 
+            }));
           } else {
-            // No masks on server - clear store
-            console.log('[NewEditor] No existing masks found for photo:', photoIdToUse);
-            useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+            // No masks from server - ensure store is cleared
             lastLoadedPhotoIdRef.current = photoIdToUse;
+            console.log('[NewEditor] No masks found for photo:', photoIdToUse);
+            
+            // Dispatch event for empty masks too
+            window.dispatchEvent(new CustomEvent('masksLoaded', { 
+              detail: { photoId: photoIdToUse, maskCount: 0 } 
+            }));
           }
+        } else {
+          // No masks on server - clear store
+          console.log('[NewEditor] No existing masks found for photo:', photoIdToUse);
+          useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+          lastLoadedPhotoIdRef.current = photoIdToUse;
+          
+          // Dispatch event for empty masks
+          window.dispatchEvent(new CustomEvent('masksLoaded', { 
+            detail: { photoId: photoIdToUse, maskCount: 0 } 
+          }));
+        }
         } catch (error) {
           console.error('[NewEditor] Failed to load existing masks:', error);
           // Don't throw - this is not critical to the main functionality

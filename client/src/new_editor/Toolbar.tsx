@@ -94,9 +94,26 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     }
   }, [effectiveJobId]);
 
-  // Track unsaved changes
-  const currentMaskState = JSON.stringify(getState().masks);
-  const hasUnsavedChanges = currentMaskState !== lastSavedMaskState;
+  // Listen for masks loaded event to update saved state
+  useEffect(() => {
+    const handleMasksLoaded = (event: CustomEvent<{ photoId: string; maskCount: number }>) => {
+      if (event.detail?.photoId === effectivePhotoId) {
+        // Get current mask state after they've been loaded
+        setTimeout(() => {
+          const maskStore = useMaskStore.getState();
+          const currentMasks = Object.values(maskStore.masks);
+          const maskStateString = JSON.stringify(currentMasks);
+          console.log('[Toolbar] Masks loaded event received, updating saved state:', event.detail);
+          setLastSavedMaskState(maskStateString);
+        }, 100); // Small delay to ensure masks are fully loaded
+      }
+    };
+    
+    window.addEventListener('masksLoaded', handleMasksLoaded as EventListener);
+    return () => {
+      window.removeEventListener('masksLoaded', handleMasksLoaded as EventListener);
+    };
+  }, [effectivePhotoId]);
 
   // Update zoom label when photoSpace scale changes
   useEffect(() => {
