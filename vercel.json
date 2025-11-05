@@ -1,19 +1,14 @@
 {
   "version": 2,
   "name": "poolvisual",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist/public",
   "builds": [
     {
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/**", "shared/**", "public/**"]
-      }
-    },
-    {
-      "src": "client/package.json",
-      "use": "@vercel/static-build",
-      "config": {
-        "distDir": "dist"
+        "includeFiles": ["server/**", "shared/**", "public/**", "dist/**"]
       }
     }
   ],
@@ -24,7 +19,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "/client/$1"
+      "dest": "/dist/public/$1"
     }
   ],
   "env": {
