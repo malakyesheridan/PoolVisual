@@ -229,6 +229,11 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
               if (allMasksPresent && countsMatch) {
                 console.log('[NewEditor] Current masks match server masks, skipping reload to prevent duplicates');
                 lastLoadedPhotoIdRef.current = photoIdToUse; // Update ref
+                
+                // Still dispatch event so Toolbar updates saved state
+                window.dispatchEvent(new CustomEvent('masksLoaded', { 
+                  detail: { photoId: photoIdToUse, maskCount: existingMasks.length } 
+                }));
                 return; // Skip reloading to prevent duplicate rendering
               }
               
@@ -239,6 +244,11 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
               console.log('[NewEditor] No masks on server for photo', photoIdToUse, '- clearing store masks');
               useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
               lastLoadedPhotoIdRef.current = photoIdToUse; // Update ref
+              
+              // Dispatch event for empty masks
+              window.dispatchEvent(new CustomEvent('masksLoaded', { 
+                detail: { photoId: photoIdToUse, maskCount: 0 } 
+              }));
               return;
             }
           }
