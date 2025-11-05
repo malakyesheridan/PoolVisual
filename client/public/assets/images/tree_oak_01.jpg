@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="500" height="700" viewBox="0 0 500 700" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="500" height="700" fill="#f8f9fa"/>
+  
+  <!-- Oak Tree Trunk -->
+  <rect x="220" y="300" width="60" height="400" fill="#8B4513" rx="30"/>
+  
+  <!-- Oak Tree Canopy -->
+  <g fill="#228B22">
+    <!-- Main canopy -->
+    <ellipse cx="250" cy="200" rx="120" ry="80"/>
+    <ellipse cx="200" cy="180" rx="80" ry="60"/>
+    <ellipse cx="300" cy="180" rx="80" ry="60"/>
+    <ellipse cx="250" cy="150" rx="100" ry="70"/>
+    
+    <!-- Smaller branches -->
+    <ellipse cx="180" cy="220" rx="50" ry="40"/>
+    <ellipse cx="320" cy="220" rx="50" ry="40"/>
+  </g>
+  
+  <!-- Ground shadow -->
+  <ellipse cx="250" cy="680" rx="100" ry="20" fill="#000000" opacity="0.2"/>
+</svg>

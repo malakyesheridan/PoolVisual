@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="100" height="256" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100" height="256" fill="transparent"/>
+  <rect x="7.333333333333329" y="0" width="85.33333333333334" height="256" fill="#92400e" opacity="0.8"/>
+  <text x="50" y="128" text-anchor="middle" dominant-baseline="middle" 
+        font-family="Arial, sans-serif" font-size="10" 
+        fill="white" opacity="0.9">Tiki Torch</text>
+</svg>

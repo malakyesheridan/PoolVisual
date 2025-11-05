@@ -10,15 +10,18 @@ import {
   handleDropEvent, 
   handleDragOverEvent 
 } from './photoUpload';
-import { Upload, Maximize2, MousePointer, Square, Undo2, Redo2, Download, ZoomIn, ZoomOut, Ruler, Eye, EyeOff, DollarSign, Key, FileText, ChevronDown, Save } from 'lucide-react';
+import { Upload, Maximize2, MousePointer, Square, Undo2, Redo2, ZoomIn, ZoomOut, Ruler, Eye, EyeOff, DollarSign, Key, FileText, ChevronDown, Save, ArrowLeft, Loader2, Sparkles, MoreVertical } from 'lucide-react';
 import { PV_PRECISE_MASKS } from './featureFlags';
 import { CalibrationTool } from './CalibrationTool';
 import { KeyLegend } from './KeyLegend';
+import { JobSelector } from './JobSelector';
+import { JobsDrawer } from '../components/enhancement/JobsDrawer';
 import { useMaskStore } from '../maskcore/store';
 import { useProjectStore } from '../stores/projectStore';
 import { useUnifiedTemplateStore } from '../stores/unifiedTemplateStore';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
+import { apiClient } from '../lib/api-client';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -26,17 +29,30 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator 
 } from '../components/ui/dropdown-menu';
+import { Button } from '../components/ui/button';
 import { 
-  Tooltip, 
-  TooltipContent, 
-  TooltipProvider, 
-  TooltipTrigger 
+  TooltipProvider,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger
 } from '../components/ui/tooltip';
+import { SaveStateIndicator, SaveState } from '../components/common/SaveStateIndicator';
 
-export function Toolbar() {
+interface ToolbarProps {
+  jobId?: string;
+  photoId?: string;
+}
+
+export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCalibrationTool, setShowCalibrationTool] = useState(false);
   const [showKeyLegend, setShowKeyLegend] = useState(false);
+  const [showEnhancementDrawer, setShowEnhancementDrawer] = useState(false);
+  const [lastSavedMaskState, setLastSavedMaskState] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState<string | undefined>(jobId);
+  const [isSavingToJob, setIsSavingToJob] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [, navigate] = useLocation();
   
   // Handle ESC key to close legend
@@ -60,10 +76,27 @@ export function Toolbar() {
     snappingEnabled,
     calibration,
     measurements,
+    drawingMode,
     dispatch,
     getState
   } = useEditorStore();
   const { addTemplate } = useUnifiedTemplateStore();
+
+  // Get job context from store if not provided as props - REACTIVE
+  const jobContext = useEditorStore(state => state.jobContext);
+  const effectiveJobId = jobId || jobContext?.jobId;
+  const effectivePhotoId = photoId || jobContext?.photoId;
+  
+  // Update selectedJobId when effectiveJobId changes
+  useEffect(() => {
+    if (effectiveJobId) {
+      setSelectedJobId(effectiveJobId);
+    }
+  }, [effectiveJobId]);
+
+  // Track unsaved changes
+  const currentMaskState = JSON.stringify(getState().masks);
+  const hasUnsavedChanges = currentMaskState !== lastSavedMaskState;
 
   // Update zoom label when photoSpace scale changes
   useEffect(() => {
@@ -113,6 +146,19 @@ export function Toolbar() {
     };
   }, []);
 
+  // Browser warning for unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges && jobId) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges, jobId]);
+
   const handleFileUpload = async (file: File) => {
     // Validate file
     const validation = validatePhotoFile(file);
@@ -142,25 +188,34 @@ export function Toolbar() {
         containerSize.height
       );
       
+      // Snap to 100% if close (within 5%)
+      const finalScale = Math.abs(fitScale - 1.0) <= 0.05 ? 1.0 : fitScale;
+      
       const { panX, panY } = calculateCenterPan(
         result.width,
         result.height,
         containerSize.width,
         containerSize.height,
-        fitScale
+        finalScale
       );
       
       // Update PhotoSpace
       dispatch({
         type: 'SET_PHOTO_SPACE',
-        payload: {
-          scale: fitScale,
-          panX,
+        payload: { 
+          scale: finalScale, 
+          panX, 
           panY,
           imgW: result.width,
           imgH: result.height
         }
       });
+      
+      // CRITICAL FIX: Clear masks when uploading a new photo
+      // This prevents masks from previous photos from appearing on new uploads
+      const { useMaskStore } = await import('../maskcore/store');
+      useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+      console.log('[Toolbar] Cleared masks for new photo upload');
       
       // Set image URL
       dispatch({
@@ -215,7 +270,13 @@ export function Toolbar() {
   const handleZoomIn = () => {
     // Use 10% increments instead of exponential scaling
     const currentPercentage = Math.round(photoSpace.scale * 100);
-    const nextPercentage = Math.min(500, currentPercentage + 10); // Max 500%
+    let nextPercentage = Math.min(500, currentPercentage + 10); // Max 500%
+    
+    // Snap to 100% if we're close (within 5%)
+    if (Math.abs(nextPercentage - 100) <= 5) {
+      nextPercentage = 100;
+    }
+    
     const newScale = nextPercentage / 100;
     
     // Center zoom on the middle of the canvas
@@ -239,7 +300,13 @@ export function Toolbar() {
   const handleZoomOut = () => {
     // Use 10% increments instead of exponential scaling
     const currentPercentage = Math.round(photoSpace.scale * 100);
-    const nextPercentage = Math.max(10, currentPercentage - 10); // Min 10%
+    let nextPercentage = Math.max(10, currentPercentage - 10); // Min 10%
+    
+    // Snap to 100% if we're close (within 5%)
+    if (Math.abs(nextPercentage - 100) <= 5) {
+      nextPercentage = 100;
+    }
+    
     const newScale = nextPercentage / 100;
     
     // Center zoom on the middle of the canvas
@@ -293,6 +360,8 @@ export function Toolbar() {
     
     // Draw background image
     const img = new Image();
+    // Set CORS to allow canvas export
+    img.crossOrigin = "anonymous";
     img.onload = async () => {
       ctx.drawImage(img, 0, 0);
       
@@ -689,44 +758,395 @@ export function Toolbar() {
     }
   };
 
-  const handleCreateQuoteFromCanvas = async () => {
-    const { project, currentPhoto } = useProjectStore.getState();
-    const { masks, calibration, CREATE_QUOTE, ADD_QUOTE_ITEM, SET_ACTIVE_QUOTE } = useMaskStore.getState();
-    
-    if (!project || !currentPhoto) {
-      toast.error('No project context available');
-      return;
-    }
-
-    try {
-      // Generate quote name with timestamp
-      const timestamp = new Date().toLocaleDateString();
-      const quoteName = `${project.name} - ${currentPhoto.name} - ${timestamp}`;
-      
-      // Create quote
-      const quoteId = CREATE_QUOTE(quoteName);
-      
-      // Auto-populate with canvas data
-      const masksWithMaterials = Object.values(masks).filter(mask => 
-        mask.materialId && mask.isVisible !== false
+  const handleBackToJob = () => {
+    if (hasUnsavedChanges && jobId) {
+      const confirmed = window.confirm(
+        'You have unsaved changes. Are you sure you want to leave?'
       );
+      if (!confirmed) return;
+    }
+    
+    navigate(`/jobs/${jobId}`);
+  };
+
+  const handleJobSelect = (jobId: string) => {
+    setSelectedJobId(jobId);
+  };
+
+  const exportCanvasToBlob = async (onlyExportMaskIds?: Set<string>): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      // Create a temporary canvas to render the composite
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d')!;
       
-      // Add all canvas items to quote
-      for (const mask of masksWithMaterials) {
-        ADD_QUOTE_ITEM(quoteId, mask.id, mask.materialId, calibration.pixelsPerMeter);
+      // Set canvas size to image size
+      canvas.width = photoSpace.imgW;
+      canvas.height = photoSpace.imgH;
+      
+      // Draw background image
+      const img = new Image();
+      // Set CORS to allow canvas export
+      img.crossOrigin = "anonymous";
+      img.onerror = () => {
+        reject(new Error('Failed to load image (CORS may be blocked)'));
+      };
+      img.onload = async () => {
+        try {
+          ctx.drawImage(img, 0, 0);
+          
+          // CRITICAL FIX: Don't export masks into the image - they are saved to database and render as interactive overlays
+          // Exporting masks into the image causes duplicates:
+          // 1. Baked-in mask in the image (pixels, unselectable)
+          // 2. Konva overlay mask from store (interactive, selectable)
+          // = Visual duplicate
+          // 
+          // Masks should ONLY be:
+          // - Saved to database (for persistence)
+          // - Rendered as Konva overlays (for interactivity)
+          // - NOT baked into exported images
+          
+          if (onlyExportMaskIds && onlyExportMaskIds.size > 0) {
+            console.log('[exportCanvasToBlob] Skipping mask export - masks remain as interactive overlays only');
+          }
+          
+          // Convert to blob and create File
+          canvas.toBlob((blob) => {
+            if (blob) {
+              const file = new File([blob], 'edited-photo.png', { type: 'image/png' });
+              console.log('[exportCanvasToBlob] Successfully created blob:', blob.size, 'bytes');
+              resolve(file);
+            } else {
+              reject(new Error('Failed to create blob'));
+            }
+          }, 'image/png');
+          
+        } catch (error) {
+          console.error('[exportCanvasToBlob] Error during export:', error);
+          reject(error);
+        }
+      };
+      
+      // Load image from current state
+      const currentState = getState();
+      if (currentState.imageUrl) {
+        img.src = currentState.imageUrl;
+      } else {
+        reject(new Error('No image loaded'));
+      }
+    });
+  };
+
+  const handleSaveToJob = async () => {
+    if (!selectedJobId) return;
+    
+    setIsSavingToJob(true);
+    try {
+      // CRITICAL FIX: Save masks to database FIRST, then export only saved masks
+      // This ensures masks are persisted and can be reloaded, preventing "baked-in" unselectable masks
+      
+      // 1. Save masks to database BEFORE exporting
+      const state = getState();
+      const targetPhotoId = effectivePhotoId; // Always use original photo ID when editing
+      
+      // Get masks from the correct store (mask core store, not editor store)
+      const maskStore = useMaskStore.getState();
+      const masks = Object.values(maskStore.masks);
+      
+      console.log('[SaveToJob] Saving', masks.length, 'masks to database first');
+      
+      // Only fetch org member if we have masks to save
+      let orgMember: { id: string } | null = null;
+      
+      if (masks.length > 0) {
+        // Get user's org membership for createdBy field
+        const { useAuthStore } = await import('../stores/auth-store');
+        const authUser = useAuthStore.getState().user;
+        
+        if (!authUser) {
+          toast.error('Authentication missing');
+          return;
+        }
+
+        // Get the job to find its organization
+        const job = await apiClient.getJob(selectedJobId);
+        if (!job) {
+          toast.error('Job not found');
+          return;
+        }
+        
+        // Get the user's organization membership for this specific job's org
+        // If membership doesn't exist, automatically create it
+        try {
+          orgMember = await apiClient.getOrgMember(authUser.id, job.orgId);
+          if (!orgMember) {
+            console.log('[SaveToJob] User not a member of organization, automatically joining...');
+            // Automatically join the organization with "estimator" role
+            // Note: joinOrg checks for existing membership, so it's safe to call
+            const existingMembership = await apiClient.joinOrg(job.orgId, 'estimator');
+            orgMember = existingMembership;
+            
+            // Only show toast if this is a NEW membership (check if it was just created)
+            // The server returns existing membership if it exists, so we can't tell easily
+            // Instead, we'll only show toast on first 404, not on subsequent saves
+            const membershipKey = `org_member_${job.orgId}_${authUser.id}`;
+            const wasJustCreated = !localStorage.getItem(membershipKey);
+            if (wasJustCreated) {
+              localStorage.setItem(membershipKey, 'true');
+              toast.success('You have been automatically added to this organization');
+            }
+            console.log('[SaveToJob] Organization membership obtained:', orgMember);
+          }
+        } catch (error) {
+          console.error('[SaveToJob] Error with org membership:', error);
+          // If it's a 404, try to join
+          if ((error as any)?.status === 404 || (error as any)?.statusCode === 404) {
+            try {
+              console.log('[SaveToJob] Attempting to join organization...');
+              const newMembership = await apiClient.joinOrg(job.orgId, 'estimator');
+              orgMember = newMembership;
+              
+              // Only show toast if this is actually a new membership
+              const membershipKey = `org_member_${job.orgId}_${authUser.id}`;
+              const wasJustCreated = !localStorage.getItem(membershipKey);
+              if (wasJustCreated) {
+                localStorage.setItem(membershipKey, 'true');
+                toast.success('You have been automatically added to this organization');
+              }
+              
+              console.log('[SaveToJob] Successfully obtained organization membership:', orgMember);
+            } catch (joinError) {
+              console.error('[SaveToJob] Error joining organization:', joinError);
+              toast.error('Cannot save: unable to join organization. Please contact an administrator.');
+              setIsSavingToJob(false);
+              return;
+            }
+          } else {
+            toast.error('Cannot save: organization membership error. Masks will not be saved.');
+            setIsSavingToJob(false);
+            return;
+          }
+        }
       }
       
-      // Set as active quote
-      SET_ACTIVE_QUOTE(quoteId);
+      // Save all masks to database and update their IDs
+      const savedMaskIds = new Set<string>(); // Track successfully saved masks
       
-      // Navigate to quotes page
-      navigate('/quotes');
+      for (const mask of masks) {
+        const maskData = {
+          photoId: targetPhotoId,
+          type: 'area' as const,
+          pathJson: JSON.stringify(mask.pts),
+          materialId: mask.materialId,
+          createdBy: orgMember!.id, // We know orgMember exists here
+          calcMetaJson: mask.materialSettings || null,
+          depthLevel: mask.depthLevel || 0,
+          // elevationM is a numeric type in the database, which Zod expects as a string
+          elevationM: (mask.elevationM ?? 0).toString(),
+          zIndex: mask.zIndex || 0,
+          isStepped: mask.isStepped || false
+        };
+
+        console.log('[SaveToJob] Creating mask in database:', maskData);
+        
+        const { useMaskStore } = await import('../maskcore/store');
+        const maskStoreBeforeSave = useMaskStore.getState();
+        const maskBeforeSave = maskStoreBeforeSave.masks[mask.id];
+        
+        if (!maskBeforeSave) {
+          console.warn('[SaveToJob] Mask not found in store before save:', mask.id);
+          continue;
+        }
+        
+        const savedMask = await apiClient.createMask(maskData);
+        console.log('[SaveToJob] Mask saved successfully with database ID:', savedMask?.id);
+        
+        // Update mask ID in store to use database ID
+        if (savedMask && savedMask.id && savedMask.id !== mask.id) {
+          useMaskStore.setState(prev => {
+            const currentMask = prev.masks[mask.id];
+            if (!currentMask) {
+              console.warn('[SaveToJob] Mask was removed during save, skipping ID update:', mask.id);
+              return prev;
+            }
+            
+            // Verify it's the same mask (points haven't changed)
+            const pointsMatch = currentMask.pts && maskBeforeSave.pts &&
+              currentMask.pts.length === maskBeforeSave.pts.length &&
+              JSON.stringify(currentMask.pts) === JSON.stringify(maskBeforeSave.pts);
+            
+            if (!pointsMatch) {
+              console.warn('[SaveToJob] Mask was modified during save, skipping ID update:', mask.id);
+              return prev;
+            }
+            
+            // Create new mask with database ID
+            const updatedMask = {
+              ...currentMask,
+              id: savedMask.id
+            };
+            
+            const newMasks = { ...prev.masks };
+            delete newMasks[mask.id];
+            newMasks[savedMask.id] = updatedMask;
+            
+            const newSelectedId = prev.selectedId === mask.id ? savedMask.id : prev.selectedId;
+            const newEditingMaskId = prev.editingMaskId === mask.id ? savedMask.id : prev.editingMaskId;
+            
+            savedMaskIds.add(savedMask.id);
+            savedMaskIds.add(mask.id); // Track old ID too
+            
+            return {
+              masks: newMasks,
+              selectedId: newSelectedId,
+              editingMaskId: newEditingMaskId
+            };
+          });
+          
+          console.log('[SaveToJob] Updated local mask ID from', mask.id, 'to', savedMask.id);
+        } else if (savedMask && savedMask.id === mask.id) {
+          savedMaskIds.add(savedMask.id);
+          console.log('[SaveToJob] Mask already has database ID:', mask.id);
+        }
+      }
       
-      toast.success(`Quote "${quoteName}" created with ${masksWithMaterials.length} items`);
+      // 2. Export canvas WITHOUT masks - masks are saved to database and remain interactive overlays
+      // CRITICAL FIX: Don't bake masks into the exported image - this causes duplicates
+      // (baked-in mask + Konva overlay = visual duplicate)
+      // Masks should only be saved to database, not printed into the image
+      const exportedBlob = await exportCanvasToBlob(); // No mask IDs = export base image only
+      
+      // 3. Upload/Update photo with exported blob
+      let photoData;
+      console.log('[SaveToJob] effectivePhotoId:', effectivePhotoId, 'jobContext:', jobContext);
+      if (effectivePhotoId) {
+        // Update existing photo with new edited version
+        const formData = new FormData();
+        formData.append('photo', exportedBlob);
+        formData.append('jobId', selectedJobId);
+        formData.append('width', photoSpace.imgW.toString());
+        formData.append('height', photoSpace.imgH.toString());
+        
+        // Upload the edited image to get new URL
+        const uploadResponse = await fetch('/api/photos', {
+          method: 'POST',
+          body: formData,
+        });
+        
+        if (!uploadResponse.ok) {
+          throw new Error('Failed to upload edited photo');
+        }
+        
+        const uploadedPhoto = await uploadResponse.json();
+        let tempPhotoId = uploadedPhoto.id; // Track for cleanup
+        
+        try {
+          // Update the existing photo record with new URL and dimensions
+          photoData = await apiClient.updatePhoto(effectivePhotoId, {
+            originalUrl: uploadedPhoto.originalUrl,
+            width: photoSpace.imgW,
+            height: photoSpace.imgH
+          });
+          
+          // CRITICAL FIX: Don't dispatch SET_IMAGE here - it causes premature remount
+          // Wait until AFTER masks are saved to update the image URL
+          // This prevents NewEditor from remounting and loading masks before current save completes
+          
+          // Clean up: Delete the temporary photo we just created
+          console.log('[SaveToJob] About to delete temporary photo:', tempPhotoId);
+          try {
+            await apiClient.deletePhoto(tempPhotoId);
+            console.log('[SaveToJob] Successfully cleaned up temporary photo:', tempPhotoId);
+            tempPhotoId = null; // Mark as cleaned up
+          } catch (cleanupError) {
+            console.error('[SaveToJob] Failed to clean up temporary photo:', tempPhotoId, cleanupError);
+            // Don't throw - this is cleanup, not critical to the main operation
+          }
+          
+          console.log('Updated existing photo with new edited version');
+        } catch (updateError) {
+          // If updatePhoto fails, still try to clean up the orphaned temp photo
+          console.error('[SaveToJob] Failed to update photo, cleaning up temp photo:', tempPhotoId);
+          try {
+            if (tempPhotoId) {
+              await apiClient.deletePhoto(tempPhotoId);
+              console.log('[SaveToJob] Cleaned up orphaned temp photo after update failure');
+            }
+          } catch (cleanupError) {
+            console.error('[SaveToJob] Failed to clean up orphaned photo:', tempPhotoId, cleanupError);
+          }
+          throw updateError; // Re-throw to be caught by outer try/catch
+        }
+      } else {
+        // Upload new photo
+        photoData = await apiClient.uploadPhoto(exportedBlob, selectedJobId, {
+          width: photoSpace.imgW,
+          height: photoSpace.imgH
+        });
+        
+        // CRITICAL FIX: Don't dispatch SET_IMAGE here - it causes premature remount
+        // Wait until AFTER masks are saved to update the image URL
+        // This prevents NewEditor from remounting and loading masks before current save completes
+      }
+      
+      // 4. Save calibration if calibrated - USE ORIGINAL PHOTO ID
+      // Note: 'state' and 'targetPhotoId' were already declared earlier in this function
+      const editorState = getState(); // Get fresh state for calibration
+      
+      if (editorState.calibration?.isCalibrated) {
+        await apiClient.updatePhotoCalibration(
+          targetPhotoId,
+          editorState.calibration.pixelsPerMeter,
+          {
+            samples: editorState.calibration.samples || [],
+            stdevPct: 0
+          }
+        );
+      }
+      
+      // 5. Update image URL AFTER all saves complete
+      // This prevents NewEditor from remounting and loading masks before saves complete
+      if (photoData && photoData.originalUrl) {
+        dispatch({
+          type: 'SET_IMAGE',
+          payload: {
+            url: photoData.originalUrl,
+            width: photoSpace.imgW,
+            height: photoSpace.imgH
+          }
+        });
+        
+        // CRITICAL: Notify NewEditor to skip mask reload
+        // This prevents duplicate masks (baked-in image + Konva overlay) immediately after save
+        window.dispatchEvent(new CustomEvent('saveComplete', {
+          detail: { photoId: targetPhotoId }
+        }));
+        
+        console.log('[SaveToJob] Updated image URL and notified save complete');
+      }
+      
+      // Update save state tracking
+      setLastSavedAt(new Date());
+      setSaveError(null);
+      setLastSavedMaskState(currentMaskState);
+      
+      toast.success(`Photo saved to job successfully!`);
+      
+      // Refresh the job photos list to ensure the updated photo is loaded
+      if (effectivePhotoId) {
+        // If we updated an existing photo, we should refresh the job photos
+        // This will ensure the job page shows the updated photo
+        window.dispatchEvent(new CustomEvent('refreshJobPhotos', { 
+          detail: { jobId: selectedJobId } 
+        }));
+      }
       
     } catch (error) {
-      console.error('Error creating quote:', error);
-      toast.error('Failed to create quote');
+      console.error('Error saving to job:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      setSaveError(errorMessage);
+      toast.error(`Failed to save to job: ${errorMessage}`);
+    } finally {
+      setIsSavingToJob(false);
     }
   };
 
@@ -844,21 +1264,29 @@ export function Toolbar() {
   return (
     <TooltipProvider>
       <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-4">
           {/* Left Section: File Operations */}
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-3 flex-shrink-0">
             {/* File Dropdown Menu */}
             <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
-                  title="File Operations"
-                >
-                  <FileText size={16} />
-                  <span className="font-medium">File</span>
-                  <ChevronDown size={14} />
-                </button>
-              </DropdownMenuTrigger>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                    >
+                      <FileText size={16} />
+                      <span className="font-medium">File</span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-2">
+                    <span>File Operations</span>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
               <DropdownMenuContent align="start">
                 <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
                   <Upload className="mr-2 h-4 w-4" />
@@ -889,178 +1317,293 @@ export function Toolbar() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+
+            {/* Job Controls - only show when in job context */}
+            {jobId && (
+              <div className="flex items-center border-l border-gray-300 pl-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBackToJob}
+                  className="flex items-center space-x-2"
+                >
+                  <ArrowLeft size={16} />
+                  <span>Back to Job</span>
+                </Button>
+              </div>
+            )}
           </div>
-        
-        {/* Center Section: Tools */}
-        <div className="flex items-center space-x-3">
+
+          {/* Center Section: Tools */}
+          <div className="flex items-center gap-3 flex-1 justify-center">
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' })}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                activeTool === 'select'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-              title="Select Tool (V)"
-            >
-              <MousePointer size={16} />
-              <span className="font-medium">Select</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' })}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                    activeTool === 'select'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <MousePointer size={16} />
+                  <span className="font-medium">Select</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="flex items-center gap-2">
+                  <span>Select Tool</span>
+                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">V</kbd>
+                </div>
+              </TooltipContent>
+            </Tooltip>
             
-            <button
-              onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
-              className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                activeTool === 'area'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-              }`}
-              title="Area Tool (A)"
-            >
-              <Square size={16} />
-              <span className="font-medium">Area</span>
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
+                    activeTool === 'area'
+                      ? 'bg-white text-blue-600 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                  }`}
+                >
+                  <Square size={16} />
+                  <span className="font-medium">Area</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="flex items-center gap-2">
+                  <span>Area Tool</span>
+                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">A</kbd>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+            
+            {/* Drawing Mode Controls - Only show when Area tool is active */}
+            {activeTool === 'area' && (
+              <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-300">
+                {/* Drawing Mode Toggle */}
+                <div className="flex items-center space-x-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'area' })}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          drawingMode === 'area'
+                            ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                        }`}
+                      >
+                        Area
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <span>Area Mode (Closed Polygon)</span>
+                    </TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'freehand' })}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                          drawingMode === 'freehand'
+                            ? 'bg-blue-100 text-blue-700 border border-blue-300'
+                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                        }`}
+                      >
+                        Freehand
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <span>Freehand Mode (Open Line)</span>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                
+              </div>
+            )}
           </div>
           
           <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={handleZoomOut}
-              disabled={state !== 'ready'}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-              title="Zoom Out"
-            >
-              <ZoomOut size={16} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleZoomOut}
+                  disabled={state !== 'ready'}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+                >
+                  <ZoomOut size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="flex items-center gap-2">
+                  <span>Zoom Out</span>
+                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+-</kbd>
+                </div>
+              </TooltipContent>
+            </Tooltip>
             
             <div className="px-3 py-2 text-sm font-mono text-gray-700 bg-white rounded-md shadow-sm min-w-[60px] text-center">
               {zoomLabel}
             </div>
             
-            <button
-              onClick={handleZoomIn}
-              disabled={state !== 'ready'}
-              className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-              title="Zoom In"
-            >
-              <ZoomIn size={16} />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleZoomIn}
+                  disabled={state !== 'ready'}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
+                >
+                  <ZoomIn size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="flex items-center gap-2">
+                  <span>Zoom In</span>
+                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl++</kbd>
+                </div>
+              </TooltipContent>
+            </Tooltip>
           </div>
         </div>
         
-        {/* Right Section: Status & Actions */}
-        <div className="flex items-center space-x-3">
-          {/* Compact Status Badge */}
-          <div className={`px-2 py-1 rounded text-xs font-medium ${
-            calibration.isCalibrated 
-              ? 'bg-green-100 text-green-700' 
-              : 'bg-yellow-100 text-yellow-700'
-          }`}>
-            {calibration.isCalibrated 
-              ? `✓ ${calibration.pixelsPerMeter.toFixed(0)} px/m` 
-              : 'Not Calibrated'
-            }
-          </div>
-          
-          {/* Icon-only Action Buttons with Tooltips */}
-          <div className="flex items-center space-x-1">
+          {/* Right Section: Status & Actions */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {/* Compact Status Badge */}
+            <div className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
+              calibration.isCalibrated 
+                ? 'bg-green-100 text-green-700' 
+                : 'bg-yellow-100 text-yellow-700'
+            }`}>
+              {calibration.isCalibrated 
+                ? `✓ ${calibration.pixelsPerMeter.toFixed(0)} px/m` 
+                : 'Not Calibrated'
+              }
+            </div>
+            
+            {/* Primary Actions */}
+            <div className="flex items-center gap-2">
+            {/* Job Selection - Replace Create Quote */}
+            {!selectedJobId && (
+              <JobSelector onJobSelect={handleJobSelect} />
+            )}
+            
+            {/* Save State Indicator and Save Button - Show when job selected */}
+            {selectedJobId && (
+              <div className="flex items-center gap-2">
+                <SaveStateIndicator
+                  state={
+                    isSavingToJob 
+                      ? 'saving' 
+                      : saveError 
+                        ? 'error' 
+                        : hasUnsavedChanges 
+                          ? 'unsaved' 
+                          : 'saved'
+                  }
+                  lastSaved={lastSavedAt}
+                  errorMessage={saveError || undefined}
+                  onSaveClick={handleSaveToJob}
+                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={handleSaveToJob}
+                      disabled={state !== 'ready' || isSavingToJob || !hasUnsavedChanges}
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                    >
+                      {isSavingToJob ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <Save size={16} />
+                      )}
+                      <span className="font-medium">
+                        {isSavingToJob ? 'Saving...' : 'Save Changes'}
+                      </span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <div className="flex items-center gap-2">
+                      <span>Save Changes to Job</span>
+                      <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+S</kbd>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            )}
+            
+            {/* Enhance button - replaces Export */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={handleToggleMeasurements}
-                  className={`p-2 rounded-lg transition-colors ${
-                    measurements.showMeasurements
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                  }`}
+                  onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
+                  disabled={state !== 'ready'}
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                 >
-                  {measurements.showMeasurements ? <Eye size={16} /> : <EyeOff size={16} />}
+                  <Sparkles size={16} />
+                  <span className="font-medium">Enhance</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Toggle Measurements</p>
+                <span>AI Enhancements</span>
               </TooltipContent>
             </Tooltip>
             
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleToggleCosts}
-                  className={`p-2 rounded-lg transition-colors ${
-                    measurements.showCosts
-                      ? 'bg-green-100 text-green-600'
-                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
-                  }`}
-                >
-                  <DollarSign size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Toggle Costs</p>
-              </TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleUndo}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <Undo2 size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Undo (Ctrl+Z)</p>
-              </TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleRedo}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <Redo2 size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Redo (Ctrl+Shift+Z)</p>
-              </TooltipContent>
-            </Tooltip>
-            
-            {/* Create Quote Button */}
-            <button
-              onClick={handleCreateQuoteFromCanvas}
-              disabled={state !== 'ready'}
-              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              title="Create Quote from Canvas"
-            >
-              <FileText size={16} />
-              <span className="font-medium">Create Quote</span>
-            </button>
-            
-            {/* Keep Export prominent */}
-            <button
-              onClick={handleExport}
-              disabled={state !== 'ready'}
-              className="flex items-center space-x-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
-              title="Export PNG"
-            >
-              <Download size={16} />
-              <span className="font-medium">Export</span>
-            </button>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setShowKeyLegend(true)}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <Key size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Show Canvas Controls Legend</p>
-              </TooltipContent>
-            </Tooltip>
+            {/* More Menu - Secondary Actions */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <MoreVertical size={16} />
+                    </button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <span>More Options</span>
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={handleToggleMeasurements}>
+                  {measurements.showMeasurements ? (
+                    <Eye className="mr-2 h-4 w-4" />
+                  ) : (
+                    <EyeOff className="mr-2 h-4 w-4" />
+                  )}
+                  <span>{measurements.showMeasurements ? 'Hide' : 'Show'} Measurements</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuItem onClick={handleToggleCosts}>
+                  <DollarSign className="mr-2 h-4 w-4" />
+                  <span>{measurements.showCosts ? 'Hide' : 'Show'} Costs</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem onClick={handleUndo}>
+                  <Undo2 className="mr-2 h-4 w-4" />
+                  <span>Undo</span>
+                  <span className="ml-auto text-xs text-gray-500">Ctrl+Z</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuItem onClick={handleRedo}>
+                  <Redo2 className="mr-2 h-4 w-4" />
+                  <span>Redo</span>
+                  <span className="ml-auto text-xs text-gray-500">Ctrl+Shift+Z</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator />
+                
+                <DropdownMenuItem onClick={() => setShowKeyLegend(true)}>
+                  <Key className="mr-2 h-4 w-4" />
+                  <span>Show Controls Legend</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
       </div>
@@ -1084,6 +1627,11 @@ export function Toolbar() {
         isOpen={showKeyLegend} 
         onClose={() => setShowKeyLegend(false)} 
       />
+      
+      {/* AI Enhancements Drawer */}
+      {showEnhancementDrawer && (
+        <JobsDrawer onClose={() => setShowEnhancementDrawer(false)} />
+      )}
       </div>
     </TooltipProvider>
   );

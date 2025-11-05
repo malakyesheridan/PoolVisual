@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="350" height="550" xmlns="http://www.w3.org/2000/svg">
+  <rect width="350" height="550" fill="transparent"/>
+  <rect x="0" y="0" width="350" height="550" fill="#15803d" opacity="0.8"/>
+  <text x="175" y="275" text-anchor="middle" dominant-baseline="middle" 
+        font-family="Arial, sans-serif" font-size="35" 
+        fill="white" opacity="0.9">Pine Tree</text>
+</svg>

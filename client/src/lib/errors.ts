@@ -50,8 +50,8 @@ export const ERROR_STATUS_MAP: Record<string, number> = {
 
 // User-friendly error messages
 export const ERROR_MESSAGES: Record<string, string> = {
-  VALIDATION_ERROR: 'The information provided is invalid. Please check your input and try again.',
-  UNAUTHORIZED: 'You need to sign in to access this resource.',
+  VALIDATION_ERROR: 'Please check your input and try again.',
+  UNAUTHORIZED: 'Please sign in to continue.',
   FORBIDDEN: 'You don\'t have permission to perform this action.',
   NOT_FOUND: 'The requested resource could not be found.',
   CONFLICT: 'This action conflicts with existing data. Please refresh and try again.',
@@ -59,11 +59,18 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INTERNAL_ERROR: 'Something went wrong on our end. Please try again later.',
   DATABASE_ERROR: 'We\'re experiencing database issues. Please try again later.',
   EXTERNAL_SERVICE_ERROR: 'An external service is temporarily unavailable.',
-  NETWORK_ERROR: 'Network connection failed. Please check your internet connection.',
+  NETWORK_ERROR: 'Please check your internet connection and try again.',
   TIMEOUT_ERROR: 'The request took too long to complete. Please try again.',
   ABORT_ERROR: 'The request was cancelled.',
   UPLOAD_ERROR: 'File upload failed. Please check the file and try again.',
-  PROCESSING_ERROR: 'Processing failed. Please try again later.'
+  PROCESSING_ERROR: 'Processing failed. Please try again later.',
+  // Canvas Editor specific errors
+  TEXTURE_LOAD_FAILED: 'Material texture couldn\'t load. Try a different material or check your connection.',
+  CALIBRATION_FAILED: 'Scale measurement needs adjustment. Try measuring a different distance.',
+  MASK_CREATION_FAILED: 'Couldn\'t create the area. Make sure you\'ve clicked at least 3 points.',
+  MATERIAL_ASSIGNMENT_FAILED: 'Couldn\'t apply the material. Try selecting the area again.',
+  EXPORT_FAILED: 'Export failed. Please try again or contact support if the issue persists.',
+  PHOTO_UPLOAD_FAILED: 'Photo upload failed. Please try a smaller file or different format.',
 };
 
 /**

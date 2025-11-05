@@ -354,13 +354,29 @@ class MaterialLibraryAdapter {
 
   private loadImage(url: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
+      // Check if URL is external and use proxy preemptively to avoid CORS
+      const isExternalUrl = (url: string): boolean => {
+        try {
+          const urlObj = new URL(url);
+          const currentOrigin = window.location.origin;
+          return urlObj.origin !== currentOrigin;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Use proxy for external URLs to avoid CORS errors (same approach as texture-loader)
+      const urlToLoad = isExternalUrl(url)
+        ? `/api/texture?url=${encodeURIComponent(url)}`
+        : url;
+      
       const img = new Image();
       img.crossOrigin = 'anonymous';
       
       img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+      img.onerror = () => reject(new Error(`Failed to load image: ${url} (via ${urlToLoad})`));
       
-      img.src = url;
+      img.src = urlToLoad;
     });
   }
 

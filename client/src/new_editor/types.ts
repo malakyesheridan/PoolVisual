@@ -59,6 +59,8 @@ export interface Mask {
     confidence: 'high' | 'medium' | 'low';
     lastUpdated: number; // timestamp
   };
+  // NEW: Mask type for freehand vs area
+  type?: 'area' | 'linear';     // 'area' = closed polygon, 'linear' = open polyline (default: 'area')
 }
 
 export interface Material {
@@ -120,6 +122,12 @@ export interface EditorState {
   imageUrl?: string;
   state: 'idle' | 'loading' | 'ready' | 'error';
   
+  // Job context
+  jobContext?: {
+    jobId: string;
+    photoId: string;
+  };
+  
   // Tool state
   activeTool: 'select' | 'area' | 'polygon' | 'pen' | 'pan';
   drawingPoints: Point[]; // Current drawing points (screen space)
@@ -176,12 +184,16 @@ export interface EditorState {
     snapToGrid: boolean;
     gridOpacity: number;
   };
+  
+  // NEW: Drawing mode for freehand vs area
+  drawingMode: 'area' | 'freehand'; // 'area' = closed polygon, 'freehand' = open polyline
 }
 
 export type EditorAction = 
   | { type: 'SET_PHOTO_SPACE'; payload: Partial<PhotoSpace> }
   | { type: 'SET_IMAGE'; payload: { url: string; width: number; height: number } }
   | { type: 'SET_STATE'; payload: EditorState['state'] }
+  | { type: 'SET_JOB_CONTEXT'; payload: { jobId: string; photoId: string } }
   | { type: 'SET_ACTIVE_TOOL'; payload: EditorState['activeTool'] }
   | { type: 'SET_DRAWING_POINTS'; payload: Point[] }
   | { type: 'SET_IS_DRAWING'; payload: boolean }
@@ -226,4 +238,6 @@ export type EditorAction =
   // NEW: Point editing actions
   | { type: 'SET_POINT_EDITING_SETTINGS'; payload: Partial<EditorState['pointEditing']> }
   | { type: 'TOGGLE_GRID_VISIBILITY' }
+  // NEW: Drawing mode actions
+  | { type: 'SET_DRAWING_MODE'; payload: 'area' | 'freehand' }
   | { type: 'TOGGLE_GRID_SNAPPING' };

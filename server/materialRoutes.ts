@@ -208,9 +208,23 @@ export function registerMaterialRoutes(app: Express) {
     try {
       const { category, q, page = "1", pageSize = "20", orgId } = req.query;
 
-      // Get materials - for now without strict org filtering
+      // Get materials - validate orgId is a proper UUID or null
+      let validOrgId: string | undefined = undefined;
+      if (orgId && typeof orgId === 'string' && orgId !== 'default') {
+        // Basic UUID validation
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(orgId)) {
+          validOrgId = orgId;
+        } else {
+          return res.status(400).json({ 
+            error: 'INVALID_ORG_ID', 
+            message: 'orgId must be a valid UUID or omitted for global materials' 
+          });
+        }
+      }
+      
       const materials = await storage.getMaterials(
-        orgId as string || "default", 
+        validOrgId, 
         category as string || undefined
       );
 

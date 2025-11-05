@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
 import { AlertCircle, Loader2 } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { loginSchema, registerSchema, type LoginFormData, type RegisterFormData } from '@/lib/form-validation';
+import { Form } from '@/components/ui/form';
+import { FormField } from '@/components/common/FormField';
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -16,26 +19,31 @@ export default function Login() {
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    email: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
+
+  const loginForm = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: ''
+    }
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (error) setError(null);
-  };
+  const registerForm = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      email: '',
+      username: '',
+      password: '',
+      confirmPassword: ''
+    }
+  });
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (data: LoginFormData) => {
     setIsLoading(true);
     setError(null);
 
     try {
-      const response = await apiClient.login(formData.email, formData.password);
+      const response = await apiClient.login(data.email, data.password);
       if (response.ok) {
         login(response.user);
         navigate('/dashboard');
@@ -49,22 +57,15 @@ export default function Login() {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      return;
-    }
-
+  const handleRegister = async (data: RegisterFormData) => {
     setIsLoading(true);
     setError(null);
 
     try {
       const response = await apiClient.register(
-        formData.email, 
-        formData.username, 
-        formData.password
+        data.email, 
+        data.username, 
+        data.password
       );
       if (response.ok) {
         login(response.user);
@@ -120,130 +121,111 @@ export default function Login() {
               )}
 
               <TabsContent value="login">
-                <form onSubmit={handleLogin} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="login-email">Email</Label>
-                    <Input
-                      id="login-email"
+                <Form {...loginForm}>
+                  <form 
+                    onSubmit={loginForm.handleSubmit(handleLogin)} 
+                    className="space-y-4"
+                  >
+                    <FormField
                       name="email"
+                      label="Email"
                       type="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
                       placeholder="you@example.com"
                       required
                       disabled={isLoading}
-                      data-testid="input-login-email"
+                      testId="input-login-email"
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="login-password">Password</Label>
-                    <Input
-                      id="login-password"
+                    
+                    <FormField
                       name="password"
+                      label="Password"
                       type="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
                       required
                       disabled={isLoading}
-                      data-testid="input-login-password"
+                      testId="input-login-password"
                     />
-                  </div>
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full" 
-                    disabled={isLoading}
-                    data-testid="button-sign-in"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing In...
-                      </>
-                    ) : (
-                      'Sign In'
-                    )}
-                  </Button>
-                </form>
+                    
+                    <Button 
+                      type="submit" 
+                      className="w-full" 
+                      disabled={isLoading || loginForm.formState.isSubmitting}
+                      data-testid="button-sign-in"
+                    >
+                      {isLoading || loginForm.formState.isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Signing In...
+                        </>
+                      ) : (
+                        'Sign In'
+                      )}
+                    </Button>
+                  </form>
+                </Form>
               </TabsContent>
 
               <TabsContent value="register">
-                <form onSubmit={handleRegister} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="register-email">Email</Label>
-                    <Input
-                      id="register-email"
+                <Form {...registerForm}>
+                  <form 
+                    onSubmit={registerForm.handleSubmit(handleRegister)} 
+                    className="space-y-4"
+                  >
+                    <FormField
                       name="email"
+                      label="Email"
                       type="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
                       placeholder="you@example.com"
                       required
                       disabled={isLoading}
-                      data-testid="input-register-email"
+                      testId="input-register-email"
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="register-username">Username</Label>
-                    <Input
-                      id="register-username"
+                    
+                    <FormField
                       name="username"
+                      label="Username"
                       type="text"
-                      value={formData.username}
-                      onChange={handleInputChange}
                       placeholder="johndoe"
                       required
                       disabled={isLoading}
-                      data-testid="input-register-username"
+                      testId="input-register-username"
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="register-password">Password</Label>
-                    <Input
-                      id="register-password"
+                    
+                    <FormField
                       name="password"
+                      label="Password"
                       type="password"
-                      value={formData.password}
-                      onChange={handleInputChange}
                       required
                       disabled={isLoading}
-                      data-testid="input-register-password"
+                      description="Must be at least 8 characters with uppercase, lowercase, and number"
+                      testId="input-register-password"
                     />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="confirm-password">Confirm Password</Label>
-                    <Input
-                      id="confirm-password"
+                    
+                    <FormField
                       name="confirmPassword"
+                      label="Confirm Password"
                       type="password"
-                      value={formData.confirmPassword}
-                      onChange={handleInputChange}
                       required
                       disabled={isLoading}
-                      data-testid="input-confirm-password"
+                      testId="input-confirm-password"
                     />
-                  </div>
-                  
-                  <Button 
-                    type="submit" 
-                    className="w-full" 
-                    disabled={isLoading}
-                    data-testid="button-sign-up"
-                  >
-                    {isLoading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating Account...
-                      </>
-                    ) : (
-                      'Create Account'
-                    )}
-                  </Button>
-                </form>
+                    
+                    <Button 
+                      type="submit" 
+                      className="w-full" 
+                      disabled={isLoading || registerForm.formState.isSubmitting}
+                      data-testid="button-sign-up"
+                    >
+                      {isLoading || registerForm.formState.isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Creating Account...
+                        </>
+                      ) : (
+                        'Create Account'
+                      )}
+                    </Button>
+                  </form>
+                </Form>
               </TabsContent>
             </Tabs>
           </CardContent>

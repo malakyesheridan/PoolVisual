@@ -122,11 +122,23 @@ export function calculateFitScale(
   padding = 0.98
 ): number {
   if (imgW <= 0 || imgH <= 0 || containerW <= 0 || containerH <= 0) {
+    console.log('[calculateFitScale] Invalid dimensions:', { imgW, imgH, containerW, containerH });
     return 1;
   }
   
-  // Always start at 100% zoom for calibration compatibility
-  return 1.0;
+  // Calculate scale to fit image in container with padding
+  const scaleX = (containerW * padding) / imgW;
+  const scaleY = (containerH * padding) / imgH;
+  
+  // Use the smaller scale to ensure the image fits completely
+  const finalScale = Math.min(scaleX, scaleY);
+  
+  console.log('[calculateFitScale] Calculated scale:', { 
+    imgW, imgH, containerW, containerH, padding,
+    scaleX, scaleY, finalScale 
+  });
+  
+  return finalScale;
 }
 
 // Calculate center pan to position image in container
@@ -137,10 +149,15 @@ export function calculateCenterPan(
   containerH: number,
   scale: number
 ): { panX: number; panY: number } {
-  return {
-    panX: (containerW - imgW * scale) / 2,
-    panY: (containerH - imgH * scale) / 2
-  };
+  const panX = (containerW - imgW * scale) / 2;
+  const panY = (containerH - imgH * scale) / 2;
+  
+  console.log('[calculateCenterPan] Calculated pan:', { 
+    imgW, imgH, containerW, containerH, scale,
+    panX, panY 
+  });
+  
+  return { panX, panY };
 }
 
 // Zoom centered at a specific point
@@ -331,10 +348,10 @@ function pointToLineDistance(point: Point, lineStart: Point, lineEnd: Point): nu
   const dy = point.y - yy;
   return Math.sqrt(dx * dx + dy * dy);
 }
-export function offsetPolygonInward(points: any[], distance: number): any[] {
+export function offsetPolygonInward(points: Array<{ x: number; y: number; kind?: string }>, distance: number): Array<{ x: number; y: number; kind: string }> {
   if (points.length < 3) return [];
   
-  const offsetPoints: any[] = [];
+  const offsetPoints: Array<{ x: number; y: number; kind: string }> = [];
   
   for (let i = 0; i < points.length; i++) {
     const prev = points[(i - 1 + points.length) % points.length];
@@ -357,7 +374,11 @@ export function offsetPolygonInward(points: any[], distance: number): any[] {
     
     const len = Math.sqrt(perpX * perpX + perpY * perpY);
     if (len === 0) {
-      offsetPoints.push(curr);
+      offsetPoints.push({
+        x: curr.x,
+        y: curr.y,
+        kind: curr.kind || 'corner'
+      });
       continue;
     }
     
@@ -749,4 +770,82 @@ export function testCompleteCalibrationSystem(): void {
   });
   
   console.log('[COMPLETE SYSTEM TEST] Complete system test completed successfully!');
+}
+
+/**
+ * Apply curve smoothing to a set of points
+ * Uses a simple smoothing algorithm that creates smooth curves between points
+ * 
+ * @param points - Array of points to smooth
+ * @param intensity - Smoothing intensity (0-100, where 100 is maximum smoothing)
+ * @returns Array of smoothed points
+ */
+export function applyCurveSmoothing(points: Point[], intensity: number): Point[] {
+  if (points.length < 3) return points; // Need at least 3 points for smoothing
+  
+  const smoothingFactor = intensity / 100; // Convert to 0-1 range
+  const smoothedPoints: Point[] = [];
+  
+  // Always keep the first point
+  smoothedPoints.push(points[0]);
+  
+  // Smooth intermediate points
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    
+    // Calculate smoothed position using weighted average
+    const smoothedX = curr.x + smoothingFactor * ((prev.x + next.x) / 2 - curr.x);
+    const smoothedY = curr.y + smoothingFactor * ((prev.y + next.y) / 2 - curr.y);
+    
+    smoothedPoints.push({ x: smoothedX, y: smoothedY });
+  }
+  
+  // Always keep the last point
+  smoothedPoints.push(points[points.length - 1]);
+  
+  return smoothedPoints;
+}
+
+/**
+ * Generate additional points between existing points to create smoother curves
+ * This creates more intermediate points for better curve representation
+ * 
+ * @param points - Array of points
+ * @param intensity - Curve intensity (0-100)
+ * @returns Array of points with additional intermediate points
+ */
+export function generateCurvePoints(points: Point[], intensity: number): Point[] {
+  if (points.length < 2) return points;
+  
+  const curveFactor = intensity / 100;
+  const result: Point[] = [];
+  
+  // Always include the first point
+  result.push(points[0]);
+  
+  // Generate intermediate points between each pair
+  for (let i = 0; i < points.length - 1; i++) {
+    const current = points[i];
+    const next = points[i + 1];
+    
+    // Calculate number of intermediate points based on intensity
+    const numIntermediate = Math.floor(curveFactor * 3); // 0-3 intermediate points
+    
+    for (let j = 1; j <= numIntermediate; j++) {
+      const t = j / (numIntermediate + 1); // Interpolation factor
+      
+      // Linear interpolation with slight curve bias
+      const x = current.x + t * (next.x - current.x);
+      const y = current.y + t * (next.y - current.y);
+      
+      result.push({ x, y });
+    }
+    
+    // Add the next point
+    result.push(next);
+  }
+  
+  return result;
 }

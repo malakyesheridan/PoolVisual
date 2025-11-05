@@ -17,12 +17,11 @@ import Jobs from "@/pages/jobs";
 import JobDetail from "@/pages/job-detail";
 import CanvasEditorPage from "@/pages/CanvasEditorPage";
 import CanvasEditorV2Page from "@/pages/CanvasEditorV2Page";
-import NewEditorPage from "@/new_editor/NewEditorPage";
+import { NewEditor } from "@/new_editor/NewEditor";
 import JobsNew from "@/pages/jobs-new";
 import Quotes from "@/pages/quotes";
 import ShareQuote from "@/pages/share-quote";
 import Settings from "@/pages/settings";
-import ProjectCanvasEditorPage from "@/pages/ProjectCanvasEditorPage";
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -88,21 +87,27 @@ function ProtectedRouter() {
             </ProtectedRoute>
           </Route>
           
-          <Route path="/jobs/:id">
+          <Route path="/jobs/:jobId/photo/:photoId/edit">
             <ProtectedRoute>
-              <JobDetail />
+              <NewEditor />
             </ProtectedRoute>
           </Route>
           
-          <Route path="/jobs/:jobId/photo/:photoId">
+          <Route path="/jobs/:jobId/photo/:photoId/edit-canvas">
+            <ProtectedRoute>
+              <NewEditor />
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/jobs/:jobId/photo/:photoId/view">
             <ProtectedRoute>
               <CanvasEditorPage />
             </ProtectedRoute>
           </Route>
           
-          <Route path="/jobs/:jobId/photo/:photoId/edit">
+          <Route path="/jobs/:id">
             <ProtectedRoute>
-              <ProjectCanvasEditorPage />
+              <JobDetail />
             </ProtectedRoute>
           </Route>
           
@@ -120,7 +125,7 @@ function ProtectedRouter() {
           
           <Route path="/new-editor">
             <ProtectedRoute>
-              <NewEditorPage />
+              <NewEditor />
             </ProtectedRoute>
           </Route>
           

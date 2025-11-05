@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="125" height="175" viewBox="0 0 125 175" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="125" height="175" fill="#f8f9fa"/>
+  
+  <!-- Oak Tree Trunk -->
+  <rect x="50" y="75" width="25" height="100" fill="#8B4513" rx="12"/>
+  
+  <!-- Oak Tree Canopy -->
+  <g fill="#228B22">
+    <!-- Main canopy -->
+    <ellipse cx="62" cy="50" rx="40" ry="25"/>
+    <ellipse cx="45" cy="45" rx="25" ry="20"/>
+    <ellipse cx="80" cy="45" rx="25" ry="20"/>
+  </g>
+  
+  <!-- Ground shadow -->
+  <ellipse cx="62" cy="170" rx="35" ry="5" fill="#000000" opacity="0.2"/>
+</svg>

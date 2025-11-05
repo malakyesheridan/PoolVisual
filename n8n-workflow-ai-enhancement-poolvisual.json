@@ -1,0 +1,395 @@
+{
+  "name": "AI Enhancement Engine (PoolVisual)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "enhancement",
+        "options": {
+          "responseData": "allEntries",
+          "responseCode": 200
+        }
+      },
+      "id": "WebhookEnhancement",
+      "name": "Enhancement Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const body = $json;\n// Basic validation\nif (!body.imageUrl) {\n  throw new Error('imageUrl is required');\n}\nreturn [{ json: body }];"
+      },
+      "id": "NormalizeInput",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"jobId\": $json.jobId } }}",
+        "options": {}
+      },
+      "id": "WebhookResponse",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [420, 480]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "text": "You are an image analyst. Return a short, factual scene analysis for a backyard real estate photo. Describe only what exists: camera angle, perspective lines, lighting direction, main structures (house, fence, trees), materials (paving, grass), free areas, and potential occlusions. Keep it under 120 words, no design changes, no guesses.",
+            "type": "system"
+          },
+          {
+            "text": "Analyze this image: {{$json.imageUrl}}",
+            "type": "user"
+          }
+        ]
+      },
+      "id": "AnalyzeImage",
+      "name": "Analyze image",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "credentials": {
+        "openAiApi": {
+          "id": "OpenAI API"
+        }
+      },
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const mode = ($json.mode || 'add_decoration').toLowerCase();\nconst analysis = $items('Analyze image')[0].json.data?.[0]?.choices?.[0]?.message?.content\n  || $items('Analyze image')[0].json.choices?.[0]?.message?.content\n  || 'No analysis';\n\nconst opt = $json.options || {};\nconst pool = opt.pool || {};\nconst decor = opt.decor || {};\n\nlet taskTitle, taskDetails = [], hardConstraints = [], softConstraints = [];\nconst guardrails = [\n  'Preserve camera position, horizon, vanishing lines, building geometry, fences and trees.',\n  'Do not move, add or remove structural elements (fences, walls, windows) unless explicitly requested.',\n  'Match the real sunlight direction and color temperature from the photo.',\n  'Respect occlusions; never overlap or block doors or windows.',\n  'Scale additions to correct perspective; cast physically plausible shadows.'\n];\n\nif (mode === 'add_pool') {\n  const shape = pool.shape || 'rectangle';\n  const L = pool.length_m || 6;\n  const W = pool.width_m || 3;\n  const orient = pool.orientation || 'parallel_to_fence';\n  const coping = pool.coping || 'light cream limestone';\n  const tone = pool.water_tone || 'light blue';\n  const pos = pool.position_hint || 'center-left lawn area';\n\n  taskTitle = 'ADD POOL';\n  taskDetails = [\n    `Add an in-ground ${shape} pool, ~${L}m x ~${W}m, oriented ${orient}, positioned in ${pos}.`,\n    `Surround with ${coping} coping/paving blended to existing patio; align grout to existing pattern.`,\n    `Water surface ${tone} with realistic refraction/caustics; add subtle reflections on adjacent paving.`,\n    'Keep all other elements unchanged.'\n  ];\n  hardConstraints = [\n    'Do not alter house geometry, fence line, or tree positions.',\n    'Do not change camera angle or lens.',\n    'No extra furniture or landscape changes beyond the pool+copping.'\n  ];\n  softConstraints = [\n    'Use clean straight lines; optional step/ledge hints minimal and realistic.',\n    'Minimize grout distortion; match scene scale.'\n  ];\n} else {\n  const zones = (decor.zones || ['poolside_near_house']).join(', ');\n  const items = (decor.items || ['planters:3','chaise:1','side_table:1','lantern:1']).join(', ');\n  const style = decor.style || 'contemporary coastal';\n  const materials = (decor.materials || ['powder coated white','teak','cream cushions']).join(', ');\n  const avoid = (decor.avoid || ['blocking_doors','covering_existing_flowerbeds']).join(', ');\n\n  taskTitle = 'ADD DECORATION';\n  taskDetails = [\n    `Add outdoor decor in zones: ${zones}.`,\n    `Requested items: ${items}.`,\n    `Style: ${style}. Materials/finishes: ${materials}.`,\n    `Avoid: ${avoid}. Keep scene layout and structure intact.`\n  ];\n  hardConstraints = [\n    'Do not move existing furniture, plants, walls, or windows.',\n    'No changes to paving color/texture.',\n    'No new fences or architecture.'\n  ];\n  softConstraints = [\n    'Cast soft, physically plausible shadows aligned with existing sun.',\n    'Respect circulation paths; keep doors and sliders clear.'\n  ];\n}\n\nreturn [{ json: { mode, analysis, taskTitle, taskDetails, guardrails, hardConstraints, softConstraints }}];"
+      },
+      "id": "PrepareTask",
+      "name": "Prepare Task",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [860, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "create",
+        "model": "gpt-4o-mini",
+        "messages": [
+          {
+            "type": "system",
+            "text": "You turn photo analysis + task details into a precise, *image-edit* prompt. Forbid any changes to camera, composition or structure unless explicitly asked. Output a single concise prompt string."
+          },
+          {
+            "type": "user",
+            "text": "## Task\\n{{ $json.taskTitle }}\\n\\n## Scene Analysis (facts only)\\n{{ $json.analysis }}\\n\\n## Requirements\\n- {{ $json.taskDetails[0] }}\\n- {{ $json.taskDetails[1] }}\\n- {{ $json.taskDetails[2] }}\\n- {{ $json.taskDetails[3] || '' }}\\n\\n## Guardrails (hard)\\n- {{ $json.guardrails[0] }}\\n- {{ $json.guardrails[1] }}\\n- {{ $json.guardrails[2] }}\\n- {{ $json.hardConstraints[0] }}\\n- {{ $json.hardConstraints[1] }}\\n- {{ $json.hardConstraints[2] || '' }}\\n\\n## Guardrails (soft)\\n- {{ $json.softConstraints[0] }}\\n- {{ $json.softConstraints[1] || '' }}\\n\\nReturn only the final enhancement prompt, no preface."
+          }
+        ]
+      },
+      "id": "GeneratePrompt",
+      "name": "Generate Enhancement Prompt",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 4,
+      "credentials": {
+        "openAiApi": {
+          "id": "OpenAI API"
+        }
+      },
+      "position": [1080, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SEEDREAM_BASE_URL || \"https://api.seedream.dev/v1/jobs\" }}",
+        "options": {
+          "response": "json"
+        },
+        "jsonParameters": true,
+        "sendHeaders": true,
+        "headerParametersJson": "{ \"Authorization\": \"Bearer {{$env.SEEDREAM_API_KEY}}\", \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "bodyParametersJson": "={\n  \"image\": \"{{$json.imageUrl}}\",\n  \"prompt\": \"{{ $items('Generate Enhancement Prompt')[0].json.data?.[0]?.choices?.[0]?.message?.content || $items('Generate Enhancement Prompt')[0].json.choices?.[0]?.message?.content }}\",\n  \"variants\": {{$json.options?.variants || 1}},\n  \"seed\": {{$json.options?.seed || null}},\n  \"output_format\": \"png\"\n}"
+      },
+      "id": "CreateJob",
+      "name": "Generate Image (Seedream)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1300, 300]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "Wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1,
+      "position": [1500, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.SEEDREAM_BASE_URL || \"https://api.seedream.dev/v1/jobs\" }}/{{$item(0).$node[\"CreateJob\"].json.id}}",
+        "options": {
+          "response": "json"
+        }
+      },
+      "id": "GetStatus",
+      "name": "Get Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "switchValues": {
+          "number": [],
+          "string": [
+            {
+              "value1": "={{$json.status}}",
+              "value2": "finished"
+            },
+            {
+              "value1": "={{$json.status}}",
+              "value2": "in_progress"
+            }
+          ]
+        }
+      },
+      "id": "Switch",
+      "name": "Switch (finished / in_progress / error)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 2,
+      "position": [1880, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const r = $json.result || {};\nconst outputs = Array.isArray(r.outputs) ? r.outputs : [];\nconst urls = outputs.map(o => o.url).filter(Boolean);\nreturn [{ json: { urls } }];"
+      },
+      "id": "ExtractUrls",
+      "name": "Extract URLs",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [2100, 160]
+    },
+    {
+      "parameters": {
+        "functionCode": "// HMAC hex of timestamp+payload\nconst crypto = require('crypto');\nconst secret = $env.CALLBACK_SECRET || $json.callbackSecret;\nconst payload = JSON.stringify({\n  jobId: $json.jobId,\n  status: 'completed',\n  urls: $items('Extract URLs')[0].json.urls\n});\nconst ts = Math.floor(Date.now()/1000).toString();\nconst sig = crypto.createHmac('sha256', secret).update(ts + payload).digest('hex');\nreturn [{ json: { timestamp: ts, signature: sig, payload } }];"
+      },
+      "id": "SignSuccess",
+      "name": "Generate Callback Signature",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [2320, 160]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.callbackUrl}}",
+        "options": {
+          "response": "json"
+        },
+        "sendHeaders": true,
+        "jsonParameters": true,
+        "headerParametersJson": "{ \"x-timestamp\": \"{{$item(0).$node['Generate Callback Signature'].json.timestamp}}\", \"x-signature\": \"{{$item(0).$node['Generate Callback Signature'].json.signature}}\", \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "bodyParametersJson": "={{$item(0).$node['Generate Callback Signature'].json.payload}}"
+      },
+      "id": "CallbackSuccess",
+      "name": "Callback - Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2520, 160]
+    },
+    {
+      "parameters": {
+        "functionCode": "const crypto = require('crypto');\nconst secret = $env.CALLBACK_SECRET || $json.callbackSecret;\nconst payload = JSON.stringify({ jobId: $json.jobId, status: 'failed', error: $json.error || 'UNKNOWN' });\nconst ts = Math.floor(Date.now()/1000).toString();\nconst sig = crypto.createHmac('sha256', secret).update(ts + payload).digest('hex');\nreturn [{ json: { timestamp: ts, signature: sig, payload } }];"
+      },
+      "id": "SignError",
+      "name": "Generate Error Callback Signature",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 2,
+      "position": [2100, 460]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.callbackUrl}}",
+        "options": {
+          "response": "json"
+        },
+        "sendHeaders": true,
+        "jsonParameters": true,
+        "headerParametersJson": "{ \"x-timestamp\": \"{{$item(0).$node['Generate Error Callback Signature'].json.timestamp}}\", \"x-signature\": \"{{$item(0).$node['Generate Error Callback Signature'].json.signature}}\", \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "bodyParametersJson": "={{$item(0).$node['Generate Error Callback Signature'].json.payload}}"
+      },
+      "id": "CallbackError",
+      "name": "Callback - Error",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2320, 460]
+    }
+  ],
+  "connections": {
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Analyze image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhancement Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze image": {
+      "main": [
+        [
+          {
+            "node": "Prepare Task",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Task": {
+      "main": [
+        [
+          {
+            "node": "Generate Enhancement Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Enhancement Prompt": {
+      "main": [
+        [
+          {
+            "node": "Generate Image (Seedream)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image (Seedream)": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Status": {
+      "main": [
+        [
+          {
+            "node": "Switch (finished / in_progress / error)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch (finished / in_progress / error)": {
+      "main": [
+        [
+          {
+            "node": "Extract URLs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Error Callback Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract URLs": {
+      "main": [
+        [
+          {
+            "node": "Generate Callback Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Callback Signature": {
+      "main": [
+        [
+          {
+            "node": "Callback - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Error Callback Signature": {
+      "main": [
+        [
+          {
+            "node": "Callback - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Perth"
+  },
+  "staticData": null,
+  "pinData": {}
+}
+

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="300" height="200" fill="url(#bg)" stroke="#dee2e6" stroke-width="2"/>
+  
+  <!-- Pool shape based on category -->
+  
+        <rect x="50" y="60" width="200" height="80" fill="#4A90E2" opacity="0.7" stroke="#4A90E2" stroke-width="2"/>
+        <rect x="60" y="70" width="180" height="60" fill="#4A90E2" opacity="0.3"/>
+      
+  
+  <!-- Template name -->
+  <text x="150" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#495057">
+    Standard Rectangular Pool
+  </text>
+  
+  <!-- Category badge -->
+  <rect x="10" y="10" width="80" height="25" rx="12" fill="#4A90E2" opacity="0.9"/>
+  <text x="50" y="27" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="white">
+    RECTANGULAR
+  </text>
+</svg>

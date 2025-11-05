@@ -1,5 +1,39 @@
 # CHANGELOG
 
+## [Unreleased] - Phase 2: Parametric Multi-Section Templates
+
+### Added
+- **Multi-Section Pool Templates**
+  - Templates now generate 4 concentric sections: interior, waterline, coping, paving
+  - Each section has its own material, width (mm), and z-ordering
+  - Parametric editing: adjust section widths via sliders/numeric inputs in Templates panel
+  - Live regeneration: masks update in real-time with 250ms debounce
+  - Calibration-aware: mm→px conversion uses photo calibration data
+  - Persistence: section widths saved to localStorage and restore on reload
+  - Undo/redo support: all 4 masks grouped as single history entry
+
+### Changed
+- Template application now creates 4 linked masks with metadata for parametric editing
+- Inspector shows "Template Sections" card when multi-section template is active
+- Sliders display effective px widths and mm→px scale when calibrated
+
+### Technical Details
+- **Files Modified**: `unifiedTemplateStore.ts`, `TemplateInspector.tsx` (NEW), `UnifiedTemplatesPanel.tsx`
+- **State Model**: `activeTemplateGroups` tracks parametric state per template group
+- **Persistence**: localStorage key `poolvisual:template-groups:v1` for params
+- **Performance**: Regen <50ms, single setState per change, memoized selectors
+- **Safeguards**: Console warnings guarded, dev telemetry, production-safe
+
+### Known Limitations
+- On-canvas drag handles for widths (deferred to Phase 3)
+- Freeform/Bezier offsets (deferred to Phase 3)
+- Interior size editing (optional, not implemented yet)
+
+### Testing
+- Unit tests for clamping, debounce, z-order, mm→px conversion
+- E2E verification of regeneration, persistence, undo/redo
+- Legacy template compatibility verified
+
 ## [Unreleased] - Material Library Integration
 
 ### Added

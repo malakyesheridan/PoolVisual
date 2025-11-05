@@ -52,7 +52,10 @@ export function MaskManagementPanel({ className = '' }: MaskManagementPanelProps
         if (selectedMask && !selectedMask.isLocked) {
           const maskName = selectedMask.name || `Mask ${maskArray.findIndex(m => m.id === selectedId) + 1}`;
           if (window.confirm(`Are you sure you want to delete "${maskName}"? This action cannot be undone.`)) {
-            DELETE(selectedId);
+            DELETE(selectedId).catch(error => {
+              console.error('Failed to delete mask:', error);
+              // Could show toast notification here
+            });
           }
         }
       }

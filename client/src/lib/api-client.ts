@@ -25,7 +25,23 @@ class ApiClient {
     if (!response.ok) {
       const ct = response.headers.get("content-type") || "";
       const body = ct.includes("application/json") ? await response.json() : await response.text();
-      throw new Error(typeof body === "string" ? body : body?.error || "Request failed");
+      console.error(`API Error ${response.status}:`, body);
+      
+      // Handle validation errors with detailed messages
+      if (response.status === 400 && typeof body === "object" && body.errors) {
+        const errorMessages = body.errors.map((err: any) => `${err.path?.join('.')}: ${err.message}`).join(', ');
+        const error = new Error(`Validation error: ${errorMessages}`);
+        (error as any).status = response.status;
+        (error as any).statusCode = response.status;
+        throw error;
+      }
+      
+      const errorMessage = typeof body === "string" ? body : body?.message || body?.error || "Request failed";
+      const error = new Error(errorMessage);
+      // CRITICAL FIX: Preserve status code for proper error handling
+      (error as any).status = response.status;
+      (error as any).statusCode = response.status;
+      throw error;
     }
 
     // Handle no-content responses
@@ -54,6 +70,17 @@ class ApiClient {
   // Organizations
   async getMyOrgs() {
     return this.request<any[]>('/me/orgs');
+  }
+
+  async getOrgMember(userId: string, orgId: string) {
+    return this.request<any>(`/orgs/${orgId}/members/${userId}`);
+  }
+
+  async joinOrg(orgId: string, role?: string) {
+    return this.request<any>(`/orgs/${orgId}/join`, {
+      method: 'POST',
+      body: JSON.stringify({ role }),
+    });
   }
 
   async createOrg(data: any) {
@@ -123,6 +150,19 @@ class ApiClient {
 
   async getPhoto(id: string) {
     return this.request<any>(`/photos/${id}`);
+  }
+
+  async updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }) {
+    return this.request<any>(`/photos/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePhoto(id: string) {
+    return this.request(`/photos/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   async getJobPhotos(jobId: string) {
@@ -200,8 +240,18 @@ class ApiClient {
     });
   }
 
+  async generateQuoteFromJob(jobId: string) {
+    return this.request<any>(`/quotes/generate-from-job/${jobId}`, {
+      method: 'POST',
+    });
+  }
+
   async getQuote(id: string) {
     return this.request<any>(`/quotes/${id}`);
+  }
+
+  async getQuoteItems(quoteId: string) {
+    return this.request<any[]>(`/quotes/${quoteId}/items`);
   }
 
   async getQuotes(orgId: string, filters?: { status?: string; jobId?: string }) {
@@ -221,7 +271,7 @@ class ApiClient {
 
   async updateQuoteItem(quoteId: string, itemId: string, data: any) {
     return this.request<any>(`/quotes/${quoteId}/items/${itemId}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(data),
     });
   }
@@ -245,10 +295,55 @@ class ApiClient {
     });
   }
 
-  async acceptQuote(id: string) {
-    return this.request<{ clientSecret: string; depositAmount: number }>(`/quotes/${id}/accept`, {
+  async acceptQuote(id: string, clientEmail?: string) {
+    return this.request<{ clientSecret: string; amount: number; currency: string }>(`/quotes/${id}/accept`, {
       method: 'POST',
+      body: JSON.stringify({ clientEmail }),
     });
+  }
+
+  async generateQuotePDF(id: string, options?: { watermark?: boolean; terms?: boolean; message?: string }) {
+    const params = new URLSearchParams();
+    if (options?.watermark) params.append('watermark', 'true');
+    if (options?.terms) params.append('terms', 'true');
+    if (options?.message) params.append('message', options.message);
+    
+    const queryString = params.toString();
+    const url = `/quotes/${id}/pdf${queryString ? `?${queryString}` : ''}`;
+    
+    return this.request<Blob>(url, {
+      method: 'GET',
+      responseType: 'blob'
+    });
+  }
+
+  async previewQuotePDF(id: string) {
+    return this.request<{ pdf: string; filename: string }>(`/quotes/${id}/pdf-preview`, {
+      method: 'GET',
+    });
+  }
+
+  // Canvas-Quote Integration
+  async addMeasurementsToQuote(jobId: string, measurements: any[]) {
+    return this.request<any>(`/quotes/add-measurements/${jobId}`, {
+      method: 'POST',
+      body: JSON.stringify({ measurements }),
+    });
+  }
+
+  async getQuoteItemsWithMeasurements(quoteId: string) {
+    return this.request<any[]>(`/quotes/${quoteId}/items-with-measurements`);
+  }
+
+  async updateQuoteItemFromCanvas(quoteId: string, itemId: string, measurementData: any) {
+    return this.request<any>(`/quotes/${quoteId}/items/${itemId}/update-from-canvas`, {
+      method: 'PUT',
+      body: JSON.stringify({ measurementData }),
+    });
+  }
+
+  async getQuoteItemsWithSources(quoteId: string) {
+    return this.request<any>(`/quotes/${quoteId}/items-with-sources`);
   }
 
   // Public endpoints

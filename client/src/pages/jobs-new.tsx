@@ -2,82 +2,92 @@ import React, { useState } from 'react';
 import { useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
-import { useAuthStore } from "@/stores/auth-store";
 import { queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { toast } from "@/lib/toast";
 import { ArrowLeft, User, MapPin, Phone, Mail } from "lucide-react";
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { jobSchema, type JobFormData } from '@/lib/form-validation';
+import { Form } from '@/components/ui/form';
+import { FormField } from '@/components/common/FormField';
+import { FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function JobsNew() {
   const [, navigate] = useLocation();
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
-    clientName: '',
-    clientPhone: '',
-    clientEmail: '',
-    address: '',
-  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { toast } = useToast();
+  const form = useForm<JobFormData>({
+    resolver: zodResolver(jobSchema),
+    defaultValues: {
+      clientName: '',
+      clientPhone: '',
+      clientEmail: '',
+      address: '',
+      orgId: ''
+    }
+  });
 
   const { data: orgs = [] } = useQuery({
     queryKey: ['/api/me/orgs'],
     queryFn: () => apiClient.getMyOrgs(),
   });
 
+  console.log('Fetched orgs:', orgs);
+
+  // Redirect to organization creation if no organizations exist
+  React.useEffect(() => {
+    if (orgs.length === 0) {
+      navigate('/orgs/new');
+    }
+  }, [orgs, navigate]);
+
   // Auto-select first org if only one exists
   React.useEffect(() => {
-    if (orgs.length === 1 && !selectedOrgId) {
-      setSelectedOrgId(orgs[0].id);
+    if (orgs.length === 1 && !form.getValues('orgId')) {
+      const orgId = orgs[0].id;
+      setSelectedOrgId(orgId);
+      form.setValue('orgId', orgId);
     }
-  }, [orgs, selectedOrgId]);
+  }, [orgs, form]);
+
 
   const createJobMutation = useMutation({
     mutationFn: (data: any) => apiClient.createJob(data),
     onSuccess: (job) => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
-      toast({
-        title: "Job created",
-        description: "The job has been created successfully.",
+      toast.success("Job created successfully", {
+        description: `Job for ${job.clientName} has been created.`
       });
       navigate(`/jobs/${job.id}`);
     },
-    onError: (error) => {
-      toast({
-        title: "Error creating job",
-        description: error.message,
-        variant: "destructive",
-      });
+    onError: (error: any) => {
+      console.error('Job creation error:', error);
+      console.error('Error details:', error.message);
+      toast.error(error.message || 'An unexpected error occurred. Please try again.');
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = (data: JobFormData) => {
+    setIsSubmitting(true);
     
-    if (!selectedOrgId) {
-      toast({
-        title: "Organization required",
-        description: "Please select an organization for this job.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const jobData = {
-      ...formData,
-      orgId: selectedOrgId,
-      status: 'new'
+      clientName: data.clientName,
+      clientPhone: data.clientPhone?.trim() || null,
+      clientEmail: data.clientEmail?.trim() || null,
+      address: data.address?.trim() || null,
+      orgId: data.orgId,
+      status: 'new' as const,
     };
 
-    createJobMutation.mutate(jobData);
-  };
-
-  const handleInputChange = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    createJobMutation.mutate(jobData, {
+      onSettled: () => {
+        setIsSubmitting(false);
+      }
+    });
   };
 
   return (
@@ -114,127 +124,106 @@ export default function JobsNew() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Client Name */}
-              <div>
-                <Label htmlFor="clientName" className="text-sm font-medium">
-                  Client Name *
-                </Label>
-                <Input
-                  id="clientName"
-                  value={formData.clientName}
-                  onChange={(e) => handleInputChange('clientName', e.target.value)}
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+                <FormField
+                  name="clientName"
+                  label="Client Name"
                   placeholder="Mrs. Johnson"
                   required
-                  className="mt-1"
-                  data-testid="input-client-name"
+                  disabled={isSubmitting || createJobMutation.isPending}
                 />
-              </div>
 
-              {/* Contact Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="clientPhone" className="text-sm font-medium">
-                    Phone Number
-                  </Label>
-                  <div className="relative mt-1">
-                    <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      id="clientPhone"
-                      type="tel"
-                      value={formData.clientPhone}
-                      onChange={(e) => handleInputChange('clientPhone', e.target.value)}
-                      placeholder="+61 400 123 456"
-                      className="pl-10"
-                      data-testid="input-client-phone"
-                    />
-                  </div>
-                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField
+                    name="clientPhone"
+                    label="Phone Number"
+                    type="tel"
+                    placeholder="+61 400 123 456"
+                    icon={<Phone className="w-4 h-4" />}
+                    disabled={isSubmitting || createJobMutation.isPending}
+                  />
 
-                <div>
-                  <Label htmlFor="clientEmail" className="text-sm font-medium">
-                    Email Address
-                  </Label>
-                  <div className="relative mt-1">
-                    <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <Input
-                      id="clientEmail"
-                      type="email"
-                      value={formData.clientEmail}
-                      onChange={(e) => handleInputChange('clientEmail', e.target.value)}
-                      placeholder="client@example.com"
-                      className="pl-10"
-                      data-testid="input-client-email"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Address */}
-              <div>
-                <Label htmlFor="address" className="text-sm font-medium">
-                  Property Address
-                </Label>
-                <div className="relative mt-1">
-                  <MapPin className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                  <Textarea
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => handleInputChange('address', e.target.value)}
-                    placeholder="123 Ocean View Drive, Bondi Beach NSW 2026"
-                    rows={3}
-                    className="pl-10"
-                    data-testid="textarea-address"
+                  <FormField
+                    name="clientEmail"
+                    label="Email Address"
+                    type="email"
+                    placeholder="client@example.com"
+                    icon={<Mail className="w-4 h-4" />}
+                    disabled={isSubmitting || createJobMutation.isPending}
                   />
                 </div>
-              </div>
 
-              {/* Organization Selection */}
-              {orgs.length > 1 && (
-                <div>
-                  <Label htmlFor="organization" className="text-sm font-medium">
-                    Organization *
-                  </Label>
-                  <select
-                    id="organization"
-                    value={selectedOrgId || ''}
-                    onChange={(e) => setSelectedOrgId(e.target.value)}
-                    className="mt-1 w-full px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    required
-                    data-testid="select-organization"
+                <FormField
+                  name="address"
+                  label="Property Address"
+                  type="textarea"
+                  placeholder="123 Ocean View Drive, Bondi Beach NSW 2026"
+                  icon={<MapPin className="w-4 h-4" />}
+                  rows={3}
+                  disabled={isSubmitting || createJobMutation.isPending}
+                />
+
+                {orgs.length > 1 && (
+                  <FormItem>
+                    <FormLabel>
+                      Organization <span className="text-red-500 ml-1">*</span>
+                    </FormLabel>
+                    <FormControl>
+                      <Controller
+                        name="orgId"
+                        control={form.control}
+                        render={({ field }) => (
+                          <Select
+                            value={field.value}
+                            onValueChange={(value) => {
+                              field.onChange(value);
+                              setSelectedOrgId(value);
+                            }}
+                            disabled={isSubmitting || createJobMutation.isPending}
+                          >
+                            <SelectTrigger data-testid="select-organization">
+                              <SelectValue placeholder="Select an organization" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {orgs.map((org) => (
+                                <SelectItem key={org.id} value={org.id}>
+                                  {org.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex space-x-4 pt-6 border-t border-slate-200">
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate('/jobs')}
+                    className="flex-1"
+                    disabled={isSubmitting || createJobMutation.isPending}
+                    data-testid="button-cancel"
                   >
-                    <option value="">Select an organization</option>
-                    {orgs.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {org.name}
-                      </option>
-                    ))}
-                  </select>
+                    Cancel
+                  </Button>
+                  
+                  <Button 
+                    type="submit"
+                    className="flex-1"
+                    disabled={isSubmitting || createJobMutation.isPending}
+                    data-testid="button-create-job"
+                  >
+                    {isSubmitting || createJobMutation.isPending ? 'Creating...' : 'Create Job'}
+                  </Button>
                 </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex space-x-4 pt-6 border-t border-slate-200">
-                <Button 
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate('/jobs')}
-                  className="flex-1"
-                  data-testid="button-cancel"
-                >
-                  Cancel
-                </Button>
-                
-                <Button 
-                  type="submit"
-                  className="flex-1"
-                  disabled={createJobMutation.isPending}
-                  data-testid="button-create-job"
-                >
-                  {createJobMutation.isPending ? 'Creating...' : 'Create Job'}
-                </Button>
-              </div>
-            </form>
+              </form>
+            </Form>
           </CardContent>
         </Card>
 

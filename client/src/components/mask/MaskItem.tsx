@@ -62,7 +62,10 @@ export function MaskItem({ mask, index }: MaskItemProps) {
 
   const handleDelete = () => {
     if (window.confirm(`Are you sure you want to delete "${displayName}"? This action cannot be undone.`)) {
-      DELETE(mask.id);
+      DELETE(mask.id).catch(error => {
+        console.error('Failed to delete mask:', error);
+        // Could show toast notification here
+      });
     }
     setShowDropdown(false);
   };

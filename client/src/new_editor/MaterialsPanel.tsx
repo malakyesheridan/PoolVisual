@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useMaskStore } from '../maskcore/store';
 import { ensureLoaded, getAll, Material, getSourceInfo } from '../materials/registry';
+import { getProxiedTextureUrl } from '../lib/textureProxy';
+import { createPoolSectionOffset } from './poolSectionOffset';
+import { useEditorStore } from './store';
+import { validateInteriorMask } from './pools/validation';
+import { BatchSectionCreator } from './pools/BatchSectionCreator';
+import { createJob } from '../services/aiEnhancement';
+import { useEnhancementStore } from '../state/useEnhancementStore';
+import { useJobStream } from '../hooks/useJobStream';
 
 export function MaterialsPanel() {
   const masks = useMaskStore(state => state.masks);
@@ -11,6 +19,13 @@ export function MaterialsPanel() {
   const [materials, setMaterials] = useState<Record<string, Material>>({});
   const [loading, setLoading] = useState(true);
   const [sourceInfo, setSourceInfo] = useState<{ type: string; url?: string; error?: string }>({ type: 'loading' });
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  
+  // AI Enhancement integration
+  const upsertJob = useEnhancementStore(s => s.upsertJob);
+  const [activeJobId, setActiveJobId] = useState<string | undefined>(undefined);
+  useJobStream(activeJobId);
 
   // Load materials from unified registry
   useEffect(() => {
@@ -104,6 +119,114 @@ export function MaterialsPanel() {
     console.log('[ResetMaterialSettings]', { maskId: selectedId });
   };
 
+  // Pool section handlers
+  const CREATE_MASK = useMaskStore(state => state.CREATE_MASK);
+  const { calibration } = useEditorStore();
+  
+  // Memoize pool status check - only allow sections on root pool interior (not child sections)
+  const isPoolInterior = selectedMask?.isPoolSection === true && 
+    selectedMask?.poolSectionType === 'interior' &&
+    !selectedMask?.parentPoolId;
+  
+  // Check which sections have already been created for this pool
+  const existingSections = Object.values(masks).filter(m => 
+    m.parentPoolId === selectedId && m.isPoolSection
+  );
+  const createdSectionTypes = new Set(
+    existingSections.map(m => m.poolSectionType).filter(Boolean)
+  );
+  
+  // State for batch section creation
+  const [showBatchCreator, setShowBatchCreator] = useState(false);
+  const [isCreatingSections, setIsCreatingSections] = useState(false);
+  const [batchConfig, setBatchConfig] = useState({
+    waterline: { enabled: true, widthMm: 150 },
+    coping: { enabled: true, widthMm: 200 },
+    paving: { enabled: true, widthMm: 600 }
+  });
+
+  const handleAddSection = (sectionType: 'waterline' | 'coping' | 'paving') => {
+    if (!selectedId || !selectedMask) return;
+    
+    // Prevent: Don't allow adding sections to already-child sections
+    if (selectedMask.parentPoolId) {
+      console.warn('[AddSection] Cannot add sections to child masks', { 
+        maskId: selectedId, 
+        parentPoolId: selectedMask.parentPoolId 
+      });
+      alert('Please select the original pool interior to add sections.');
+      return;
+    }
+    
+    try {
+      const pixelsPerMeter = calibration.pixelsPerMeter || undefined;
+      const offsetPoints = createPoolSectionOffset(
+        selectedMask.pts,
+        sectionType,
+        pixelsPerMeter
+      );
+      
+      if (offsetPoints.length < 3) {
+        console.warn('[AddSection] Section too small', { sectionType, baseMask: selectedId });
+        alert('Section too small - pool interior must be larger');
+        return;
+      }
+      
+      // Get the original pool name (clean name without cascading)
+      const basePoolName = selectedMask.name || 'Pool';
+      const sectionName = `${basePoolName} - ${sectionType}`;
+      const newId = `mask_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      CREATE_MASK(
+        offsetPoints,
+        'area',
+        newId,
+        sectionName,
+        {
+          isPoolSection: true,
+          poolSectionType: sectionType,
+          parentPoolId: selectedId
+        }
+      );
+      
+      console.log('[AddSection] Success', { section: sectionType, baseMask: selectedId, newMaskId: newId });
+    } catch (error) {
+      console.error('[AddSection] Failed to create section', { error, sectionType, baseMask: selectedId });
+      alert(`Failed to create ${sectionType} section. Please try again.`);
+    }
+  };
+
+  const handleBatchCreate = () => {
+    if (!selectedId || !selectedMask) return;
+
+    // Validate interior
+    const validation = validateInteriorMask(selectedMask);
+    if (!validation.isValid) {
+      alert('Invalid pool interior: ' + validation.errors.join(', '));
+      return;
+    }
+
+    // Start batch creation
+    setIsCreatingSections(true);
+    setShowBatchCreator(true);
+  };
+
+  const handleBatchComplete = () => {
+    setShowBatchCreator(false);
+    setIsCreatingSections(false);
+    setBatchConfig({
+      waterline: { enabled: true, widthMm: 150 },
+      coping: { enabled: true, widthMm: 200 },
+      paving: { enabled: true, widthMm: 600 }
+    });
+  };
+
+  const handleBatchError = (error: string) => {
+    alert(error);
+    setShowBatchCreator(false);
+    setIsCreatingSections(false);
+  };
+
   if (loading) {
     return (
       <div className="p-4">
@@ -112,19 +235,93 @@ export function MaterialsPanel() {
     );
   }
 
-  const materialList = Object.values(materials);
+  // Filter materials based on search and category
+  const filteredMaterials = Object.values(materials).filter(material => {
+    const matchesSearch = !searchTerm || material.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || material.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
+  // Get unique categories
+  const categories = ['all', ...Array.from(new Set(Object.values(materials).map(m => m.category)))].filter(Boolean);
+
+  // Test AI Enhancement function
+  async function startTestJob() {
+    // Get current canvas image URL from store
+    const currentState = useEditorStore.getState();
+    const currentImageUrl = currentState.imageUrl;
+    const photoSpace = currentState.photoSpace;
+    
+    if (!currentImageUrl) {
+      alert('Please load an image in the canvas first');
+      return;
+    }
+    
+    // Get effective photo ID if available from job context
+    const effectivePhotoId = currentState.jobContext?.photoId || '134468b9-648e-4eb1-8434-d7941289fccf';
+    
+    const payload = {
+      tenantId: '123e4567-e89b-12d3-a456-426614174000',
+      photoId: effectivePhotoId,
+      imageUrl: currentImageUrl, // Use canvas image, not hardcoded
+      inputHash: `ui-demo-hash-${Date.now()}`,
+      masks: [],
+      options: {},
+      calibration: 1000,
+      width: photoSpace.imgW || 2000,
+      height: photoSpace.imgH || 1500,
+      idempotencyKey: `ui-demo-ik-${Date.now()}`
+    };
+
+    try {
+      const { jobId } = await createJob(payload);
+      upsertJob({ id: jobId, status: 'queued', progress_percent: 0 });
+      setActiveJobId(jobId);
+    } catch (error: any) {
+      console.error('Failed to create job:', error);
+      alert(`Failed: ${error.message}`);
+    }
+  }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="absolute inset-0 flex flex-col">
       {/* Header - Fixed */}
-      <div className="flex-shrink-0 p-4 border-b bg-white">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Materials</h3>
-          {!loading && (
-            <div className="text-xs text-gray-500">
-              {Object.keys(materials).length} materials ({sourceInfo.type})
-            </div>
-          )}
+      <div className="flex-shrink-0 border-b bg-white">
+        <div className="p-3 border-b">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-base font-semibold">Materials</h3>
+            {!loading && (
+              <div className="text-xs text-gray-500">
+                {filteredMaterials.length} of {Object.keys(materials).length}
+              </div>
+            )}
+          </div>
+          
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="Search..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 mb-2"
+          />
+          
+          {/* Category filter */}
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {categories.map(category => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${
+                  selectedCategory === category
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {category === 'all' ? 'All' : category.replace('_', ' ')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
       
@@ -138,40 +335,123 @@ export function MaterialsPanel() {
       )}
       
       {/* Scrollable Material Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="grid grid-cols-2 gap-2">
-          {materialList.map((material) => (
+      <div className="flex-1 overflow-y-auto p-3">
+        {filteredMaterials.length === 0 ? (
+          <div className="text-center py-12">
+            <p className="text-gray-600 text-sm">No materials found</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            {filteredMaterials.map((material) => {
+              const imageUrl = material.thumbnailURL || material.albedoURL;
+              const proxiedUrl = imageUrl ? getProxiedTextureUrl(imageUrl) : null;
+              
+              return (
+                <button
+                  key={material.id}
+                  onClick={() => handleMaterialSelect(material.id)}
+                  className={`p-1.5 border rounded text-left hover:shadow-sm transition-all ${
+                    activeMaterialId === material.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-gray-200'
+                  }`}
+                >
+                  {proxiedUrl ? (
+                    <img 
+                      src={proxiedUrl} 
+                      alt={material.name}
+                      className="w-full h-14 object-cover rounded"
+                      loading="lazy"
+                      onError={(e) => {
+                        console.warn('[MaterialMissingThumbnail]', { id: material.id, name: material.name });
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-14 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">
+                      No Image
+                    </div>
+                  )}
+                  <div 
+                    className="text-xs font-medium line-clamp-2 mt-1 leading-tight text-gray-900" 
+                    title={material.name}
+                  >
+                    {material.name}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {selectedMask && isPoolInterior && (
+        <div className="flex-shrink-0 p-4 bg-blue-50 border-t border-b border-blue-200">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-xs font-medium text-blue-900">Quick Sections</span>
+            <span className="text-xs text-blue-600">({selectedMask.poolSectionType})</span>
+          </div>
+          
+          {/* Batch Create Button */}
+          {!createdSectionTypes.has('waterline') && !createdSectionTypes.has('coping') && !createdSectionTypes.has('paving') && (
             <button
-              key={material.id}
-              onClick={() => handleMaterialSelect(material.id)}
-              className={`p-2 border rounded text-left ${
-                activeMaterialId === material.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              onClick={handleBatchCreate}
+              disabled={isCreatingSections}
+              className="w-full mb-3 px-3 py-2 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              title="Creates waterline, coping and paving in one go (uses calibration for exact widths)"
+            >
+              {isCreatingSections ? 'Creating...' : 'Create All Sections (Batch)'}
+            </button>
+          )}
+          
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => handleAddSection('waterline')}
+              disabled={createdSectionTypes.has('waterline')}
+              className={`px-2 py-1.5 text-xs rounded transition-all ${
+                createdSectionTypes.has('waterline')
+                  ? 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed'
+                  : 'bg-white text-blue-700 hover:bg-blue-100 border border-blue-300'
               }`}
             >
-              {material.thumbnailURL || material.albedoURL ? (
-                <img 
-                  src={material.thumbnailURL || material.albedoURL} 
-                  alt={material.name}
-                  className="w-full h-12 object-cover rounded mb-1"
-                  crossOrigin="anonymous"
-                  onError={(e) => {
-                    console.warn('[MaterialMissingThumbnail]', { id: material.id, name: material.name, thumbnailURL: material.thumbnailURL, albedoURL: material.albedoURL });
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              ) : (
-                <div className="w-full h-12 bg-gray-100 rounded mb-1 flex items-center justify-center text-xs text-gray-500">
-                  {material.name}
-                </div>
-              )}
-              <div className="text-sm font-medium">{material.name}</div>
-              <div className="text-xs text-gray-500">
-                {material.category} {material.price && typeof material.price === 'number' && `• $${material.price.toFixed(2)}`}
-              </div>
+              {createdSectionTypes.has('waterline') ? '✓ Waterline' : '+ Waterline'}<br/>
+              <span className="text-[10px]">150mm inward</span>
             </button>
-          ))}
+            <button
+              onClick={() => handleAddSection('coping')}
+              disabled={createdSectionTypes.has('coping')}
+              className={`px-2 py-1.5 text-xs rounded transition-all ${
+                createdSectionTypes.has('coping')
+                  ? 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed'
+                  : 'bg-white text-amber-700 hover:bg-amber-100 border border-amber-300'
+              }`}
+            >
+              {createdSectionTypes.has('coping') ? '✓ Coping' : '+ Coping'}<br/>
+              <span className="text-[10px]">200mm outward</span>
+            </button>
+            <button
+              onClick={() => handleAddSection('paving')}
+              disabled={createdSectionTypes.has('paving')}
+              className={`px-2 py-1.5 text-xs rounded transition-all ${
+                createdSectionTypes.has('paving')
+                  ? 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed'
+                  : 'bg-white text-green-700 hover:bg-green-100 border border-green-300'
+              }`}
+            >
+              {createdSectionTypes.has('paving') ? '✓ Paving' : '+ Paving'}<br/>
+              <span className="text-[10px]">600mm outward</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Batch Section Creator */}
+      {showBatchCreator && selectedId && (
+        <BatchSectionCreator
+          interiorMaskId={selectedId}
+          sections={batchConfig}
+          onComplete={handleBatchComplete}
+          onError={handleBatchError}
+        />
+      )}
 
       {/* Fixed Material Settings Section */}
       <div className="flex-shrink-0 border-t bg-white">
@@ -464,6 +744,16 @@ export function MaterialsPanel() {
             </div>
           </div>
         )}
+      </div>
+      
+      {/* Test AI Enhancement Button */}
+      <div className="p-3 border-t bg-gray-50">
+        <button
+          onClick={startTestJob}
+          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm shadow hover:bg-blue-700 w-full"
+        >
+          🎨 Test AI Enhancement
+        </button>
       </div>
     </div>
   );

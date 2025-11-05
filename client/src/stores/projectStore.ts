@@ -67,6 +67,27 @@ export const useProjectStore = create<ProjectStoreState>()(
         try {
           // Load job data from API
           const job = await apiClient.getJob(jobId);
+          // Also load photos for this job (editor depends on project.photos)
+          let photos: Photo[] = [];
+          try {
+            const apiPhotos = await apiClient.getJobPhotos(jobId);
+            // Transform API photos to our Photo interface
+            photos = apiPhotos.map(apiPhoto => ({
+              id: apiPhoto.id,
+              jobId: apiPhoto.jobId,
+              name: `Photo ${apiPhoto.id.slice(0, 8)}`, // Generate a name from ID
+              url: apiPhoto.originalUrl, // Ensure url is set
+              originalUrl: apiPhoto.originalUrl, // Keep originalUrl for compatibility
+              thumbnailUrl: apiPhoto.originalUrl, // Use original URL as thumbnail for now
+              width: apiPhoto.width,
+              height: apiPhoto.height,
+              uploadedAt: new Date(apiPhoto.createdAt),
+              lastModified: new Date(apiPhoto.createdAt), // Use createdAt as lastModified
+              canvasState: undefined as any
+            }));
+          } catch (e) {
+            console.warn('[ProjectStore] Failed to load job photos, continuing with empty list:', e);
+          }
           
           // Transform job data to project format
           const project: Project = {
@@ -80,7 +101,7 @@ export const useProjectStore = create<ProjectStoreState>()(
               phone: job.clientPhone,
               address: job.clientAddress,
             },
-            photos: job.photos || [],
+            photos: photos || [],
             canvasStates: {}, // Will be loaded separately
             quotes: job.quotes || [],
             materials: job.materials || [],
@@ -116,14 +137,86 @@ export const useProjectStore = create<ProjectStoreState>()(
       loadPhoto: async (photoId: string) => {
         const { project } = get();
         if (!project) {
-          set({ error: 'No project loaded' });
-          return;
+          const error = 'No project loaded';
+          set({ error });
+          throw new Error(error);
         }
 
-        const photo = project.photos.find(p => p.id === photoId);
+        let photo = project.photos.find(p => p.id === photoId);
         if (!photo) {
-          set({ error: 'Photo not found' });
-          return;
+          // Attempt to fetch photo directly and merge into project state
+          try {
+            const apiPhoto = await apiClient.getPhoto(photoId);
+            
+            // Validate API response structure
+            if (!apiPhoto) {
+              console.error('[loadPhoto] API returned null/undefined for photoId:', photoId);
+              const error = 'Photo not found: API returned no data';
+              set({ error });
+              throw new Error(error);
+            }
+            
+            // Check for required fields
+            if (!apiPhoto.originalUrl && !apiPhoto.url) {
+              console.error('[loadPhoto] API photo missing url/originalUrl:', { 
+                photoId, 
+                apiPhoto: JSON.stringify(apiPhoto) 
+              });
+              const error = 'Photo not found: Missing image URL';
+              set({ error });
+              throw new Error(error);
+            }
+            
+            // Validate jobId matches
+            if (apiPhoto.jobId !== project.jobId) {
+              console.error('[loadPhoto] Photo jobId mismatch:', { 
+                photoId, 
+                photoJobId: apiPhoto.jobId, 
+                projectJobId: project.jobId 
+              });
+              const error = 'Photo not found: Job ID mismatch';
+              set({ error });
+              throw new Error(error);
+            }
+            
+            // Use originalUrl or fallback to url
+            const imageUrl = apiPhoto.originalUrl || apiPhoto.url;
+            
+            // Transform API photo to our Photo interface
+            const transformedPhoto: Photo = {
+              id: apiPhoto.id,
+              jobId: apiPhoto.jobId,
+              name: `Photo ${apiPhoto.id.slice(0, 8)}`,
+              url: imageUrl, // Use validated image URL
+              originalUrl: apiPhoto.originalUrl || imageUrl, // Keep originalUrl for compatibility
+              thumbnailUrl: apiPhoto.thumbnailUrl || imageUrl,
+              width: apiPhoto.width || 0,
+              height: apiPhoto.height || 0,
+              uploadedAt: apiPhoto.createdAt ? new Date(apiPhoto.createdAt) : new Date(),
+              lastModified: apiPhoto.updatedAt ? new Date(apiPhoto.updatedAt) : new Date(),
+              canvasState: undefined as any
+            };
+            
+            const updatedProject = {
+              ...project,
+              photos: [...project.photos, transformedPhoto],
+            };
+            set({ project: updatedProject });
+            photo = transformedPhoto;
+          } catch (e: any) {
+            // Log full error details for debugging
+            console.error('[loadPhoto] Failed to load photo:', {
+              photoId,
+              projectId: project.id,
+              error: e.message,
+              status: e.status || e.statusCode,
+              stack: e.stack
+            });
+            
+            const error = e.message || 'Photo not found';
+            set({ error });
+            throw e; // Re-throw to preserve original error
+          }
         }
 
         // Load canvas state if it exists
@@ -136,8 +229,6 @@ export const useProjectStore = create<ProjectStoreState>()(
           currentPhoto: photo,
           hasUnsavedChanges: false 
         });
-
-        console.log('[ProjectStore] Photo loaded:', photo.name);
       },
 
       saveCanvasState: async (photoId: string, canvasState: CanvasState) => {

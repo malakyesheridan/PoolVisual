@@ -12,9 +12,12 @@ import { UnifiedTemplate } from '../../stores/unifiedTemplateStore';
 import { useUnifiedTemplateStore } from '../../stores/unifiedTemplateStore';
 import { useMaterialsStore } from '../../stores/materialsSlice';
 import { useUnifiedAssetStore } from '../../stores/unifiedAssetStore';
-import { MaterialVisualPicker } from './MaterialVisualPicker';
+import { CompactMaterialCard } from './CompactMaterialCard';
+import { MaterialBrowserModal } from './MaterialBrowserModal';
 import { DimensionHelper } from './DimensionHelper';
 import { PoolShapePreview } from './PoolShapePreview';
+import { FreeformPoolCanvas } from './FreeformPoolCanvas';
+import { getAll } from '../../materials/registry';
 
 interface TemplateCreationFormProps {
   onSave: (template: Omit<UnifiedTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>) => void;
@@ -26,6 +29,10 @@ type FormStep = 'basic' | 'geometry' | 'materials' | 'assets' | 'preview';
 
 export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: TemplateCreationFormProps) {
   const [currentStep, setCurrentStep] = useState<FormStep>('basic');
+  const [browseModalOpen, setBrowseModalOpen] = useState(false);
+  const [browseModalCategory, setBrowseModalCategory] = useState<'coping' | 'waterline_tile' | 'interior' | 'paving'>('coping');
+  const [customPoints, setCustomPoints] = useState<Array<{ x: number; y: number }>>([]);
+  const [useDrawing, setUseDrawing] = useState(false);
   const [formData, setFormData] = useState<Partial<UnifiedTemplate>>({
     name: editingTemplate?.name || '',
     description: editingTemplate?.description || '',
@@ -46,6 +53,23 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
 
   const { materials } = useMaterialsStore();
   const { assets } = useUnifiedAssetStore();
+
+  // Helper to get material object from ID
+  const getMaterialById = (id?: string) => {
+    if (!id) return null;
+    try {
+      const allMaterials = getAll();
+      return allMaterials[id] || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Open browse modal for a specific category
+  const handleBrowseMaterial = (category: 'coping' | 'waterline_tile' | 'interior' | 'paving') => {
+    setBrowseModalCategory(category);
+    setBrowseModalOpen(true);
+  };
 
   const steps: { key: FormStep; title: string; description: string }[] = [
     { key: 'basic', title: 'Basic Info', description: 'Name and description' },
@@ -252,12 +276,16 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
               </label>
               <Select 
                 value={formData.poolGeometry?.type || 'rect'} 
-                onValueChange={(value) => updateFormData({ 
-                  poolGeometry: { 
-                    ...formData.poolGeometry!, 
-                    type: value as any 
-                  } 
-                })}
+                onValueChange={(value) => {
+                  setCustomPoints([]);
+                  setUseDrawing(false);
+                  updateFormData({ 
+                    poolGeometry: { 
+                      ...formData.poolGeometry!, 
+                      type: value as any 
+                    } 
+                  });
+                }}
               >
                 <SelectTrigger className="w-full">
                   <SelectValue />
@@ -271,12 +299,53 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
               </Select>
             </div>
 
+            {/* Freeform Drawing Option */}
+            {(formData.poolGeometry?.type || 'rect') === 'freeform' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <label className="text-sm font-medium text-gray-700">Create Method:</label>
+                  <button
+                    onClick={() => {
+                      setUseDrawing(false);
+                      setCustomPoints([]);
+                    }}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      !useDrawing
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    Preset Shape
+                  </button>
+                  <button
+                    onClick={() => setUseDrawing(true)}
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                      useDrawing
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                    }`}
+                  >
+                    Draw Custom
+                  </button>
+                </div>
+
+                {useDrawing && (
+                  <FreeformPoolCanvas
+                    onPointsChange={setCustomPoints}
+                    width={400}
+                    height={300}
+                  />
+                )}
+              </div>
+            )}
+
             {/* Visual Pool Preview */}
             <PoolShapePreview
               type={formData.poolGeometry?.type || 'rect'}
               dimensions={formData.poolGeometry?.dimensions || { width: 800, height: 400 }}
               cornerRadius={formData.poolGeometry?.cornerRadius || 20}
               materials={formData.materials}
+              customPoints={useDrawing && customPoints.length > 0 ? customPoints : undefined}
             />
 
             {/* Dimension Helper */}
@@ -345,16 +414,11 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
               </p>
             </div>
             
-            <div className="space-y-6">
-              <MaterialVisualPicker
+            <div className="space-y-3">
+              <CompactMaterialCard
                 category="coping"
-                selectedMaterialId={formData.materials?.coping}
-                onSelect={(materialId) => updateFormData({ 
-                  materials: { 
-                    ...formData.materials, 
-                    coping: materialId 
-                  } 
-                })}
+                material={getMaterialById(formData.materials?.coping)}
+                onBrowse={() => handleBrowseMaterial('coping')}
                 onClear={() => updateFormData({ 
                   materials: { 
                     ...formData.materials, 
@@ -363,15 +427,10 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
                 })}
               />
 
-              <MaterialVisualPicker
+              <CompactMaterialCard
                 category="waterline_tile"
-                selectedMaterialId={formData.materials?.waterline}
-                onSelect={(materialId) => updateFormData({ 
-                  materials: { 
-                    ...formData.materials, 
-                    waterline: materialId 
-                  } 
-                })}
+                material={getMaterialById(formData.materials?.waterline)}
+                onBrowse={() => handleBrowseMaterial('waterline_tile')}
                 onClear={() => updateFormData({ 
                   materials: { 
                     ...formData.materials, 
@@ -380,15 +439,10 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
                 })}
               />
 
-              <MaterialVisualPicker
+              <CompactMaterialCard
                 category="interior"
-                selectedMaterialId={formData.materials?.interior}
-                onSelect={(materialId) => updateFormData({ 
-                  materials: { 
-                    ...formData.materials, 
-                    interior: materialId 
-                  } 
-                })}
+                material={getMaterialById(formData.materials?.interior)}
+                onBrowse={() => handleBrowseMaterial('interior')}
                 onClear={() => updateFormData({ 
                   materials: { 
                     ...formData.materials, 
@@ -397,15 +451,10 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
                 })}
               />
 
-              <MaterialVisualPicker
+              <CompactMaterialCard
                 category="paving"
-                selectedMaterialId={formData.materials?.paving}
-                onSelect={(materialId) => updateFormData({ 
-                  materials: { 
-                    ...formData.materials, 
-                    paving: materialId 
-                  } 
-                })}
+                material={getMaterialById(formData.materials?.paving)}
+                onBrowse={() => handleBrowseMaterial('paving')}
                 onClear={() => updateFormData({ 
                   materials: { 
                     ...formData.materials, 
@@ -554,6 +603,27 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
           )}
         </div>
       </div>
+
+      {/* Material Browser Modal */}
+      <MaterialBrowserModal
+        open={browseModalOpen}
+        onOpenChange={setBrowseModalOpen}
+        category={browseModalCategory}
+        selectedMaterialId={
+          browseModalCategory === 'coping' ? formData.materials?.coping :
+          browseModalCategory === 'waterline_tile' ? formData.materials?.waterline :
+          browseModalCategory === 'interior' ? formData.materials?.interior :
+          formData.materials?.paving
+        }
+        onSelect={(materialId) => {
+          updateFormData({
+            materials: {
+              ...formData.materials,
+              [browseModalCategory === 'waterline_tile' ? 'waterline' : browseModalCategory]: materialId
+            }
+          });
+        }}
+      />
     </div>
   );
 }

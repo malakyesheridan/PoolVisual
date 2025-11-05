@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="256" height="100" xmlns="http://www.w3.org/2000/svg">
+  <rect width="256" height="100" fill="transparent"/>
+  <rect x="0" y="18" width="256" height="64" fill="#a3a3a3" opacity="0.8"/>
+  <text x="128" y="50" text-anchor="middle" dominant-baseline="middle" 
+        font-family="Arial, sans-serif" font-size="10" 
+        fill="white" opacity="0.9">Decking Plank</text>
+</svg>

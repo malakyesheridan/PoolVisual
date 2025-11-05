@@ -4,40 +4,145 @@ import { useMaskStore } from '../maskcore/store';
 import { calculateMaskCost, calculateProjectTotals } from './utils';
 import { MaskCalibrationDialog } from './MaskCalibrationDialog';
 import { getAll } from '../materials/registry';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
+import { useToast } from "@/hooks/use-toast";
+import { PlusCircle, X } from "lucide-react";
 
 interface MeasurementOverlayProps {
   className?: string;
+  jobId?: string | undefined;
 }
 
-export function MeasurementOverlay({ className = '' }: MeasurementOverlayProps) {
+export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlayProps) {
   const { calibration, measurements } = useEditorStore();
   const { masks } = useMaskStore(); // Use the actual mask store
   const [calibratingMaskId, setCalibratingMaskId] = useState<string | null>(null);
+  const [isAddingToQuote, setIsAddingToQuote] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [calibrationTooltipDismissed, setCalibrationTooltipDismissed] = useState(() => {
+    // Check localStorage for dismissal state
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('calibration-tooltip-dismissed') === 'true';
+    }
+    return false;
+  });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
   
   // Get materials from registry
   const materials = Object.values(getAll()).map(material => ({
     id: material.id,
     name: material.name,
-    costPerSquareMeter: material.price || material.cost || undefined
+    costPerSquareMeter: typeof (material.price || material.cost) === 'string' 
+      ? parseFloat(material.price || material.cost || '0') 
+      : (material.price || material.cost || undefined)
   }));
+  
+  // Add mutation for adding measurements to quote
+  const addToQuoteMutation = useMutation({
+    mutationFn: async (data: { jobId: string; measurements: any[] }) => {
+      return apiClient.addMeasurementsToQuote(data.jobId, data.measurements);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Added to Quote",
+        description: "Measurements have been added to the quote.",
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
+      setLastSyncTime(new Date());
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to add measurements to quote",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Add function to handle adding measurements to quote
+  const handleAddToQuote = async () => {
+    if (!jobId) {
+      toast({
+        title: "No Job Selected",
+        description: "Please select a job to add measurements to quote.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAddingToQuote(true);
+    try {
+      const measurementsData = maskMeasurements.map(m => ({
+        maskId: m.maskId,
+        maskName: m.maskName,
+        areaSquareMeters: m.areaSquareMeters,
+        materialId: m.materialId,
+        materialName: m.materialName,
+        cost: m.cost,
+        hasCostData: m.hasCostData,
+        calibrationMethod: m.calibrationMethod,
+        confidence: m.confidence,
+        calibrationData: {
+          pixelsPerMeter: calibration.pixelsPerMeter,
+          calibrationMethod: calibration.calibrationMethod,
+          calibrationDate: calibration.calibrationDate
+        }
+      }));
+      
+      console.log('[MeasurementOverlay] Sending measurements data:', JSON.stringify(measurementsData, null, 2));
+      
+      await addToQuoteMutation.mutateAsync({
+        jobId,
+        measurements: measurementsData
+      });
+    } finally {
+      setIsAddingToQuote(false);
+    }
+  };
   
   // Don't render if measurements are disabled
   if (!measurements.showMeasurements && !measurements.showCosts) {
     return null;
   }
   
+  // Handle tooltip dismissal
+  const handleDismissTooltip = () => {
+    setCalibrationTooltipDismissed(true);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('calibration-tooltip-dismissed', 'true');
+    }
+  };
+
   // Don't render if not calibrated
-  if (!calibration.isCalibrated) {
+  if (!calibration.isCalibrated && !calibrationTooltipDismissed) {
     return (
-      <div className={`absolute top-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 shadow-lg ${className}`}>
-        <div className="flex items-center">
-          <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2" />
-          <span className="text-sm font-medium text-yellow-800">
-            Calibrate to see measurements
-          </span>
+      <div className={`absolute top-4 right-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 shadow-lg ${className}`} style={{ zIndex: 20 }}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full bg-yellow-500 mr-2" />
+            <span className="text-sm font-medium text-yellow-800">
+              Calibrate to see measurements
+            </span>
+          </div>
+          <button
+            onClick={handleDismissTooltip}
+            className="text-yellow-700 hover:text-yellow-900 hover:bg-yellow-100 rounded p-1 transition-colors"
+            title="Dismiss"
+            aria-label="Dismiss calibration tooltip"
+          >
+            <X size={14} />
+          </button>
         </div>
       </div>
     );
+  }
+
+  // Don't render if tooltip was dismissed and not calibrated
+  if (!calibration.isCalibrated && calibrationTooltipDismissed) {
+    return null;
   }
   
   // Convert mask store format to the format expected by calculation functions
@@ -62,7 +167,7 @@ export function MeasurementOverlay({ className = '' }: MeasurementOverlayProps) 
   
   return (
     <>
-      <div className={`absolute top-4 right-4 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg p-4 shadow-lg max-w-sm ${className}`}>
+      <div className={`absolute top-4 right-4 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg p-4 shadow-lg max-w-sm ${className}`} style={{ zIndex: 20 }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Measurements</h3>
         <div className="flex items-center">
@@ -150,6 +255,38 @@ export function MeasurementOverlay({ className = '' }: MeasurementOverlayProps) 
           </div>
           <div className="text-xs text-gray-500 mt-1">
             {totals.maskCount} masks, {totals.masksWithCosts} with cost data
+          </div>
+        </div>
+      )}
+      
+            {/* Add to Quote Button */}
+            {!!(maskMeasurements.length > 0 && jobId) && (
+              <div className="mt-4 pt-3 border-t border-gray-200">
+                <button
+                  onClick={handleAddToQuote}
+                  disabled={isAddingToQuote}
+                  className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+            {isAddingToQuote ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <PlusCircle className="w-4 h-4" />
+                Add Changes to Quote
+              </>
+            )}
+          </button>
+        </div>
+      )}
+      
+      {/* Sync Status Indicator */}
+      {lastSyncTime && (
+        <div className="mt-2 pt-2 border-t border-gray-200">
+          <div className="text-xs text-gray-500">
+            Last synced: {lastSyncTime.toLocaleTimeString()}
           </div>
         </div>
       )}

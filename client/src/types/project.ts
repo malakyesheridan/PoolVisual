@@ -16,7 +16,10 @@ export interface Photo {
   jobId: string;
   name: string;
   url: string;
+  originalUrl?: string; // For compatibility with API responses
   thumbnailUrl?: string;
+  width: number;
+  height: number;
   uploadedAt: Date;
   lastModified: Date;
   canvasState?: CanvasState;

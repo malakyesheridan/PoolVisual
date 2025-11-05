@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { registerTextureProxyRoutes } from './routes/textureProxy';
 import healthRoutes from "./routes/health";
 import { storage } from "./storage";
+import { CompositeGenerator } from "./compositeGenerator";
 import { 
   insertUserSchema, 
   insertOrgSchema, 
@@ -12,7 +13,7 @@ import {
   insertQuoteSchema,
   insertQuoteItemSchema,
   CalibrationSchema
-} from "@shared/schema";
+} from "../shared/schema";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 // JWT removed - using session-based authentication
@@ -22,6 +23,10 @@ import express from "express";
 import { registerMaterialRoutes } from "./materialRoutes";
 import { registerMaterialRoutesV2 } from "./routes/materials";
 import { scenes } from "./routes/scenes";
+import sharp from "sharp";
+import { PasswordService } from "./lib/passwordService";
+import { PasswordResetService } from "./lib/passwordResetService";
+import { createBruteForceMiddleware } from "./lib/bruteForceProtection";
 
 // JWT_SECRET removed - using session-based authentication
 
@@ -80,7 +85,8 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
   }
 };
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
+  console.log('🔧 Registering routes...');
   
   // Texture proxy (must be early to avoid auth middleware conflicts)
   registerTextureProxyRoutes(app);
@@ -103,6 +109,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const { materialsForceRoutes } = await import('./routes/materialsForce');
   materialsForceRoutes(app);
   
+  // Register materials list fallback
+  const { registerMaterialsListFallback } = await import('./routes/materialsListFallback');
+  registerMaterialsListFallback(app);
+  
   // Register import routes (manual import turbo)
   const { registerImportRoutes } = await import('./importRoutes');
   registerImportRoutes(app);
@@ -113,6 +123,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register fallback routes for no-DB mode
   const { registerFallbackRoutes } = await import('./routes/fallbackRoutes');
   registerFallbackRoutes(app);
+  
+  // Register quote routes
+  const { registerQuoteRoutes } = await import('./routes/quotes');
+  registerQuoteRoutes(app);
   
   // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
@@ -147,7 +161,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ ok: false, error: "User already exists with this email" });
       }
 
-      const hashedPassword = await bcrypt.hash(userData.password, 12);
+      const hashedPassword = await PasswordService.hashPassword(userData.password);
       const user = await storage.createUser({
         ...userData,
         password: hashedPassword
@@ -171,6 +185,129 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Login endpoint removed - using session-based auth from server/index.ts
+
+  // Password Reset endpoints
+  const passwordResetService = new PasswordResetService();
+  const bruteForceMiddleware = createBruteForceMiddleware({
+    maxAttempts: 3,
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    blockDurationMs: 60 * 60 * 1000 // 1 hour
+  });
+
+  // POST /api/auth/password-reset/initiate
+  app.post("/api/auth/password-reset/initiate", bruteForceMiddleware('password_reset'), async (req: any, res: any) => {
+    try {
+      const { email } = req.body;
+      
+      if (!email) {
+        return res.status(400).json({ 
+          ok: false, 
+          error: "Email is required" 
+        });
+      }
+
+      const result = await passwordResetService.initiatePasswordReset(email);
+      
+      if (result.success) {
+        res.json({ 
+          ok: true, 
+          message: result.message 
+        });
+      } else {
+        // Record failed attempt for rate limiting
+        if (req.recordFailedAttempt) {
+          req.recordFailedAttempt();
+        }
+        
+        res.status(400).json({ 
+          ok: false, 
+          error: result.error,
+          message: result.message 
+        });
+      }
+    } catch (error) {
+      console.error('[PasswordReset] Error initiating password reset:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: "Internal server error" 
+      });
+    }
+  });
+
+  // POST /api/auth/password-reset/confirm
+  app.post("/api/auth/password-reset/confirm", bruteForceMiddleware('password_reset'), async (req: any, res: any) => {
+    try {
+      const { token, newPassword } = req.body;
+      
+      if (!token || !newPassword) {
+        return res.status(400).json({ 
+          ok: false, 
+          error: "Token and new password are required" 
+        });
+      }
+
+      const result = await passwordResetService.resetPassword(token, newPassword);
+      
+      if (result.success) {
+        res.json({ 
+          ok: true, 
+          message: result.message 
+        });
+      } else {
+        // Record failed attempt for rate limiting
+        if (req.recordFailedAttempt) {
+          req.recordFailedAttempt();
+        }
+        
+        res.status(400).json({ 
+          ok: false, 
+          error: result.error,
+          message: result.message 
+        });
+      }
+    } catch (error) {
+      console.error('[PasswordReset] Error confirming password reset:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: "Internal server error" 
+      });
+    }
+  });
+
+  // POST /api/auth/password-reset/verify-email
+  app.post("/api/auth/password-reset/verify-email", async (req: any, res: any) => {
+    try {
+      const { token } = req.body;
+      
+      if (!token) {
+        return res.status(400).json({ 
+          ok: false, 
+          error: "Verification token is required" 
+        });
+      }
+
+      const result = await passwordResetService.verifyEmail(token);
+      
+      if (result.success) {
+        res.json({ 
+          ok: true, 
+          message: result.message 
+        });
+      } else {
+        res.status(400).json({ 
+          ok: false, 
+          error: result.error,
+          message: result.message 
+        });
+      }
+    } catch (error) {
+      console.error('[EmailVerification] Error verifying email:', error);
+      res.status(500).json({ 
+        ok: false, 
+        error: "Internal server error" 
+      });
+    }
+  });
 
   // Organization endpoints
   app.post("/api/orgs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
@@ -198,6 +335,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get organization member endpoint
+  app.get("/api/orgs/:orgId/members/:userId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { orgId, userId } = req.params;
+      const orgMember = await storage.getOrgMember(userId, orgId);
+      if (!orgMember) {
+        return res.status(404).json({ message: "Organization member not found" });
+      }
+      res.json(orgMember);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Create/Join organization member endpoint
+  // Automatically adds the current user to an organization if they're not already a member
+  // IMPORTANT: This route must come BEFORE /api/orgs/:orgId/invite to avoid route conflicts
+  app.post("/api/orgs/:orgId/join", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    console.log('[Route] POST /api/orgs/:orgId/join called', { 
+      orgId: req.params.orgId, 
+      userId: req.user?.id,
+      body: req.body 
+    });
+    try {
+      const { orgId } = req.params;
+      const { role } = req.body; // Optional: role (defaults to "estimator")
+      
+      console.log('[Route] Processing join request', { orgId, role, userId: req.user.id });
+      
+      // Verify the organization exists
+      const org = await storage.getOrg(orgId);
+      if (!org) {
+        console.log('[Route] Organization not found:', orgId);
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      console.log('[Route] Organization found, creating membership');
+      // Create or get existing membership
+      const orgMember = await storage.createOrgMember(orgId, req.user.id, role || "estimator");
+      console.log('[Route] Membership created successfully:', orgMember);
+      res.json(orgMember);
+    } catch (error) {
+      console.error('[Route] Error in /join endpoint:', error);
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+  
+  console.log('✅ Registered route: POST /api/orgs/:orgId/join');
+
   // Organization invitation endpoint
   app.post("/api/orgs/:orgId/invite", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
@@ -223,7 +409,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Jobs endpoints
   app.post("/api/jobs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const jobData = insertJobSchema.parse(req.body);
+      console.log('Job creation request body:', req.body);
+      
+      // Manual validation instead of schema
+      const { clientName, clientPhone, clientEmail, address, orgId, status } = req.body;
+      
+      if (!clientName || typeof clientName !== 'string') {
+        return res.status(400).json({ message: "clientName is required" });
+      }
+      
+      if (!orgId || typeof orgId !== 'string') {
+        return res.status(400).json({ message: "orgId is required" });
+      }
+      
+      const jobData = {
+        clientName,
+        clientPhone: clientPhone || null,
+        clientEmail: clientEmail || null,
+        address: address || null,
+        orgId,
+        status: status || 'new'
+      };
       
       // Verify user has access to the organization
       const userOrgs = await storage.getUserOrgs(req.user.id);
@@ -323,10 +529,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Photos endpoints
   app.post("/api/photos", authenticateSession, upload.single('photo'), async (req: AuthenticatedRequest, res: any) => {
     try {
+      console.log('Photo upload request:', { 
+        body: req.body, 
+        file: req.file ? { filename: req.file.filename, size: req.file.size } : null,
+        user: req.user?.id 
+      });
+      
       const { jobId, width, height, exifData } = req.body;
       
       if (!req.file) {
         return res.status(400).json({ message: "Photo file is required" });
+      }
+
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
       }
 
       // Verify job access
@@ -345,18 +561,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // In production, upload file to cloud storage (S3, Supabase Storage, etc.)
       const originalUrl = `/uploads/${req.file.filename}`;
 
+      // Derive dimensions if not provided by client
+      let finalWidth: number | null = width ? parseInt(width) : null;
+      let finalHeight: number | null = height ? parseInt(height) : null;
+
+      if (!finalWidth || !finalHeight || Number.isNaN(finalWidth) || Number.isNaN(finalHeight)) {
+        try {
+          const meta = await sharp(req.file.path).metadata();
+          if (meta.width && meta.height) {
+            finalWidth = meta.width;
+            finalHeight = meta.height;
+          }
+        } catch (e) {
+          console.warn('Failed to read image metadata with sharp:', (e as Error).message);
+        }
+      }
+
+      if (!finalWidth || !finalHeight) {
+        return res.status(400).json({ message: "Unable to determine image dimensions" });
+      }
+
       const photoData = {
         jobId,
         originalUrl,
-        width: parseInt(width),
-        height: parseInt(height),
+        width: finalWidth,
+        height: finalHeight,
         exifJson: exifData ? JSON.parse(exifData) : null,
       };
 
+      console.log('Creating photo with data:', photoData);
       const photo = await storage.createPhoto(photoData);
+      console.log('Photo created successfully:', photo.id);
+      
       res.json(photo);
     } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+      console.error('Photo upload error:', error);
+      // Default to 500 if error lacks a status
+      res.status((error as any)?.statusCode || 500).json({ message: (error as Error).message || 'Upload failed' });
     }
   });
 
@@ -367,15 +608,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Photo ID is required" });
       }
       
-      const photo = await storage.getPhoto(photoId);
+      // CRITICAL FIX: Wrap database call in try-catch to handle any DB errors gracefully
+      let photo;
+      try {
+        photo = await storage.getPhoto(photoId);
+      } catch (dbError) {
+        console.error('[GetPhoto] Database error fetching photo:', dbError);
+        // If it's a database error (e.g., photo was just deleted), return 404
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
       if (!photo) {
         return res.status(404).json({ message: "Photo not found" });
       }
 
-      // Verify access through job
-      const job = await storage.getJob(photo.jobId);
+      // CRITICAL FIX: Better error handling for edge cases
+      // Check if jobId exists before trying to access it
+      if (!photo.jobId) {
+        console.error('[GetPhoto] Photo missing jobId:', photoId);
+        return res.status(404).json({ message: "Photo not found or invalid" });
+      }
+
+      // Verify access through job - handle errors gracefully
+      let job;
+      try {
+        job = await storage.getJob(photo.jobId);
+      } catch (jobError) {
+        console.error('[GetPhoto] Error fetching job:', jobError);
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
       if (!job) {
-        return res.status(404).json({ message: "Associated job not found" });
+        console.error('[GetPhoto] Job not found for photo:', photoId, 'jobId:', photo.jobId);
+        return res.status(404).json({ message: "Photo not found" });
       }
 
       const userOrgs = await storage.getUserOrgs(req.user.id);
@@ -386,6 +651,176 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json(photo);
+    } catch (error) {
+      console.error('[GetPhoto] Unexpected error fetching photo:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      // Return 404 instead of 500 for deleted photos or other "not found" scenarios
+      // This prevents client retries and makes error handling more predictable
+      return res.status(404).json({ message: `Photo not found: ${errorMessage}` });
+    }
+  });
+
+  // Update photo data
+  app.put("/api/photos/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
+      const { originalUrl, width, height } = req.body;
+      if (!originalUrl || !width || !height) {
+        return res.status(400).json({ message: "originalUrl, width, and height are required" });
+      }
+      
+      // Verify access through existing photo
+      const existingPhoto = await storage.getPhoto(photoId);
+      if (!existingPhoto) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+
+      const job = await storage.getJob(existingPhoto.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Associated job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const updatedPhoto = await storage.updatePhoto(photoId, {
+        originalUrl,
+        width: parseInt(width),
+        height: parseInt(height)
+      });
+      
+      res.json(updatedPhoto);
+    } catch (error) {
+      console.error('Error updating photo:', error);
+      res.status(500).json({ message: "Failed to update photo" });
+    }
+  });
+
+  // Delete photo
+  app.delete("/api/photos/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
+      // Verify access through existing photo
+      const existingPhoto = await storage.getPhoto(photoId);
+      if (!existingPhoto) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+
+      const job = await storage.getJob(existingPhoto.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Associated job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // CRITICAL FIX: Delete associated records first to prevent orphaned records
+      // and foreign key constraint issues
+      
+      // 1. Delete associated masks
+      try {
+        const associatedMasks = await storage.getMasksByPhoto(photoId);
+        console.log(`[DeletePhoto] Found ${associatedMasks.length} masks to delete`);
+        for (const mask of associatedMasks) {
+          try {
+            await storage.deleteMask(mask.id);
+            console.log(`[DeletePhoto] Deleted associated mask: ${mask.id}`);
+          } catch (maskError) {
+            console.warn(`[DeletePhoto] Failed to delete mask ${mask.id}:`, maskError);
+            // Continue with photo deletion even if mask deletion fails
+          }
+        }
+      } catch (maskQueryError) {
+        console.error('[DeletePhoto] Error querying masks:', maskQueryError);
+        // Continue with photo deletion even if mask query fails
+      }
+      
+      // 2. Delete or nullify AI enhancement jobs that reference this photo
+      // Note: ai_enhancement_jobs.photo_id has no ON DELETE CASCADE, so we need to handle it manually
+      try {
+        const { pool } = await import('./db');
+        if (pool) {
+          // Use raw SQL query to nullify photo_id (safer than delete in case jobs are in progress)
+          await pool.query('UPDATE ai_enhancement_jobs SET photo_id = NULL WHERE photo_id = $1', [photoId]);
+          console.log(`[DeletePhoto] Nullified AI enhancement jobs photo_id for: ${photoId}`);
+        }
+      } catch (aiJobError: any) {
+        // If this fails, it's not critical - the table might not exist or the photo might not have enhancement jobs
+        console.warn('[DeletePhoto] Could not handle AI enhancement jobs (this is optional):', aiJobError.message || aiJobError);
+        // Continue with photo deletion - AI jobs are optional
+      }
+      
+      // Delete the photo
+      try {
+        await storage.deletePhoto(photoId);
+        console.log(`[DeletePhoto] Successfully deleted photo: ${photoId}`);
+      } catch (deleteError) {
+        console.error('[DeletePhoto] Error deleting photo from database:', deleteError);
+        // Check if it's a foreign key constraint error
+        const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+        if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
+          return res.status(409).json({ 
+            message: "Cannot delete photo: it is referenced by other records. Please delete associated records first." 
+          });
+        }
+        throw deleteError; // Re-throw if it's not a constraint error
+      }
+      
+      res.json({ message: "Photo deleted successfully" });
+    } catch (error) {
+      console.error('[DeletePhoto] Unexpected error deleting photo:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[DeletePhoto] Error details:', {
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        photoId: req.params.id
+      });
+      res.status(500).json({ 
+        message: "Failed to delete photo",
+        error: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      });
+    }
+  });
+
+  // Get photos for a specific job
+  app.get("/api/jobs/:id/photos", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+
+      // Verify job access
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const photos = await storage.getJobPhotos(jobId);
+      res.json(photos);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -655,7 +1090,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Mask ID is required" });
       }
       
-      // Add access verification here
+      // Verify access through existing mask
+      const existingMask = await storage.getMask(maskId);
+      if (!existingMask) {
+        return res.status(404).json({ message: "Mask not found" });
+      }
+
+      const photo = await storage.getPhoto(existingMask.photoId);
+      if (!photo) {
+        return res.status(404).json({ message: "Associated photo not found" });
+      }
+
+      const job = await storage.getJob(photo.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Associated job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       await storage.deleteMask(maskId);
       res.status(204).send();
     } catch (error) {
@@ -664,6 +1121,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Quotes endpoints
+  app.get("/api/quotes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { orgId, status, jobId } = req.query;
+      
+      if (!orgId || typeof orgId !== 'string') {
+        return res.status(400).json({ message: "orgId is required" });
+      }
+
+      // Verify organization access
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied to this organization" });
+      }
+
+      const filters: { status?: string; jobId?: string } = {};
+      if (status && typeof status === 'string') filters.status = status;
+      if (jobId && typeof jobId === 'string') filters.jobId = jobId;
+
+      const quotes = await storage.getQuotes(orgId, filters);
+      res.json(quotes);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   app.post("/api/quotes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const quoteData = insertQuoteSchema.parse(req.body);
@@ -974,13 +1458,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      // Return composite URLs if ready
-      res.json({
-        beforeUrl: '/api/composites/before.jpg',
-        afterUrl: '/api/composites/after.jpg',
-        sideBySideUrl: '/api/composites/side-by-side.jpg',
-        status: 'completed'
-      });
+      const photoId = req.params.id;
+      const photo = await storage.getPhoto(photoId);
+      
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      // Get masks for this photo to check if there are any edits
+      const masks = await storage.getMasksByPhoto(photoId);
+      
+      if (masks.length === 0) {
+        // No edits, return original image
+        res.json({
+          beforeUrl: photo.originalUrl,
+          afterUrl: photo.originalUrl,
+          sideBySideUrl: photo.originalUrl,
+          status: 'completed',
+          hasEdits: false
+        });
+        return;
+      }
+      
+      // Generate actual composite
+      const generator = new CompositeGenerator();
+      const result = await generator.generateComposite(photoId);
+      
+      res.json(result);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -1064,5 +1568,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  return httpServer;
+  // Stripe webhook endpoint
+  app.post("/api/webhooks/stripe", async (req: any, res: any) => {
+    try {
+      const signature = req.headers['stripe-signature'];
+      if (!signature) {
+        return res.status(400).json({ message: 'Missing stripe-signature header' });
+      }
+
+      const { paymentService } = await import('./lib/paymentService');
+      await paymentService.processWebhook(req.body, signature);
+      
+      res.json({ received: true });
+    } catch (error) {
+      console.error('[Stripe Webhook] Error:', error);
+      res.status(400).json({ message: 'Webhook error' });
+    }
+  });
+  
+  console.log('✅ Routes registered successfully');
 }

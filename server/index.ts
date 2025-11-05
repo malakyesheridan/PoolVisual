@@ -1,3 +1,6 @@
+// Load environment variables first
+import "./bootstrapEnv";
+
 import express from "express";
 import cors from 'cors';
 import { getIronSession } from "iron-session";
@@ -8,6 +11,26 @@ import { storage } from "./storage";
 import { registerRoutes } from "./routes";
 import { serveStatic, log } from "./vite";
 import { errorHandler, notFoundHandler, requestIdMiddleware } from "./lib/routeWrapper";
+import { metricsHandler } from './lib/metrics';
+import { SSEManager } from './lib/sseManager';
+import { initSSEBus } from './lib/sseBus';
+import { router as aiEnhancementRouter } from './routes/aiEnhancement';
+import { processOutboxEvents } from './jobs/outboxProcessor';
+
+// SAFE_MODE configuration
+const SAFE_MODE = process.env.SAFE_MODE === '1';
+const START_WORKER = process.env.START_WORKER === '1';
+const PORT = Number(process.env.PORT || 3000);
+
+console.log(`[Config] SAFE_MODE=${SAFE_MODE}, START_WORKER=${START_WORKER}`);
+
+// Add crash handlers
+process.on('uncaughtException', (e) => {
+  console.error('[fatal] uncaughtException', e);
+});
+process.on('unhandledRejection', (e) => {
+  console.error('[fatal] unhandledRejection', e);
+});
 
 // Type augmentation for Express Request
 declare global {
@@ -27,15 +50,38 @@ app.use(cors({ origin: true, credentials: true }));
 // Add request ID middleware first
 app.use(requestIdMiddleware);
 
-// Body parsing with size limits
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: false, limit: '10mb' }));
+// Body parsing with size limits (25MB for AI enhancements)
+app.use(express.json({ limit: '25mb' }));
+app.use(express.urlencoded({ extended: false, limit: '25mb' }));
 
 // Session middleware
 app.use(async (req, res, next) => {
   req.session = await getIronSession(req, res, sessionOptions);
   next();
 });
+
+// Dev mode: Auto-authenticate for testing (development only)
+if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_AUTH === '1') {
+  app.use(async (req, res, next) => {
+    try {
+      // Only auto-auth if no user is set and we're accessing API routes
+      if (!req.session?.user && req.path.startsWith('/api')) {
+        // Use the seeded test user ID from earlier
+        const testUserId = '027a7c88-9d4b-4ee4-9246-c5da53a120ab';
+        
+        // Set a mock user for development (iron-session will auto-save)
+        req.session.user = {
+          id: testUserId,
+          email: 'test@example.com',
+          username: 'testuser'
+        };
+      }
+    } catch (err) {
+      // Ignore errors, just continue without auth
+    }
+    next();
+  });
+}
 
 // Rate limiting for auth routes
 const authLimiter = rateLimit({
@@ -150,65 +196,151 @@ app.post("/api/auth/logout", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Register other routes
-registerRoutes(app);
+// Initialize server
+async function initializeServer() {
+  // Healthz endpoint
+  app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, mode: SAFE_MODE ? 'safe' : 'normal' }));
+  
+  // Metrics endpoint
+  app.get('/metrics', metricsHandler);
+  
+  // AI Enhancement routes (always mount)
+  app.use('/api/ai/enhancement', aiEnhancementRouter);
+  
+  // Wrap heavy pieces in SAFE_MODE guard
+  if (!SAFE_MODE) {
+    // SSE system initialization
+    SSEManager.init();
+    initSSEBus();
+    
+    // Outbox processor loop
+    console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
+    setInterval(() => {
+      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
+    }, 5000);
+    
+    // Also process immediately on startup to catch any pending events
+    console.log('[Server] Processing any pending outbox events on startup...');
+    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
+    
+    // Start worker if enabled
+    if (START_WORKER) {
+      console.log('[Server] Worker will be spawned by server process');
+      import('./jobs/worker').then(() => {
+        console.log('[Server] Worker spawned successfully');
+      }).catch(err => {
+        console.error('[Server] Failed to spawn worker:', err);
+      });
+    } else {
+      console.log('[Server] Worker not started (set START_WORKER=1 to enable)');
+    }
+  } else {
+    console.log('[SAFE_MODE] Skipping Redis, BullMQ worker, SSE bus, outbox processor');
+  }
+  
+  // Register other routes
+  await registerRoutes(app);
 
-// Health check endpoint
-app.get('/api/health', (_req, res) => {
-  const mode = process.env.NO_DB_MODE === 'true' ? 'no-db' : 'db';
-  res.json({
-    ok: true,
-    mode,
-    nodeEnv: process.env.NODE_ENV || 'development',
-    hotReload: 'working!'
+  // Health check endpoint
+  app.get('/api/health', (_req, res) => {
+    const mode = process.env.NO_DB_MODE === 'true' ? 'no-db' : 'db';
+    res.json({
+      ok: true,
+      mode,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      hotReload: 'working!'
+    });
   });
-});
 
-app.get('/api/health/db', async (_req, res) => {
-  try {
-    await storage.getAllMaterials();
-    return res.json({ ok: true, mode: 'storage' });
-  } catch (error) {
-    return res.status(503).json({ 
-      ok: false, 
-      error: error instanceof Error ? error.message : 'Database connection failed' 
+  app.get('/api/health/db', async (_req, res) => {
+    try {
+      await storage.getAllMaterials();
+      return res.json({ ok: true, mode: 'storage' });
+    } catch (error) {
+      return res.status(503).json({ 
+        ok: false, 
+        error: error instanceof Error ? error.message : 'Database connection failed' 
+      });
+    }
+  });
+
+  // Favicon route to prevent 404 errors
+  app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end(); // No content response
+  });
+
+  // Diagnostics endpoints
+  app.get('/api/diagnostics/env', (_req, res) => {
+    res.json({
+      ok: true,
+      nodeEnv: process.env.NODE_ENV || 'development',
+      hasDatabaseUrl: !!process.env.DATABASE_URL,
+      pvRequireDb: process.env.PV_REQUIRE_DB,
+      materialFlag: process.env.VITE_PV_MATERIAL_LIBRARY_ENABLED,
+    });
+  });
+
+  app.get('/api/diagnostics/db', async (_req, res) => {
+    try {
+      await storage.getAllMaterials();
+      return res.json({ ok: true, mode: 'storage' });
+    } catch (error) {
+      return res.status(500).json({ 
+        ok: false, 
+        error: error instanceof Error ? error.message : 'Database connection failed' 
+      });
+    }
+  });
+
+  // Debug DB route (before 404 handler)
+  app.get('/debug/db', async (_req, res) => {
+    try {
+      const { pool } = await import('./db');
+      if (!pool) throw new Error('Pool not available');
+      
+      const probeResult = await pool.query(`
+        SELECT
+          current_database() AS db,
+          current_user AS user,
+          current_setting('search_path', true) AS search_path,
+          version() AS version
+      `);
+      const tablesResult = await pool.query(`
+        SELECT table_schema, table_name
+        FROM information_schema.tables
+        WHERE table_schema IN ('public')
+        ORDER BY table_schema, table_name
+        LIMIT 50
+      `);
+      res.json({ envUrl: process.env.DATABASE_URL, probe: probeResult.rows[0], tables: tablesResult.rows });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message, envUrl: process.env.DATABASE_URL });
+    }
+  });
+
+  // Serve static files in production
+  if (process.env.NODE_ENV === 'production') {
+    serveStatic(app);
+  }
+
+  // Add 404 handler after all routes and static serving
+  app.use(notFoundHandler);
+
+  // Add centralized error handler last
+  app.use(errorHandler);
+
+  // Start server in development mode
+  if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+      console.log(`[server] listening on http://localhost:${PORT} (SAFE_MODE=${SAFE_MODE})`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     });
   }
-});
-
-// Diagnostics endpoints
-app.get('/api/diagnostics/env', (_req, res) => {
-  res.json({
-    ok: true,
-    nodeEnv: process.env.NODE_ENV || 'development',
-    hasDatabaseUrl: !!process.env.DATABASE_URL,
-    pvRequireDb: process.env.PV_REQUIRE_DB,
-    materialFlag: process.env.VITE_PV_MATERIAL_LIBRARY_ENABLED,
-  });
-});
-
-app.get('/api/diagnostics/db', async (_req, res) => {
-  try {
-    await storage.getAllMaterials();
-    return res.json({ ok: true, mode: 'storage' });
-  } catch (error) {
-    return res.status(500).json({ 
-      ok: false, 
-      error: error instanceof Error ? error.message : 'Database connection failed' 
-    });
-  }
-});
-
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  serveStatic(app);
 }
 
-// Add 404 handler after all routes and static serving
-app.use(notFoundHandler);
-
-// Add centralized error handler last
-app.use(errorHandler);
+// Initialize the server
+initializeServer().catch(console.error);
 
 // Export the Express app for Vercel
 export default app;

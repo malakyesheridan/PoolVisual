@@ -1,13 +1,15 @@
 import React, { useEffect, useRef } from 'react';
+import { useRoute } from 'wouter';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
 import { MaterialsPanel } from './MaterialsPanel';
-import { AssetsPanel } from './AssetsPanel';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { MaskManagementPanel } from '../components/mask/MaskManagementPanel';
 import { UnifiedTemplatesPanel } from './UnifiedTemplatesPanel';
 import { useEditorStore } from './store';
-import { Package, Image, Square, FileText } from 'lucide-react';
+import { useMaskStore } from '../maskcore/store';
+import { apiClient } from '../lib/api-client';
+import { Package, Square, FileText } from 'lucide-react';
 import { 
   Tooltip, 
   TooltipContent, 
@@ -15,12 +17,32 @@ import {
   TooltipTrigger 
 } from '../components/ui/tooltip';
 
-export function NewEditor() {
+interface NewEditorProps {
+  jobId?: string;
+  photoId?: string;
+}
+
+export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sidebarRef = useRef<HTMLDivElement>(null);
   const resizeHandleRef = useRef<HTMLDivElement>(null);
-  const { dispatch, getState } = useEditorStore();
-  const [activeTab, setActiveTab] = React.useState<'materials' | 'assets' | 'templates' | 'masks'>('materials');
+  const lastLoadedPhotoIdRef = useRef<string | null>(null);
+  const justSavedRef = useRef<{ photoId: string; timestamp: number } | null>(null);
+  const { dispatch, getState, jobContext } = useEditorStore();
+  const [activeTab, setActiveTab] = React.useState<'materials' | 'templates' | 'masks'>('materials');
+  
+  // Extract jobId and photoId from URL parameters
+  const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
+  const [, jobParamsCanvas] = useRoute('/jobs/:jobId/photo/:photoId/edit-canvas');
+  
+  // Get effective job and photo IDs from props, URL params, or context
+  const effectiveJobId = jobId || jobParams?.jobId || jobParamsCanvas?.jobId || jobContext?.jobId;
+  const effectivePhotoId = photoId || jobParams?.photoId || jobParamsCanvas?.photoId || jobContext?.photoId;
+  
+  // Debug logging for mask loading
+  console.log('[NewEditor] Component mounted. Props:', { jobId, photoId });
+  console.log('[NewEditor] Job context:', jobContext);
+  console.log('[NewEditor] Effective IDs:', { effectiveJobId, effectivePhotoId });
   
   // Sidebar width state with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
@@ -32,11 +54,11 @@ export function NewEditor() {
   const [isResizing, setIsResizing] = React.useState(false);
   
   // PHASE 0: Reality & Single Store - DEV Build Chip
-  const buildStamp = React.useMemo(() => Date.now(), []);
-  const storeToken = React.useMemo(() => {
-    const state = getState();
-    return `store_${Object.keys(state).length}_${Date.now()}`;
-  }, [getState]);
+  // const buildStamp = React.useMemo(() => Date.now(), []);
+  // const storeToken = React.useMemo(() => {
+  //   const state = getState();
+  //   return `store_${Object.keys(state).length}_${Date.now()}`;
+  // }, [getState]);
   
   // PHASE 10: Clean implementation - no mask mode switching
   
@@ -133,6 +155,322 @@ export function NewEditor() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [dispatch]);
 
+  // Listen for save completion events to prevent duplicate mask loading
+  useEffect(() => {
+    const handleSaveComplete = (event: CustomEvent<{ photoId: string }>) => {
+      if (event.detail?.photoId) {
+        justSavedRef.current = {
+          photoId: event.detail.photoId,
+          timestamp: Date.now()
+        };
+        // Clear the flag after 3 seconds (enough time for SET_IMAGE to process and any remounts)
+        setTimeout(() => {
+          if (justSavedRef.current?.photoId === event.detail.photoId) {
+            justSavedRef.current = null;
+          }
+        }, 3000);
+        console.log('[NewEditor] Save completion event received, will skip mask reload for 3 seconds');
+      }
+    };
+    
+    window.addEventListener('saveComplete', handleSaveComplete as EventListener);
+    return () => {
+      window.removeEventListener('saveComplete', handleSaveComplete as EventListener);
+    };
+  }, []);
+
+  // Load existing masks when editing a photo from a job
+  useEffect(() => {
+    const loadExistingMasks = async () => {
+      // console.log('[NewEditor] Mask loading effect triggered. effectivePhotoId:', effectivePhotoId, 'jobContext:', jobContext);
+      
+      // Try multiple sources for photoId
+      const photoIdToUse = effectivePhotoId || jobContext?.photoId || photoId;
+      // console.log('[NewEditor] PhotoId to use:', photoIdToUse);
+      
+      // CRITICAL FIX: Clear masks if photoId has changed to a different photo
+      // This prevents masks from persisting across different images
+      if (lastLoadedPhotoIdRef.current !== null && 
+          lastLoadedPhotoIdRef.current !== photoIdToUse) {
+        console.log('[NewEditor] PhotoId changed from', lastLoadedPhotoIdRef.current, 'to', photoIdToUse, '- clearing all masks');
+        useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+      }
+      
+      if (photoIdToUse) {
+        try {
+          // CRITICAL FIX: Skip entirely if we just saved this photo
+          // This prevents duplicate masks (baked-in image + Konva overlay) immediately after save
+          if (justSavedRef.current && 
+              justSavedRef.current.photoId === photoIdToUse &&
+              Date.now() - justSavedRef.current.timestamp < 3000) {
+            console.log('[NewEditor] Just saved this photo, skipping mask reload to prevent duplicates');
+            lastLoadedPhotoIdRef.current = photoIdToUse; // Update ref to prevent clearing on next render
+            return; // Exit early - don't touch masks at all
+          }
+          
+          // Fetch masks from server
+          const existingMasks = await apiClient.getMasks(photoIdToUse);
+          
+          // Check for existing database masks in store AFTER fetching from server
+          const currentMasks = useMaskStore.getState().masks;
+          const currentDbMaskIds = Object.keys(currentMasks).filter(id => 
+            !id.startsWith('mask_') && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+          );
+          
+          // If we have database masks in store, check if they match server masks
+          if (currentDbMaskIds.length > 0) {
+            if (existingMasks && existingMasks.length > 0) {
+              const serverMaskIds = existingMasks.map((m: any) => m.id);
+              
+              // Check if all current database masks are present in server response
+              const allMasksPresent = currentDbMaskIds.every(id => serverMaskIds.includes(id));
+              const countsMatch = currentDbMaskIds.length === serverMaskIds.length;
+              
+              if (allMasksPresent && countsMatch) {
+                console.log('[NewEditor] Current masks match server masks, skipping reload to prevent duplicates');
+                lastLoadedPhotoIdRef.current = photoIdToUse; // Update ref
+                return; // Skip reloading to prevent duplicate rendering
+              }
+              
+              // Masks don't match - proceed with reload (masks may have been modified externally)
+              // Continue to conversion logic below
+            } else {
+              // No masks on server - clear any masks in store (they belong to a different photo)
+              console.log('[NewEditor] No masks on server for photo', photoIdToUse, '- clearing store masks');
+              useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+              lastLoadedPhotoIdRef.current = photoIdToUse; // Update ref
+              return;
+            }
+          }
+          
+          // Process masks if we have any (either from first load or when masks don't match)
+          if (existingMasks && existingMasks.length > 0) {
+            // Convert server mask format to mask core store format
+            const convertedMasks: Record<string, any> = {};
+            
+            existingMasks.forEach((serverMask: any) => {
+              try {
+                // console.log('[NewEditor] Processing server mask:', serverMask);
+                
+                // Parse the pathJson (it's stored as JSON string in server)
+                let pathData;
+                if (typeof serverMask.pathJson === 'string') {
+                  pathData = JSON.parse(serverMask.pathJson);
+                } else if (Array.isArray(serverMask.pathJson)) {
+                  pathData = serverMask.pathJson;
+                } else {
+                  console.warn('[NewEditor] Unexpected pathJson format:', serverMask.pathJson);
+                  pathData = [];
+                }
+                
+                // Convert path data to points array
+                const pts = Array.isArray(pathData) 
+                  ? pathData.map((point: any) => {
+                      // Handle both {x, y} and [x, y] formats
+                      if (typeof point === 'object' && point !== null) {
+                        return { x: point.x || point[0] || 0, y: point.y || point[1] || 0 };
+                      }
+                      return { x: 0, y: 0 };
+                    })
+                  : [];
+                
+                // Parse material settings from calcMetaJson
+                let materialSettings = null;
+                if (serverMask.calcMetaJson) {
+                  if (typeof serverMask.calcMetaJson === 'string') {
+                    materialSettings = JSON.parse(serverMask.calcMetaJson);
+                  } else {
+                    materialSettings = serverMask.calcMetaJson;
+                  }
+                }
+                
+                convertedMasks[serverMask.id] = {
+                  id: serverMask.id,
+                  pts: pts,
+                  mode: 'area' as const, // Default to area mode
+                  materialId: serverMask.materialId || null,
+                  materialSettings: materialSettings,
+                  isVisible: true,
+                  // Multi-Level Geometry fields (additive)
+                  depthLevel: serverMask.depthLevel || 0,
+                  elevationM: serverMask.elevationM || 0,
+                  zIndex: serverMask.zIndex || 0,
+                  isStepped: serverMask.isStepped || false
+                };
+                
+                // console.log('[NewEditor] Converted mask:', serverMask.id, convertedMasks[serverMask.id]);
+              } catch (error) {
+                console.error('[NewEditor] Failed to convert mask:', serverMask.id, error, serverMask);
+              }
+            });
+            
+            // Load masks into the mask core store
+            if (Object.keys(convertedMasks).length > 0) {
+              // CRITICAL FIX: Replace all masks with masks from server for this photo
+              // This ensures only masks for the current photo are in the store
+              useMaskStore.setState({
+                masks: convertedMasks,
+                selectedId: null,
+                draft: null
+              });
+              
+              // Update ref to track which photo we loaded masks for
+              lastLoadedPhotoIdRef.current = photoIdToUse;
+              
+              console.log('[NewEditor] Successfully loaded', Object.keys(convertedMasks).length, 'masks into store for photo', photoIdToUse);
+            } else {
+              // No masks from server - ensure store is cleared
+              lastLoadedPhotoIdRef.current = photoIdToUse;
+              console.log('[NewEditor] No masks found for photo:', photoIdToUse);
+            }
+          } else {
+            // No masks on server - clear store
+            console.log('[NewEditor] No existing masks found for photo:', photoIdToUse);
+            useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+            lastLoadedPhotoIdRef.current = photoIdToUse;
+          }
+        } catch (error) {
+          console.error('[NewEditor] Failed to load existing masks:', error);
+          // Don't throw - this is not critical to the main functionality
+        }
+      } else {
+        // console.log('[NewEditor] No photoId available, skipping mask loading');
+      }
+    };
+    
+    loadExistingMasks();
+  }, [effectivePhotoId, jobContext, photoId]);
+
+  // Load photo image URL when photoId is available
+  // ONLY if there's no user-loaded image already in the store
+  useEffect(() => {
+    const loadPhotoImage = async () => {
+      const photoIdToUse = effectivePhotoId || jobContext?.photoId || photoId;
+      
+      // Skip if no photoId available
+      if (!photoIdToUse) {
+        console.log('[NewEditor] No photoId to load photo for');
+        return;
+      }
+      
+      // Get fresh state directly (not from closure)
+      const currentState = useEditorStore.getState();
+      
+      // CRITICAL: Don't auto-load if user has already loaded an image
+      // Only load from API if there's no image OR if it's a Picsum placeholder
+      const hasUserImage = currentState.imageUrl && !currentState.imageUrl.includes('picsum.photos');
+      if (hasUserImage) {
+        console.log('[NewEditor] User has already loaded an image, skipping API photo load:', currentState.imageUrl);
+        return;
+      }
+      
+      // If we already loaded this exact photoId, skip (unless URL changed)
+      if (lastLoadedPhotoIdRef.current === photoIdToUse) {
+        // Double-check the URL matches - if photo was updated, reload
+        if (currentState.imageUrl && !currentState.imageUrl.includes('picsum.photos')) {
+          console.log('[NewEditor] Photo already loaded for photoId:', photoIdToUse);
+          return;
+        }
+        // If we have Picsum URL but a real photoId, reload
+        console.log('[NewEditor] PhotoId matches but URL may be stale, reloading...');
+      }
+      
+      console.log('[NewEditor] Loading photo for photoId:', photoIdToUse);
+      
+      try {
+        const photo = await apiClient.getPhoto(photoIdToUse);
+        if (photo && photo.originalUrl) {
+          console.log('[NewEditor] Photo loaded from API:', photo.originalUrl);
+          
+          // REJECT Picsum URLs - they're placeholders, not real user photos
+          if (photo.originalUrl.includes('picsum.photos')) {
+            console.warn('[NewEditor] Photo has Picsum placeholder URL, rejecting to prevent overwriting user content');
+            return;
+          }
+          
+          // Get fresh state again after API call
+          const freshState = useEditorStore.getState();
+          
+          // Only update if URL is different and not a test URL
+          const isTestUrl = freshState.imageUrl?.includes('picsum.photos');
+          if (!isTestUrl && freshState.imageUrl === photo.originalUrl) {
+            console.log('[NewEditor] Photo URL already matches, skipping update');
+            lastLoadedPhotoIdRef.current = photoIdToUse;
+            return;
+          }
+          
+          // Load image to get dimensions
+          const img = new Image();
+          img.onload = () => {
+            console.log('[NewEditor] Setting image in store:', photo.originalUrl);
+            dispatch({
+              type: 'SET_IMAGE',
+              payload: {
+                url: photo.originalUrl,
+                width: img.naturalWidth,
+                height: img.naturalHeight
+              }
+            });
+            lastLoadedPhotoIdRef.current = photoIdToUse;
+          };
+          img.onerror = () => {
+            console.error('[NewEditor] Failed to load image from photo URL:', photo.originalUrl);
+          };
+          img.src = photo.originalUrl;
+        } else {
+          console.warn('[NewEditor] Photo data missing originalUrl:', photo);
+        }
+      } catch (error: any) {
+        // Handle deleted photos gracefully (404 or any error after deletion)
+        const isNotFound = error?.message?.includes('404') || 
+                          error?.message?.includes('not found') ||
+                          error?.status === 404 ||
+                          error?.statusCode === 404;
+        const isDeleted = error?.status === 500 || 
+                         error?.statusCode === 500 ||
+                         error?.message?.includes('Photo');
+        
+        // CRITICAL FIX: Treat all errors for deleted photos as "not found" to prevent retries
+        if (isNotFound || isDeleted) {
+          console.log('[NewEditor] Photo not found or deleted, clearing local state:', photoIdToUse);
+          // Clear local photo state when photo is deleted
+          dispatch({
+            type: 'SET_IMAGE',
+            payload: {
+              url: '',
+              width: 0,
+              height: 0
+            }
+          });
+          // Clear masks for deleted photo
+          useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+          lastLoadedPhotoIdRef.current = null;
+          // Clear job context photoId to prevent future reload attempts
+          if (effectivePhotoId === photoIdToUse) {
+            dispatch({
+              type: 'SET_JOB_CONTEXT',
+              payload: {
+                jobId: effectiveJobId || '',
+                photoId: ''
+              }
+            });
+          }
+        } else {
+          console.error('[NewEditor] Failed to load photo:', error);
+        }
+      }
+    };
+    
+    loadPhotoImage();
+  }, [effectivePhotoId, jobContext?.photoId, photoId, dispatch]); // Removed getState from deps
+
+  // Cleanup: Clear ref on unmount to prevent stale state
+  useEffect(() => {
+    return () => {
+      lastLoadedPhotoIdRef.current = null;
+    };
+  }, []);
+
   // Sidebar resize functionality
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
@@ -146,7 +484,7 @@ export function NewEditor() {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (isResizing && containerRef.current) {
-        const containerRect = containerRef.current.getBoundingClientRect();
+        // const containerRect = containerRef.current.getBoundingClientRect();
         const newWidth = window.innerWidth - e.clientX;
         
         // Constrain width between 250px and 600px
@@ -212,6 +550,17 @@ export function NewEditor() {
     return () => window.removeEventListener('resize', handleResize);
   }, [dispatch]);
   
+  // Initialize container size on mount
+  React.useEffect(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      dispatch({
+        type: 'SET_CONTAINER_SIZE',
+        payload: { width: rect.width, height: rect.height }
+      });
+    }
+  }, [dispatch]);
+  
   // PHASE 3: Initialize layout guardrails on mount
   React.useEffect(() => {
     if (containerRef.current && sidebarRef.current) {
@@ -226,7 +575,7 @@ export function NewEditor() {
       };
       
       if (import.meta.env.DEV) {
-        console.log('[Layout Guardrails] Initialized:', layoutGuardrails.current);
+        // console.log('[Layout Guardrails] Initialized:', layoutGuardrails.current);
       }
     }
   }, []);
@@ -275,7 +624,10 @@ export function NewEditor() {
 
   return (
     <div className="h-full flex flex-col bg-gray-50">
-      <Toolbar />
+          <Toolbar 
+            {...(effectiveJobId && { jobId: effectiveJobId })}
+            {...(effectivePhotoId && { photoId: effectivePhotoId })}
+          />
       
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* Canvas viewport container - fixed box that does NOT resize on zoom */}
@@ -296,7 +648,7 @@ export function NewEditor() {
           />
           
           {/* Measurement Overlay */}
-          <MeasurementOverlay />
+          <MeasurementOverlay jobId={effectiveJobId || undefined} />
         </div>
         
         {/* Resize Handle */}
@@ -337,22 +689,6 @@ export function NewEditor() {
                 <TooltipTrigger asChild>
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
-                      activeTab === 'assets'
-                        ? 'text-blue-600 border-b-2 border-blue-600'
-                        : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                    onClick={() => setActiveTab('assets')}
-                  >
-                    <Image size={16} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>Assets</TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
                       activeTab === 'templates'
                         ? 'text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700'
@@ -384,9 +720,8 @@ export function NewEditor() {
           </TooltipProvider>
           
           {/* Tab Content */}
-          <div className="flex-1 overflow-auto min-h-0">
+          <div className="flex-1 min-h-0 relative overflow-hidden">
             {activeTab === 'materials' && <MaterialsPanel />}
-            {activeTab === 'assets' && <AssetsPanel />}
             {activeTab === 'templates' && <UnifiedTemplatesPanel />}
             {activeTab === 'masks' && <MaskManagementPanel />}
           </div>

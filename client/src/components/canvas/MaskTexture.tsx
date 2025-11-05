@@ -97,10 +97,9 @@ export function MaskTexture({
       try {
         // Check if material has texture URL
         if (!material.albedoURL) {
-          console.warn('[MaterialTextureMissing]', { 
-            materialId: material.id, 
+          console.warn('[Canvas Editor] No texture available for material:', { 
             materialName: material.name,
-            url: material.albedoURL 
+            suggestion: 'Add a texture URL to this material in the library' 
           });
           
           // Render subtle patterned fallback
@@ -115,15 +114,13 @@ export function MaskTexture({
           return;
         }
 
-        console.log('[ED/TEX:LOAD]', { url: material.albedoURL, status: 'loading' });
-        console.log('[Editor:TextureLoad]', { url: material.albedoURL, status: 'loading' });
+        console.log('[Canvas Editor] Loading material texture...', { materialName: material.name });
         const img = await loadTextureImage(material.albedoURL);
         if (stopped) return;
         const rect = baseRef.current;
         if (!rect) return;
 
-        console.log('[ED/TEX:LOAD]', { url: material.albedoURL, status: 'ok', cacheHit: img.complete && img.naturalWidth > 0 });
-        console.log('[Editor:TextureLoad]', { url: material.albedoURL, status: 'ok' });
+        console.log('[Canvas Editor] Material texture loaded successfully!', { materialName: material.name });
 
         // Compute base pattern scale
         const base = patternScaleFor(img, repeatPx);
@@ -167,8 +164,10 @@ export function MaskTexture({
           scale: { sx, sy, userScale, stageScale }
         });
       } catch (e) {
-        console.error('[ED/TEX:LOAD]', { url: material.albedoURL, status: 'err', error: e });
-        console.error('[Editor:TextureLoad]', { url: material.albedoURL, status: 'err', error: e });
+        console.warn('[Canvas Editor] Material texture failed to load:', { 
+          materialName: material.name, 
+          suggestion: 'Try a different material or check your connection' 
+        });
         
         // Render subtle patterned fallback on load failure
         const rect = baseRef.current;

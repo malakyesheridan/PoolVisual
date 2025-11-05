@@ -250,7 +250,9 @@ const initialState: EditorState = {
     showGrid: false,
     snapToGrid: false,
     gridOpacity: 0.3
-  }
+  },
+  // NEW: Drawing mode for freehand vs area
+  drawingMode: 'area' as const // Default to area mode
 };
 
 // Create store with reducer pattern
@@ -298,6 +300,15 @@ export const useEditorStore = create<EditorState & {
             imgH: height
           },
           state: 'ready'
+        }));
+        break;
+      }
+      
+      case 'SET_JOB_CONTEXT': {
+        const { jobId, photoId } = action.payload;
+        set(state => ({
+          ...state,
+          jobContext: { jobId, photoId }
         }));
         break;
       }
@@ -506,7 +517,10 @@ export const useEditorStore = create<EditorState & {
       }
       
       case 'RESET': {
-        set(initialState);
+        set(state => ({
+          ...initialState,
+          jobContext: state.jobContext // Preserve job context during reset
+        }));
         break;
       }
       
@@ -715,6 +729,15 @@ export const useEditorStore = create<EditorState & {
             ...state.pointEditing, 
             snapToGrid: !state.pointEditing.snapToGrid 
           }
+        }));
+        break;
+      }
+      
+      // NEW: Drawing mode actions
+      case 'SET_DRAWING_MODE': {
+        set(state => ({ 
+          ...state, 
+          drawingMode: action.payload
         }));
         break;
       }

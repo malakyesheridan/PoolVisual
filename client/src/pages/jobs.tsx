@@ -26,8 +26,11 @@ import {
   Palette,
   CheckCircle,
   Clock,
-  AlertCircle
+  AlertCircle,
+  FolderOpen
 } from "lucide-react";
+import { EmptyState } from "@/components/common/EmptyState";
+import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
 import { formatDistanceToNow } from "date-fns";
 
 export default function Jobs() {
@@ -311,27 +314,49 @@ export default function Jobs() {
           </CardHeader>
           <CardContent className="p-0">
             {isLoading ? (
-              <div className="p-8 text-center">
-                <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-                <p className="text-slate-500">Loading jobs...</p>
+              <div className="divide-y divide-slate-100">
+                {[1, 2, 3].map((i) => (
+                  <JobCardSkeleton key={i} />
+                ))}
               </div>
             ) : filteredJobs.length === 0 ? (
-              <div className="p-8 text-center">
-                <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-slate-900 mb-2">No jobs found</h3>
-                <p className="text-slate-500 mb-4" data-testid="text-no-jobs">
-                  {searchTerm ? 'No jobs match your search criteria.' : 'Get started by creating your first job.'}
-                </p>
-                <Button onClick={() => navigate('/jobs/new')} data-testid="button-create-first-job">
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create Your First Job
-                </Button>
-              </div>
+              <EmptyState
+                icon={FolderOpen}
+                title={searchTerm ? "No jobs found" : "No jobs yet"}
+                description={searchTerm 
+                  ? "No jobs match your search criteria. Try adjusting your filters." 
+                  : "Get started by creating your first job. Track projects, manage photos, and generate quotes all in one place."}
+                primaryAction={!searchTerm ? {
+                  label: "Create Your First Job",
+                  onClick: () => navigate('/jobs/new'),
+                  icon: Plus
+                } : undefined}
+                secondaryAction={searchTerm ? {
+                  label: "Clear search",
+                  onClick: () => setSearchTerm(''),
+                  variant: 'button'
+                } : undefined}
+              />
             ) : (
               <div className="divide-y divide-slate-100">
                 {filteredJobs.map((job) => {
                   const canvasStatus = getCanvasWorkStatus(job);
                   const StatusIcon = canvasStatus.icon;
+                  
+                  // Determine which badges to show
+                  // Clean logic: avoid redundant badges when job has started
+                  const hasPhotos = job.canvasWorkProgress.totalPhotos > 0;
+                  const canvasWorkActive = canvasStatus.status === 'in-progress' || canvasStatus.status === 'complete';
+                  
+                  // Show canvas badge if there are photos and status is meaningful
+                  const shouldShowCanvasBadge = hasPhotos && canvasStatus.status !== 'no-photos';
+                  
+                  // Show job status badge only if:
+                  // - Canvas work is active (show canvas status instead), OR
+                  // - Job is "new" AND has photos with "Not Started" canvas (avoid redundancy), OR
+                  // - Job is not "new" (always show meaningful statuses like "estimating", "accepted", etc.)
+                  const isRedundant = job.status === 'new' && hasPhotos && canvasStatus.status === 'not-started';
+                  const shouldShowJobStatus = !canvasWorkActive && !isRedundant;
                   
                   return (
                     <div 
@@ -345,20 +370,24 @@ export default function Jobs() {
                             <h3 className="font-medium text-slate-900" data-testid={`text-client-name-${job.id}`}>
                               {job.clientName}
                             </h3>
-                            <Badge 
-                              className={`text-xs ${getStatusColor(job.status)}`}
-                              data-testid={`badge-status-${job.id}`}
-                            >
-                              {job.status}
-                            </Badge>
-                            <Badge 
-                              variant="outline"
-                              className={`text-xs ${canvasStatus.color}`}
-                              data-testid={`badge-canvas-status-${job.id}`}
-                            >
-                              <StatusIcon className="w-3 h-3 mr-1" />
-                              {canvasStatus.label}
-                            </Badge>
+                            {shouldShowJobStatus && (
+                              <Badge 
+                                className={`text-xs ${getStatusColor(job.status)}`}
+                                data-testid={`badge-status-${job.id}`}
+                              >
+                                {job.status}
+                              </Badge>
+                            )}
+                            {shouldShowCanvasBadge && (
+                              <Badge 
+                                variant="outline"
+                                className={`text-xs ${canvasStatus.color}`}
+                                data-testid={`badge-canvas-status-${job.id}`}
+                              >
+                                <StatusIcon className="w-3 h-3 mr-1" />
+                                {canvasStatus.label}
+                              </Badge>
+                            )}
                           </div>
                           
                           <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
@@ -385,39 +414,29 @@ export default function Jobs() {
                               </div>
                             )}
                           </div>
-                          
-                          {/* Canvas Work Progress Bar */}
-                          {job.canvasWorkProgress.totalPhotos > 0 && (
-                            <div className="mt-2">
-                              <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                                <span>Canvas Work Progress</span>
-                                <span>{job.canvasWorkProgress.photosWithCanvasWork}/{job.canvasWorkProgress.totalPhotos} photos</span>
-                              </div>
-                              <div className="w-full bg-slate-200 rounded-full h-2">
-                                <div 
-                                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                                  style={{ width: `${job.canvasWorkProgress.completionPercentage}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          )}
                         </div>
                         
                         <div className="flex items-center gap-2">
                           {/* Quick Canvas Edit Button */}
                           {job.photos.length > 0 && (
                             <Button 
-                              variant="outline" 
+                              variant="default" 
                               size="sm"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const firstPhoto = job.photos[0];
-                                navigate(`/jobs/${job.id}/photo/${firstPhoto.id}/edit`);
+                                navigate(`/jobs/${job.id}/photo/${firstPhoto.id}/edit-canvas`);
                               }}
                               data-testid={`button-edit-canvas-${job.id}`}
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
                             >
                               <Palette className="w-4 h-4 mr-1" />
                               Edit Canvas
+                              {job.photos.length > 1 && (
+                                <Badge variant="secondary" className="ml-2 text-xs">
+                                  {job.photos.length} photos
+                                </Badge>
+                              )}
                             </Button>
                           )}
                           

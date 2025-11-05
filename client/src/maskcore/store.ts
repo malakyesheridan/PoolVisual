@@ -13,9 +13,18 @@ export interface Pt {
   y: number;
 }
 
+// Enhanced point interface with Bezier curve support
+export interface MaskPoint {
+  x: number; // image px
+  y: number; // image px
+  kind: 'corner' | 'smooth'; // smooth = bezier corner (optional for v1 ui)
+  h1?: { x: number; y: number }; // optional bezier handle in image px
+  h2?: { x: number; y: number };
+}
+
 export interface Mask {
   id: string;
-  pts: Pt[];
+  pts: MaskPoint[]; // Updated to use MaskPoint instead of Pt
   mode: 'area' | 'polygon';
   materialId?: string | null;
   // NEW (additive) - Full material settings schema
@@ -63,6 +72,25 @@ export interface Mask {
   position?: Pt;                // Global offset from original position (default: {x: 0, y: 0})
   rotation?: number;            // Rotation in degrees (default: 0)
   isDragging?: boolean;         // Temporary state during drag (default: false)
+  
+  // Multi-Level Geometry (additive) - For stepped levels and depth visualization
+  depthLevel?: number;          // Depth level: 0=surface, 1=mid-level, 2=deep (default: 0)
+  elevationM?: number;          // Elevation in meters from reference point (default: 0)
+  zIndex?: number;              // Rendering order for z-buffer (default: 0)
+  isStepped?: boolean;          // Whether this mask represents stepped geometry (default: false)
+  
+  // Curve settings (additive) - For simplified curve mode
+  curveMode?: boolean;          // Whether curve smoothing was applied (default: false)
+  curveIntensity?: number;      // Curve smoothing intensity 0-100 (default: 50)
+  
+  // NEW: Mask type for freehand vs area
+  type?: 'area' | 'linear';     // 'area' = closed polygon, 'linear' = open polyline (default: 'area')
+  
+  // NEW: Pool section metadata (optional, additive, non-breaking)
+  // Only set when mask is part of a pool system
+  isPoolSection?: boolean;
+  poolSectionType?: 'interior' | 'waterline' | 'coping' | 'paving';
+  parentPoolId?: string;
 }
 
 // Mask Group - For organizing masks into logical categories
@@ -166,8 +194,9 @@ interface MaskActions {
   POP: () => void;
   CANCEL: () => void;
   FINALIZE: () => void;
+  CREATE_MASK: (pts: MaskPoint[], mode: 'area' | 'polygon', id: string, name?: string, metadata?: { isPoolSection?: boolean; poolSectionType?: 'interior' | 'waterline' | 'coping' | 'paving'; parentPoolId?: string }) => void;
   SELECT: (id: string | null) => void;
-  DELETE: (id: string) => void;
+  DELETE: (id: string) => Promise<void>;
   SET_MATERIAL: (maskId: string, materialId: string) => void;
   // Additive:
   ASSIGN_MATERIAL: (maskId: string, materialId: string | null) => void;
@@ -175,6 +204,7 @@ interface MaskActions {
   SET_MATERIAL_SETTINGS: (maskId: string, settings: Partial<Mask['materialSettings']>) => void;
   // Mask Management Actions:
   RENAME_MASK: (maskId: string, name: string) => void;
+  UPDATE_POOL_METADATA: (maskId: string, metadata: { isPoolSection: boolean; poolSectionType: 'interior' | 'waterline' | 'coping' | 'paving'; parentPoolId?: string }) => void;
   TOGGLE_MASK_VISIBILITY: (maskId: string) => void;
   TOGGLE_MASK_LOCK: (maskId: string) => void;
   SET_MASK_COLOR: (maskId: string, color: string) => void;
@@ -203,6 +233,9 @@ interface MaskActions {
   UPDATE_MASK_POINT: (maskId: string, pointIndex: number, newPoint: Pt) => void;
   ADD_MASK_POINT: (maskId: string, pointIndex: number, newPoint: Pt) => void;
   REMOVE_MASK_POINT: (maskId: string, pointIndex: number) => void;
+  // Bezier Curve Actions (additive - no impact on existing functionality)
+  TOGGLE_POINT_CURVE: (maskId: string, pointIndex: number) => void;
+  UPDATE_BEZIER_HANDLE: (maskId: string, pointIndex: number, handleType: 'h1' | 'h2', position: Pt) => void;
   // Move Actions (additive - no impact on existing functionality)
   ENTER_MOVE_MODE: (maskId: string) => void;
   EXIT_MOVE_MODE: () => void;
@@ -271,7 +304,8 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     set({
       draft: {
         id,
-        pts: []
+        pts: [],
+        mode: 'area' // Default mode
       }
     });
   },
@@ -280,10 +314,17 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     const { draft } = get();
     if (!draft) return;
 
+    // Convert Pt to MaskPoint with default corner type
+    const maskPoint: MaskPoint = {
+      x: pt.x,
+      y: pt.y,
+      kind: 'corner' // Default to corner point
+    };
+
     set({
       draft: {
         ...draft,
-        pts: [...draft.pts, pt]
+        pts: [...draft.pts, maskPoint]
       }
     });
   },
@@ -353,6 +394,61 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     generateMaskNotification('mask_created', finalizedMask, draft.id);
   },
 
+  CREATE_MASK: (pts, mode, id, name, metadata) => {
+    const { masks, nextMaskOrder } = get();
+    
+    if (pts.length < 3) {
+      console.warn('[CREATE_MASK] Insufficient points, minimum 3 required');
+      return;
+    }
+    
+    const now = Date.now();
+    const defaultName = name || `Mask ${Object.keys(masks).length + 1}`;
+    
+    const newMask: Mask = {
+      id,
+      pts,
+      mode,
+      name: defaultName,
+      isVisible: true,
+      isLocked: false,
+      groupId: null,
+      order: nextMaskOrder,
+      createdAt: now,
+      lastModified: now,
+      color: undefined,
+      notes: undefined,
+      position: { x: 0, y: 0 },
+      rotation: 0,
+      // Add pool metadata if provided
+      ...(metadata?.isPoolSection && {
+        isPoolSection: metadata.isPoolSection,
+        poolSectionType: metadata.poolSectionType,
+        parentPoolId: metadata.parentPoolId
+      })
+    };
+    
+    console.log('[CREATE_MASK]', { 
+      maskId: id, 
+      name: defaultName, 
+      ptsCount: pts.length,
+      isPoolSection: metadata?.isPoolSection,
+      poolSectionType: metadata?.poolSectionType
+    });
+    
+    set({
+      masks: {
+        ...masks,
+        [id]: newMask
+      },
+      selectedId: id,
+      nextMaskOrder: nextMaskOrder + 1
+    });
+    
+    // Generate notification for mask creation
+    generateMaskNotification('mask_created', newMask, id);
+  },
+
   SELECT: (id) => {
     const { pointEditingMode, editingMaskId, originalMaskTransform } = get();
     
@@ -409,7 +505,7 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
     });
   },
 
-  DELETE: (id) => {
+  DELETE: async (id) => {
     const { masks, selectedId } = get();
     const mask = masks[id];
     
@@ -419,6 +515,23 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       return;
     }
     
+    try {
+      // Call server API to delete mask
+      const { apiClient } = await import('../lib/api-client');
+      await apiClient.deleteMask(id);
+      
+      console.log('[DELETE] Successfully deleted mask from server:', id);
+    } catch (error: any) {
+      // If error is 404, mask doesn't exist on server (e.g. local-only template mask)
+      // This is okay, just log it
+      if (error?.message?.includes('404') || error?.message?.includes('not found')) {
+        console.log('[DELETE] Mask not found on server (local-only, proceeding):', id);
+      } else {
+        console.error('[DELETE] Failed to delete mask from server:', error);
+      }
+    }
+    
+    // Always remove from local state, regardless of server response
     const newMasks = { ...masks };
     delete newMasks[id];
     
@@ -426,6 +539,8 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       masks: newMasks,
       selectedId: selectedId === id ? null : selectedId
     });
+    
+    console.log('[DELETE] Removed mask from local state:', id);
   },
 
   SET_MATERIAL: (maskId, materialId) => {
@@ -537,6 +652,27 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
         }
       }
     });
+  },
+
+  UPDATE_POOL_METADATA: (maskId, metadata) => {
+    const { masks } = get();
+    const mask = masks[maskId];
+    if (!mask) return;
+    
+    set({
+      masks: {
+        ...masks,
+        [maskId]: {
+          ...mask,
+          isPoolSection: metadata.isPoolSection,
+          poolSectionType: metadata.poolSectionType,
+          parentPoolId: metadata.parentPoolId,
+          lastModified: Date.now()
+        }
+      }
+    });
+    
+    console.log('[UPDATE_POOL_METADATA]', { maskId, metadata });
   },
 
   TOGGLE_MASK_VISIBILITY: (maskId) => {
@@ -1119,9 +1255,19 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       return;
     }
     
+    // Convert Pt to MaskPoint if needed, preserving existing Bezier data
+    const existingPoint = mask.pts[pointIndex];
+    const maskPoint: MaskPoint = {
+      x: newPoint.x,
+      y: newPoint.y,
+      kind: existingPoint.kind || 'corner',
+      h1: existingPoint.h1,
+      h2: existingPoint.h2
+    };
+    
     // Create new points array with updated point
     const newPoints = [...mask.pts];
-    newPoints[pointIndex] = newPoint;
+    newPoints[pointIndex] = maskPoint;
     
     // Update mask with new points
     set({
@@ -1144,9 +1290,16 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
       return;
     }
     
+    // Convert Pt to MaskPoint with default corner type
+    const maskPoint: MaskPoint = {
+      x: newPoint.x,
+      y: newPoint.y,
+      kind: 'corner'
+    };
+    
     // Insert new point at specified index
     const newPoints = [...mask.pts];
-    newPoints.splice(pointIndex, 0, newPoint);
+    newPoints.splice(pointIndex, 0, maskPoint);
     
     // Update mask with new points
     set({
@@ -1183,6 +1336,93 @@ export const useMaskStore = create<MaskStore>((set, get) => ({
           lastModified: Date.now()
         } 
       } 
+    });
+  },
+
+  // Bezier Curve Actions (additive - no impact on existing functionality)
+  TOGGLE_POINT_CURVE: (maskId, pointIndex) => {
+    const { masks } = get();
+    const mask = masks[maskId];
+    
+    if (!mask || mask.isLocked || pointIndex < 0 || pointIndex >= mask.pts.length) {
+      return;
+    }
+    
+    const point = mask.pts[pointIndex];
+    const newKind = point.kind === 'corner' ? 'smooth' : 'corner';
+    
+    // Calculate default handles for smooth points
+    let h1, h2;
+    if (newKind === 'smooth') {
+      // Calculate default handle positions (20% of distance to adjacent points)
+      const prevIndex = pointIndex === 0 ? mask.pts.length - 1 : pointIndex - 1;
+      const nextIndex = pointIndex === mask.pts.length - 1 ? 0 : pointIndex + 1;
+      
+      const prevPoint = mask.pts[prevIndex];
+      const nextPoint = mask.pts[nextIndex];
+      
+      const handleLength = 0.2; // 20% of distance to adjacent points
+      
+      h1 = {
+        x: point.x + (prevPoint.x - point.x) * handleLength,
+        y: point.y + (prevPoint.y - point.y) * handleLength
+      };
+      
+      h2 = {
+        x: point.x + (nextPoint.x - point.x) * handleLength,
+        y: point.y + (nextPoint.y - point.y) * handleLength
+      };
+    }
+    
+    // Create new points array with updated point
+    const newPoints = [...mask.pts];
+    newPoints[pointIndex] = {
+      ...point,
+      kind: newKind,
+      h1: newKind === 'smooth' ? h1 : undefined,
+      h2: newKind === 'smooth' ? h2 : undefined
+    };
+    
+    // Update mask with new points
+    set({
+      masks: {
+        ...masks,
+        [maskId]: {
+          ...mask,
+          pts: newPoints,
+          lastModified: Date.now()
+        }
+      }
+    });
+  },
+
+  UPDATE_BEZIER_HANDLE: (maskId, pointIndex, handleType, position) => {
+    const { masks } = get();
+    const mask = masks[maskId];
+    
+    if (!mask || mask.isLocked || pointIndex < 0 || pointIndex >= mask.pts.length) {
+      return;
+    }
+    
+    const point = mask.pts[pointIndex];
+    
+    // Create new points array with updated handle
+    const newPoints = [...mask.pts];
+    newPoints[pointIndex] = {
+      ...point,
+      [handleType]: position
+    };
+    
+    // Update mask with new points
+    set({
+      masks: {
+        ...masks,
+        [maskId]: {
+          ...mask,
+          pts: newPoints,
+          lastModified: Date.now()
+        }
+      }
     });
   },
 

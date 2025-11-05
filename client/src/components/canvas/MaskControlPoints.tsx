@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Group, Circle, Line } from 'react-konva';
-import { Mask, Pt } from '../../maskcore/store';
+import { Mask, Pt, MaskPoint } from '../../maskcore/store';
 import { useMaskStore } from '../../maskcore/store';
 import { useEditorStore } from '../../new_editor/store';
 
@@ -10,9 +10,19 @@ interface Props {
 }
 
 export function MaskControlPoints({ mask, imgFit }: Props) {
-  const { pointEditingMode, editingMaskId, UPDATE_MASK_POINT, ADD_MASK_POINT, REMOVE_MASK_POINT, selectedId } = useMaskStore();
+  const { 
+    pointEditingMode, 
+    editingMaskId, 
+    UPDATE_MASK_POINT, 
+    ADD_MASK_POINT, 
+    REMOVE_MASK_POINT, 
+    TOGGLE_POINT_CURVE,
+    UPDATE_BEZIER_HANDLE,
+    selectedId 
+  } = useMaskStore();
   const { dispatch, pointEditing, gridSpacing } = useEditorStore();
   const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+  const [draggingHandle, setDraggingHandle] = useState<{ pointIndex: number; handleType: 'h1' | 'h2' } | null>(null);
   
   console.log('[MaskControlPoints] Render check', {
     maskId: mask.id,
@@ -31,10 +41,19 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
 
   // Convert image coordinates to screen coordinates
   // In point editing mode, mask is flattened (no position/rotation transformations)
-  const pointsToScreen = (pts: Pt[]) => {
+  const pointsToScreen = (pts: MaskPoint[]) => {
     return pts.map(pt => ({
       x: pt.x * imgFit.imgScale + imgFit.originX,
-      y: pt.y * imgFit.imgScale + imgFit.originY
+      y: pt.y * imgFit.imgScale + imgFit.originY,
+      kind: pt.kind,
+      h1: pt.h1 ? {
+        x: pt.h1.x * imgFit.imgScale + imgFit.originX,
+        y: pt.h1.y * imgFit.imgScale + imgFit.originY
+      } : undefined,
+      h2: pt.h2 ? {
+        x: pt.h2.x * imgFit.imgScale + imgFit.originX,
+        y: pt.h2.y * imgFit.imgScale + imgFit.originY
+      } : undefined
     }));
   };
 
@@ -180,6 +199,14 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
                 REMOVE_MASK_POINT(mask.id, index);
               }
             }}
+            onDblClick={(e) => {
+              e.evt.preventDefault();
+              e.evt.stopPropagation();
+              // Create undo snapshot
+              dispatch({ type: 'SNAPSHOT' });
+              // Toggle between corner and smooth
+              TOGGLE_POINT_CURVE(mask.id, index);
+            }}
           />
           
           {/* Visible control point */}
@@ -187,11 +214,90 @@ export function MaskControlPoints({ mask, imgFit }: Props) {
             x={point.x}
             y={point.y}
             radius={hoveredPointIndex === index ? 6 : 4}
-            fill={hoveredPointIndex === index ? "#1E40AF" : "#3B82F6"}
+            fill={point.kind === 'smooth' ? "#10B981" : "#3B82F6"} // Green for smooth points
             stroke="#1E40AF"
             strokeWidth={1}
             listening={false} // Let the hover area handle all interactions
           />
+          
+          {/* Bezier handles for smooth points */}
+          {point.kind === 'smooth' && point.h1 && point.h2 && (
+            <>
+              {/* Handle lines */}
+              <Line
+                points={[point.x, point.y, point.h1.x, point.h1.y]}
+                stroke="#10B981"
+                strokeWidth={1}
+                opacity={0.6}
+                listening={false}
+              />
+              <Line
+                points={[point.x, point.y, point.h2.x, point.h2.y]}
+                stroke="#10B981"
+                strokeWidth={1}
+                opacity={0.6}
+                listening={false}
+              />
+              
+              {/* Handle 1 (h1) */}
+              <Circle
+                x={point.h1.x}
+                y={point.h1.y}
+                radius={3}
+                fill="#10B981"
+                stroke="#ffffff"
+                strokeWidth={1}
+                draggable
+                onDragStart={(e) => {
+                  e.evt.stopPropagation();
+                  setDraggingHandle({ pointIndex: index, handleType: 'h1' });
+                  dispatch({ type: 'SNAPSHOT' });
+                }}
+                onDragMove={(e) => {
+                  e.evt.stopPropagation();
+                  const newScreenX = e.target.x();
+                  const newScreenY = e.target.y();
+                  const newImageX = (newScreenX - imgFit.originX) / imgFit.imgScale;
+                  const newImageY = (newScreenY - imgFit.originY) / imgFit.imgScale;
+                  const snappedPoint = snapToGrid({ x: newImageX, y: newImageY });
+                  UPDATE_BEZIER_HANDLE(mask.id, index, 'h1', snappedPoint);
+                }}
+                onDragEnd={(e) => {
+                  e.evt.stopPropagation();
+                  setDraggingHandle(null);
+                }}
+              />
+              
+              {/* Handle 2 (h2) */}
+              <Circle
+                x={point.h2.x}
+                y={point.h2.y}
+                radius={3}
+                fill="#10B981"
+                stroke="#ffffff"
+                strokeWidth={1}
+                draggable
+                onDragStart={(e) => {
+                  e.evt.stopPropagation();
+                  setDraggingHandle({ pointIndex: index, handleType: 'h2' });
+                  dispatch({ type: 'SNAPSHOT' });
+                }}
+                onDragMove={(e) => {
+                  e.evt.stopPropagation();
+                  const newScreenX = e.target.x();
+                  const newScreenY = e.target.y();
+                  const newImageX = (newScreenX - imgFit.originX) / imgFit.imgScale;
+                  const newImageY = (newScreenY - imgFit.originY) / imgFit.imgScale;
+                  const snappedPoint = snapToGrid({ x: newImageX, y: newImageY });
+                  UPDATE_BEZIER_HANDLE(mask.id, index, 'h2', snappedPoint);
+                }}
+                onDragEnd={(e) => {
+                  e.evt.stopPropagation();
+                  setDraggingHandle(null);
+                }}
+              />
+            </>
+          )}
         </Group>
       ))}
     </Group>

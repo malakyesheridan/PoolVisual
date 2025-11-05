@@ -135,6 +135,11 @@ export const masks = pgTable("masks", {
   perimeterM: numeric("perimeter_m", { precision: 10, scale: 2 }),
   materialId: uuid("material_id").references(() => materials.id),
   calcMetaJson: jsonb("calc_meta_json"), // For material settings: repeatScale, rotationDeg, brightness, contrast
+  // Multi-Level Geometry fields (additive)
+  depthLevel: integer("depth_level").default(0), // 0=surface, 1=mid-level, 2=deep
+  elevationM: numeric("elevation_m", { precision: 10, scale: 2 }).default(0), // Elevation in meters
+  zIndex: integer("z_index").default(0), // Rendering order for z-buffer
+  isStepped: boolean("is_stepped").default(false), // Whether this mask represents stepped geometry
   createdBy: uuid("created_by").references(() => orgMembers.id).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
@@ -229,9 +234,12 @@ export const insertOrgSchema = createInsertSchema(orgs).omit({
   createdAt: true 
 });
 
-export const insertJobSchema = createInsertSchema(jobs).omit({ 
+export const insertJobSchema = createInsertSchema(jobs, {
+  createdBy: z.string().uuid().optional() // Override to make optional
+}).omit({ 
   id: true, 
-  createdAt: true 
+  createdAt: true,
+  createdBy: true
 });
 
 export const insertPhotoSchema = createInsertSchema(photos).omit({ 

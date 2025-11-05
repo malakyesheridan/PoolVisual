@@ -1,0 +1,112 @@
+/**
+ * Enhancement Queue - BullMQ setup
+ */
+
+import { Queue, Job } from 'bullmq';
+import IORedis from 'ioredis';
+
+let connection: IORedis | null = null;
+let enhancementQueue: Queue | null = null;
+const SAFE_MODE = process.env.SAFE_MODE === '1';
+
+// Mock processing function for SAFE_MODE
+async function mockProcessEnhance(data: any) {
+  const { getProvider } = await import('./enhancementProviders');
+  const { SSEManager } = await import('../lib/sseManager');
+  const { executeQuery } = await import('../lib/dbHelpers');
+  const jobId = data.jobId;
+
+  try {
+    await executeQuery(`UPDATE ai_enhancement_jobs SET status='rendering', progress_stage='rendering', updated_at=NOW() WHERE id=$1`, [jobId]);
+    SSEManager.emit(jobId, { status: 'rendering', progress: 40 });
+
+    const prov = getProvider(process.env.TEST_PROVIDER || 'mock:inpaint');
+    const result = await prov.submit(data, {
+      onProgress: (p) => SSEManager.emit(jobId, { status: 'rendering', progress: Math.max(40, Math.min(95, p)) })
+    });
+
+    await executeQuery(
+      `UPDATE ai_enhancement_jobs SET status='completed', progress_percent=100, cost_micros=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
+      [jobId, result.costMicros || 0]
+    );
+    SSEManager.emit(jobId, { status: 'completed', progress: 100 });
+  } catch (err: any) {
+    await executeQuery(`UPDATE ai_enhancement_jobs SET status='failed', error_message=$2, updated_at=NOW() WHERE id=$1`, [jobId, err?.message || 'mock_failed']);
+    SSEManager.emit(jobId, { status: 'failed', error: err?.message });
+  }
+}
+
+if (SAFE_MODE) {
+  // In-memory mock queue
+  enhancementQueue = {
+    add: async (_name: string, data: any) => {
+      process.nextTick(() => mockProcessEnhance(data));
+      return { id: data.jobId } as any;
+    },
+    getJob: async () => null,
+    close: async () => {}
+  } as any;
+  console.log('[Queue] Using mock queue (SAFE_MODE)');
+} else {
+  try {
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    const isTLS = redisUrl.startsWith('rediss://');
+    
+    // Connection options optimized for Upstash Redis
+    const connectionOptions: any = {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+      connectTimeout: 10000,
+      commandTimeout: 5000,
+      keepAlive: 30000,
+      retryStrategy: (times: number) => {
+        const delay = Math.min(times * 50, 5000);
+        return delay;
+      },
+      reconnectOnError: (err: Error) => {
+        const errorMessage = err.message.toLowerCase();
+        if (errorMessage.includes('timeout') || 
+            errorMessage.includes('etimedout') ||
+            errorMessage.includes('econnrefused') ||
+            errorMessage.includes('enotfound')) {
+          return true;
+        }
+        return false;
+      }
+    };
+    
+    if (isTLS) {
+      connectionOptions.tls = {};
+    }
+    
+    connection = new IORedis(redisUrl, connectionOptions);
+    connection.on('error', (err) => {
+      // Suppress timeout errors - they're common with cloud Redis
+      const errorMessage = err.message.toLowerCase();
+      if (!errorMessage.includes('timeout') && !errorMessage.includes('etimedout')) {
+        console.warn('[Redis] Connection error:', err.message);
+      }
+    });
+    enhancementQueue = new Queue('enhancement', { connection });
+    console.log('[Redis] Connected to queue');
+  } catch (err: any) {
+    console.warn('[Redis] Could not connect, queue disabled:', err.message);
+  }
+}
+
+export { enhancementQueue };
+
+export interface EnhancementJobData {
+  jobId: string;
+  tenantId: string;
+  userId: string;
+  photoId: string;
+  imageUrl: string;
+  inputHash: string;
+  masks: any[];
+  options: Record<string, any>;
+  calibration?: number;
+  provider: string;
+  model: string;
+}
+

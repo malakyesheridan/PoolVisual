@@ -1,18 +1,16 @@
 import { useState, useRef } from 'react';
 import { Button } from '../components/ui/button';
-import { Plus, Package, Image, FileText } from 'lucide-react';
+import { Plus, Package, FileText } from 'lucide-react';
 import { MaterialsTab } from '../components/library/MaterialsTab';
-import { AssetsTab } from '../components/library/AssetsTab';
 import { TemplatesTab } from '../components/library/TemplatesTab';
 
-type TabType = 'materials' | 'assets' | 'templates';
+type TabType = 'materials' | 'templates';
 
 export default function Library() {
   const [activeTab, setActiveTab] = useState<TabType>('materials');
   
   // Refs to communicate with tab components
   const materialsTabRef = useRef<{ triggerAdd: () => void }>(null);
-  const assetsTabRef = useRef<{ triggerAdd: () => void }>(null);
   const templatesTabRef = useRef<{ triggerAdd: () => void }>(null);
 
   const tabs = [
@@ -21,12 +19,6 @@ export default function Library() {
       label: 'Materials',
       icon: Package,
       description: 'Pool renovation materials and pricing'
-    },
-    {
-      id: 'assets' as TabType,
-      label: 'Assets',
-      icon: Image,
-      description: 'Pool design assets and textures'
     },
     {
       id: 'templates' as TabType,
@@ -40,8 +32,6 @@ export default function Library() {
     switch (activeTab) {
       case 'materials':
         return 'Add Material';
-      case 'assets':
-        return 'Add Asset';
       case 'templates':
         return 'Add Template';
       default:
@@ -54,9 +44,6 @@ export default function Library() {
     switch (activeTab) {
       case 'materials':
         materialsTabRef.current?.triggerAdd();
-        break;
-      case 'assets':
-        assetsTabRef.current?.triggerAdd();
         break;
       case 'templates':
         templatesTabRef.current?.triggerAdd();
@@ -138,7 +125,6 @@ export default function Library() {
         {/* Tab Content */}
         <div className="tab-content">
           {activeTab === 'materials' && <MaterialsTab ref={materialsTabRef} />}
-          {activeTab === 'assets' && <AssetsTab ref={assetsTabRef} />}
           {activeTab === 'templates' && <TemplatesTab ref={templatesTabRef} />}
         </div>
       </div>

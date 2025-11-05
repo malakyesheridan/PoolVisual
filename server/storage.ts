@@ -72,6 +72,7 @@ export interface IStorage {
   createOrg(org: InsertOrg, userId: string): Promise<Org>;
   getUserOrgs(userId: string): Promise<Org[]>;
   getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined>;
+  createOrgMember(orgId: string, userId: string, role?: string): Promise<OrgMember>;
   
   // Jobs
   createJob(job: InsertJob): Promise<Job>;
@@ -81,6 +82,9 @@ export interface IStorage {
   // Photos
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   getPhoto(id: string): Promise<Photo | undefined>;
+  getJobPhotos(jobId: string): Promise<Photo[]>;
+  updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }): Promise<Photo>;
+  deletePhoto(id: string): Promise<void>;
   updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo>;
   updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number }): Promise<Photo>;
   getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number } | null>;
@@ -88,12 +92,14 @@ export interface IStorage {
   // Materials
   getAllMaterials(): Promise<Material[]>;
   getMaterials(orgId?: string, category?: string): Promise<Material[]>;
+  getMaterial(id: string): Promise<Material | null>;
   createMaterial(material: InsertMaterial): Promise<Material>;
   updateMaterial(id: string, material: Partial<Material>): Promise<Material>;
   deleteMaterial(id: string): Promise<void>;
   
   // Masks
   createMask(mask: InsertMask): Promise<Mask>;
+  getMask(id: string): Promise<Mask | null>;
   getMasksByPhoto(photoId: string): Promise<Mask[]>;
   deleteMask(id: string): Promise<void>;
   
@@ -101,8 +107,11 @@ export interface IStorage {
   createQuote(quote: InsertQuote): Promise<Quote>;
   getQuote(id: string): Promise<Quote | undefined>;
   getQuoteByToken(token: string): Promise<Quote | undefined>;
+  getQuotes(orgId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]>;
   addQuoteItem(item: InsertQuoteItem): Promise<QuoteItem>;
   getQuoteItems(quoteId: string): Promise<QuoteItem[]>;
+  updateQuoteItem(itemId: string, updates: Partial<QuoteItem>): Promise<QuoteItem>;
+  deleteQuoteItem(itemId: string): Promise<void>;
   updateQuote(id: string, updates: Partial<Quote>): Promise<Quote>;
   
   // Settings
@@ -159,7 +168,15 @@ export class PostgresStorage implements IStorage {
       .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
       .where(eq(orgMembers.userId, userId));
     
-    return result.map((r) => r.org);
+    // Deduplicate by org ID in case of multiple memberships in same org
+    const orgMap = new Map<string, Org>();
+    result.forEach((r) => {
+      if (r.org && r.org.id) {
+        orgMap.set(r.org.id, r.org);
+      }
+    });
+    
+    return Array.from(orgMap.values());
   }
 
   async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
@@ -167,6 +184,30 @@ export class PostgresStorage implements IStorage {
       .select()
       .from(orgMembers)
       .where(and(eq(orgMembers.userId, userId), eq(orgMembers.orgId, orgId)));
+    
+    return orgMember;
+  }
+
+  async createOrgMember(orgId: string, userId: string, role: string = "estimator"): Promise<OrgMember> {
+    // Check if membership already exists
+    const existing = await this.getOrgMember(userId, orgId);
+    if (existing) {
+      return existing;
+    }
+    
+    // Create new membership
+    const [orgMember] = await ensureDb()
+      .insert(orgMembers)
+      .values({
+        orgId,
+        userId,
+        role: role as any // Type assertion needed for enum
+      })
+      .returning();
+    
+    if (!orgMember) {
+      throw new Error("Failed to create organization member");
+    }
     
     return orgMember;
   }
@@ -195,6 +236,30 @@ export class PostgresStorage implements IStorage {
   async getPhoto(id: string): Promise<Photo | undefined> {
     const [photo] = await ensureDb().select().from(photos).where(eq(photos.id, id));
     return photo;
+  }
+
+  async getJobPhotos(jobId: string): Promise<Photo[]> {
+    return await ensureDb().select().from(photos).where(eq(photos.jobId, jobId));
+  }
+
+  async updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }): Promise<Photo> {
+    const [photo] = await ensureDb()
+      .update(photos)
+      .set({ 
+        originalUrl: data.originalUrl,
+        width: data.width,
+        height: data.height
+      })
+      .where(eq(photos.id, id))
+      .returning();
+    if (!photo) throw new Error("Failed to update photo");
+    return photo;
+  }
+
+  async deletePhoto(id: string): Promise<void> {
+    await ensureDb()
+      .delete(photos)
+      .where(eq(photos.id, id));
   }
 
   async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo> {
@@ -274,6 +339,16 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async getMaterial(id: string): Promise<Material | null> {
+    try {
+      const result = await ensureDb().select().from(materials).where(eq(materials.id, id)).limit(1);
+      return result[0] || null;
+    } catch (error) {
+      console.error('[Storage] Failed to get material:', error);
+      throw new Error(`Failed to get material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
     let conditions = [eq(materials.isActive, true)];
     
@@ -327,6 +402,11 @@ export class PostgresStorage implements IStorage {
     return mask;
   }
 
+  async getMask(id: string): Promise<Mask | null> {
+    const result = await ensureDb().select().from(masks).where(eq(masks.id, id)).limit(1);
+    return result[0] || null;
+  }
+
   async getMasksByPhoto(photoId: string): Promise<Mask[]> {
     return await ensureDb().select().from(masks).where(eq(masks.photoId, photoId));
   }
@@ -354,6 +434,26 @@ export class PostgresStorage implements IStorage {
     return quote;
   }
 
+  async getQuotes(orgId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]> {
+    let conditions = [eq(jobs.orgId, orgId)];
+    
+    if (filters?.status) {
+      conditions.push(eq(quotes.status, filters.status as any));
+    }
+    
+    if (filters?.jobId) {
+      conditions.push(eq(quotes.jobId, filters.jobId));
+    }
+    
+    const results = await ensureDb()
+      .select()
+      .from(quotes)
+      .innerJoin(jobs, eq(quotes.jobId, jobs.id))
+      .where(and(...conditions));
+    
+    return results.map(r => r.quotes);
+  }
+
   async addQuoteItem(insertItem: InsertQuoteItem): Promise<QuoteItem> {
     const [item] = await ensureDb().insert(quoteItems).values(insertItem).returning();
     if (!item) throw new Error("Failed to create quote item");
@@ -362,6 +462,22 @@ export class PostgresStorage implements IStorage {
 
   async getQuoteItems(quoteId: string): Promise<QuoteItem[]> {
     return await ensureDb().select().from(quoteItems).where(eq(quoteItems.quoteId, quoteId));
+  }
+
+  async updateQuoteItem(itemId: string, updates: Partial<QuoteItem>): Promise<QuoteItem> {
+    const [item] = await ensureDb()
+      .update(quoteItems)
+      .set(updates)
+      .where(eq(quoteItems.id, itemId))
+      .returning();
+    if (!item) throw new Error("Failed to update quote item");
+    return item;
+  }
+
+  async deleteQuoteItem(itemId: string): Promise<void> {
+    await ensureDb()
+      .delete(quoteItems)
+      .where(eq(quoteItems.id, itemId));
   }
 
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {

@@ -84,11 +84,7 @@ export class MockStorage {
     this.orgs.push(org);
     
     // Create org member
-    await this.createOrgMember({
-      orgId: org.id,
-      userId: userId,
-      role: 'owner'
-    });
+    await this.createOrgMember(org.id, userId, 'owner');
     
     return org;
   }
@@ -104,12 +100,30 @@ export class MockStorage {
     return this.orgs.filter(o => memberOrgIds.includes(o.id));
   }
 
-  async createOrgMember(insertMember: { orgId: string; userId: string; role: string }): Promise<{ orgId: string; userId: string; role: string }> {
-    const member = {
-      ...insertMember
-    };
+  async createOrgMember(orgId: string, userId: string, role: string = "estimator"): Promise<OrgMember> {
+    // Check if membership already exists
+    const existing = this.orgMembers.find(m => m.userId === userId && m.orgId === orgId);
+    if (existing) {
+      return {
+        id: this.generateId(),
+        orgId: existing.orgId,
+        userId: existing.userId,
+        role: existing.role,
+        createdAt: new Date()
+      };
+    }
+    
+    // Create new membership
+    const member = { orgId, userId, role };
     this.orgMembers.push(member);
-    return member;
+    
+    return {
+      id: this.generateId(),
+      orgId: member.orgId,
+      userId: member.userId,
+      role: member.role,
+      createdAt: new Date()
+    };
   }
 
   async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
@@ -225,7 +239,12 @@ export class MockStorage {
       areaM2: insertMask.areaM2 ?? null,
       perimeterM: insertMask.perimeterM ?? null,
       materialId: insertMask.materialId ?? null,
-      calcMetaJson: insertMask.calcMetaJson ?? null
+      calcMetaJson: insertMask.calcMetaJson ?? null,
+      // Multi-Level Geometry fields (additive)
+      depthLevel: insertMask.depthLevel ?? 0,
+      elevationM: insertMask.elevationM ?? 0,
+      zIndex: insertMask.zIndex ?? 0,
+      isStepped: insertMask.isStepped ?? false
     };
     this.masks.push(mask);
     return mask;
@@ -303,6 +322,10 @@ export class MockStorage {
 
   async getAllMaterials(): Promise<Material[]> {
     return this.materials;
+  }
+
+  async getMaterial(id: string): Promise<Material | null> {
+    return this.materials.find(m => m.id === id) || null;
   }
 
   async deleteMaterial(id: string): Promise<void> {
@@ -444,11 +467,7 @@ export class MockStorage {
     }, user.id);
 
     // Create org member
-    await this.createOrgMember({
-      orgId: org.id,
-      userId: user.id,
-      role: 'owner'
-    });
+    await this.createOrgMember(org.id, user.id, 'owner');
 
     // Create some mock materials
     await this.createMaterial({

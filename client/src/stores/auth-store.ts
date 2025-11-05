@@ -18,7 +18,7 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      isAuthenticated: process.env.NODE_ENV === 'development', // DEV BYPASS: Auto-authenticate in dev
+      isAuthenticated: false,
       login: (user) => {
         set({ user, isAuthenticated: true });
       },

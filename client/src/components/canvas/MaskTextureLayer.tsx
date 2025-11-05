@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Layer } from 'react-konva';
+import { Layer, Line, Group, Shape } from 'react-konva';
+import Konva from 'konva';
 import { MaskTexture } from './MaskTexture';
 import { useMaskStore } from '../../maskcore/store';
 import { ensureLoaded, getById } from '../../materials/registry';
@@ -7,9 +8,10 @@ import { ensureLoaded, getById } from '../../materials/registry';
 interface Props {
   stageScale: number;
   imgFit?: { originX: number; originY: number; imgScale: number };
+  onSelect?: (maskId: string) => void; // Add onSelect prop for mask selection
 }
 
-export function MaskTextureLayer({ stageScale, imgFit }: Props) {
+export function MaskTextureLayer({ stageScale, imgFit, onSelect }: Props) {
   const masks = useMaskStore(state => state.masks);
   const selectedId = useMaskStore(state => state.selectedId);
   const pointEditingMode = useMaskStore(state => state.pointEditingMode);
@@ -93,15 +95,71 @@ export function MaskTextureLayer({ stageScale, imgFit }: Props) {
             });
           }
 
+          const isSelected = selectedId === maskId;
+          
+          // Convert points for outline rendering
+          const outlinePoints = adjustedPts.flatMap(pt => {
+            if (imgFit) {
+              return [
+                pt.x * imgFit.imgScale + imgFit.originX,
+                pt.y * imgFit.imgScale + imgFit.originY
+              ];
+            }
+            return [pt.x, pt.y];
+          });
+          
           return (
-            <MaskTexture
-              key={`${maskId}-${mask.pts.length}-${mask.lastModified || 0}-${isInPointEditing ? 'editing' : 'normal'}`}
-              maskId={maskId}
-              pts={adjustedPts}
-              stageScale={stageScale}
-              material={material}
-              imgFit={imgFit}
-              settings={{
+            <Group
+              key={`${maskId}-group`}
+              name="mask-shape"
+              listening={true}
+              isMask={true} // custom attr for centralized handler
+              maskId={maskId} // for centralized handler to detect clicks
+            >
+              {/* Invisible hit area for mask selection */}
+              <Shape
+                name={`mask-${maskId}`}
+                sceneFunc={(context, shape) => {
+                  context.beginPath();
+                  const firstPoint = adjustedPts[0];
+                  if (firstPoint) {
+                    const startPt = imgFit
+                      ? {
+                          x: firstPoint.x * imgFit.imgScale + imgFit.originX,
+                          y: firstPoint.y * imgFit.imgScale + imgFit.originY
+                        }
+                      : firstPoint;
+                    context.moveTo(startPt.x, startPt.y);
+                  }
+                  for (let i = 1; i < adjustedPts.length; i++) {
+                    const pt = adjustedPts[i];
+                    if (pt) {
+                      const screenPt = imgFit
+                        ? {
+                            x: pt.x * imgFit.imgScale + imgFit.originX,
+                            y: pt.y * imgFit.imgScale + imgFit.originY
+                          }
+                        : pt;
+                      context.lineTo(screenPt.x, screenPt.y);
+                    }
+                  }
+                  context.closePath();
+                  context.fillStrokeShape(shape);
+                }}
+                fill="rgba(0,0,0,0)" // completely transparent but clickable
+                stroke="rgba(0,0,0,0)"
+                listening={true}
+                maskId={maskId}
+              />
+              
+              <MaskTexture
+                key={`${maskId}-${mask.pts.length}-${mask.lastModified || 0}-${isInPointEditing ? 'editing' : 'normal'}`}
+                maskId={maskId}
+                pts={adjustedPts}
+                stageScale={stageScale}
+                material={material}
+                imgFit={imgFit}
+                settings={{
                 opacity: mask.materialSettings?.opacity ?? 70,
                 tint: mask.materialSettings?.tint ?? 55,
                 edgeFeather: mask.materialSettings?.edgeFeather ?? 0,
@@ -122,6 +180,21 @@ export function MaskTextureLayer({ stageScale, imgFit }: Props) {
                 softness: mask.materialSettings?.softness ?? 0,
               }}
             />
+            {/* Selection outline for masks with materials */}
+            {isSelected && outlinePoints.length >= 6 && (
+              <Line
+                points={outlinePoints}
+                stroke="#2563eb"
+                strokeWidth={1.5}
+                closed={true}
+                fillEnabled={false}
+                listening={false}
+                lineCap="round"
+                lineJoin="round"
+                perfectDrawEnabled={false}
+              />
+            )}
+          </Group>
           );
         })
         .filter(Boolean)}

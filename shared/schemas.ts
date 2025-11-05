@@ -277,7 +277,12 @@ export const CreateMaskSchema = z.object({
   materialId: z.string().uuid().optional(),
   areaM2: z.number().min(0).optional(),
   perimeterM: z.number().min(0).optional(),
-  bandHeightM: z.number().positive().optional()
+  bandHeightM: z.number().positive().optional(),
+  // Multi-Level Geometry fields (additive)
+  depthLevel: z.number().int().min(0).max(2).optional(),
+  elevationM: z.number().min(0).optional(),
+  zIndex: z.number().int().optional(),
+  isStepped: z.boolean().optional()
 });
 
 // API Response schemas

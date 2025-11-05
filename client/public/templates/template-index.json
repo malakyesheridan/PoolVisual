@@ -1,0 +1,178 @@
+{
+  "version": 1,
+  "updatedAt": "2025-01-06T00:00:00Z",
+  "categories": ["rectangular", "freeform", "spa"],
+  "templates": [
+    {
+      "id": "rectangular_standard",
+      "name": "Standard Rectangular Pool",
+      "category": "rectangular",
+      "preview": "/templates/previews/rectangular_standard.png",
+      "description": "Classic rectangular pool with standard dimensions",
+      "tags": ["rectangular", "standard", "classic"],
+      "scene": {
+        "masks": [
+          {
+            "id": "pool_main",
+            "points": [
+              { "x": 100, "y": 100 },
+              { "x": 400, "y": 100 },
+              { "x": 400, "y": 300 },
+              { "x": 100, "y": 300 }
+            ],
+            "material": {
+              "id": "pool_tile_blue",
+              "tileScale": 1.0,
+              "opacity": 1.0
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "tree_1",
+            "kind": "decal",
+            "sourceId": "tree_palm_01",
+            "name": "Palm Tree",
+            "category": "tree",
+            "natW": 400,
+            "natH": 600,
+            "x": 50,
+            "y": 150,
+            "scale": 0.8,
+            "rotation": 0,
+            "opacity": 1.0,
+            "blend": "normal",
+            "z": 1
+          }
+        ]
+      }
+    },
+    {
+      "id": "freeform_natural",
+      "name": "Natural Freeform Pool",
+      "category": "freeform",
+      "preview": "/templates/previews/freeform_natural.png",
+      "description": "Organic-shaped pool with natural curves",
+      "tags": ["freeform", "natural", "organic"],
+      "scene": {
+        "masks": [
+          {
+            "id": "pool_main",
+            "points": [
+              { "x": 150, "y": 120 },
+              { "x": 200, "y": 100 },
+              { "x": 280, "y": 110 },
+              { "x": 350, "y": 140 },
+              { "x": 380, "y": 200 },
+              { "x": 370, "y": 280 },
+              { "x": 320, "y": 320 },
+              { "x": 250, "y": 330 },
+              { "x": 180, "y": 300 },
+              { "x": 140, "y": 250 },
+              { "x": 130, "y": 180 }
+            ],
+            "material": {
+              "id": "pool_tile_natural",
+              "tileScale": 1.2,
+              "opacity": 1.0
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "tree_1",
+            "kind": "decal",
+            "sourceId": "tree_oak_01",
+            "name": "Oak Tree",
+            "category": "tree",
+            "natW": 500,
+            "natH": 700,
+            "x": 80,
+            "y": 200,
+            "scale": 1.0,
+            "rotation": 0,
+            "opacity": 1.0,
+            "blend": "normal",
+            "z": 1
+          },
+          {
+            "id": "furniture_1",
+            "kind": "decal",
+            "sourceId": "furniture_chair_01",
+            "name": "Outdoor Chair",
+            "category": "furniture",
+            "natW": 200,
+            "natH": 300,
+            "x": 300,
+            "y": 80,
+            "scale": 0.6,
+            "rotation": 0,
+            "opacity": 1.0,
+            "blend": "normal",
+            "z": 2
+          }
+        ]
+      }
+    },
+    {
+      "id": "spa_luxury",
+      "name": "Luxury Spa Pool",
+      "category": "spa",
+      "preview": "/templates/previews/spa_luxury.png",
+      "description": "Small luxury spa with premium features",
+      "tags": ["spa", "luxury", "small"],
+      "scene": {
+        "masks": [
+          {
+            "id": "spa_main",
+            "points": [
+              { "x": 200, "y": 200 },
+              { "x": 300, "y": 200 },
+              { "x": 300, "y": 250 },
+              { "x": 200, "y": 250 }
+            ],
+            "material": {
+              "id": "spa_tile_premium",
+              "tileScale": 0.8,
+              "opacity": 1.0
+            }
+          }
+        ],
+        "assets": [
+          {
+            "id": "lighting_1",
+            "kind": "decal",
+            "sourceId": "lighting_lamp_01",
+            "name": "Garden Lamp",
+            "category": "lighting",
+            "natW": 100,
+            "natH": 300,
+            "x": 180,
+            "y": 180,
+            "scale": 0.7,
+            "rotation": 0,
+            "opacity": 1.0,
+            "blend": "normal",
+            "z": 1
+          },
+          {
+            "id": "misc_1",
+            "kind": "decal",
+            "sourceId": "misc_fountain_01",
+            "name": "Small Fountain",
+            "category": "misc",
+            "natW": 250,
+            "natH": 350,
+            "x": 320,
+            "y": 180,
+            "scale": 0.5,
+            "rotation": 0,
+            "opacity": 1.0,
+            "blend": "normal",
+            "z": 2
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { assetSource } from './assetSource';
 
 // Asset definition from static JSON
 export type AssetDef = {
@@ -38,6 +39,7 @@ interface AssetsState {
   
   // Actions
   loadAssetDefs: (defs: AssetDef[]) => void;
+  syncWithAssetSource: () => Promise<void>;
   addAsset: (defId: string, initial?: Partial<AssetInstance>) => string;
   updateAsset: (id: string, patch: Partial<AssetInstance>) => void;
   removeAsset: (id: string) => void;
@@ -53,6 +55,25 @@ interface AssetsState {
 // Generate unique ID for asset instances
 function generateAssetId(): string {
   return `asset_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Helper function to resolve asset IDs across different systems
+export function resolveAssetId(sourceId: string): string | null {
+  // Check if it's already a valid asset definition ID
+  const assetsStore = useAssetsStore.getState();
+  if (assetsStore.defsById[sourceId]) {
+    return sourceId;
+  }
+  
+  // Check AssetSource for the ID
+  const items = assetSource.getItems();
+  const foundItem = items.find(item => item.id === sourceId);
+  if (foundItem) {
+    return sourceId;
+  }
+  
+  console.warn(`[ASSETS:resolve] Asset not found: ${sourceId}`);
+  return null;
 }
 
 // Get storage key for current session
@@ -91,6 +112,30 @@ export const useAssetsStore = create<AssetsState>()(
         });
         return { defsById: newDefsById };
       });
+    },
+
+    // Sync with AssetSource to ensure consistency
+    syncWithAssetSource: async () => {
+      try {
+        await assetSource.loadManifest();
+        const items = assetSource.getItems();
+        const assetDefs = items.map(item => ({
+          id: item.id,
+          name: item.name,
+          category: item.category,
+          url: item.src,
+          thumbnail: item.thumb,
+          defaultScale: 1.0
+        }));
+        
+        if (import.meta.env.DEV) {
+          console.log('[ASSETS:sync] Syncing with AssetSource:', assetDefs.length, 'items');
+        }
+        
+        get().loadAssetDefs(assetDefs);
+      } catch (error) {
+        console.error('[ASSETS:sync] Failed to sync with AssetSource:', error);
+      }
     },
 
     // Add new asset instance

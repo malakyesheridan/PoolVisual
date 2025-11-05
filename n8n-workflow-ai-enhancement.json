@@ -1,0 +1,547 @@
+{
+  "name": "AI Enhancement Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "enhancement",
+        "httpMethod": "POST",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -208,
+        832
+      ],
+      "id": "webhook-trigger-enhancement",
+      "name": "Enhancement Webhook",
+      "webhookId": "enhancement-webhook-id"
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "text": "Analyze the provided image and extract insights useful for **AI image enhancement**. \nFocus on **image quality, composition, lighting, and areas that could benefit from enhancement**. Keep the tone technical and descriptive.\n**Be concise and clear**\n\n**Provide:**\n\n1. **Image Quality Assessment:** Evaluate current resolution, sharpness, noise levels, and overall image quality.\n\n2. **Visual Composition:** Describe key elements, subject positioning, background, and overall scene structure.\n\n3. **Lighting Conditions:** Assess current lighting (natural, artificial, direction, shadows, highlights).\n\n4. **Enhancement Opportunities:** Identify specific areas that could be improved (e.g., sharpening, color correction, adding elements, removing artifacts).\n\n5. **Technical Recommendations:** Suggest enhancement parameters that would improve the image while maintaining its original character.\n\n**Be specific and actionable — think like an image processing expert preparing enhancement guidelines.**\n\n**Important: Return only the final analysis without any explanation or preamble. Be concise, technical, and enhancement-focused.**",
+        "imageUrls": "={{ $json.imageUrl }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        288,
+        832
+      ],
+      "id": "4026fbad-545a-4bb9-8397-0963f5c9e92c",
+      "name": "Analyze image",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Wx5b5v7ukrWVITW3",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "You are an expert AI image enhancement assistant. Generate precise, technical prompts for AI image enhancement that will improve image quality, add realistic elements, or apply specific enhancements while maintaining original composition and perspective.\n\nYour prompts should:\n- Be detailed and specific about what to enhance\n- Maintain the original image's composition and perspective\n- Preserve important elements unless explicitly told to modify them\n- Use clear, actionable language for the AI model\n- Focus on realistic, natural-looking enhancements\n- Consider lighting, shadows, and color consistency\n\nGenerate a single, comprehensive enhancement prompt that can be directly used by an AI image generation model.",
+              "role": "model"
+            },
+            {
+              "content": "## Enhancement Request\n\n**User Enhancement Prompt:**\n{{ $json.options.prompt || 'Enhance this image while maintaining its original character' }}\n\n**Image Analysis:**\n{{ $('Analyze image').item.json.content.parts[0].text || 'No analysis available' }}\n\n**Enhancement Context:**\n- Masks Applied: {{ $json.masks.length || 0 }} region(s)\n- Image Dimensions: {{ $json.width }}x{{ $json.height }}\n- Calibration: {{ $json.calibration }} pixels per meter\n\nGenerate a detailed, technical enhancement prompt that will guide the AI model to create an enhanced version of the image based on the user's request. The prompt should be specific, actionable, and maintain the original image's perspective and composition."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        528,
+        832
+      ],
+      "id": "2ce477bb-e20f-4050-8f3e-bae04625580d",
+      "name": "Generate enhancement prompt",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "credentials": {
+        "googlePalmApi": {
+          "id": "Wx5b5v7ukrWVITW3",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// n8n Code Node (JavaScript)\n// Get data from webhook payload\nconst options = $json.options || {};\nconst imageUrl = $json.imageUrl;\nconst callbackUrl = $json.callbackUrl;\nconst callbackSecret = $json.callbackSecret || 'default-secret';\nconst jobId = $json.jobId;\nconst prompt = $('Generate enhancement prompt').item.json.content.parts[0].text;\nconst width = $json.width || 2000;\nconst height = $json.height || 1500;\n\n// Determine model (can be passed in options or use default)\nconst model = options.model || 'nanobanana';\nconst numImages = options.variants || 1;\n\n// Calculate aspect ratio from dimensions\nlet aspectRatio = '1:1';\nif (width > height) {\n  const ratio = width / height;\n  if (ratio > 1.5) aspectRatio = '16:9';\n  else if (ratio > 1.2) aspectRatio = '3:2';\n  else aspectRatio = '4:3';\n} else if (height > width) {\n  const ratio = height / width;\n  if (ratio > 1.5) aspectRatio = '9:16';\n  else if (ratio > 1.2) aspectRatio = '2:3';\n  else aspectRatio = '3:4';\n}\n\nlet generate_url = \"\";\nlet get_url = \"\";\nlet inputs = {};\n\nif (model === \"nanobanana\") {\n  generate_url = \"https://api.kie.ai/api/v1/jobs/createTask\";\n  get_url = \"https://api.kie.ai/api/v1/jobs/recordInfo\";\n  inputs = {\n    model: \"google/nano-banana-edit\",\n    input: {\n      prompt: prompt,\n      image_urls: [imageUrl],\n      output_format: \"png\",\n      image_size: aspectRatio\n    }\n  };\n} else if (model === \"seedream\") {\n  generate_url = \"https://api.kie.ai/api/v1/jobs/createTask\";\n  get_url = \"https://api.kie.ai/api/v1/jobs/recordInfo\";\n  inputs = {\n    model: \"bytedance/seedream-v4-edit\",\n    input: {\n      prompt: prompt,\n      image_urls: [imageUrl],\n      image_size: aspectRatio === \"9:16\" ? \"portrait_16_9\" : aspectRatio === \"2:3\" ? \"portrait_3_2\" : \"portrait_4_3\",\n      image_resolution: \"4K\",\n      max_images: numImages\n    }\n  };\n} else if (model === \"chatgpt\") {\n  generate_url = \"https://api.kie.ai/api/v1/gpt4o-image/generate\";\n  get_url = \"https://api.kie.ai/api/v1/gpt4o-image/record-info\";\n  inputs = {\n    filesUrl: [imageUrl],\n    prompt: prompt,\n    size: aspectRatio === \"9:16\" || aspectRatio === \"3:4\" ? \"2:3\" : \"1:1\",\n    isEnhance: false,\n    uploadCn: false,\n    nVariants: numImages,\n    enableFallback: false,\n    fallbackModel: \"FLUX_MAX\"\n  };\n}\n\n// Pass through callback info for later use\nreturn {\n  generate_url,\n  get_url,\n  inputs,\n  callbackUrl,\n  callbackSecret,\n  jobId\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        832
+      ],
+      "id": "ddc3be54-a6be-4152-bb8d-bf7fea80c66e",
+      "name": "Configure AI Model"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.generate_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.inputs) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1136,
+        832
+      ],
+      "id": "02c9a61d-65f5-405d-ba8a-93abadfb31b4",
+      "name": "Generate Image",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "JkscfFxWKucBiypx",
+          "name": "Kie.ai Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 20
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -176,
+        1104
+      ],
+      "id": "27f36ba4-e7c8-47a0-bfac-52eb8ba1b4da",
+      "name": "Wait",
+      "webhookId": "32080ca8-164c-406f-8702-d25eb8a99a96"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Configure AI Model').item.json.get_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "taskId",
+              "value": "={{ $('Generate Image').item.json.data.taskId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        32,
+        1104
+      ],
+      "id": "7ce65404-db8e-4b8e-aaef-eb86e0c16823",
+      "name": "Get Status",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "JkscfFxWKucBiypx",
+          "name": "Kie.ai Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.data.state || $json.data.status.toLowerCase() }}",
+                    "rightValue": "success",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "1c25caf6-dfd8-4467-9fcf-5a25c4fde33d"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "finished"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "504a85ff-58f6-4317-9c40-52923b4b80a6",
+                    "leftValue": "={{ ($json.data.state || $json.data.status).toLowerCase() }}",
+                    "rightValue": "ing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "contains"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "in progress"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "error"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        256,
+        1088
+      ],
+      "id": "b64386f7-2c09-4975-8281-02867b23e149",
+      "name": "Switch"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract URLs from status response\nconst model = $('Configure AI Model').item.json.inputs.model || 'nanobanana';\nlet urls = [];\n\nif (model.includes(\"gpt\") || model === \"chatgpt\") {\n  urls = $json.data.response?.resultUrls || [];\n} else {\n  const data = $json.data.resultJson;\n  if (typeof data === 'string') {\n    const parsed = JSON.parse(data);\n    urls = parsed.resultUrls || [];\n  } else {\n    urls = data?.resultUrls || [];\n  }\n}\n\n// Get callback info from original webhook payload\nconst callbackUrl = $('Configure AI Model').item.json.callbackUrl;\nconst callbackSecret = $('Configure AI Model').item.json.callbackSecret;\nconst jobId = $('Configure AI Model').item.json.jobId;\n\nreturn [{\n  json: {\n    urls,\n    callbackUrl,\n    callbackSecret,\n    jobId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        1072
+      ],
+      "id": "f07de410-4e50-417d-8e40-47ccc2b81c8d",
+      "name": "Extract URLs"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Generate webhook signature for callback\nconst crypto = require('crypto');\n\nconst callbackUrl = $json.callbackUrl;\nconst callbackSecret = $json.callbackSecret || process.env.N8N_WEBHOOK_SECRET || 'secret';\nconst jobId = $json.jobId;\nconst urls = $json.urls || [];\n\n// Generate nonce\nconst nonce = crypto.randomBytes(16).toString('hex');\n\n// Generate timestamp (Unix timestamp in seconds)\nconst timestamp = Math.floor(Date.now() / 1000).toString();\n\n// Prepare payload for signature\nconst payload = JSON.stringify({\n  status: 'completed',\n  progress: 100,\n  enhancedImageUrl: urls[0] || '',\n  variants: urls.map((url, index) => ({\n    id: `${jobId}-variant-${index}`,\n    url: url,\n    rank: index\n  }))\n});\n\n// Generate signature using HMAC SHA256 (must match server verification: timestamp + payload)\nconst message = timestamp + payload;\nconst signature = crypto\n  .createHmac('sha256', callbackSecret)\n  .update(message)\n  .digest('hex');\n\nreturn {\n  callbackUrl,\n  payload: JSON.parse(payload),\n  signature,\n  timestamp,\n  nonce\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        1072
+      ],
+      "id": "signature-generator-success",
+      "name": "Generate Callback Signature"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "headers": {
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "x-n8n-signature",
+                "value": "={{ $json.signature }}"
+              },
+              {
+                "name": "x-timestamp",
+                "value": "={{ $json.timestamp }}"
+              },
+              {
+                "name": "x-nonce",
+                "value": "={{ $json.nonce }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        896,
+        1072
+      ],
+      "id": "callback-success-node",
+      "name": "Callback - Success"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Generate webhook signature for error callback\nconst crypto = require('crypto');\n\n// Try to get callback info from original payload or from previous nodes\nlet callbackUrl, callbackSecret, jobId;\n\ntry {\n  // Try to get from Configure AI Model node\n  const configNode = $('Configure AI Model');\n  if (configNode && configNode.item) {\n    callbackUrl = configNode.item.json.callbackUrl;\n    callbackSecret = configNode.item.json.callbackSecret || process.env.N8N_WEBHOOK_SECRET || 'secret';\n    jobId = configNode.item.json.jobId;\n  }\n} catch (e) {\n  // Fallback to webhook data\n  callbackUrl = $json.callbackUrl || $('Enhancement Webhook').item.json.callbackUrl;\n  callbackSecret = $json.callbackSecret || $('Enhancement Webhook').item.json.callbackSecret || process.env.N8N_WEBHOOK_SECRET || 'secret';\n  jobId = $json.jobId || $('Enhancement Webhook').item.json.jobId;\n}\n\n// Generate nonce\nconst nonce = crypto.randomBytes(16).toString('hex');\n\n// Generate timestamp\nconst timestamp = Math.floor(Date.now() / 1000).toString();\n\n// Prepare error payload\nconst errorMessage = $json.error?.message || $json.message || 'Unknown error occurred during enhancement';\nconst payload = JSON.stringify({\n  status: 'failed',\n  progress: 0,\n  errorMessage: errorMessage,\n  error_code: 'N8N_PROCESSING_ERROR'\n});\n\n// Generate signature using HMAC SHA256 (must match server verification: timestamp + payload)\nconst message = timestamp + payload;\nconst signature = crypto\n  .createHmac('sha256', callbackSecret)\n  .update(message)\n  .digest('hex');\n\nreturn {\n  callbackUrl,\n  payload: JSON.parse(payload),\n  signature,\n  timestamp,\n  nonce\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        1296
+      ],
+      "id": "signature-generator-error",
+      "name": "Generate Error Callback Signature"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.callbackUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "headers": {
+            "headers": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "name": "x-n8n-signature",
+                "value": "={{ $json.signature }}"
+              },
+              {
+                "name": "x-timestamp",
+                "value": "={{ $json.timestamp }}"
+              },
+              {
+                "name": "x-nonce",
+                "value": "={{ $json.nonce }}"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        624,
+        1296
+      ],
+      "id": "callback-error-node",
+      "name": "Callback - Error"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"jobId\": $('Enhancement Webhook').item.json.jobId } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        -208,
+        960
+      ],
+      "id": "webhook-response",
+      "name": "Webhook Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Enhancement Webhook": {
+      "main": [
+        [
+          {
+            "node": "Analyze image",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze image": {
+      "main": [
+        [
+          {
+            "node": "Generate enhancement prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate enhancement prompt": {
+      "main": [
+        [
+          {
+            "node": "Configure AI Model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Configure AI Model": {
+      "main": [
+        [
+          {
+            "node": "Generate Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Image": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Status": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "Extract URLs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Generate Error Callback Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract URLs": {
+      "main": [
+        [
+          {
+            "node": "Generate Callback Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Callback Signature": {
+      "main": [
+        [
+          {
+            "node": "Callback - Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback - Success": {
+      "main": [
+        []
+      ]
+    },
+    "Generate Error Callback Signature": {
+      "main": [
+        [
+          {
+            "node": "Callback - Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback - Error": {
+      "main": [
+        []
+      ]
+    },
+    "Webhook Response": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "enhancement-workflow-v1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "enhancement-instance-id"
+  },
+  "id": "enhancement-workflow-id",
+  "tags": []
+}
+

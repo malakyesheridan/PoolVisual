@@ -139,7 +139,7 @@ export function QuoteBuilder({
                       </TableCell>
                       <TableCell className="p-4 text-center">
                         <span data-testid={`text-item-qty-${item.id}`}>
-                          {item.qty?.toFixed(2) || '-'}
+                          {item.qty ? parseFloat(item.qty).toFixed(2) : '-'}
                         </span>
                       </TableCell>
                       <TableCell className="p-4 text-center">
@@ -149,12 +149,12 @@ export function QuoteBuilder({
                       </TableCell>
                       <TableCell className="p-4 text-right">
                         <span data-testid={`text-item-unit-price-${item.id}`}>
-                          {item.unitPrice ? formatCurrency(item.unitPrice) : '-'}
+                          {item.unitPrice ? formatCurrency(parseFloat(item.unitPrice)) : '-'}
                         </span>
                       </TableCell>
                       <TableCell className="p-4 text-right font-medium">
                         <span data-testid={`text-item-line-total-${item.id}`}>
-                          {item.lineTotal ? formatCurrency(item.lineTotal) : '-'}
+                          {item.lineTotal ? formatCurrency(parseFloat(item.lineTotal)) : '-'}
                         </span>
                       </TableCell>
                       <TableCell className="p-4">

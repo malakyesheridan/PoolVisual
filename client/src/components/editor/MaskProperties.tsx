@@ -12,7 +12,10 @@ import {
   RotateCcw,
   Sun,
   Contrast,
-  Scale
+  Scale,
+  Layers,
+  ArrowUpDown,
+  ToggleLeft
 } from 'lucide-react';
 import { useEditorStore } from '@/stores/editorSlice';
 import { Button } from '@/components/ui/button';
@@ -231,6 +234,93 @@ export function MaskProperties() {
             <Separator />
           </>
         )}
+
+        {/* Multi-Level Geometry */}
+        <div className="p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Layers className="h-4 w-4" />
+            <span className="font-medium">Multi-Level Geometry</span>
+          </div>
+
+          {/* Depth Level */}
+          <div className="space-y-2">
+            <Label className="text-sm flex items-center gap-2">
+              <ArrowUpDown className="h-3 w-3" />
+              Depth Level
+            </Label>
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { value: 0, label: 'Surface', color: 'bg-blue-100 text-blue-700' },
+                { value: 1, label: 'Mid-Level', color: 'bg-green-100 text-green-700' },
+                { value: 2, label: 'Deep', color: 'bg-purple-100 text-purple-700' }
+              ].map(({ value, label, color }) => (
+                <Button
+                  key={value}
+                  size="sm"
+                  variant={selectedMask.depthLevel === value ? "default" : "outline"}
+                  className={`text-xs ${selectedMask.depthLevel === value ? color : ''}`}
+                  onClick={() => {
+                    // TODO: Update mask depth level
+                    console.log('Depth level changed:', value);
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <div className="text-xs text-gray-500">
+              Current: {['Surface', 'Mid-Level', 'Deep'][selectedMask.depthLevel || 0]}
+            </div>
+          </div>
+
+          {/* Stepped Geometry Toggle */}
+          <div className="space-y-2">
+            <Label className="text-sm flex items-center gap-2">
+              <ToggleLeft className="h-3 w-3" />
+              Stepped Geometry
+            </Label>
+            <Button
+              size="sm"
+              variant={selectedMask.isStepped ? "default" : "outline"}
+              className={`w-full ${selectedMask.isStepped ? 'bg-orange-100 text-orange-700' : ''}`}
+              onClick={() => {
+                // TODO: Toggle stepped geometry
+                console.log('Stepped geometry toggled:', !selectedMask.isStepped);
+              }}
+            >
+              {selectedMask.isStepped ? 'Stepped' : 'Flat'}
+            </Button>
+            <div className="text-xs text-gray-500">
+              {selectedMask.isStepped ? 'This mask represents stepped/terraced geometry' : 'This mask represents flat geometry'}
+            </div>
+          </div>
+
+          {/* Elevation (if calibrated) */}
+          {hasCalibration && (
+            <div className="space-y-2">
+              <Label className="text-sm">Elevation (meters)</Label>
+              <Input
+                type="number"
+                step="0.1"
+                placeholder="0.0"
+                value={selectedMask.elevationM || 0}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value);
+                  if (!isNaN(value)) {
+                    // TODO: Update mask elevation
+                    console.log('Elevation changed:', value);
+                  }
+                }}
+                className="text-sm"
+              />
+              <div className="text-xs text-gray-500">
+                Height above reference point
+              </div>
+            </div>
+          )}
+        </div>
+
+        <Separator />
 
         {/* Waterline Band Height */}
         {selectedMask.type === 'waterline_band' && (

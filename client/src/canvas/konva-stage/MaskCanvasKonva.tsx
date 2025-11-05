@@ -31,6 +31,10 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
   const { assets, selectedAssetId, dispatch, assetPlaceMode, calibrationMode, photoSpace } = useEditorStore();
   const { draft, begin, append, updateLast, pop, cancel, canFinalize, finalize } = useDraft();
   
+  // Guard against duplicate mask finalization - prevents duplicate masks when Enter is pressed multiple times
+  // or when multiple handlers try to finalize the same draft
+  const finalizingRef = useRef<boolean>(false);
+  
   // Click counter for triple-click detection
   const clickCounterRef = useRef<{ 
     count: number; 
@@ -198,10 +202,22 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     const imagePos = screenToImageLocal(pos.x, pos.y);
     
     if (activeTool === 'area' || activeTool === 'polygon') {
+      // Get current drawing mode
+      const editorState = useEditorStore.getState();
+      
       if (!draft) {
         begin(activeTool);
       }
-      append(imagePos);
+      
+      if (editorState.drawingMode === 'freehand') {
+        // For freehand mode, start continuous drawing
+        append(imagePos);
+        // Set up continuous drawing flag
+        stage.setAttr('isFreehandDrawing', true);
+      } else {
+        // For area mode, add point normally
+        append(imagePos);
+      }
     }
   }, [activeTool, draft, begin, append, screenToImageLocal]);
 
@@ -216,16 +232,37 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
 
     const imagePos = screenToImageLocal(pos.x, pos.y);
     
+    // Get current drawing mode
+    const editorState = useEditorStore.getState();
+    
     if (activeTool === 'area') {
-      // For area tool, update the last point to follow the mouse
-      if (draft.pts.length > 0) {
-        updateLast(imagePos);
+      if (editorState.drawingMode === 'freehand') {
+        // For freehand mode, continuously add points while dragging
+        if (stage.getAttr('isFreehandDrawing')) {
+          append(imagePos);
+        }
+      } else {
+        // For area mode, update the last point to follow the mouse
+        if (draft.pts.length > 0) {
+          updateLast(imagePos);
+        }
       }
     }
-  }, [activeTool, draft, screenToImageLocal, updateLast]);
+  }, [activeTool, draft, screenToImageLocal, updateLast, append]);
 
   const handlePointerUp = useCallback((e: Konva.KonvaEventObject<PointerEvent>) => {
     if (!activeTool || activeTool === 'select' || !draft) return;
+
+    const stage = e.target.getStage();
+    if (!stage) return;
+
+    // Get current drawing mode
+    const editorState = useEditorStore.getState();
+    
+    if (editorState.drawingMode === 'freehand') {
+      // For freehand mode, stop continuous drawing
+      stage.setAttr('isFreehandDrawing', false);
+    }
 
     if (activeTool === 'polygon') {
       // For polygon tool, each click adds a point
@@ -240,23 +277,78 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
 
       switch (e.key) {
         case 'Enter':
+          // CRITICAL FIX: Prevent duplicate finalization from rapid Enter presses
+          if (finalizingRef.current) {
+            console.warn('[MaskCanvasKonva] Finalization already in progress, ignoring duplicate Enter');
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          
           if (canFinalize()) {
-            const finalizedDraft = finalize();
-            if (finalizedDraft) {
+            finalizingRef.current = true;
+            
+            try {
+              const finalizedDraft = finalize();
+              if (!finalizedDraft) {
+                finalizingRef.current = false;
+                return;
+              }
+              
               const id = `mask_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-              useMaskStore.setState(prev => ({
-                masks: { 
-                  ...prev.masks, 
-                  [id]: { 
-                    id, 
-                    pts: finalizedDraft.pts, 
-                    mode: finalizedDraft.mode, 
-                    materialId: prev.activeMaterialId ?? null 
-                  } 
-                },
-                selectedId: id
+              
+              // Determine mask type based on drawing mode
+              const editorState = useEditorStore.getState();
+              const maskType: 'area' | 'linear' = editorState.drawingMode === 'freehand' ? 'linear' : 'area';
+              
+              // Convert Point[] to MaskPoint[] (add kind: 'corner' to each point)
+              const maskPoints = finalizedDraft.pts.map(pt => ({
+                x: pt.x,
+                y: pt.y,
+                kind: 'corner' as const
               }));
-              console.debug('[MaskSelect]', { maskId: id });
+              
+              // Safety check: Ensure mask doesn't already exist
+              const currentMasks = useMaskStore.getState().masks;
+              if (currentMasks[id]) {
+                console.error('[MaskCanvasKonva] Mask ID collision:', id);
+                finalizingRef.current = false;
+                return;
+              }
+              
+              console.log('[MaskCanvasKonva] Finalizing mask', { id, ptsCount: maskPoints.length, maskType });
+              
+              useMaskStore.setState(prev => {
+                // Final safety check inside setState callback to prevent race conditions
+                if (prev.masks[id]) {
+                  console.error('[MaskCanvasKonva] Duplicate mask detected in setState, aborting');
+                  return prev; // Return unchanged state
+                }
+                
+                return {
+                  masks: { 
+                    ...prev.masks, 
+                    [id]: { 
+                      id, 
+                      pts: maskPoints, 
+                      mode: finalizedDraft.mode, 
+                      materialId: prev.activeMaterialId ?? null,
+                      materialSettings: null,
+                      type: maskType
+                    } 
+                  },
+                  selectedId: id
+                };
+              });
+              
+              console.debug('[MaskCanvasKonva] Mask finalized and added to store', { id });
+            } catch (error) {
+              console.error('[MaskCanvasKonva] Error during mask finalization:', error);
+            } finally {
+              // Reset flag after delay to prevent rapid re-finalization
+              setTimeout(() => {
+                finalizingRef.current = false;
+              }, 200);
             }
           }
           break;
@@ -1097,6 +1189,7 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
         onMouseMove={handleStageMouseMove}
         onMouseUp={handleStageMouseUp}
         onDblClick={handleStageDoubleClick}
+        style={{ background: 'transparent' }}
       >
         <Layer name="world">
           <WorldGroup camera={camera} imgFit={imgFit}>
@@ -1210,6 +1303,7 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
             <MaskTextureLayer 
               stageScale={camera.scale}
               imgFit={imgFit}
+              onSelect={handleUnifiedSelect}
             />
           </WorldGroup>
         </Layer>

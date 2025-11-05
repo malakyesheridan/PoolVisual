@@ -1,11 +1,11 @@
 // Canvas Component with Proper Zoom, Pan, and Mask Drawing
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { useEditorStore } from './store';
 import { Masking } from './Masking';
-import { useMaskStore } from './Masking';
+// import { useMaskStore } from './Masking'; // Unused import
 import { MaskCanvasKonva } from '../canvas/konva-stage/MaskCanvasKonva';
 import { getImageFit } from '../maskcore/photoFit';
-import { calculateFitScale, calculateCenterPan } from './utils';
+import { calculateCenterPan, calculateFitScale } from './utils';
 
 interface CanvasProps {
   width: number;
@@ -14,10 +14,12 @@ interface CanvasProps {
 
 export function Canvas({ width, height }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const [showDevHud, setShowDevHud] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{x: number, y: number} | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   
   // DEV toggle handler
   useEffect(() => {
@@ -38,10 +40,6 @@ export function Canvas({ width, height }: CanvasProps) {
     imageUrl,
     state,
     activeTool,
-    drawingPoints,
-    isDrawing,
-    masks,
-    containerSize,
     calibrationMode,
     dispatch
   } = useEditorStore();
@@ -60,58 +58,100 @@ export function Canvas({ width, height }: CanvasProps) {
   // Load image with proper state management
   useEffect(() => {
     if (imageUrl) {
+      console.log('[Canvas] Starting to load image:', imageUrl);
       const img = new Image();
       img.onload = () => {
+        console.log('[Canvas] Image loaded successfully:', imageUrl, { width: img.naturalWidth, height: img.naturalHeight });
         imageRef.current = img;
         dispatch({ type: 'SET_STATE', payload: 'ready' });
         
-        // Initialize photo space when image loads - use same logic as Fit button
-        if (img.naturalWidth > 0 && img.naturalHeight > 0 && containerSize.width > 0 && containerSize.height > 0) {
-          const fitScale = calculateFitScale(
+        // Initialize photo space when image loads - use Canvas props instead of containerSize
+        if (img.naturalWidth > 0 && img.naturalHeight > 0 && width > 0 && height > 0) {
+          // Auto-fit image to screen on initial load for better UX
+          // This ensures large images are visible without requiring user interaction
+          const finalScale = calculateFitScale(
             img.naturalWidth,
             img.naturalHeight,
-            containerSize.width,
-            containerSize.height
+            width,
+            height,
+            0.98 // 98% padding to leave some margin
           );
-          
+
           const { panX, panY } = calculateCenterPan(
             img.naturalWidth,
             img.naturalHeight,
-            containerSize.width,
-            containerSize.height,
-            fitScale
+            width,
+            height,
+            finalScale
           );
-          
+
+          console.log('[Canvas] Initializing photo space:', { 
+            finalScale, panX, panY, 
+            imgW: img.naturalWidth, imgH: img.naturalHeight,
+            canvasW: width, canvasH: height 
+          });
           dispatch({
             type: 'SET_PHOTO_SPACE',
             payload: {
-              scale: fitScale,
+              scale: finalScale,
               panX,
               panY,
               imgW: img.naturalWidth,
               imgH: img.naturalHeight
             }
           });
+        } else {
+          console.warn('[Canvas] Cannot initialize photo space - missing image or canvas dimensions', { 
+            imgW: img.naturalWidth, 
+            imgH: img.naturalHeight, 
+            canvasW: width, 
+            canvasH: height 
+          });
         }
       };
-      img.onerror = () => {
+      img.onerror = (error) => {
+        console.error('[Canvas] Failed to load image:', imageUrl, error);
         dispatch({ type: 'SET_STATE', payload: 'error' });
       };
       img.src = imageUrl;
+    } else {
+      console.log('[Canvas] No imageUrl provided');
     }
-  }, [imageUrl, dispatch, containerSize]);
+  }, [imageUrl, dispatch, width, height]); // Remove containerSize from dependencies to prevent infinite re-renders
 
-  // Set canvas size
-  useEffect(() => {
+  // Set canvas size with ResizeObserver to match CSS size * DPR
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-  }, [width, height]);
+    const resizeObserver = new ResizeObserver(() => {
+      const rect = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      
+      // Set bitmap size to match CSS size * DPR
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      
+      // Scale CSS to maintain visual size
+      canvas.style.width = `${rect.width}px`;
+      canvas.style.height = `${rect.height}px`;
+      
+      // Update canvas size state to trigger re-render
+      setCanvasSize({ width: rect.width, height: rect.height });
+      
+      console.log('[Canvas] Resized canvas:', { 
+        cssWidth: rect.width, 
+        cssHeight: rect.height, 
+        bitmapWidth: canvas.width, 
+        bitmapHeight: canvas.height, 
+        dpr 
+      });
+    });
+    
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Handle wheel zoom
   const handleWheel = useCallback((e: WheelEvent) => {
@@ -235,26 +275,43 @@ export function Canvas({ width, height }: CanvasProps) {
 
   // Render canvas with proper coordinate system
   const renderCanvas = useCallback(async () => {
+    console.log('[Canvas] renderCanvas called', { 
+      hasCanvas: !!canvasRef.current, 
+      hasImage: !!imageRef.current, 
+      state, 
+      hasPhotoSpace: !!photoSpace 
+    });
+    
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.log('[Canvas] No canvas element');
+      return;
+    }
     
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx) {
+      console.log('[Canvas] No canvas context');
+      return;
+    }
     
     const dpr = window.devicePixelRatio || 1;
     
     // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    // Apply device pixel ratio
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    
     // Draw background image with proper scaling and positioning
     if (imageRef.current && state === 'ready' && photoSpace) {
-      // Apply photo space transform
+      console.log('[Canvas] Drawing image', { 
+        imageSize: { width: imageRef.current.naturalWidth, height: imageRef.current.naturalHeight },
+        photoSpace: { scale: photoSpace.scale, panX: photoSpace.panX, panY: photoSpace.panY, imgW: photoSpace.imgW, imgH: photoSpace.imgH },
+        canvasSize: { bitmapWidth: canvas.width, bitmapHeight: canvas.height, cssWidth: canvas.style.width, cssHeight: canvas.style.height },
+        dpr
+      });
+      
+      // Apply photo space transform with DPR scaling
       ctx.save();
-      ctx.translate(photoSpace.panX, photoSpace.panY);
-      ctx.scale(photoSpace.scale, photoSpace.scale);
+      ctx.translate(dpr * photoSpace.panX, dpr * photoSpace.panY);
+      ctx.scale(dpr * photoSpace.scale, dpr * photoSpace.scale);
       
       // Draw image at origin
       ctx.drawImage(
@@ -264,6 +321,16 @@ export function Canvas({ width, height }: CanvasProps) {
         photoSpace.imgW,
         photoSpace.imgH
       );
+      
+      ctx.restore();
+      console.log('[Canvas] Image drawn successfully');
+    } else {
+      console.log('[Canvas] Not drawing image', { 
+        hasImage: !!imageRef.current, 
+        state, 
+        hasPhotoSpace: !!photoSpace 
+      });
+    }
     
     // DISABLED: Mask rendering moved to MaskCanvasKonva to prevent duplication
     // The MaskCanvasKonva component handles all mask rendering including materials
@@ -402,17 +469,21 @@ export function Canvas({ width, height }: CanvasProps) {
       }
     }
     */
-      
-      ctx.restore();
-    }
     
     // Assets rendered by Konva system - no Canvas API rendering needed
     
     // PHASE 10: Clean implementation - no legacy code
-  }, [masks, isDrawing, drawingPoints, state, width, height, photoSpace]);
+  }, [state, width, height, photoSpace, canvasSize]);
 
   // Render on changes - SIMPLIFIED
   useEffect(() => {
+    console.log('[Canvas] useEffect triggered for renderCanvas', { 
+      state, 
+      hasImage: !!imageRef.current, 
+      hasPhotoSpace: !!photoSpace,
+      width,
+      height
+    });
     renderCanvas().catch(err => {
       console.warn('[Canvas] Render error:', err);
     });
@@ -420,26 +491,36 @@ export function Canvas({ width, height }: CanvasProps) {
 
 
   return (
-    <div className="relative w-full h-full">
+    <div 
+      ref={containerRef}
+      className="relative w-full h-screen" 
+      style={{ height: '100vh' }}
+    >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 cursor-crosshair"
         data-canvas="true"
         style={{
-          width: `${width}px`,
-          height: `${height}px`,
           pointerEvents: calibrationMode ? 'none' : 'auto'
         }}
         title="Canvas - Click to focus for keyboard shortcuts"
       />
       
       {/* NEW KONVA MASKING SYSTEM */}
-      <MaskCanvasKonva
-        activeTool={activeTool}
-        camera={photoSpace}
-        imgFit={getImageFit(imageRef, width, height, photoSpace.scale)}
-        dpr={window.devicePixelRatio || 1}
-      />
+      <div style={{ position: 'absolute', inset: 0, zIndex: 10, background: 'transparent' }}>
+        <MaskCanvasKonva
+          activeTool={
+            activeTool === 'pen' 
+              ? 'polygon'  // Pen tool maps to polygon for drawing
+              : activeTool === 'pan' 
+                ? 'select'  // Pan tool maps to select for panning/selecting
+                : activeTool
+          }
+          camera={photoSpace}
+          imgFit={getImageFit(imageRef, width, height, photoSpace.scale)}
+          dpr={window.devicePixelRatio || 1}
+        />
+      </div>
       
       {/* OLD MASKING SYSTEM - DISABLED */}
       <Masking

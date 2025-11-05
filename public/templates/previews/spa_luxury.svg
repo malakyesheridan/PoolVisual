@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="300" height="200" viewBox="0 0 300 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f8f9fa;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e9ecef;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background -->
+  <rect width="300" height="200" fill="url(#bg)" stroke="#dee2e6" stroke-width="2"/>
+  
+  <!-- Pool shape based on category -->
+  
+        <circle cx="150" cy="100" r="40" fill="#F5A623" opacity="0.7" stroke="#F5A623" stroke-width="2"/>
+        <circle cx="150" cy="100" r="30" fill="#F5A623" opacity="0.3"/>
+        <circle cx="150" cy="100" r="20" fill="#F5A623" opacity="0.1"/>
+      
+  
+  <!-- Template name -->
+  <text x="150" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="bold" fill="#495057">
+    Luxury Spa Pool
+  </text>
+  
+  <!-- Category badge -->
+  <rect x="10" y="10" width="80" height="25" rx="12" fill="#F5A623" opacity="0.9"/>
+  <text x="50" y="27" text-anchor="middle" font-family="Arial, sans-serif" font-size="12" font-weight="bold" fill="white">
+    SPA
+  </text>
+</svg>

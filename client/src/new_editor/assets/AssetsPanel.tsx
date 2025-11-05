@@ -40,6 +40,7 @@ export function AssetsPanel() {
     setSelectedAsset,
     setEditMode,
     loadAssetDefs,
+    syncWithAssetSource,
     restore,
   } = useAssetsStore();
 
@@ -104,43 +105,23 @@ export function AssetsPanel() {
 
   // Initialize asset definitions and restore from localStorage
   useEffect(() => {
-    // Load comprehensive asset manifest from asset-index.json
-    const loadComprehensiveAssets = async () => {
+    // Use the unified sync method to load assets
+    const loadAssets = async () => {
       try {
-        const response = await fetch('/assets/asset-index.json');
-        if (response.ok) {
-          const manifest = await response.json();
-          console.log('[AssetsPanel] Loading comprehensive asset manifest:', manifest.items.length, 'items');
-          console.log('[AssetsPanel] Manifest items:', manifest.items);
-          
-          // Convert manifest items to asset definitions
-          const assetDefs = manifest.items.map((item: any) => ({
-            id: item.id,
-            name: item.name,
-            category: item.category,
-            url: item.src,
-            thumbnail: item.thumb,
-            defaultScale: 1.0
-          }));
-          
-          console.log('[AssetsPanel] Converted asset definitions:', assetDefs);
-          loadAssetDefs(assetDefs);
-          preloadAssetImages(assetDefs);
-        } else {
-          console.warn('[AssetsPanel] Failed to load asset manifest, using fallback');
-          loadAssetDefs(ASSET_DEFINITIONS);
-          preloadAssetImages(ASSET_DEFINITIONS);
-        }
+        console.log('[AssetsPanel] Loading assets via unified system...');
+        await syncWithAssetSource();
+        preloadAssetImages(Object.values(defsById));
       } catch (error) {
-        console.error('[AssetsPanel] Error loading asset manifest:', error);
+        console.error('[AssetsPanel] Error loading assets:', error);
+        // Fallback to static definitions
         loadAssetDefs(ASSET_DEFINITIONS);
         preloadAssetImages(ASSET_DEFINITIONS);
       }
     };
     
-    loadComprehensiveAssets();
+    loadAssets();
     restore();
-  }, [loadAssetDefs, restore]);
+  }, [syncWithAssetSource, loadAssetDefs, restore, defsById]);
 
   // Filter asset definitions
   const filteredDefs = Object.values(defsById)
