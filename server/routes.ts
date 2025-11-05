@@ -563,7 +563,12 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       console.log('Photo upload request:', { 
         body: req.body, 
-        file: req.file ? { filename: req.file.filename, size: req.file.size } : null,
+        file: req.file ? { 
+          filename: req.file.filename, 
+          size: req.file.size,
+          buffer: !!req.file.buffer,
+          path: req.file.path
+        } : null,
         user: req.user?.id 
       });
       
@@ -591,7 +596,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       // In production, upload file to cloud storage (S3, Supabase Storage, etc.)
-      const originalUrl = `/uploads/${req.file.filename}`;
+      const originalUrl = req.file.path ? `/uploads/${req.file.filename}` : `/uploads/${randomUUID()}-${req.file.originalname}`;
 
       // Derive dimensions if not provided by client
       let finalWidth: number | null = width ? parseInt(width) : null;
@@ -599,7 +604,20 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       if (!finalWidth || !finalHeight || Number.isNaN(finalWidth) || Number.isNaN(finalHeight)) {
         try {
-          const meta = await sharp(req.file.path).metadata();
+          // Handle memory storage (Vercel) vs disk storage (local)
+          let imageBuffer: Buffer;
+          if (req.file.buffer) {
+            // Memory storage - use buffer directly
+            imageBuffer = req.file.buffer;
+          } else if (req.file.path) {
+            // Disk storage - read from file
+            const fs = await import('fs');
+            imageBuffer = fs.readFileSync(req.file.path);
+          } else {
+            throw new Error('No file buffer or path available');
+          }
+          
+          const meta = await sharp(imageBuffer).metadata();
           if (meta.width && meta.height) {
             finalWidth = meta.width;
             finalHeight = meta.height;
