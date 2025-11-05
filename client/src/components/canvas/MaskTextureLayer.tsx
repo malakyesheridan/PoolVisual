@@ -37,8 +37,24 @@ export function MaskTextureLayer({ stageScale, imgFit, onSelect }: Props) {
 
   console.log('[MaskTextureLayer] render', { 
     maskCount: maskEntries.length, 
-    withMaterials: masksWithMaterials.length 
+    withMaterials: masksWithMaterials.length,
+    imgFit: imgFit ? { originX: imgFit.originX, originY: imgFit.originY, imgScale: imgFit.imgScale } : null,
+    materialsLoaded,
+    maskDetails: maskEntries.map(([id, mask]) => ({
+      id,
+      hasMaterialId: !!mask.materialId,
+      materialId: mask.materialId,
+      materialFound: mask.materialId ? !!getById(mask.materialId) : false,
+      isVisible: mask.isVisible !== false,
+      ptsCount: mask.pts?.length || 0
+    }))
   });
+
+  // Don't render if imgFit is missing - masks need proper image fit to render correctly
+  if (!imgFit) {
+    console.warn('[MaskTextureLayer] Missing imgFit, skipping render');
+    return null;
+  }
 
   return (
     <>
