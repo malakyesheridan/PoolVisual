@@ -102,30 +102,30 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerMaterialRoutesV2(app); // Bulletproof materials endpoint
   
   // Register V2 materials routes
-  const { materialsV2Routes } = await import('./routes/materialsV2');
+  const { materialsV2Routes } = await import('./routes/materialsV2.js');
   materialsV2Routes(app);
   
   // Register force materials routes for debugging
-  const { materialsForceRoutes } = await import('./routes/materialsForce');
+  const { materialsForceRoutes } = await import('./routes/materialsForce.js');
   materialsForceRoutes(app);
   
   // Register materials list fallback
-  const { registerMaterialsListFallback } = await import('./routes/materialsListFallback');
+  const { registerMaterialsListFallback } = await import('./routes/materialsListFallback.js');
   registerMaterialsListFallback(app);
   
   // Register import routes (manual import turbo)
-  const { registerImportRoutes } = await import('./importRoutes');
+  const { registerImportRoutes } = await import('./importRoutes.js');
   registerImportRoutes(app);
   
   // Register scenes routes (project save/load)
   app.use("/api/scenes", scenes);
   
   // Register fallback routes for no-DB mode
-  const { registerFallbackRoutes } = await import('./routes/fallbackRoutes');
+  const { registerFallbackRoutes } = await import('./routes/fallbackRoutes.js');
   registerFallbackRoutes(app);
   
   // Register quote routes
-  const { registerQuoteRoutes } = await import('./routes/quotes');
+  const { registerQuoteRoutes } = await import('./routes/quotes.js');
   registerQuoteRoutes(app);
   
   // Legacy health check for compatibility
@@ -754,7 +754,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       // 2. Delete or nullify AI enhancement jobs that reference this photo
       // Note: ai_enhancement_jobs.photo_id has no ON DELETE CASCADE, so we need to handle it manually
       try {
-        const { getSql } = await import('./db');
+        const { getSql } = await import('./db.js');
         const sql = getSql();
         if (sql) {
           // Use Neon client with tagged template literal
@@ -1577,7 +1577,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: 'Missing stripe-signature header' });
       }
 
-      const { paymentService } = await import('./lib/paymentService');
+      const { paymentService } = await import('./lib/paymentService.js');
       await paymentService.processWebhook(req.body, signature);
       
       res.json({ received: true });

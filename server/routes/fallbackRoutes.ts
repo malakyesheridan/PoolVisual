@@ -101,7 +101,7 @@ export function registerFallbackRoutes(app: Express) {
     try {
       // Try to use DB if available
       if (process.env.NO_DB_MODE !== 'true') {
-        const { storage } = await import('../storage');
+        const { storage } = await import('../storage.js');
         const materials = await storage.getMaterials();
         res.json({ items: materials });
         return;

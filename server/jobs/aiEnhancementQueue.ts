@@ -11,9 +11,9 @@ const SAFE_MODE = process.env.SAFE_MODE === '1';
 
 // Mock processing function for SAFE_MODE
 async function mockProcessEnhance(data: any) {
-  const { getProvider } = await import('./enhancementProviders');
-  const { SSEManager } = await import('../lib/sseManager');
-  const { executeQuery } = await import('../lib/dbHelpers');
+  const { getProvider } = await import('./enhancementProviders.js');
+  const { SSEManager } = await import('../lib/sseManager.js');
+  const { executeQuery } = await import('../lib/dbHelpers.js');
   const jobId = data.jobId;
 
   try {
