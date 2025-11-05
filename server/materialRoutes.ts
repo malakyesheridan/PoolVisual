@@ -5,6 +5,9 @@ import { textureProcessor } from './textureProcessor.js';
 import { ImportService } from './importService.js';
 import { storage } from './storage.js';
 import { z } from "zod";
+import path from "path";
+import os from "os";
+import fs from "fs";
 
 // Define extended request interface to match existing auth
 interface AuthenticatedRequest extends Request {
@@ -12,20 +15,63 @@ interface AuthenticatedRequest extends Request {
   orgId?: string;
 }
 
-const upload = multer({
-  dest: 'uploads/temp/',
-  limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only JPEG and PNG images are allowed'));
+// Use memory storage for Vercel (no filesystem access needed)
+// For local development, use disk storage with /tmp directory
+const getMulterConfig = () => {
+  if (process.env.VERCEL) {
+    // Use memory storage in Vercel - files are processed immediately
+    return multer({
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Only JPEG and PNG images are allowed'));
+        }
+      }
+    });
+  } else {
+    // Local development: use disk storage with /tmp directory
+    const uploadDir = path.join(os.tmpdir(), 'poolvisual-uploads');
+    // Create directory if it doesn't exist (only for local)
+    try {
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+    } catch (e) {
+      // Ignore errors - multer will handle it
     }
+    
+    return multer({
+      dest: uploadDir,
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB limit
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/jpg'];
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Only JPEG and PNG images are allowed'));
+        }
+      }
+    });
   }
-});
+};
+
+// Lazy initialization of multer to avoid creating directories at module load
+let upload: ReturnType<typeof multer> | null = null;
+
+function getUpload() {
+  if (!upload) {
+    upload = getMulterConfig();
+  }
+  return upload;
+}
 
 const createMaterialSchema = z.object({
   name: z.string().min(1),
@@ -69,7 +115,7 @@ const pendingUploads = new Map<string, string>();
 export function registerMaterialRoutes(app: Express) {
   
   // Upload texture endpoint
-  app.post("/api/materials/upload-texture", upload.single('texture'), async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/materials/upload-texture", getUpload().single('texture'), async (req: AuthenticatedRequest, res: any) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });

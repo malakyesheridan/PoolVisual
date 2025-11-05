@@ -28,23 +28,62 @@ import { PasswordService } from "./lib/passwordService.js";
 import { PasswordResetService } from "./lib/passwordResetService.js";
 import { createBruteForceMiddleware } from "./lib/bruteForceProtection.js";
 
+import multer from "multer";
+import { randomUUID } from "crypto";
+import express from "express";
+import path from "path";
+import os from "os";
+
 // JWT_SECRET removed - using session-based authentication
 
-// File upload configuration
-const upload = multer({
-  dest: 'uploads/',
-  limits: {
-    fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '10485760'), // 10MB default
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
-    }
-  },
-});
+// Use memory storage for Vercel (no filesystem access needed)
+// For local development, use disk storage with /tmp directory
+const getMulterConfig = () => {
+  if (process.env.VERCEL) {
+    // Use memory storage in Vercel - files are processed immediately
+    return multer({
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '10485760'), // 10MB default
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+        }
+      },
+    });
+  } else {
+    // Local development: use disk storage
+    const uploadDir = 'uploads/';
+    return multer({
+      dest: uploadDir,
+      limits: {
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '10485760'), // 10MB default
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+        }
+      },
+    });
+  }
+};
+
+// Lazy initialization of multer to avoid creating directories at module load
+let upload: ReturnType<typeof multer> | null = null;
+
+function getUpload() {
+  if (!upload) {
+    upload = getMulterConfig();
+  }
+  return upload;
+}
 
 // Define extended request interface
 interface AuthenticatedRequest extends Request {
@@ -520,7 +559,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Photos endpoints
-  app.post("/api/photos", authenticateSession, upload.single('photo'), async (req: AuthenticatedRequest, res: any) => {
+  app.post("/api/photos", authenticateSession, getUpload().single('photo'), async (req: AuthenticatedRequest, res: any) => {
     try {
       console.log('Photo upload request:', { 
         body: req.body, 
