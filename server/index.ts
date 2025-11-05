@@ -358,6 +358,12 @@ async function ensureInitialized() {
   return initPromise;
 }
 
+// Start initialization immediately (non-blocking)
+if (process.env.NODE_ENV !== 'production') {
+  // In development, start server immediately
+  initializeServer().catch(console.error);
+}
+
 // For Vercel: ensure initialization before handling requests
 export default async (req: any, res: any) => {
   try {
