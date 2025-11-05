@@ -33,8 +33,8 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { pool } from './db';
+import { getDatabase } from './db';
+import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 
 // Define OrgMember type
 type OrgMember = {
@@ -50,11 +50,9 @@ if (!process.env.DATABASE_URL && process.env.NO_DB_MODE !== 'true') {
   throw new Error("DATABASE_URL is required");
 }
 
-// Create drizzle db instance only if pool exists and not in no-DB mode
-const db = (pool && process.env.NO_DB_MODE !== 'true') ? drizzle(pool) : null;
-
 // Helper function to check if database is available
-function ensureDb() {
+function ensureDb(): NeonHttpDatabase {
+  const db = getDatabase();
   if (!db) {
     throw new Error("Database not available");
   }

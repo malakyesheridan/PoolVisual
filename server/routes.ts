@@ -754,10 +754,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       // 2. Delete or nullify AI enhancement jobs that reference this photo
       // Note: ai_enhancement_jobs.photo_id has no ON DELETE CASCADE, so we need to handle it manually
       try {
-        const { pool } = await import('./db');
-        if (pool) {
-          // Use raw SQL query to nullify photo_id (safer than delete in case jobs are in progress)
-          await pool.query('UPDATE ai_enhancement_jobs SET photo_id = NULL WHERE photo_id = $1', [photoId]);
+        const { getSql } = await import('./db');
+        const sql = getSql();
+        if (sql) {
+          // Use Neon client with tagged template literal
+          await sql`UPDATE ai_enhancement_jobs SET photo_id = NULL WHERE photo_id = ${photoId}`;
           console.log(`[DeletePhoto] Nullified AI enhancement jobs photo_id for: ${photoId}`);
         }
       } catch (aiJobError: any) {

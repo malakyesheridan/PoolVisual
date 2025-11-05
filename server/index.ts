@@ -270,26 +270,32 @@ async function initializeServer() {
   // Debug DB route (before 404 handler)
   app.get('/debug/db', async (_req, res) => {
     try {
-      const { pool } = await import('./db');
-      if (!pool) throw new Error('Pool not available');
+      const { getSql } = await import('./db');
+      const sql = getSql();
+      if (!sql) throw new Error('Database connection not available');
       
-      const probeResult = await pool.query(`
+      // Use Neon client with tagged template literals
+      const probeResult = await sql`
         SELECT
           current_database() AS db,
           current_user AS user,
           current_setting('search_path', true) AS search_path,
           version() AS version
-      `);
-      const tablesResult = await pool.query(`
+      `;
+      const tablesResult = await sql`
         SELECT table_schema, table_name
         FROM information_schema.tables
         WHERE table_schema IN ('public')
         ORDER BY table_schema, table_name
         LIMIT 50
-      `);
-      res.json({ envUrl: process.env.DATABASE_URL, probe: probeResult.rows[0], tables: tablesResult.rows });
+      `;
+      res.json({ 
+        envUrl: process.env.DATABASE_URL ? 'SET' : 'NOT SET', 
+        probe: Array.isArray(probeResult) ? probeResult[0] : probeResult, 
+        tables: Array.isArray(tablesResult) ? tablesResult : [] 
+      });
     } catch (e: any) {
-      res.status(500).json({ error: e.message, envUrl: process.env.DATABASE_URL });
+      res.status(500).json({ error: e.message, envUrl: process.env.DATABASE_URL ? 'SET' : 'NOT SET' });
     }
   });
 
