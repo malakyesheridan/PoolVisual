@@ -4,13 +4,13 @@
 
 import { Router } from 'express';
 import { storage } from '../storage.js';
-import { storageService } from '../lib/storageService';
-import { enhancementQueue } from '../jobs/aiEnhancementQueue';
-import { CreditsManager } from '../lib/creditsManager';
-import { generateCacheKey } from '../lib/cacheNormalizer';
-import { verifyWebhookSignature } from '../middleware/hmacVerification';
-import { SSEManager } from '../lib/sseManager';
-import { executeQuery, transaction } from '../lib/dbHelpers';
+import { storageService } from '../lib/storageService.js';
+import { enhancementQueue } from '../jobs/aiEnhancementQueue.js';
+import { CreditsManager } from '../lib/creditsManager.js';
+import { generateCacheKey } from '../lib/cacheNormalizer.js';
+import { verifyWebhookSignature } from '../middleware/hmacVerification.js';
+import { SSEManager } from '../lib/sseManager.js';
+import { executeQuery, transaction } from '../lib/dbHelpers.js';
 
 export const router = Router();
 
