@@ -94,8 +94,10 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     }
   }, [effectiveJobId]);
 
-  // Track unsaved changes
-  const currentMaskState = JSON.stringify(getState().masks);
+  // Track unsaved changes - use mask store, not editor store
+  const maskStore = useMaskStore();
+  const currentMasks = Object.values(maskStore.masks);
+  const currentMaskState = JSON.stringify(currentMasks);
   const hasUnsavedChanges = currentMaskState !== lastSavedMaskState;
 
   // Listen for masks loaded event to update saved state
@@ -1146,10 +1148,13 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         console.log('[SaveToJob] Updated image URL and notified save complete');
       }
       
-      // Update save state tracking
+      // Update save state tracking - use mask store state
+      const maskStoreForSave = useMaskStore.getState();
+      const savedMasks = Object.values(maskStoreForSave.masks);
+      const savedMaskState = JSON.stringify(savedMasks);
       setLastSavedAt(new Date());
       setSaveError(null);
-      setLastSavedMaskState(currentMaskState);
+      setLastSavedMaskState(savedMaskState);
       
       toast.success(`Photo saved to job successfully!`);
       
