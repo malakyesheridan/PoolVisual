@@ -5,17 +5,17 @@ import express from "express";
 import cors from 'cors';
 import { getIronSession } from "iron-session";
 import rateLimit from "express-rate-limit";
-import { sessionOptions } from "./session";
+import { sessionOptions } from "./session.js";
 import bcrypt from "bcryptjs";
-import { storage } from "./storage";
-import { registerRoutes } from "./routes";
-import { serveStatic, log } from "./vite";
-import { errorHandler, notFoundHandler, requestIdMiddleware } from "./lib/routeWrapper";
-import { metricsHandler } from './lib/metrics';
-import { SSEManager } from './lib/sseManager';
-import { initSSEBus } from './lib/sseBus';
-import { router as aiEnhancementRouter } from './routes/aiEnhancement';
-import { processOutboxEvents } from './jobs/outboxProcessor';
+import { storage } from "./storage.js";
+import { registerRoutes } from "./routes.js";
+import { serveStatic, log } from "./vite.js";
+import { errorHandler, notFoundHandler, requestIdMiddleware } from "./lib/routeWrapper.js";
+import { metricsHandler } from './lib/metrics.js';
+import { SSEManager } from './lib/sseManager.js';
+import { initSSEBus } from './lib/sseBus.js';
+import { router as aiEnhancementRouter } from './routes/aiEnhancement.js';
+import { processOutboxEvents } from './jobs/outboxProcessor.js';
 
 // SAFE_MODE configuration
 const SAFE_MODE = process.env.SAFE_MODE === '1';
@@ -270,7 +270,7 @@ async function initializeServer() {
   // Debug DB route (before 404 handler)
   app.get('/debug/db', async (_req, res) => {
     try {
-      const { getSql } = await import('./db');
+      const { getSql } = await import('./db.js');
       const sql = getSql();
       if (!sql) throw new Error('Database connection not available');
       
@@ -329,7 +329,7 @@ async function initializeServer() {
     // Start worker if enabled
     if (START_WORKER) {
       console.log('[Server] Worker will be spawned by server process');
-      import('./jobs/worker').then(() => {
+      import('./jobs/worker.js').then(() => {
         console.log('[Server] Worker spawned successfully');
       }).catch(err => {
         console.error('[Server] Failed to spawn worker:', err);
