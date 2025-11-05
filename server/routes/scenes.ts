@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getDatabase } from "../db";
+import { getDatabase } from '../db.js';
 import { sql } from "drizzle-orm";
 
 export const scenes = Router();

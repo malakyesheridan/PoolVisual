@@ -3,9 +3,9 @@
  */
 
 import { enhancementQueue } from './aiEnhancementQueue.js';
-import { executeQuery } from '../lib/dbHelpers';
-import { CreditsManager } from '../lib/creditsManager';
-import { metrics } from '../lib/metrics';
+import { executeQuery } from '../lib/dbHelpers.js';
+import { CreditsManager } from '../lib/creditsManager.js';
+import { metrics } from '../lib/metrics.js';
 
 function calcBackoff(attempts: number) {
   const base = 5000;

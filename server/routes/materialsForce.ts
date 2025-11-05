@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import { storage } from '../storage';
+import { storage } from '../storage.js';
 
 export function materialsForceRoutes(app: Express) {
   // Debug: Direct DB access bypassing complex storage queries

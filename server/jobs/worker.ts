@@ -7,8 +7,8 @@ import '../bootstrapEnv.js';
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { enhancementQueue, EnhancementJobData } from './aiEnhancementQueue.js';
-import { executeQuery } from '../lib/dbHelpers';
-import { SSEManager } from '../lib/sseManager';
+import { executeQuery } from '../lib/dbHelpers.js';
+import { SSEManager } from '../lib/sseManager.js';
 import { getProvider } from './enhancementProviders.js';
 import Redis from 'ioredis';
 

@@ -1,6 +1,6 @@
 import { Express } from 'express';
 import { z } from 'zod';
-import { storage } from '../storage';
+import { storage } from '../storage.js';
 
 const coNum = z.coerce.number().refine(v => !Number.isNaN(v), 'NaN').optional().nullable();
 const strOpt = z.string().trim().optional().nullable();

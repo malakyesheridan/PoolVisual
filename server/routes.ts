@@ -1,7 +1,7 @@
 import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
-import { registerTextureProxyRoutes } from './routes/textureProxy';
-import healthRoutes from "./routes/health";
+import { registerTextureProxyRoutes } from './routes/textureProxy.js';
+import healthRoutes from "./routes/health.js";
 import { storage } from './storage.js';
 import { CompositeGenerator } from './compositeGenerator.js';
 import { 
@@ -13,7 +13,7 @@ import {
   insertQuoteSchema,
   insertQuoteItemSchema,
   CalibrationSchema
-} from "../shared/schema";
+} from "../shared/schema.js";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 // JWT removed - using session-based authentication
@@ -21,12 +21,12 @@ import multer from "multer";
 import { randomUUID } from "crypto";
 import express from "express";
 import { registerMaterialRoutes } from './materialRoutes.js';
-import { registerMaterialRoutesV2 } from "./routes/materials";
-import { scenes } from "./routes/scenes";
+import { registerMaterialRoutesV2 } from "./routes/materials.js";
+import { scenes } from "./routes/scenes.js";
 import sharp from "sharp";
-import { PasswordService } from "./lib/passwordService";
-import { PasswordResetService } from "./lib/passwordResetService";
-import { createBruteForceMiddleware } from "./lib/bruteForceProtection";
+import { PasswordService } from "./lib/passwordService.js";
+import { PasswordResetService } from "./lib/passwordResetService.js";
+import { createBruteForceMiddleware } from "./lib/bruteForceProtection.js";
 
 // JWT_SECRET removed - using session-based authentication
 

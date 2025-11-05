@@ -8,7 +8,7 @@
 import Stripe from 'stripe';
 import { storage } from '../storage.js';
 import { emailService } from './emailService.js';
-import { Quote } from '../../shared/schema';
+import { Quote } from '../../shared/schema.js';
 
 export interface PaymentIntentData {
   clientSecret: string;

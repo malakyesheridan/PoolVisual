@@ -8,7 +8,7 @@
 import { Resend } from 'resend';
 import { storage } from '../storage.js';
 import { pdfGenerator } from './pdfGenerator.js';
-import { Quote, Org, Settings } from '../../shared/schema';
+import { Quote, Org, Settings } from '../../shared/schema.js';
 
 export interface EmailOptions {
   to: string;

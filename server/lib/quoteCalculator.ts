@@ -5,10 +5,10 @@
  * Leverages existing calculation utilities from the frontend
  */
 
-import { storage } from '../storage';
+import { storage } from '../storage.js';
 import { eq, and } from 'drizzle-orm';
-import { masks, materials, photos, jobs, quotes, quoteItems } from '../../shared/schema';
-import type { Mask, Material, Photo, Job, Quote, QuoteItem } from '../../shared/schema';
+import { masks, materials, photos, jobs, quotes, quoteItems } from '../../shared/schema.js';
+import type { Mask, Material, Photo, Job, Quote, QuoteItem } from '../../shared/schema.js';
 
 export interface MaskCalculationData {
   maskId: string;

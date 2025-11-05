@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { AppError, isAppError, parseError } from './errors.js';
 import { logger } from './logger.js';
-import { validate } from '../../shared/schemas';
+import { validate } from '../../shared/schemas.js';
 
 // Extend Express Request to include parsed data and metadata
 declare global {

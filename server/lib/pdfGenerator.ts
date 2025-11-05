@@ -6,8 +6,8 @@
  */
 
 import puppeteer from 'puppeteer';
-import { storage } from '../storage';
-import { Quote, QuoteItem, Org, Settings } from '../../shared/schema';
+import { storage } from '../storage.js';
+import { Quote, QuoteItem, Org, Settings } from '../../shared/schema.js';
 
 export interface PDFGenerationOptions {
   quoteId: string;

@@ -3,7 +3,7 @@
  * Uses Neon serverless client which works with tagged template literals
  */
 
-import { getSql } from '../db';
+import { getSql } from '../db.js';
 
 export async function executeQuery(query: string, params: any[] = []): Promise<any[]> {
   const sql = getSql();

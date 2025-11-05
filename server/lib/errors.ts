@@ -3,4 +3,4 @@
  */
 
 // Re-export everything from client errors for consistency
-export * from '../../client/src/lib/errors';
+export * from '../../client/src/lib/errors.js';

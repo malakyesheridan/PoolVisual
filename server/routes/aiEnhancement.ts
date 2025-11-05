@@ -3,7 +3,7 @@
  */
 
 import { Router } from 'express';
-import { storage } from '../storage';
+import { storage } from '../storage.js';
 import { storageService } from '../lib/storageService';
 import { enhancementQueue } from '../jobs/aiEnhancementQueue';
 import { CreditsManager } from '../lib/creditsManager';

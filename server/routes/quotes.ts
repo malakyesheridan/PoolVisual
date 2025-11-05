@@ -6,12 +6,12 @@
  */
 
 import type { Express, Request } from "express";
-import { storage } from '../storage';
-import { quoteCalculator } from '../lib/quoteCalculator';
-import { pdfGenerator } from '../lib/pdfGenerator';
-import { emailService } from '../lib/emailService';
-import { paymentService } from '../lib/paymentService';
-import { insertQuoteSchema, insertQuoteItemSchema, quoteItems } from '../../shared/schema';
+import { storage } from '../storage.js';
+import { quoteCalculator } from '../lib/quoteCalculator.js';
+import { pdfGenerator } from '../lib/pdfGenerator.js';
+import { emailService } from '../lib/emailService.js';
+import { paymentService } from '../lib/paymentService.js';
+import { insertQuoteSchema, insertQuoteItemSchema, quoteItems } from '../../shared/schema.js';
 import { z } from 'zod';
 
 // Define extended request interface
