@@ -629,23 +629,45 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Unable to determine image dimensions" });
       }
 
-      // Upload to cloud storage (S3) in production, or use local path in development
+      // Upload to cloud storage (Vercel Blob or S3) in production, or use local path in development
       let originalUrl: string;
-      if (process.env.VERCEL || process.env.AWS_ACCESS_KEY_ID) {
-        // Upload to S3
+      const hasCloudStorage = !!(process.env.BLOB_READ_WRITE_TOKEN || process.env.AWS_ACCESS_KEY_ID);
+      
+      console.log('[PhotoUpload] Storage check:', {
+        VERCEL: !!process.env.VERCEL,
+        BLOB_TOKEN: !!process.env.BLOB_READ_WRITE_TOKEN,
+        AWS_KEY: !!process.env.AWS_ACCESS_KEY_ID,
+        hasCloudStorage
+      });
+      
+      if (process.env.VERCEL || hasCloudStorage) {
+        // Upload to cloud storage (Vercel Blob preferred, S3 fallback)
         const fileExtension = req.file.originalname.split('.').pop() || 'jpg';
-        const s3Path = `photos/${jobId}/${randomUUID()}.${fileExtension}`;
+        const storagePath = `photos/${jobId}/${randomUUID()}.${fileExtension}`;
         
         try {
+          console.log('[PhotoUpload] Uploading to cloud storage:', storagePath);
           originalUrl = await storageService.put(
-            s3Path,
+            storagePath,
             imageBuffer,
             req.file.mimetype || 'image/jpeg'
           );
-          console.log('Uploaded photo to S3:', originalUrl);
-        } catch (s3Error) {
-          console.error('S3 upload failed:', s3Error);
-          // Fallback to local path if S3 fails (for development)
+          console.log('[PhotoUpload] Successfully uploaded to cloud storage:', originalUrl);
+        } catch (storageError: any) {
+          console.error('[PhotoUpload] Cloud storage upload failed:', storageError);
+          console.error('[PhotoUpload] Error details:', {
+            message: storageError?.message,
+            stack: storageError?.stack,
+            name: storageError?.name
+          });
+          // Don't fallback to local path in production - throw error instead
+          if (process.env.VERCEL) {
+            return res.status(500).json({ 
+              message: 'Failed to upload photo to cloud storage. Please check storage configuration.',
+              error: storageError?.message 
+            });
+          }
+          // Fallback to local path only in development
           originalUrl = `/uploads/${randomUUID()}-${req.file.originalname}`;
         }
       } else {
@@ -742,6 +764,63 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Return 404 instead of 500 for deleted photos or other "not found" scenarios
       // This prevents client retries and makes error handling more predictable
       return res.status(404).json({ message: `Photo not found: ${errorMessage}` });
+    }
+  });
+
+  // Proxy endpoint for old photos with local paths - redirects to Vercel Blob or serves locally
+  app.get("/api/photos/:id/image", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+      
+      const photo = await storage.getPhoto(photoId);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+
+      // Verify access
+      const job = await storage.getJob(photo.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // If photo has an external URL (Vercel Blob, S3, etc.), redirect to it
+      if (photo.originalUrl && (photo.originalUrl.startsWith('http://') || photo.originalUrl.startsWith('https://'))) {
+        return res.redirect(photo.originalUrl);
+      }
+
+      // If it's a local path, try to serve it (for development only)
+      if (photo.originalUrl && photo.originalUrl.startsWith('/uploads/')) {
+        // In production, these files don't exist
+        if (process.env.VERCEL) {
+          return res.status(404).json({ 
+            message: "Photo file not found. This photo was uploaded before cloud storage was enabled.",
+            suggestion: "Please re-upload this photo.",
+            originalUrl: photo.originalUrl
+          });
+        }
+        
+        // Local development - try to serve from filesystem
+        const fs = await import('fs');
+        const filePath = path.resolve(process.cwd(), photo.originalUrl.substring(1));
+        if (fs.existsSync(filePath)) {
+          return res.sendFile(filePath);
+        }
+      }
+
+      return res.status(404).json({ message: "Photo file not found" });
+    } catch (error) {
+      console.error('[GetPhotoImage] Error:', error);
+      res.status(500).json({ message: (error as Error).message });
     }
   });
 
