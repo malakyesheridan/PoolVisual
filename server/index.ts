@@ -1,5 +1,5 @@
 // Load environment variables first
-import "./bootstrapEnv";
+import "./bootstrapEnv.js";
 
 import express from "express";
 import cors from 'cors';

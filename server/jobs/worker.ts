@@ -3,7 +3,7 @@
  * Rock-solid for Upstash Redis with TLS
  */
 
-import '../bootstrapEnv';
+import '../bootstrapEnv.js';
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
 import { enhancementQueue, EnhancementJobData } from './aiEnhancementQueue';
