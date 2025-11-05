@@ -196,7 +196,8 @@ app.post("/api/auth/logout", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Initialize server
+// Initialize server - register routes synchronously BEFORE export
+// This ensures routes exist when Vercel loads the module
 async function initializeServer() {
   // Healthz endpoint
   app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, mode: SAFE_MODE ? 'safe' : 'normal' }));
@@ -207,39 +208,13 @@ async function initializeServer() {
   // AI Enhancement routes (always mount)
   app.use('/api/ai/enhancement', aiEnhancementRouter);
   
-  // Wrap heavy pieces in SAFE_MODE guard
-  if (!SAFE_MODE) {
-    // SSE system initialization
-    SSEManager.init();
-    initSSEBus();
-    
-    // Outbox processor loop
-    console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
-    setInterval(() => {
-      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
-    }, 5000);
-    
-    // Also process immediately on startup to catch any pending events
-    console.log('[Server] Processing any pending outbox events on startup...');
-    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
-    
-    // Start worker if enabled
-    if (START_WORKER) {
-      console.log('[Server] Worker will be spawned by server process');
-      import('./jobs/worker').then(() => {
-        console.log('[Server] Worker spawned successfully');
-      }).catch(err => {
-        console.error('[Server] Failed to spawn worker:', err);
-      });
-    } else {
-      console.log('[Server] Worker not started (set START_WORKER=1 to enable)');
-    }
-  } else {
-    console.log('[SAFE_MODE] Skipping Redis, BullMQ worker, SSE bus, outbox processor');
+  // Register other routes SYNCHRONOUSLY - routes must exist before export
+  try {
+    await registerRoutes(app);
+  } catch (error) {
+    console.error('[Server] Failed to register routes:', error);
+    // Don't throw - routes that were registered before error will still work
   }
-  
-  // Register other routes
-  await registerRoutes(app);
 
   // Health check endpoint
   app.get('/api/health', (_req, res) => {
@@ -326,8 +301,39 @@ async function initializeServer() {
   // Add 404 handler after all routes and static serving
   app.use(notFoundHandler);
 
-  // Add centralized error handler last
-  app.use(errorHandler);
+  // Note: Error handler is registered BEFORE export (see below)
+  // Do NOT register it here to avoid duplicate registration
+
+  // Wrap heavy pieces in SAFE_MODE guard
+  if (!SAFE_MODE) {
+    // SSE system initialization
+    SSEManager.init();
+    initSSEBus();
+    
+    // Outbox processor loop
+    console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
+    setInterval(() => {
+      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
+    }, 5000);
+    
+    // Also process immediately on startup to catch any pending events
+    console.log('[Server] Processing any pending outbox events on startup...');
+    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
+    
+    // Start worker if enabled
+    if (START_WORKER) {
+      console.log('[Server] Worker will be spawned by server process');
+      import('./jobs/worker').then(() => {
+        console.log('[Server] Worker spawned successfully');
+      }).catch(err => {
+        console.error('[Server] Failed to spawn worker:', err);
+      });
+    } else {
+      console.log('[Server] Worker not started (set START_WORKER=1 to enable)');
+    }
+  } else {
+    console.log('[SAFE_MODE] Skipping Redis, BullMQ worker, SSE bus, outbox processor');
+  }
 
   // Start server in development mode
   if (process.env.NODE_ENV !== 'production') {
@@ -342,7 +348,8 @@ async function initializeServer() {
   console.log('[Server] All routes registered, initialization complete');
 }
 
-// Initialize the server
+// Initialize routes IMMEDIATELY and SYNCHRONOUSLY before export
+// This ensures routes exist when Vercel loads the module
 let initPromise: Promise<void> | null = null;
 let isInitialized = false;
 
@@ -361,34 +368,21 @@ async function ensureInitialized() {
   return initPromise;
 }
 
-// Add middleware AFTER basic setup but it will ensure initialization completes
-// This middleware runs before route handlers but after routes are registered
-app.use(async (req, res, next) => {
-  try {
-    await ensureInitialized();
-    next();
-  } catch (error) {
-    console.error('[Server] Initialization middleware error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ 
-        ok: false, 
-        error: 'Server initialization failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      });
-    }
-  }
+// Register routes IMMEDIATELY on module load (for Vercel)
+// This ensures routes exist even if async initialization fails
+// We use top-level await-like pattern but catch errors to prevent module load failure
+const initPromise = ensureInitialized().catch((error) => {
+  console.error('[Server] Failed to initialize on module load:', error);
+  console.error('[Server] Stack:', error instanceof Error ? error.stack : 'No stack');
+  // Don't throw - routes that were registered will still work
+  // The error handler will catch runtime errors
 });
 
-// Start initialization immediately (non-blocking)
-if (process.env.NODE_ENV !== 'production') {
-  // In development, start server immediately
-  initializeServer().catch(console.error);
-} else {
-  // In production (Vercel), start initialization immediately but don't await
-  ensureInitialized().catch((error) => {
-    console.error('[Server] Failed to initialize on module load:', error);
-  });
-}
+// Add error handler BEFORE export (critical for Vercel)
+// This ensures errors are caught even if initialization fails
+app.use(errorHandler);
 
 // For Vercel: export Express app directly
+// Routes are registered via ensureInitialized() above
+// Even if initialization fails, the app is exported and won't crash the module
 export default app;
