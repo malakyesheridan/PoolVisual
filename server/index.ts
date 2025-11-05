@@ -340,7 +340,37 @@ async function initializeServer() {
 }
 
 // Initialize the server
-initializeServer().catch(console.error);
+let initPromise: Promise<void> | null = null;
+let isInitialized = false;
 
-// Export the Express app for Vercel
-export default app;
+async function ensureInitialized() {
+  if (isInitialized) return;
+  if (!initPromise) {
+    initPromise = initializeServer().then(() => {
+      isInitialized = true;
+      console.log('[Server] Initialization complete');
+    }).catch((error) => {
+      console.error('[Server] Initialization failed:', error);
+      initPromise = null; // Allow retry
+      throw error;
+    });
+  }
+  return initPromise;
+}
+
+// For Vercel: ensure initialization before handling requests
+export default async (req: any, res: any) => {
+  try {
+    await ensureInitialized();
+    return app(req, res);
+  } catch (error) {
+    console.error('[Server] Handler error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        ok: false, 
+        error: 'Server initialization failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+};
