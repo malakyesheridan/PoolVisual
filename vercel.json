@@ -23,4 +23,5 @@
       "src": "/api/(.*)",
       "dest": "/server/index.ts"
     }
-  ],
+  ]
+}
