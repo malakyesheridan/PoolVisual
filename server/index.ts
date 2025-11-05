@@ -371,7 +371,7 @@ async function ensureInitialized() {
 // Register routes IMMEDIATELY on module load (for Vercel)
 // This ensures routes exist even if async initialization fails
 // We use top-level await-like pattern but catch errors to prevent module load failure
-const initPromise = ensureInitialized().catch((error) => {
+ensureInitialized().catch((error) => {
   console.error('[Server] Failed to initialize on module load:', error);
   console.error('[Server] Stack:', error instanceof Error ? error.stack : 'No stack');
   // Don't throw - routes that were registered will still work
