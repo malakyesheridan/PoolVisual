@@ -6,10 +6,10 @@
 import '../bootstrapEnv.js';
 import { Worker, Job } from 'bullmq';
 import IORedis from 'ioredis';
-import { enhancementQueue, EnhancementJobData } from './aiEnhancementQueue';
+import { enhancementQueue, EnhancementJobData } from './aiEnhancementQueue.js';
 import { executeQuery } from '../lib/dbHelpers';
 import { SSEManager } from '../lib/sseManager';
-import { getProvider } from './enhancementProviders';
+import { getProvider } from './enhancementProviders.js';
 import Redis from 'ioredis';
 
 const SAFE_MODE = process.env.SAFE_MODE === '1';

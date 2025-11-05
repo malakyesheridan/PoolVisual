@@ -2,7 +2,7 @@
  * Server-side logging system with optional Sentry integration
  */
 
-import { isAppError } from './errors';
+import { isAppError } from './errors.js';
 
 // Log levels
 export const LOG_LEVELS = {

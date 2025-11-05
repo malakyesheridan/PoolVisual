@@ -2,8 +2,8 @@ import type { Express, Request } from "express";
 import { createServer, type Server } from "http";
 import { registerTextureProxyRoutes } from './routes/textureProxy';
 import healthRoutes from "./routes/health";
-import { storage } from "./storage";
-import { CompositeGenerator } from "./compositeGenerator";
+import { storage } from './storage.js';
+import { CompositeGenerator } from './compositeGenerator.js';
 import { 
   insertUserSchema, 
   insertOrgSchema, 
@@ -20,7 +20,7 @@ import bcrypt from "bcryptjs";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import express from "express";
-import { registerMaterialRoutes } from "./materialRoutes";
+import { registerMaterialRoutes } from './materialRoutes.js';
 import { registerMaterialRoutesV2 } from "./routes/materials";
 import { scenes } from "./routes/scenes";
 import sharp from "sharp";

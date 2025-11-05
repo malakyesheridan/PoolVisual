@@ -6,9 +6,9 @@
  */
 
 import { randomBytes } from 'crypto';
-import { storage } from '../storage';
-import { PasswordService } from './passwordService';
-import { EmailService } from './emailService';
+import { storage } from '../storage.js';
+import { PasswordService } from './passwordService.js';
+import { EmailService } from './emailService.js';
 
 export interface PasswordResetRequest {
   email: string;

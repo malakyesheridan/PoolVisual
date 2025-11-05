@@ -3,7 +3,7 @@
  */
 
 import Redis from 'ioredis';
-import { SSEManager } from './sseManager';
+import { SSEManager } from './sseManager.js';
 
 let sub: Redis | null = null;
 const SAFE_MODE = process.env.SAFE_MODE === '1';

@@ -5,8 +5,8 @@
  * Integrates with existing payment system without modifying existing code
  */
 
-import { logger } from './logger';
-import { monitoringService } from './monitoringService';
+import { logger } from './logger.js';
+import { monitoringService } from './monitoringService.js';
 
 export interface PaymentTrackingData {
   paymentIntentId: string;

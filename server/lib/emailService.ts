@@ -6,8 +6,8 @@
  */
 
 import { Resend } from 'resend';
-import { storage } from '../storage';
-import { pdfGenerator } from './pdfGenerator';
+import { storage } from '../storage.js';
+import { pdfGenerator } from './pdfGenerator.js';
 import { Quote, Org, Settings } from '../../shared/schema';
 
 export interface EmailOptions {

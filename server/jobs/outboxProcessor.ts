@@ -2,7 +2,7 @@
  * Outbox Processor - Processes outbox events with retry backoff
  */
 
-import { enhancementQueue } from './aiEnhancementQueue';
+import { enhancementQueue } from './aiEnhancementQueue.js';
 import { executeQuery } from '../lib/dbHelpers';
 import { CreditsManager } from '../lib/creditsManager';
 import { metrics } from '../lib/metrics';

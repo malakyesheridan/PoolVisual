@@ -1,9 +1,9 @@
 import type { Express, Request } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
-import { textureProcessor } from "./textureProcessor";
-import { ImportService } from "./importService";
-import { storage } from "./storage";
+import { textureProcessor } from './textureProcessor.js';
+import { ImportService } from './importService.js';
+import { storage } from './storage.js';
 import { z } from "zod";
 
 // Define extended request interface to match existing auth

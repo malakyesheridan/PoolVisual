@@ -5,8 +5,8 @@
  * Integrates with existing quote calculation without modifying existing code
  */
 
-import { storage } from '../storage';
-import { logger } from './logger';
+import { storage } from '../storage.js';
+import { logger } from './logger.js';
 
 export interface PricingRule {
   id: string;

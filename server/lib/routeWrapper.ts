@@ -6,8 +6,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
-import { AppError, isAppError, parseError } from './errors';
-import { logger } from './logger';
+import { AppError, isAppError, parseError } from './errors.js';
+import { logger } from './logger.js';
 import { validate } from '../../shared/schemas';
 
 // Extend Express Request to include parsed data and metadata

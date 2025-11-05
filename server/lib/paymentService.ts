@@ -6,8 +6,8 @@
  */
 
 import Stripe from 'stripe';
-import { storage } from '../storage';
-import { emailService } from './emailService';
+import { storage } from '../storage.js';
+import { emailService } from './emailService.js';
 import { Quote } from '../../shared/schema';
 
 export interface PaymentIntentData {

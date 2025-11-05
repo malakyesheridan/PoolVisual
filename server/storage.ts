@@ -1,5 +1,5 @@
 
-import { MockStorage } from './mockStorage';
+import { MockStorage } from './mockStorage.js';
 
 import { 
   User, 
@@ -33,7 +33,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
-import { getDatabase } from './db';
+import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 
 // Define OrgMember type

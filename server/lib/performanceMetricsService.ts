@@ -5,8 +5,8 @@
  * Provides real-time performance insights without modifying existing code
  */
 
-import { logger } from './logger';
-import { monitoringService } from './monitoringService';
+import { logger } from './logger.js';
+import { monitoringService } from './monitoringService.js';
 
 export interface MetricDefinition {
   name: string;

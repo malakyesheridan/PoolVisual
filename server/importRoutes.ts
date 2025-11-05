@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { z } from "zod";
-import { ImportService } from "./importService";
-import { textureProcessor } from "./textureProcessor";
+import { ImportService } from './importService.js';
+import { textureProcessor } from './textureProcessor.js';
 import { randomUUID } from "crypto";
 import fs from "fs/promises";
 import path from "path";
