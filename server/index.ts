@@ -301,8 +301,8 @@ async function initializeServer() {
   // Add 404 handler after all routes and static serving
   app.use(notFoundHandler);
 
-  // Note: Error handler is registered BEFORE export (see below)
-  // Do NOT register it here to avoid duplicate registration
+  // Add error handler AFTER all routes (Express requirement)
+  app.use(errorHandler);
 
   // Wrap heavy pieces in SAFE_MODE guard
   if (!SAFE_MODE) {
@@ -387,9 +387,11 @@ app.use(async (req, res, next) => {
     next();
   } catch (error) {
     console.error('[Server] Initialization middleware error:', error);
+    console.error('[Server] Initialization error stack:', error instanceof Error ? error.stack : 'No stack');
     // If initialization fails, return 503 Service Unavailable
+    // Don't call next(error) here - we want to send a response
     if (!res.headersSent) {
-      res.status(503).json({ 
+      return res.status(503).json({ 
         ok: false, 
         error: 'Server initialization failed',
         details: error instanceof Error ? error.message : 'Unknown error'
@@ -398,11 +400,8 @@ app.use(async (req, res, next) => {
   }
 });
 
-// Add error handler BEFORE export (critical for Vercel)
-// This ensures errors are caught even if initialization fails
-app.use(errorHandler);
-
 // For Vercel: export Express app directly
 // Routes are registered via ensureInitialized() + middleware above
 // The middleware ensures routes exist before requests are handled
+// Error handler is registered inside initializeServer() AFTER routes
 export default app;
