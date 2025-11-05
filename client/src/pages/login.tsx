@@ -65,7 +65,8 @@ export default function Login() {
       const response = await apiClient.register(
         data.email, 
         data.username, 
-        data.password
+        data.password,
+        data.orgName || undefined // Pass orgName if provided, otherwise undefined
       );
       if (response.ok) {
         login(response.user);
@@ -188,6 +189,16 @@ export default function Login() {
                       required
                       disabled={isLoading}
                       testId="input-register-username"
+                    />
+                    
+                    <FormField
+                      name="orgName"
+                      label="Business Name (Optional)"
+                      type="text"
+                      placeholder="My Pool Business"
+                      description="Leave blank to use your username as business name"
+                      disabled={isLoading}
+                      testId="input-register-org-name"
                     />
                     
                     <FormField

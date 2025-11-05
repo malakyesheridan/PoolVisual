@@ -72,3 +72,10 @@ export function getDatabase() {
 
 // Export sql client for direct queries if needed
 export { getSql };
+
+// Explicitly export for ESM compatibility
+export default {
+  getDatabase,
+  getSql,
+  checkDb
+};

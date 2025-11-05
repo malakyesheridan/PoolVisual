@@ -12,12 +12,9 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { jobSchema, type JobFormData } from '@/lib/form-validation';
 import { Form } from '@/components/ui/form';
 import { FormField } from '@/components/common/FormField';
-import { FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 export default function JobsNew() {
   const [, navigate] = useLocation();
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<JobFormData>({
@@ -26,33 +23,9 @@ export default function JobsNew() {
       clientName: '',
       clientPhone: '',
       clientEmail: '',
-      address: '',
-      orgId: ''
+      address: ''
     }
   });
-
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
-
-  console.log('Fetched orgs:', orgs);
-
-  // Redirect to organization creation if no organizations exist
-  React.useEffect(() => {
-    if (orgs.length === 0) {
-      navigate('/orgs/new');
-    }
-  }, [orgs, navigate]);
-
-  // Auto-select first org if only one exists
-  React.useEffect(() => {
-    if (orgs.length === 1 && !form.getValues('orgId')) {
-      const orgId = orgs[0].id;
-      setSelectedOrgId(orgId);
-      form.setValue('orgId', orgId);
-    }
-  }, [orgs, form]);
 
 
   const createJobMutation = useMutation({
@@ -74,12 +47,12 @@ export default function JobsNew() {
   const handleSubmit = (data: JobFormData) => {
     setIsSubmitting(true);
     
+    // orgId is automatically set by the server from user's org
     const jobData = {
       clientName: data.clientName,
       clientPhone: data.clientPhone?.trim() || null,
       clientEmail: data.clientEmail?.trim() || null,
       address: data.address?.trim() || null,
-      orgId: data.orgId,
       status: 'new' as const,
     };
 
@@ -163,42 +136,6 @@ export default function JobsNew() {
                   rows={3}
                   disabled={isSubmitting || createJobMutation.isPending}
                 />
-
-                {orgs.length > 1 && (
-                  <FormItem>
-                    <FormLabel>
-                      Organization <span className="text-red-500 ml-1">*</span>
-                    </FormLabel>
-                    <FormControl>
-                      <Controller
-                        name="orgId"
-                        control={form.control}
-                        render={({ field }) => (
-                          <Select
-                            value={field.value}
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              setSelectedOrgId(value);
-                            }}
-                            disabled={isSubmitting || createJobMutation.isPending}
-                          >
-                            <SelectTrigger data-testid="select-organization">
-                              <SelectValue placeholder="Select an organization" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {orgs.map((org) => (
-                                <SelectItem key={org.id} value={org.id}>
-                                  {org.name}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
 
                 {/* Action Buttons */}
                 <div className="flex space-x-4 pt-6 border-t border-slate-200">

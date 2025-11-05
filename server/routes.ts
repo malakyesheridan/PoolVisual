@@ -412,14 +412,27 @@ export async function registerRoutes(app: Express): Promise<void> {
       console.log('Job creation request body:', req.body);
       
       // Manual validation instead of schema
-      const { clientName, clientPhone, clientEmail, address, orgId, status } = req.body;
+      const { clientName, clientPhone, clientEmail, address, status } = req.body;
       
       if (!clientName || typeof clientName !== 'string') {
         return res.status(400).json({ message: "clientName is required" });
       }
       
-      if (!orgId || typeof orgId !== 'string') {
-        return res.status(400).json({ message: "orgId is required" });
+      // Get user's organizations (should be just one for now)
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      if (userOrgs.length === 0) {
+        return res.status(400).json({ 
+          message: "No organization found. Please contact support." 
+        });
+      }
+      
+      // Use the first (and only) org for now
+      const userOrg = userOrgs[0];
+      
+      // Get the user's org member ID for this organization
+      const orgMember = await storage.getOrgMember(req.user.id, userOrg.id);
+      if (!orgMember) {
+        return res.status(403).json({ message: "User is not a member of this organization" });
       }
       
       const jobData = {
@@ -427,32 +440,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         clientPhone: clientPhone || null,
         clientEmail: clientEmail || null,
         address: address || null,
-        orgId,
-        status: status || 'new'
-      };
-      
-      // Verify user has access to the organization
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasOrgAccess = userOrgs.some(org => org.id === jobData.orgId);
-      
-      if (!hasOrgAccess) {
-        return res.status(403).json({ message: "Access denied to this organization" });
-      }
-
-      // Get the user's org member ID for this organization
-      const orgMember = await storage.getOrgMember(req.user.id, jobData.orgId);
-      if (!orgMember) {
-        return res.status(403).json({ message: "User is not a member of this organization" });
-      }
-
-      // Set the correct createdBy field and ensure status is set
-      const jobToCreate = {
-        ...jobData,
-        createdBy: orgMember.id,
-        status: jobData.status || 'new'
+        orgId: userOrg.id, // Auto-use user's org
+        status: status || 'new',
+        createdBy: orgMember.id
       };
 
-      const job = await storage.createJob(jobToCreate);
+      const job = await storage.createJob(jobData);
       res.json(job);
     } catch (error) {
       if (error instanceof z.ZodError) {

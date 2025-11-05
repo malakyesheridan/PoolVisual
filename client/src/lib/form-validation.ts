@@ -26,21 +26,24 @@ export const registerSchema = z.object({
     .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
     .regex(/[a-z]/, "Password must contain at least one lowercase letter")
     .regex(/[0-9]/, "Password must contain at least one number"),
-  confirmPassword: z.string()
+  confirmPassword: z.string(),
+  orgName: z.string()
+    .min(2, "Business name must be at least 2 characters")
+    .max(100, "Business name must be less than 100 characters")
+    .optional()
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
   path: ["confirmPassword"]
 });
 
-// Job creation schema (EXACT match to current validation logic)
+// Job creation schema (SIMPLIFIED - orgId no longer required)
 export const jobSchema = z.object({
   clientName: z.string()
     .min(1, "Client name is required")
     .min(2, "Client name must be at least 2 characters"),
   clientEmail: emailSchema.optional().or(z.literal("")),
   clientPhone: phoneSchema,
-  address: z.string().optional(),
-  orgId: z.string().uuid("Please select an organization")
+  address: z.string().optional()
 });
 
 // Organization creation schema (EXACT match to current validation)

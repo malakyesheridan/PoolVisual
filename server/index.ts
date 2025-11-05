@@ -124,13 +124,16 @@ app.use((req, res, next) => {
 });
 
 // Auth routes
-// POST /api/auth/register { email, password, username }
+// POST /api/auth/register { email, password, username, orgName }
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { email, password, username } = req.body || {};
+    const { email, password, username, orgName } = req.body || {};
     if (!email || !password || !username) {
       return res.status(400).json({ ok: false, error: "Email, password, and username required" });
     }
+    
+    // Org name defaults to username if not provided (backward compatibility)
+    const organizationName = orgName || username;
 
     // In no-DB mode, return a mock user for development
     if (process.env.NO_DB_MODE === 'true') {
@@ -149,9 +152,15 @@ app.post("/api/auth/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = await storage.createUser({ email, password: hashedPassword, username });
     
+    // Auto-create organization for the user
+    const org = await storage.createOrg(
+      { name: organizationName },
+      user.id
+    );
+    
     req.session.user = { id: user.id, email: user.email, username: user.username };
     await req.session.save();
-    return res.json({ ok: true, user: req.session.user });
+    return res.json({ ok: true, user: req.session.user, org });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "Registration failed" });
   }
