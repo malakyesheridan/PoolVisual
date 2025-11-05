@@ -337,6 +337,9 @@ async function initializeServer() {
       console.log(`🗄️  Database: ${process.env.DATABASE_URL ? 'Connected' : 'Not configured'}`);
     });
   }
+  
+  // Mark initialization as complete
+  console.log('[Server] All routes registered, initialization complete');
 }
 
 // Initialize the server
@@ -358,19 +361,14 @@ async function ensureInitialized() {
   return initPromise;
 }
 
-// Start initialization immediately (non-blocking)
-if (process.env.NODE_ENV !== 'production') {
-  // In development, start server immediately
-  initializeServer().catch(console.error);
-}
-
-// For Vercel: ensure initialization before handling requests
-export default async (req: any, res: any) => {
+// Add middleware AFTER basic setup but it will ensure initialization completes
+// This middleware runs before route handlers but after routes are registered
+app.use(async (req, res, next) => {
   try {
     await ensureInitialized();
-    return app(req, res);
+    next();
   } catch (error) {
-    console.error('[Server] Handler error:', error);
+    console.error('[Server] Initialization middleware error:', error);
     if (!res.headersSent) {
       res.status(500).json({ 
         ok: false, 
@@ -379,4 +377,68 @@ export default async (req: any, res: any) => {
       });
     }
   }
-};
+});
+
+// Start initialization immediately (non-blocking)
+if (process.env.NODE_ENV !== 'production') {
+  // In development, start server immediately
+  initializeServer().catch(console.error);
+} else {
+  // In production (Vercel), start initialization immediately but don't await
+  ensureInitialized().catch((error) => {
+    console.error('[Server] Failed to initialize on module load:', error);
+  });
+}
+
+// For Vercel: export Express app directly
+export default app;
+
+// Initialize the server
+let initPromise: Promise<void> | null = null;
+let isInitialized = false;
+
+async function ensureInitialized() {
+  if (isInitialized) return;
+  if (!initPromise) {
+    initPromise = initializeServer().then(() => {
+      isInitialized = true;
+      console.log('[Server] Initialization complete');
+    }).catch((error) => {
+      console.error('[Server] Initialization failed:', error);
+      initPromise = null; // Allow retry
+      throw error;
+    });
+  }
+  return initPromise;
+}
+
+// Add middleware to ensure initialization before handling any requests
+app.use(async (req, res, next) => {
+  try {
+    await ensureInitialized();
+    next();
+  } catch (error) {
+    console.error('[Server] Initialization middleware error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ 
+        ok: false, 
+        error: 'Server initialization failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
+});
+
+// Start initialization immediately (non-blocking)
+if (process.env.NODE_ENV !== 'production') {
+  // In development, start server immediately
+  initializeServer().catch(console.error);
+} else {
+  // In production (Vercel), start initialization immediately but don't await
+  ensureInitialized().catch((error) => {
+    console.error('[Server] Failed to initialize on module load:', error);
+  });
+}
+
+// For Vercel: export Express app directly
+export default app;
