@@ -97,7 +97,22 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   // Track unsaved changes - use mask store, not editor store
   const maskStore = useMaskStore();
   const currentMasks = Object.values(maskStore.masks);
-  const currentMaskState = JSON.stringify(currentMasks);
+  
+  // Create stable comparison by sorting masks by ID and removing transient properties
+  const normalizeMaskState = (masks: any[]) => {
+    return JSON.stringify(
+      masks
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map(m => ({
+          id: m.id,
+          pts: m.pts,
+          materialId: m.materialId,
+          materialSettings: m.materialSettings
+        }))
+    );
+  };
+  
+  const currentMaskState = normalizeMaskState(currentMasks);
   const hasUnsavedChanges = currentMaskState !== lastSavedMaskState;
 
   // Listen for masks loaded event to update saved state
@@ -108,8 +123,23 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         setTimeout(() => {
           const maskStore = useMaskStore.getState();
           const currentMasks = Object.values(maskStore.masks);
-          const maskStateString = JSON.stringify(currentMasks);
-          console.log('[Toolbar] Masks loaded event received, updating saved state:', event.detail);
+          
+          // Normalize mask state for comparison
+          const normalizeMaskState = (masks: any[]) => {
+            return JSON.stringify(
+              masks
+                .sort((a, b) => a.id.localeCompare(b.id))
+                .map(m => ({
+                  id: m.id,
+                  pts: m.pts,
+                  materialId: m.materialId,
+                  materialSettings: m.materialSettings
+                }))
+            );
+          };
+          
+          const maskStateString = normalizeMaskState(currentMasks);
+          console.log('[Toolbar] Masks loaded event received, updating saved state:', event.detail, 'mask state length:', maskStateString.length);
           setLastSavedMaskState(maskStateString);
         }, 100); // Small delay to ensure masks are fully loaded
       }
@@ -1148,13 +1178,29 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         console.log('[SaveToJob] Updated image URL and notified save complete');
       }
       
-      // Update save state tracking - use mask store state
+      // Update save state tracking - use mask store state with normalized comparison
       const maskStoreForSave = useMaskStore.getState();
       const savedMasks = Object.values(maskStoreForSave.masks);
-      const savedMaskState = JSON.stringify(savedMasks);
+      
+      // Normalize mask state for stable comparison
+      const normalizeMaskState = (masks: any[]) => {
+        return JSON.stringify(
+          masks
+            .sort((a, b) => a.id.localeCompare(b.id))
+            .map(m => ({
+              id: m.id,
+              pts: m.pts,
+              materialId: m.materialId,
+              materialSettings: m.materialSettings
+            }))
+        );
+      };
+      
+      const savedMaskState = normalizeMaskState(savedMasks);
       setLastSavedAt(new Date());
       setSaveError(null);
       setLastSavedMaskState(savedMaskState);
+      console.log('[Toolbar] Saved mask state updated, length:', savedMaskState.length);
       
       toast.success(`Photo saved to job successfully!`);
       
