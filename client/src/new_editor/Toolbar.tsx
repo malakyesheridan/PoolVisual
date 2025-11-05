@@ -810,15 +810,16 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           }
           
           // Convert to blob and create File
+          // Use JPEG with quality 0.85 to reduce file size for uploads
           canvas.toBlob((blob) => {
             if (blob) {
-              const file = new File([blob], 'edited-photo.png', { type: 'image/png' });
+              const file = new File([blob], 'edited-photo.jpg', { type: 'image/jpeg' });
               console.log('[exportCanvasToBlob] Successfully created blob:', blob.size, 'bytes');
               resolve(file);
             } else {
               reject(new Error('Failed to create blob'));
             }
-          }, 'image/png');
+          }, 'image/jpeg', 0.85); // JPEG at 85% quality for smaller file size
           
         } catch (error) {
           console.error('[exportCanvasToBlob] Error during export:', error);

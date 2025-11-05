@@ -42,10 +42,11 @@ import os from "os";
 const getMulterConfig = () => {
   if (process.env.VERCEL) {
     // Use memory storage in Vercel - files are processed immediately
+    // Increased limit to 50MB for canvas exports which can be large
     return multer({
       storage: multer.memoryStorage(),
       limits: {
-        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '10485760'), // 10MB default
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '52428800'), // 50MB default for Vercel
       },
       fileFilter: (req, file, cb) => {
         const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
@@ -62,7 +63,7 @@ const getMulterConfig = () => {
     return multer({
       dest: uploadDir,
       limits: {
-        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '10485760'), // 10MB default
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '52428800'), // 50MB default
       },
       fileFilter: (req, file, cb) => {
         const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
@@ -579,6 +580,15 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Photo file is required" });
       }
 
+      // Check file size
+      if (req.file.size > 52428800) { // 50MB
+        return res.status(413).json({ 
+          message: "File too large. Maximum size is 50MB.",
+          received: `${(req.file.size / 1024 / 1024).toFixed(2)}MB`,
+          limit: "50MB"
+        });
+      }
+
       if (!jobId) {
         return res.status(400).json({ message: "Job ID is required" });
       }
@@ -703,6 +713,16 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(photo);
     } catch (error) {
       console.error('Photo upload error:', error);
+      
+      // Handle multer errors specifically
+      if ((error as any).code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ 
+          message: 'File too large',
+          error: 'File exceeds maximum size limit',
+          limit: '50MB'
+        });
+      }
+      
       // Default to 500 if error lacks a status
       res.status((error as any)?.statusCode || 500).json({ message: (error as Error).message || 'Upload failed' });
     }
