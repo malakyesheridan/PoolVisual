@@ -368,14 +368,34 @@ async function ensureInitialized() {
   return initPromise;
 }
 
-// Register routes IMMEDIATELY on module load (for Vercel)
-// This ensures routes exist even if async initialization fails
-// We use top-level await-like pattern but catch errors to prevent module load failure
+// Start initialization immediately on module load (non-blocking)
+// This ensures routes begin registering as soon as possible
 ensureInitialized().catch((error) => {
   console.error('[Server] Failed to initialize on module load:', error);
   console.error('[Server] Stack:', error instanceof Error ? error.stack : 'No stack');
-  // Don't throw - routes that were registered will still work
-  // The error handler will catch runtime errors
+  // Don't throw - module must export successfully
+});
+
+// CRITICAL: Add middleware that waits for initialization before handling requests
+// This ensures routes exist before Express tries to match them
+// According to Vercel docs, this pattern ensures async initialization completes
+app.use(async (req, res, next) => {
+  try {
+    // Wait for initialization to complete (registers routes)
+    await ensureInitialized();
+    // Routes are now registered, proceed to route matching
+    next();
+  } catch (error) {
+    console.error('[Server] Initialization middleware error:', error);
+    // If initialization fails, return 503 Service Unavailable
+    if (!res.headersSent) {
+      res.status(503).json({ 
+        ok: false, 
+        error: 'Server initialization failed',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  }
 });
 
 // Add error handler BEFORE export (critical for Vercel)
@@ -383,6 +403,6 @@ ensureInitialized().catch((error) => {
 app.use(errorHandler);
 
 // For Vercel: export Express app directly
-// Routes are registered via ensureInitialized() above
-// Even if initialization fails, the app is exported and won't crash the module
+// Routes are registered via ensureInitialized() + middleware above
+// The middleware ensures routes exist before requests are handled
 export default app;
