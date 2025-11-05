@@ -399,14 +399,22 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             return;
           }
           
+          // Convert local paths to proxy URLs for old photos
+          let imageUrl = photo.originalUrl;
+          if (imageUrl.startsWith('/uploads/')) {
+            // Old photos with local paths - use proxy endpoint
+            imageUrl = `/api/photos/${photoIdToUse}/image`;
+            console.log('[NewEditor] Converting local path to proxy URL:', imageUrl);
+          }
+          
           // Load image to get dimensions
           const img = new Image();
           img.onload = () => {
-            console.log('[NewEditor] Setting image in store:', photo.originalUrl);
+            console.log('[NewEditor] Setting image in store:', imageUrl);
             dispatch({
               type: 'SET_IMAGE',
               payload: {
-                url: photo.originalUrl,
+                url: imageUrl,
                 width: img.naturalWidth,
                 height: img.naturalHeight
               }
@@ -414,9 +422,9 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             lastLoadedPhotoIdRef.current = photoIdToUse;
           };
           img.onerror = () => {
-            console.error('[NewEditor] Failed to load image from photo URL:', photo.originalUrl);
+            console.error('[NewEditor] Failed to load image from photo URL:', imageUrl);
           };
-          img.src = photo.originalUrl;
+          img.src = imageUrl;
         } else {
           console.warn('[NewEditor] Photo data missing originalUrl:', photo);
         }
