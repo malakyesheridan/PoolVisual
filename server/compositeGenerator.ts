@@ -1,6 +1,6 @@
 import { createCanvas, loadImage, Canvas, CanvasRenderingContext2D } from 'canvas';
 import { storage } from './storage.js';
-import { Mask, Material } from '@shared/schema';
+import { Mask, Material } from '../shared/schema.js';
 import { randomUUID } from 'crypto';
 import path from 'path';
 import fs from 'fs';

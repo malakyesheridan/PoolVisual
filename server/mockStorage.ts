@@ -18,7 +18,7 @@ import {
   InsertQuote,
   QuoteItem,
   InsertQuoteItem
-} from "@shared/schema";
+} from "../shared/schema.js";
 
 // Define OrgMember type for mock storage
 type OrgMember = {

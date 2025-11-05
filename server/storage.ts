@@ -30,7 +30,7 @@ import {
   masks,
   quotes,
   quoteItems
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
