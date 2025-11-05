@@ -27,6 +27,7 @@ import sharp from "sharp";
 import { PasswordService } from "./lib/passwordService.js";
 import { PasswordResetService } from "./lib/passwordResetService.js";
 import { createBruteForceMiddleware } from "./lib/bruteForceProtection.js";
+import { storageService } from "./lib/storageService.js";
 
 import multer from "multer";
 import { randomUUID } from "crypto";
