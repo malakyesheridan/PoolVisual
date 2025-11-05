@@ -596,8 +596,18 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // In production, upload file to cloud storage (S3, Supabase Storage, etc.)
-      const originalUrl = req.file.path ? `/uploads/${req.file.filename}` : `/uploads/${randomUUID()}-${req.file.originalname}`;
+      // Get image buffer and dimensions
+      let imageBuffer: Buffer;
+      if (req.file.buffer) {
+        // Memory storage (Vercel) - use buffer directly
+        imageBuffer = req.file.buffer;
+      } else if (req.file.path) {
+        // Disk storage (local) - read from file
+        const fs = await import('fs');
+        imageBuffer = fs.readFileSync(req.file.path);
+      } else {
+        return res.status(400).json({ message: "No file buffer or path available" });
+      }
 
       // Derive dimensions if not provided by client
       let finalWidth: number | null = width ? parseInt(width) : null;
@@ -605,19 +615,6 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       if (!finalWidth || !finalHeight || Number.isNaN(finalWidth) || Number.isNaN(finalHeight)) {
         try {
-          // Handle memory storage (Vercel) vs disk storage (local)
-          let imageBuffer: Buffer;
-          if (req.file.buffer) {
-            // Memory storage - use buffer directly
-            imageBuffer = req.file.buffer;
-          } else if (req.file.path) {
-            // Disk storage - read from file
-            const fs = await import('fs');
-            imageBuffer = fs.readFileSync(req.file.path);
-          } else {
-            throw new Error('No file buffer or path available');
-          }
-          
           const meta = await sharp(imageBuffer).metadata();
           if (meta.width && meta.height) {
             finalWidth = meta.width;
@@ -630,6 +627,43 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       if (!finalWidth || !finalHeight) {
         return res.status(400).json({ message: "Unable to determine image dimensions" });
+      }
+
+      // Upload to cloud storage (S3) in production, or use local path in development
+      let originalUrl: string;
+      if (process.env.VERCEL || process.env.AWS_ACCESS_KEY_ID) {
+        // Upload to S3
+        const fileExtension = req.file.originalname.split('.').pop() || 'jpg';
+        const s3Path = `photos/${jobId}/${randomUUID()}.${fileExtension}`;
+        
+        try {
+          originalUrl = await storageService.put(
+            s3Path,
+            imageBuffer,
+            req.file.mimetype || 'image/jpeg'
+          );
+          console.log('Uploaded photo to S3:', originalUrl);
+        } catch (s3Error) {
+          console.error('S3 upload failed:', s3Error);
+          // Fallback to local path if S3 fails (for development)
+          originalUrl = `/uploads/${randomUUID()}-${req.file.originalname}`;
+        }
+      } else {
+        // Local development - use local path
+        if (req.file.path) {
+          originalUrl = `/uploads/${req.file.filename}`;
+        } else {
+          // If no path, save to local uploads directory
+          const fs = await import('fs');
+          const uploadsDir = path.resolve(process.cwd(), 'uploads');
+          if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+          }
+          const filename = `${randomUUID()}-${req.file.originalname}`;
+          const filePath = path.join(uploadsDir, filename);
+          fs.writeFileSync(filePath, imageBuffer);
+          originalUrl = `/uploads/${filename}`;
+        }
       }
 
       const photoData = {
