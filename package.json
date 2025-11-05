@@ -12,7 +12,7 @@
     "dev:watch": "cross-env NODE_ENV=development PORT=3000 VITE_PV_UNDERWATER_V20=true VITE_PV_PRECISE_MASKS=true VITE_PV_ASSET_LIBRARY=true VITE_PV_POOL_TEMPLATES=true npx tsx --watch ./server/index.ts",
     "dev:once": "cross-env NODE_ENV=development PORT=3000 VITE_PV_UNDERWATER_V20=true VITE_PV_PRECISE_MASKS=true VITE_PV_ASSET_LIBRARY=true VITE_PV_POOL_TEMPLATES=true npx tsx ./server/index.ts",
     "dev:debug": "cross-env NODE_ENV=development PORT=3000 VITE_PV_UNDERWATER_V20=true VITE_PV_PRECISE_MASKS=true VITE_PV_ASSET_LIBRARY=true VITE_PV_POOL_TEMPLATES=true npx tsx --inspect ./server/index.ts",
-    "build": "npm run vercel-build",
+    "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist && cp -r public/materials dist/public/",
     "vercel-build": "vite build && cp -r public/materials dist/public/",
     "build:check": "vite build --mode development",
     "start": "NODE_ENV=production node dist/index.js",
