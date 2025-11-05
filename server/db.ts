@@ -16,9 +16,15 @@ function createConnection() {
     throw new Error("DATABASE_URL not set");
   }
 
-  // Use Neon serverless driver for better Vercel compatibility
-  const neonClient = neon(cs);
-  return neonClient;
+  try {
+    // Use Neon serverless driver for better Vercel compatibility
+    const neonClient = neon(cs);
+    console.log('[DB] Neon client created successfully');
+    return neonClient;
+  } catch (error: any) {
+    console.error('[DB] Failed to create Neon client:', error?.message || String(error));
+    throw error;
+  }
 }
 
 // Initialize connection lazily (not at module load time for better serverless compatibility)

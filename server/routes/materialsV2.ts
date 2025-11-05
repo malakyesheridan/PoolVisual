@@ -188,9 +188,10 @@ export function materialsV2Routes(app: Express) {
   app.get('/api/v2/materials', async (req, res) => {
     try {
       console.log('[v2/materials] Starting materials fetch...');
+      console.log('[v2/materials] DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
       
-      // Get all materials regardless of orgId - this is for the canvas editor
-      const materials = await storage.getMaterials(); // No orgId = get all materials
+      // Use getAllMaterials to get ALL materials regardless of orgId
+      const materials = await storage.getAllMaterials();
       
       console.log(`[v2/materials] Successfully fetched ${materials.length} materials`);
       
@@ -200,6 +201,7 @@ export function materialsV2Routes(app: Express) {
           id: m.id,
           name: m.name,
           category: m.category,
+          orgId: m.orgId,
           textureUrl: m.textureUrl,
           thumbnailUrl: m.thumbnailUrl
         })));
@@ -211,11 +213,14 @@ export function materialsV2Routes(app: Express) {
       return;
     } catch (error: any) {
       console.error('[v2/materials] List failed with error:', error);
-      console.error('[v2/materials] Error stack:', error.stack);
+      console.error('[v2/materials] Error message:', error?.message);
+      console.error('[v2/materials] Error stack:', error?.stack);
+      console.error('[v2/materials] Error name:', error?.name);
       res.status(500).json({ 
         error: 'LIST_FAILED', 
-        message: error.message,
-        details: error.stack 
+        message: error?.message || 'Unknown error',
+        details: error?.stack,
+        name: error?.name
       });
     }
   });

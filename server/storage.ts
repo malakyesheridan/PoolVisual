@@ -52,11 +52,17 @@ if (!process.env.DATABASE_URL && process.env.NO_DB_MODE !== 'true') {
 
 // Helper function to check if database is available
 function ensureDb(): NeonHttpDatabase {
-  const db = getDatabase();
-  if (!db) {
-    throw new Error("Database not available");
+  try {
+    const db = getDatabase();
+    if (!db) {
+      console.error('[Storage] Database not available - getDatabase() returned null');
+      throw new Error("Database not available");
+    }
+    return db;
+  } catch (error: any) {
+    console.error('[Storage] Failed to get database:', error?.message || String(error));
+    throw error;
   }
-  return db;
 }
 
 export interface IStorage {
