@@ -22,10 +22,12 @@
     {
       "src": "/api/(.*)",
       "dest": "/server/index.ts"
-    },
+    }
+  ],
+  "rewrites": [
     {
-      "src": "/(.*)",
-      "dest": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
