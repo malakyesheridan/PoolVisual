@@ -24,10 +24,6 @@
       "destination": "/server/index.ts"
     },
     {
-      "source": "/(.*\\.(js|css|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|map|webp|avif|mp4|webm|ogg|mp3|wav|flac|aac|pdf|zip|tar|gz|xml|txt|html|htm|br|wasm|data|bin))",
-      "destination": "/$1"
-    },
-    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
