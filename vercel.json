@@ -26,8 +26,15 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api|_next|.*\\..*).*)",
-      "destination": "/index.html"
+      "source": "/(.*)",
+      "destination": "/index.html",
+      "has": [
+        {
+          "type": "header",
+          "key": "accept",
+          "value": "text/html"
+        }
+      ]
     }
   ]
 }
