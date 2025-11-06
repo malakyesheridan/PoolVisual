@@ -23,5 +23,11 @@
       "src": "/api/(.*)",
       "dest": "/server/index.ts"
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!api|_next|.*\\..*).*)",
+      "destination": "/index.html"
+    }
   ]
 }
