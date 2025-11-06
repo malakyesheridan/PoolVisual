@@ -22,19 +22,16 @@
     {
       "src": "/api/(.*)",
       "dest": "/server/index.ts"
+    },
+    {
+      "src": "/(.*\\.(js|css|json|ico|png|jpg|jpeg|gif|svg|woff|woff2|ttf|eot|map|webp|avif|mp4|webm|ogg|mp3|wav|flac|aac|pdf|zip|tar|gz|xml|txt|html|htm|br|wasm|data|bin))",
+      "dest": "$1"
     }
   ],
   "rewrites": [
     {
       "source": "/(.*)",
-      "destination": "/index.html",
-      "has": [
-        {
-          "type": "header",
-          "key": "accept",
-          "value": "text/html"
-        }
-      ]
+      "destination": "/index.html"
     }
   ]
 }
