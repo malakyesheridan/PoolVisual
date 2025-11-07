@@ -6,6 +6,7 @@ import { getRecentJobs, createJob } from '../../services/aiEnhancement';
 import { useJobStream } from '../../hooks/useJobStream';
 import { JobProgress } from './JobProgress';
 import { useEditorStore } from '../../new_editor/store';
+import { useMaskStore } from '../../maskcore/store';
 
 interface JobsDrawerProps {
   onClose?: () => void;
@@ -40,12 +41,31 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
     const effectivePhotoId = currentState.jobContext?.photoId || '134468b9-648e-4eb1-8434-d7941289fccf';
     
     try {
+      // Get masks from the mask store and convert to format expected by server
+      // Format matches server/lib/cacheNormalizer.ts: {id, points: [{x, y}], materialId?}
+      const maskStore = useMaskStore.getState();
+      const allMasks = Object.values(maskStore.masks || {});
+      
+      const masks = allMasks
+        .filter(mask => mask.pts && mask.pts.length >= 3) // Only include valid masks with at least 3 points
+        .map(mask => ({
+          id: mask.id,
+          points: mask.pts.map(pt => ({
+            x: pt.x,
+            y: pt.y
+            // Note: Server only needs x, y for cache key - not h1, h2, or kind
+          })),
+          materialId: mask.materialId || undefined
+        }));
+      
+      console.log(`[JobsDrawer] Extracted ${masks.length} masks for enhancement job`);
+      
       const payload = {
         tenantId: '123e4567-e89b-12d3-a456-426614174000',
         photoId: effectivePhotoId,
         imageUrl: currentImageUrl,
         inputHash: `enhancement-${Date.now()}`,
-        masks: [],
+        masks: masks,
         options: {
           mode: mode, // Send mode to n8n workflow
           ...currentState.jobContext ? { jobId: currentState.jobContext.jobId } : {}
