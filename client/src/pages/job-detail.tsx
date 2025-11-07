@@ -943,22 +943,8 @@ export default function JobDetail() {
                     variant="outline"
                     onClick={() => {
                       setPreviewPhoto(null);
-                      // Navigate to edit
-                      const { dispatch } = useEditorStore.getState();
-                      dispatch({ type: 'RESET' });
-                      const img = new Image();
-                      img.onload = () => {
-                        dispatch({
-                          type: 'SET_IMAGE',
-                          payload: {
-                            url: previewPhoto.originalUrl,
-                            width: img.naturalWidth,
-                            height: img.naturalHeight
-                          }
-                        });
-                        navigate(`/jobs/${jobId}/photo/${previewPhoto.id}/edit`);
-                      };
-                      img.src = previewPhoto.originalUrl;
+                      // Navigate to edit-canvas route (the correct route for the editor)
+                      navigate(`/jobs/${jobId}/photo/${previewPhoto.id}/edit-canvas`);
                     }}
                   >
                     <Edit className="w-4 h-4 mr-2" />
