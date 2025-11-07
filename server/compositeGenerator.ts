@@ -2,8 +2,8 @@ import { createCanvas, loadImage, Canvas, CanvasRenderingContext2D } from 'canva
 import { storage } from './storage.js';
 import { Mask, Material } from '../shared/schema.js';
 import { randomUUID } from 'crypto';
-import path from 'path';
-import fs from 'fs';
+import { storageService } from './lib/storageService.js';
+import sharp from 'sharp';
 
 export interface CompositeResult {
   beforeUrl: string;
@@ -15,16 +15,12 @@ export interface CompositeResult {
 }
 
 export class CompositeGenerator {
-  private compositesDir = path.join(process.cwd(), 'uploads', 'composites');
-  
-  constructor() {
-    // Ensure composites directory exists
-    if (!fs.existsSync(this.compositesDir)) {
-      fs.mkdirSync(this.compositesDir, { recursive: true });
-    }
-  }
+  // Maximum dimension for composite generation (to prevent timeouts and memory issues)
+  private static readonly MAX_COMPOSITE_DIMENSION = 2000;
+  // JPEG quality for composite output (smaller file size, faster upload)
+  private static readonly COMPOSITE_QUALITY = 85;
 
-  async generateComposite(photoId: string): Promise<CompositeResult> {
+  async generateComposite(photoId: string, forceRegenerate: boolean = false): Promise<CompositeResult> {
     try {
       console.log(`[CompositeGenerator] Starting composite generation for photo: ${photoId}`);
       
@@ -48,9 +44,37 @@ export class CompositeGenerator {
         };
       }
 
+      // Check if we can use cached composite
+      if (!forceRegenerate && photo.compositeUrl && photo.compositeGeneratedAt) {
+        // Check if any mask was updated after composite was generated
+        const latestMaskUpdate = masks.reduce((latest, mask) => {
+          const maskDate = mask.createdAt ? new Date(mask.createdAt) : new Date(0);
+          return maskDate > latest ? maskDate : latest;
+        }, new Date(0));
+
+        const compositeDate = new Date(photo.compositeGeneratedAt);
+        
+        // If composite is newer than all masks, use cached version
+        if (compositeDate >= latestMaskUpdate) {
+          console.log(`[CompositeGenerator] Using cached composite: ${photo.compositeUrl}`);
+          return {
+            beforeUrl: photo.originalUrl,
+            afterUrl: photo.compositeUrl,
+            sideBySideUrl: photo.compositeUrl,
+            status: 'completed',
+            hasEdits: true
+          };
+        } else {
+          console.log(`[CompositeGenerator] Masks updated after composite generation, regenerating`);
+        }
+      }
+
       // Generate composite
-      const compositeUrl = await this.renderComposite(photo.originalUrl, masks);
+      const compositeUrl = await this.renderComposite(photo.originalUrl, masks, photo.width, photo.height);
       console.log(`[CompositeGenerator] Composite generated successfully: ${compositeUrl}`);
+      
+      // Store composite URL in database
+      await storage.updatePhotoComposite(photoId, compositeUrl);
       
       return {
         beforeUrl: photo.originalUrl,
@@ -73,51 +97,131 @@ export class CompositeGenerator {
     }
   }
 
-  private async renderComposite(originalUrl: string, masks: Mask[]): Promise<string> {
+  private async renderComposite(
+    originalUrl: string, 
+    masks: Mask[], 
+    originalWidth: number,
+    originalHeight: number
+  ): Promise<string> {
     console.log(`[CompositeGenerator] Loading original image: ${originalUrl}`);
     
-    // Load original image
-    const originalImage = await this.loadImage(originalUrl);
-    console.log(`[CompositeGenerator] Image loaded: ${originalImage.width}x${originalImage.height}`);
+    // Load and optimize original image before processing
+    const optimizedImage = await this.loadAndOptimizeImage(originalUrl, originalWidth, originalHeight);
+    console.log(`[CompositeGenerator] Image optimized: ${optimizedImage.width}x${optimizedImage.height} (original: ${originalWidth}x${originalHeight})`);
     
-    // Create canvas
-    const canvas = createCanvas(originalImage.width, originalImage.height);
+    // Create canvas with optimized dimensions
+    const canvas = createCanvas(optimizedImage.width, optimizedImage.height);
     const ctx = canvas.getContext('2d');
     
-    // Draw original image
-    ctx.drawImage(originalImage, 0, 0);
+    // Draw optimized original image
+    ctx.drawImage(optimizedImage, 0, 0);
     console.log(`[CompositeGenerator] Original image drawn to canvas`);
+    
+    // Calculate scale factor for mask coordinates
+    const scaleX = optimizedImage.width / originalWidth;
+    const scaleY = optimizedImage.height / originalHeight;
     
     // Apply masks with materials
     for (const mask of masks) {
       if (mask.materialId) {
         console.log(`[CompositeGenerator] Applying material ${mask.materialId} to mask ${mask.id}`);
-        await this.applyMaterialToMask(ctx, mask, originalImage.width, originalImage.height);
+        await this.applyMaterialToMask(
+          ctx, 
+          mask, 
+          optimizedImage.width, 
+          optimizedImage.height,
+          scaleX,
+          scaleY
+        );
       } else {
         console.log(`[CompositeGenerator] Mask ${mask.id} has no material, skipping`);
       }
     }
     
-    // Save composite
-    const filename = `composite-${randomUUID()}.png`;
-    const filepath = path.join(this.compositesDir, filename);
+    // Convert canvas to JPEG buffer (smaller than PNG)
+    const buffer = canvas.toBuffer('image/jpeg', { quality: CompositeGenerator.COMPOSITE_QUALITY });
+    console.log(`[CompositeGenerator] Canvas converted to JPEG buffer: ${buffer.length} bytes`);
     
-    const buffer = canvas.toBuffer('image/png');
-    fs.writeFileSync(filepath, buffer);
+    // Upload to cloud storage
+    const filename = `composites/composite-${randomUUID()}.jpg`;
+    const compositeUrl = await storageService.put(filename, buffer, 'image/jpeg');
     
-    console.log(`[CompositeGenerator] Composite saved to: ${filepath}`);
-    return `/uploads/composites/${filename}`;
+    console.log(`[CompositeGenerator] Composite uploaded to cloud storage: ${compositeUrl}`);
+    return compositeUrl;
+  }
+
+  /**
+   * Load and optimize image before processing
+   * Resizes to MAX_COMPOSITE_DIMENSION if larger, maintains aspect ratio
+   */
+  private async loadAndOptimizeImage(
+    url: string, 
+    originalWidth: number, 
+    originalHeight: number
+  ): Promise<any> {
+    try {
+      // Handle both absolute and relative URLs
+      let imageUrl = url;
+      if (!url.startsWith('http')) {
+        // Relative URL - prepend base URL
+        const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+        imageUrl = `${baseUrl}${url}`;
+      }
+      
+      console.log(`[CompositeGenerator] Loading image from: ${imageUrl}`);
+      
+      // Fetch image
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+      
+      const imageBuffer = Buffer.from(await response.arrayBuffer());
+      
+      // Calculate optimized dimensions
+      const maxDim = CompositeGenerator.MAX_COMPOSITE_DIMENSION;
+      let targetWidth = originalWidth;
+      let targetHeight = originalHeight;
+      
+      if (originalWidth > maxDim || originalHeight > maxDim) {
+        const scale = Math.min(maxDim / originalWidth, maxDim / originalHeight);
+        targetWidth = Math.floor(originalWidth * scale);
+        targetHeight = Math.floor(originalHeight * scale);
+        console.log(`[CompositeGenerator] Resizing from ${originalWidth}x${originalHeight} to ${targetWidth}x${targetHeight}`);
+      }
+      
+      // Use Sharp to resize and optimize
+      let processedBuffer = imageBuffer;
+      if (targetWidth !== originalWidth || targetHeight !== originalHeight) {
+        processedBuffer = await sharp(imageBuffer)
+          .resize(targetWidth, targetHeight, {
+            fit: 'inside',
+            withoutEnlargement: true
+          })
+          .jpeg({ quality: 90, progressive: true })
+          .toBuffer();
+      }
+      
+      // Load optimized image into canvas-compatible format
+      const image = await loadImage(processedBuffer);
+      console.log(`[CompositeGenerator] Image loaded successfully: ${image.width}x${image.height}`);
+      return image;
+    } catch (error) {
+      console.error(`[CompositeGenerator] Failed to load/optimize image from ${url}:`, error);
+      throw new Error(`Failed to load image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private async applyMaterialToMask(
     ctx: CanvasRenderingContext2D, 
     mask: Mask, 
     width: number, 
-    height: number
+    height: number,
+    scaleX: number,
+    scaleY: number
   ): Promise<void> {
     try {
       console.log(`[CompositeGenerator] Processing mask ${mask.id}, pathJson type:`, typeof mask.pathJson);
-      console.log(`[CompositeGenerator] Raw pathJson:`, mask.pathJson);
       
       // Parse mask path - pathJson is stored as JSON string in database
       let pathData = mask.pathJson as any;
@@ -132,8 +236,6 @@ export class CompositeGenerator {
         }
       }
       
-      console.log(`[CompositeGenerator] Parsed pathData:`, pathData);
-      
       // Extract points array - pathData should be an array of MaskPoints
       let points: Array<{x: number, y: number, kind?: string, h1?: {x: number, y: number}, h2?: {x: number, y: number}}> = [];
       
@@ -142,11 +244,11 @@ export class CompositeGenerator {
         points = pathData.map((point: any) => {
           if (typeof point === 'object' && point !== null) {
             return { 
-              x: point.x || point[0] || 0, 
-              y: point.y || point[1] || 0,
+              x: (point.x || point[0] || 0) * scaleX, 
+              y: (point.y || point[1] || 0) * scaleY,
               kind: point.kind || 'corner',
-              h1: point.h1,
-              h2: point.h2
+              h1: point.h1 ? { x: point.h1.x * scaleX, y: point.h1.y * scaleY } : undefined,
+              h2: point.h2 ? { x: point.h2.x * scaleX, y: point.h2.y * scaleY } : undefined
             };
           }
           return { x: 0, y: 0, kind: 'corner' };
@@ -155,11 +257,11 @@ export class CompositeGenerator {
         // Object with points property: {points: [{x, y, kind?, h1?, h2?}, ...]}
         points = Array.isArray(pathData.points) 
           ? pathData.points.map((point: any) => ({
-              x: point.x || point[0] || 0,
-              y: point.y || point[1] || 0,
+              x: (point.x || point[0] || 0) * scaleX,
+              y: (point.y || point[1] || 0) * scaleY,
               kind: point.kind || 'corner',
-              h1: point.h1,
-              h2: point.h2
+              h1: point.h1 ? { x: point.h1.x * scaleX, y: point.h1.y * scaleY } : undefined,
+              h2: point.h2 ? { x: point.h2.x * scaleX, y: point.h2.y * scaleY } : undefined
             }))
           : [];
       } else {
@@ -169,11 +271,10 @@ export class CompositeGenerator {
       
       if (points.length < 3) {
         console.log(`[CompositeGenerator] Invalid mask path data for mask ${mask.id} - insufficient points:`, points.length);
-        console.log(`[CompositeGenerator] Points data:`, points);
         return;
       }
       
-      console.log(`[CompositeGenerator] Mask ${mask.id} has ${points.length} points:`, points.slice(0, 3));
+      console.log(`[CompositeGenerator] Mask ${mask.id} has ${points.length} points`);
       
       // Create mask path with Bezier curve support
       ctx.beginPath();
@@ -358,7 +459,12 @@ export class CompositeGenerator {
       }
       
       console.log(`[CompositeGenerator] Loading image from: ${imageUrl}`);
-      const image = await loadImage(imageUrl);
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status} ${response.statusText}`);
+      }
+      const buffer = Buffer.from(await response.arrayBuffer());
+      const image = await loadImage(buffer);
       console.log(`[CompositeGenerator] Image loaded successfully: ${image.width}x${image.height}`);
       return image;
     } catch (error) {

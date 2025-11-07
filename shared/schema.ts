@@ -121,6 +121,8 @@ export const photos = pgTable("photos", {
   exifJson: jsonb("exif_json"),
   calibrationPixelsPerMeter: numeric("calibration_pixels_per_meter", { precision: 10, scale: 4 }),
   calibrationMetaJson: jsonb("calibration_meta_json"),
+  compositeUrl: text("composite_url"), // Cached composite image URL
+  compositeGeneratedAt: timestamp("composite_generated_at"), // When composite was last generated
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

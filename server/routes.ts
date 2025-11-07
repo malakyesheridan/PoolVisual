@@ -1299,6 +1299,16 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       await storage.deleteMask(maskId);
+      
+      // Invalidate composite cache since masks have changed
+      try {
+        await storage.clearPhotoComposite(existingMask.photoId);
+        console.log(`[DeleteMask] Cleared composite cache for photo ${existingMask.photoId}`);
+      } catch (cacheError) {
+        // Log but don't fail the delete operation if cache clearing fails
+        console.warn(`[DeleteMask] Failed to clear composite cache:`, cacheError);
+      }
+      
       res.status(204).send();
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });

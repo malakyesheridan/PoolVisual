@@ -92,6 +92,8 @@ export interface IStorage {
   updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo>;
   updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number }): Promise<Photo>;
   getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number } | null>;
+  updatePhotoComposite(photoId: string, compositeUrl: string): Promise<Photo>;
+  clearPhotoComposite(photoId: string): Promise<void>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -330,6 +332,33 @@ export class PostgresStorage implements IStorage {
         stdevPct: 0
       };
     }
+  }
+
+  async updatePhotoComposite(photoId: string, compositeUrl: string): Promise<Photo> {
+    const [photo] = await ensureDb()
+      .update(photos)
+      .set({
+        compositeUrl,
+        compositeGeneratedAt: new Date()
+      })
+      .where(eq(photos.id, photoId))
+      .returning();
+    
+    if (!photo) {
+      throw new Error('Photo not found');
+    }
+    
+    return photo;
+  }
+
+  async clearPhotoComposite(photoId: string): Promise<void> {
+    await ensureDb()
+      .update(photos)
+      .set({
+        compositeUrl: null,
+        compositeGeneratedAt: null
+      })
+      .where(eq(photos.id, photoId));
   }
 
   async getAllMaterials(): Promise<Material[]> {
