@@ -976,12 +976,16 @@ export default function JobDetail() {
                         navigate('/new-editor');
                       };
                       img.onerror = () => {
-                        console.error('Failed to load image for editor');
-                        toast({
-                          title: "Error",
-                          description: "Failed to load image for editing.",
-                          variant: "destructive"
+                        // Fallback with default dimensions (same as the other edit button)
+                        dispatch({
+                          type: 'SET_IMAGE',
+                          payload: {
+                            url: previewPhoto.originalUrl,
+                            width: 1920,
+                            height: 1080
+                          }
                         });
+                        navigate('/new-editor');
                       };
                       img.src = previewPhoto.originalUrl;
                     }}
