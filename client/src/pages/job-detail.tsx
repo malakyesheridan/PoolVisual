@@ -527,16 +527,18 @@ export default function JobDetail() {
                               className="opacity-0 group-hover:opacity-100 transition-opacity duration-200"
                               onClick={async () => {
                                 try {
-                                  // Try to get composite/edited version first
+                                  // Try to get composite/edited version for preview display
                                   const composite = await apiClient.getComposite(photo.id);
                                   if (composite?.afterUrl) {
                                     setPreviewPhoto({
                                       ...photo,
-                                      originalUrl: composite.afterUrl, // Use edited version
+                                      // Keep originalUrl as the original photo URL (for editing)
+                                      // Store composite URL separately for preview display
+                                      compositeUrl: composite.afterUrl,
                                       photoIndex: photos.indexOf(photo) // Store original index
                                     });
                                   } else {
-                                    // Fallback to original if no composite available
+                                    // No composite available, use original
                                     setPreviewPhoto({
                                       ...photo,
                                       photoIndex: photos.indexOf(photo) // Store original index
@@ -926,7 +928,7 @@ export default function JobDetail() {
             </div>
             <div className="p-4">
               <img
-                src={previewPhoto.originalUrl}
+                src={(previewPhoto as any).compositeUrl || previewPhoto.originalUrl}
                 alt={`Pool Photo ${photos.indexOf(previewPhoto) + 1}`}
                 className="max-w-full max-h-[70vh] object-contain mx-auto"
               />
@@ -960,13 +962,18 @@ export default function JobDetail() {
                       // Clear previous state to prevent contamination (but preserve job context)
                       dispatch({ type: 'RESET' });
                       
+                      // CRITICAL: Always use the ORIGINAL photo URL for editing, never the composite
+                      // Find the original photo from the photos array to ensure we use the real originalUrl
+                      const originalPhoto = photos.find(p => p.id === previewPhoto.id);
+                      const imageUrlToLoad = originalPhoto?.originalUrl || previewPhoto.originalUrl;
+                      
                       // Load image to get actual dimensions
                       const img = new Image();
                       img.onload = () => {
                         dispatch({
                           type: 'SET_IMAGE',
                           payload: {
-                            url: previewPhoto.originalUrl,
+                            url: imageUrlToLoad, // Always use original, never composite
                             width: img.naturalWidth,
                             height: img.naturalHeight
                           }
@@ -980,14 +987,14 @@ export default function JobDetail() {
                         dispatch({
                           type: 'SET_IMAGE',
                           payload: {
-                            url: previewPhoto.originalUrl,
+                            url: imageUrlToLoad, // Always use original, never composite
                             width: 1920,
                             height: 1080
                           }
                         });
                         navigate('/new-editor');
                       };
-                      img.src = previewPhoto.originalUrl;
+                      img.src = imageUrlToLoad;
                     }}
                   >
                     <Edit className="w-4 h-4 mr-2" />
