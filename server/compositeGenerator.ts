@@ -113,30 +113,31 @@ export class CompositeGenerator {
     const imageLoadTime = Date.now() - startTime;
     console.log(`[CompositeGenerator] Image loaded in ${imageLoadTime}ms`);
     
-    // CRITICAL: Get actual original image dimensions (before resizing)
-    // Masks are stored in coordinates relative to the ORIGINAL image dimensions
-    const actualOriginalWidth = (optimizedImage as any).actualOriginalWidth || originalWidth;
-    const actualOriginalHeight = (optimizedImage as any).actualOriginalHeight || originalHeight;
-    
-    // Get optimized/resized dimensions
+    // CRITICAL: Masks are stored in coordinates relative to DATABASE dimensions (photo.width, photo.height)
+    // These are the dimensions the editor used when creating the masks
+    // We MUST use database dimensions for scaling, not actual image dimensions
     const actualLoadedWidth = optimizedImage.width;
     const actualLoadedHeight = optimizedImage.height;
     
-    console.log(`[CompositeGenerator] Image dimensions - Original: ${actualOriginalWidth}x${actualOriginalHeight}, Optimized: ${actualLoadedWidth}x${actualLoadedHeight}`);
+    // Get actual original image dimensions for comparison
+    const actualOriginalWidth = (optimizedImage as any).actualOriginalWidth || originalWidth;
+    const actualOriginalHeight = (optimizedImage as any).actualOriginalHeight || originalHeight;
     
-    // CRITICAL: Calculate scale from ACTUAL original dimensions to optimized dimensions
-    // Mask coordinates are stored relative to the ACTUAL original image, not database values
-    // So we scale: mask_coords (in original image) -> optimized_coords (in resized image)
-    const scaleX = actualLoadedWidth / actualOriginalWidth;
-    const scaleY = actualLoadedHeight / actualOriginalHeight;
+    console.log(`[CompositeGenerator] Image dimensions - Database: ${originalWidth}x${originalHeight}, Actual: ${actualOriginalWidth}x${actualOriginalHeight}, Optimized: ${actualLoadedWidth}x${actualLoadedHeight}`);
     
-    console.log(`[CompositeGenerator] Scale factors (original->optimized): scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+    // CRITICAL: Calculate scale from DATABASE dimensions (what masks were created with) to optimized dimensions
+    // Mask coordinates are stored relative to photo.width/photo.height from database
+    // So we scale: mask_coords (in database dimensions) -> optimized_coords (in resized image)
+    const scaleX = actualLoadedWidth / originalWidth;
+    const scaleY = actualLoadedHeight / originalHeight;
     
-    // Warn if database dimensions don't match actual dimensions
+    console.log(`[CompositeGenerator] Scale factors (database->optimized): scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+    
+    // Warn if database dimensions don't match actual dimensions (this could cause issues)
     if (Math.abs(actualOriginalWidth - originalWidth) > 1 || Math.abs(actualOriginalHeight - originalHeight) > 1) {
       console.warn(`[CompositeGenerator] ⚠️ Database dimensions don't match actual image!`);
       console.warn(`[CompositeGenerator] Database: ${originalWidth}x${originalHeight}, Actual: ${actualOriginalWidth}x${actualOriginalHeight}`);
-      console.warn(`[CompositeGenerator] Using actual dimensions for accurate mask positioning`);
+      console.warn(`[CompositeGenerator] Using DATABASE dimensions for mask scaling (masks were created with these dimensions)`);
     }
     
     // Create canvas with actual optimized dimensions
