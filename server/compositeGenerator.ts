@@ -340,11 +340,30 @@ export class CompositeGenerator {
       
       if (Array.isArray(pathData)) {
         // Direct array format: [{x, y, kind?, h1?, h2?}, ...]
-        points = pathData.map((point: any) => {
+        console.log(`[CompositeGenerator] Mask ${mask.id} has ${pathData.length} points in array format`);
+        
+        // Log first few points before scaling for debugging
+        if (pathData.length > 0) {
+          const firstPoint = pathData[0];
+          console.log(`[CompositeGenerator] First point before scaling:`, firstPoint);
+          console.log(`[CompositeGenerator] Scale factors: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+        }
+        
+        points = pathData.map((point: any, index: number) => {
           if (typeof point === 'object' && point !== null) {
+            const originalX = point.x || point[0] || 0;
+            const originalY = point.y || point[1] || 0;
+            const scaledX = originalX * scaleX;
+            const scaledY = originalY * scaleY;
+            
+            // Log first and last points for debugging
+            if (index === 0 || index === pathData.length - 1) {
+              console.log(`[CompositeGenerator] Point ${index}: (${originalX}, ${originalY}) -> (${scaledX.toFixed(2)}, ${scaledY.toFixed(2)})`);
+            }
+            
             return { 
-              x: (point.x || point[0] || 0) * scaleX, 
-              y: (point.y || point[1] || 0) * scaleY,
+              x: scaledX, 
+              y: scaledY,
               kind: point.kind || 'corner',
               h1: point.h1 ? { x: point.h1.x * scaleX, y: point.h1.y * scaleY } : undefined,
               h2: point.h2 ? { x: point.h2.x * scaleX, y: point.h2.y * scaleY } : undefined
@@ -352,6 +371,16 @@ export class CompositeGenerator {
           }
           return { x: 0, y: 0, kind: 'corner' };
         });
+        
+        // Log bounding box of scaled points
+        if (points.length > 0) {
+          const minX = Math.min(...points.map(p => p.x));
+          const maxX = Math.max(...points.map(p => p.x));
+          const minY = Math.min(...points.map(p => p.y));
+          const maxY = Math.max(...points.map(p => p.y));
+          console.log(`[CompositeGenerator] Scaled mask bounding box: (${minX.toFixed(2)}, ${minY.toFixed(2)}) to (${maxX.toFixed(2)}, ${maxY.toFixed(2)})`);
+          console.log(`[CompositeGenerator] Canvas dimensions: ${width}x${height}`);
+        }
       } else if (pathData && typeof pathData === 'object' && pathData.points) {
         // Object with points property: {points: [{x, y, kind?, h1?, h2?}, ...]}
         points = Array.isArray(pathData.points) 
