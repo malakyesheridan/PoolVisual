@@ -105,6 +105,7 @@ export class CompositeGenerator {
     originalHeight: number
   ): Promise<string> {
     console.log(`[CompositeGenerator] Loading original image: ${originalUrl}`);
+    console.log(`[CompositeGenerator] Database dimensions: ${originalWidth}x${originalHeight}`);
     
     // Load and optimize original image before processing
     const startTime = Date.now();
@@ -112,23 +113,39 @@ export class CompositeGenerator {
     const imageLoadTime = Date.now() - startTime;
     console.log(`[CompositeGenerator] Image loaded in ${imageLoadTime}ms`);
     
-    const actualWidth = optimizedImage.width;
-    const actualHeight = optimizedImage.height;
-    console.log(`[CompositeGenerator] Image optimized: ${actualWidth}x${actualHeight} (original: ${originalWidth}x${originalHeight})`);
+    // CRITICAL: Get actual original image dimensions (before resizing)
+    // Masks are stored in coordinates relative to the ORIGINAL image dimensions
+    const actualOriginalWidth = (optimizedImage as any).actualOriginalWidth || originalWidth;
+    const actualOriginalHeight = (optimizedImage as any).actualOriginalHeight || originalHeight;
+    
+    // Get optimized/resized dimensions
+    const actualLoadedWidth = optimizedImage.width;
+    const actualLoadedHeight = optimizedImage.height;
+    
+    console.log(`[CompositeGenerator] Image dimensions - Original: ${actualOriginalWidth}x${actualOriginalHeight}, Optimized: ${actualLoadedWidth}x${actualLoadedHeight}`);
+    
+    // CRITICAL: Calculate scale from ACTUAL original dimensions to optimized dimensions
+    // Mask coordinates are stored relative to the ACTUAL original image, not database values
+    // So we scale: mask_coords (in original image) -> optimized_coords (in resized image)
+    const scaleX = actualLoadedWidth / actualOriginalWidth;
+    const scaleY = actualLoadedHeight / actualOriginalHeight;
+    
+    console.log(`[CompositeGenerator] Scale factors (original->optimized): scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+    
+    // Warn if database dimensions don't match actual dimensions
+    if (Math.abs(actualOriginalWidth - originalWidth) > 1 || Math.abs(actualOriginalHeight - originalHeight) > 1) {
+      console.warn(`[CompositeGenerator] ⚠️ Database dimensions don't match actual image!`);
+      console.warn(`[CompositeGenerator] Database: ${originalWidth}x${originalHeight}, Actual: ${actualOriginalWidth}x${actualOriginalHeight}`);
+      console.warn(`[CompositeGenerator] Using actual dimensions for accurate mask positioning`);
+    }
     
     // Create canvas with actual optimized dimensions
-    const canvas = createCanvas(actualWidth, actualHeight);
+    const canvas = createCanvas(actualLoadedWidth, actualLoadedHeight);
     const ctx = canvas.getContext('2d');
     
     // Draw optimized original image
     ctx.drawImage(optimizedImage, 0, 0);
     console.log(`[CompositeGenerator] Original image drawn to canvas`);
-    
-    // Calculate scale factor for mask coordinates using ACTUAL loaded image dimensions
-    // This ensures masks align correctly even if Sharp adjusts dimensions slightly
-    const scaleX = actualWidth / originalWidth;
-    const scaleY = actualHeight / originalHeight;
-    console.log(`[CompositeGenerator] Scale factors: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
     
     // Preload all materials in parallel for better performance
     const materialLoadStart = Date.now();
@@ -179,8 +196,8 @@ export class CompositeGenerator {
           await this.applyMaterialToMask(
             ctx, 
             mask, 
-            actualWidth, 
-            actualHeight,
+            actualLoadedWidth, 
+            actualLoadedHeight,
             scaleX,
             scaleY,
             material,
@@ -211,12 +228,13 @@ export class CompositeGenerator {
   /**
    * Load and optimize image before processing
    * Resizes to MAX_COMPOSITE_DIMENSION if larger, maintains aspect ratio
+   * Returns image with actual dimensions attached
    */
   private async loadAndOptimizeImage(
     url: string, 
-    originalWidth: number, 
-    originalHeight: number
-  ): Promise<any> {
+    databaseWidth: number, 
+    databaseHeight: number
+  ): Promise<any & { actualOriginalWidth: number; actualOriginalHeight: number }> {
     try {
       // Handle both absolute and relative URLs
       let imageUrl = url;
@@ -236,22 +254,36 @@ export class CompositeGenerator {
       
       const imageBuffer = Buffer.from(await response.arrayBuffer());
       
-      // Calculate optimized dimensions
-      const maxDim = CompositeGenerator.MAX_COMPOSITE_DIMENSION;
-      let targetWidth = originalWidth;
-      let targetHeight = originalHeight;
+      // CRITICAL: Get ACTUAL image dimensions from the fetched image
+      // This ensures we use the real dimensions, not potentially incorrect database values
+      const actualMetadata = await sharp(imageBuffer).metadata();
+      const actualOriginalWidth = actualMetadata.width || databaseWidth;
+      const actualOriginalHeight = actualMetadata.height || databaseHeight;
       
-      if (originalWidth > maxDim || originalHeight > maxDim) {
-        const scale = Math.min(maxDim / originalWidth, maxDim / originalHeight);
-        targetWidth = Math.floor(originalWidth * scale);
-        targetHeight = Math.floor(originalHeight * scale);
-        console.log(`[CompositeGenerator] Resizing from ${originalWidth}x${originalHeight} to ${targetWidth}x${targetHeight}`);
+      console.log(`[CompositeGenerator] Actual image dimensions: ${actualOriginalWidth}x${actualOriginalHeight} (database: ${databaseWidth}x${databaseHeight})`);
+      
+      // Check if database dimensions match actual dimensions
+      if (Math.abs(actualOriginalWidth - databaseWidth) > 1 || Math.abs(actualOriginalHeight - databaseHeight) > 1) {
+        console.warn(`[CompositeGenerator] ⚠️ Dimension mismatch! Database: ${databaseWidth}x${databaseHeight}, Actual: ${actualOriginalWidth}x${actualOriginalHeight}`);
+        console.warn(`[CompositeGenerator] Using actual dimensions for mask coordinate scaling`);
+      }
+      
+      // Calculate optimized dimensions based on ACTUAL image dimensions
+      const maxDim = CompositeGenerator.MAX_COMPOSITE_DIMENSION;
+      let targetWidth = actualOriginalWidth;
+      let targetHeight = actualOriginalHeight;
+      
+      if (actualOriginalWidth > maxDim || actualOriginalHeight > maxDim) {
+        const scale = Math.min(maxDim / actualOriginalWidth, maxDim / actualOriginalHeight);
+        targetWidth = Math.floor(actualOriginalWidth * scale);
+        targetHeight = Math.floor(actualOriginalHeight * scale);
+        console.log(`[CompositeGenerator] Resizing from ${actualOriginalWidth}x${actualOriginalHeight} to ${targetWidth}x${targetHeight}`);
       }
       
       // Use Sharp to resize and optimize
       let processedBuffer = imageBuffer;
       
-      if (targetWidth !== originalWidth || targetHeight !== originalHeight) {
+      if (targetWidth !== actualOriginalWidth || targetHeight !== actualOriginalHeight) {
         // Use Sharp to resize
         processedBuffer = await sharp(imageBuffer)
           .resize(targetWidth, targetHeight, {
@@ -263,10 +295,14 @@ export class CompositeGenerator {
       }
       
       // Load optimized image into canvas-compatible format
-      // Use actual loaded image dimensions (Sharp may adjust slightly for aspect ratio)
       const image = await loadImage(processedBuffer);
       console.log(`[CompositeGenerator] Image loaded successfully: ${image.width}x${image.height} (target: ${targetWidth}x${targetHeight})`);
-      return image;
+      
+      // Attach actual original dimensions to the image object for accurate scaling
+      return Object.assign(image, {
+        actualOriginalWidth,
+        actualOriginalHeight
+      });
     } catch (error) {
       console.error(`[CompositeGenerator] Failed to load/optimize image from ${url}:`, error);
       throw new Error(`Failed to load image: ${error instanceof Error ? error.message : 'Unknown error'}`);
