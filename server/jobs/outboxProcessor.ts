@@ -2,7 +2,6 @@
  * Outbox Processor - Processes outbox events with retry backoff
  */
 
-import { enhancementQueue } from './aiEnhancementQueue.js';
 import { executeQuery } from '../lib/dbHelpers.js';
 import { CreditsManager } from '../lib/creditsManager.js';
 import { metrics } from '../lib/metrics.js';
@@ -167,6 +166,8 @@ export async function processOutboxEvents() {
           }
         } else {
           // Fallback to Bull queue if N8N_WEBHOOK_URL is not set
+          // Lazy import to avoid Redis connection errors when using n8n webhooks
+          const { enhancementQueue } = await import('./aiEnhancementQueue.js');
           if (!enhancementQueue) {
             console.warn('[Outbox] Enhancement queue not available and N8N_WEBHOOK_URL not set, skipping');
             continue;

@@ -325,16 +325,6 @@ async function initializeServer() {
     SSEManager.init();
     initSSEBus();
     
-    // Outbox processor loop
-    console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
-    setInterval(() => {
-      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
-    }, 5000);
-    
-    // Also process immediately on startup to catch any pending events
-    console.log('[Server] Processing any pending outbox events on startup...');
-    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
-    
     // Start worker if enabled
     if (START_WORKER) {
       console.log('[Server] Worker will be spawned by server process');
@@ -347,7 +337,26 @@ async function initializeServer() {
       console.log('[Server] Worker not started (set START_WORKER=1 to enable)');
     }
   } else {
-    console.log('[SAFE_MODE] Skipping Redis, BullMQ worker, SSE bus, outbox processor');
+    console.log('[SAFE_MODE] Skipping Redis, BullMQ worker, SSE bus');
+  }
+  
+  // Outbox processor should run if N8N_WEBHOOK_URL is set (even in SAFE_MODE)
+  // It doesn't need Redis when using n8n webhooks
+  const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+  if (n8nWebhookUrl || !SAFE_MODE) {
+    console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
+    if (n8nWebhookUrl) {
+      console.log('[Server] Outbox processor will use n8n webhook (no Redis required)');
+    }
+    setInterval(() => {
+      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
+    }, 5000);
+    
+    // Also process immediately on startup to catch any pending events
+    console.log('[Server] Processing any pending outbox events on startup...');
+    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
+  } else {
+    console.log('[Server] Outbox processor not started (N8N_WEBHOOK_URL not set and SAFE_MODE enabled)');
   }
 
   // Start server in development mode
