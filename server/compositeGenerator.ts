@@ -16,7 +16,8 @@ export interface CompositeResult {
 
 export class CompositeGenerator {
   // Maximum dimension for composite generation (to prevent timeouts and memory issues)
-  private static readonly MAX_COMPOSITE_DIMENSION = 2000;
+  // Reduced to 1500px to ensure completion within Vercel's 30s timeout
+  private static readonly MAX_COMPOSITE_DIMENSION = 1500;
   // JPEG quality for composite output (smaller file size, faster upload)
   private static readonly COMPOSITE_QUALITY = 85;
 
@@ -106,37 +107,94 @@ export class CompositeGenerator {
     console.log(`[CompositeGenerator] Loading original image: ${originalUrl}`);
     
     // Load and optimize original image before processing
+    const startTime = Date.now();
     const optimizedImage = await this.loadAndOptimizeImage(originalUrl, originalWidth, originalHeight);
-    console.log(`[CompositeGenerator] Image optimized: ${optimizedImage.width}x${optimizedImage.height} (original: ${originalWidth}x${originalHeight})`);
+    const imageLoadTime = Date.now() - startTime;
+    console.log(`[CompositeGenerator] Image loaded in ${imageLoadTime}ms`);
     
-    // Create canvas with optimized dimensions
-    const canvas = createCanvas(optimizedImage.width, optimizedImage.height);
+    const actualWidth = optimizedImage.width;
+    const actualHeight = optimizedImage.height;
+    console.log(`[CompositeGenerator] Image optimized: ${actualWidth}x${actualHeight} (original: ${originalWidth}x${originalHeight})`);
+    
+    // Create canvas with actual optimized dimensions
+    const canvas = createCanvas(actualWidth, actualHeight);
     const ctx = canvas.getContext('2d');
     
     // Draw optimized original image
     ctx.drawImage(optimizedImage, 0, 0);
     console.log(`[CompositeGenerator] Original image drawn to canvas`);
     
-    // Calculate scale factor for mask coordinates
-    const scaleX = optimizedImage.width / originalWidth;
-    const scaleY = optimizedImage.height / originalHeight;
+    // Calculate scale factor for mask coordinates using ACTUAL loaded image dimensions
+    // This ensures masks align correctly even if Sharp adjusts dimensions slightly
+    const scaleX = actualWidth / originalWidth;
+    const scaleY = actualHeight / originalHeight;
+    console.log(`[CompositeGenerator] Scale factors: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+    
+    // Preload all materials in parallel for better performance
+    const materialLoadStart = Date.now();
+    const materialPromises = masks
+      .filter(mask => mask.materialId)
+      .map(async (mask) => {
+        try {
+          const material = await storage.getMaterial(mask.materialId!);
+          return { maskId: mask.id, material };
+        } catch (error) {
+          console.warn(`[CompositeGenerator] Failed to load material for mask ${mask.id}:`, error);
+          return { maskId: mask.id, material: null };
+        }
+      });
+    
+    const materialResults = await Promise.all(materialPromises);
+    const materialMap = new Map(materialResults.map(r => [r.maskId, r.material]));
+    const materialLoadTime = Date.now() - materialLoadStart;
+    console.log(`[CompositeGenerator] Loaded ${materialMap.size} materials in ${materialLoadTime}ms`);
+    
+    // Preload all material textures in parallel for better performance
+    const textureLoadStart = Date.now();
+    const texturePromises = materialResults
+      .filter(r => r.material && r.material.textureUrl)
+      .map(async (r) => {
+        try {
+          const textureImage = await this.loadImage(r.material!.textureUrl!);
+          return { maskId: r.maskId, textureImage };
+        } catch (error) {
+          console.warn(`[CompositeGenerator] Failed to load texture for mask ${r.maskId}:`, error);
+          return { maskId: r.maskId, textureImage: null };
+        }
+      });
+    
+    const textureResults = await Promise.all(texturePromises);
+    const textureMap = new Map(textureResults.map(r => [r.maskId, r.textureImage]));
+    const textureLoadTime = Date.now() - textureLoadStart;
+    console.log(`[CompositeGenerator] Loaded ${textureMap.size} textures in ${textureLoadTime}ms`);
     
     // Apply masks with materials
+    const maskApplyStart = Date.now();
     for (const mask of masks) {
       if (mask.materialId) {
-        console.log(`[CompositeGenerator] Applying material ${mask.materialId} to mask ${mask.id}`);
-        await this.applyMaterialToMask(
-          ctx, 
-          mask, 
-          optimizedImage.width, 
-          optimizedImage.height,
-          scaleX,
-          scaleY
-        );
+        const material = materialMap.get(mask.id);
+        if (material) {
+          console.log(`[CompositeGenerator] Applying material ${mask.materialId} to mask ${mask.id}`);
+          const textureImage = textureMap.get(mask.id);
+          await this.applyMaterialToMask(
+            ctx, 
+            mask, 
+            actualWidth, 
+            actualHeight,
+            scaleX,
+            scaleY,
+            material,
+            textureImage || undefined
+          );
+        } else {
+          console.log(`[CompositeGenerator] Material ${mask.materialId} not found for mask ${mask.id}, skipping`);
+        }
       } else {
         console.log(`[CompositeGenerator] Mask ${mask.id} has no material, skipping`);
       }
     }
+    const maskApplyTime = Date.now() - maskApplyStart;
+    console.log(`[CompositeGenerator] Applied ${masks.length} masks in ${maskApplyTime}ms`);
     
     // Convert canvas to JPEG buffer (smaller than PNG)
     const buffer = canvas.toBuffer('image/jpeg', { quality: CompositeGenerator.COMPOSITE_QUALITY });
@@ -192,7 +250,9 @@ export class CompositeGenerator {
       
       // Use Sharp to resize and optimize
       let processedBuffer = imageBuffer;
+      
       if (targetWidth !== originalWidth || targetHeight !== originalHeight) {
+        // Use Sharp to resize
         processedBuffer = await sharp(imageBuffer)
           .resize(targetWidth, targetHeight, {
             fit: 'inside',
@@ -203,8 +263,9 @@ export class CompositeGenerator {
       }
       
       // Load optimized image into canvas-compatible format
+      // Use actual loaded image dimensions (Sharp may adjust slightly for aspect ratio)
       const image = await loadImage(processedBuffer);
-      console.log(`[CompositeGenerator] Image loaded successfully: ${image.width}x${image.height}`);
+      console.log(`[CompositeGenerator] Image loaded successfully: ${image.width}x${image.height} (target: ${targetWidth}x${targetHeight})`);
       return image;
     } catch (error) {
       console.error(`[CompositeGenerator] Failed to load/optimize image from ${url}:`, error);
@@ -218,7 +279,9 @@ export class CompositeGenerator {
     width: number, 
     height: number,
     scaleX: number,
-    scaleY: number
+    scaleY: number,
+    material?: Material | null,
+    preloadedTextureImage?: any
   ): Promise<void> {
     try {
       console.log(`[CompositeGenerator] Processing mask ${mask.id}, pathJson type:`, typeof mask.pathJson);
@@ -312,52 +375,55 @@ export class CompositeGenerator {
       }
       
       // Load and apply material with improved scaling
-      if (mask.materialId) {
-        const material = await storage.getMaterial(mask.materialId);
-        if (material && material.textureUrl) {
-          console.log(`[CompositeGenerator] Loading material texture: ${material.textureUrl}`);
-          const materialImage = await this.loadImage(material.textureUrl);
-          
-          // Parse calcMetaJson for material settings (tileScale, underwater settings, etc.)
-          let materialSettings: any = {};
-          if (mask.calcMetaJson) {
-            try {
-              materialSettings = typeof mask.calcMetaJson === 'string' 
-                ? JSON.parse(mask.calcMetaJson) 
-                : mask.calcMetaJson;
-              console.log(`[CompositeGenerator] Parsed material settings for mask ${mask.id}:`, materialSettings);
-            } catch (parseError) {
-              console.log(`[CompositeGenerator] Failed to parse calcMetaJson for mask ${mask.id}:`, parseError);
-            }
+      if (mask.materialId && material && material.textureUrl) {
+        // Use preloaded texture if available, otherwise load it
+        const materialImage = preloadedTextureImage || await this.loadImage(material.textureUrl);
+        if (!materialImage) {
+          console.log(`[CompositeGenerator] Failed to load material texture for mask ${mask.id}`);
+          ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
+          ctx.fill();
+          return;
+        }
+        
+        // Parse calcMetaJson for material settings (tileScale, underwater settings, etc.)
+        let materialSettings: any = {};
+        if (mask.calcMetaJson) {
+          try {
+            materialSettings = typeof mask.calcMetaJson === 'string' 
+              ? JSON.parse(mask.calcMetaJson) 
+              : mask.calcMetaJson;
+            console.log(`[CompositeGenerator] Parsed material settings for mask ${mask.id}:`, materialSettings);
+          } catch (parseError) {
+            console.log(`[CompositeGenerator] Failed to parse calcMetaJson for mask ${mask.id}:`, parseError);
           }
+        }
+        
+        // Apply improved texture scaling similar to client-side
+        // Check for both textureScale and tileScale (textureScale is the correct field name)
+        const tileScale = materialSettings.textureScale || materialSettings.tileScale || 1.0;
+        console.log(`[CompositeGenerator] Using tileScale: ${tileScale} for mask ${mask.id}`);
+        const pattern = this.createScaledPattern(ctx, materialImage, tileScale, width, height, material);
+        
+        if (pattern) {
+          ctx.fillStyle = pattern;
+          ctx.fill();
+          console.log(`[CompositeGenerator] Scaled material pattern applied to mask ${mask.id} with tileScale: ${tileScale}`);
           
-          // Apply improved texture scaling similar to client-side
-          // Check for both textureScale and tileScale (textureScale is the correct field name)
-          const tileScale = materialSettings.textureScale || materialSettings.tileScale || 1.0;
-          console.log(`[CompositeGenerator] Using tileScale: ${tileScale} for mask ${mask.id}`);
-          const pattern = this.createScaledPattern(ctx, materialImage, tileScale, width, height, material);
-          
-          if (pattern) {
-            ctx.fillStyle = pattern;
-            ctx.fill();
-            console.log(`[CompositeGenerator] Scaled material pattern applied to mask ${mask.id} with tileScale: ${tileScale}`);
-            
-            // Apply basic underwater effects if settings exist
-            if (materialSettings.underwaterRealism) {
-              this.applyBasicUnderwaterEffects(ctx, materialSettings.underwaterRealism, points);
-            }
-          } else {
-            console.log(`[CompositeGenerator] Failed to create scaled pattern for material ${mask.materialId}`);
-            // Fallback to solid color
-            ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
-            ctx.fill();
+          // Apply basic underwater effects if settings exist
+          if (materialSettings.underwaterRealism) {
+            this.applyBasicUnderwaterEffects(ctx, materialSettings.underwaterRealism, points);
           }
         } else {
-          console.log(`[CompositeGenerator] Material ${mask.materialId} not found or has no texture URL`);
+          console.log(`[CompositeGenerator] Failed to create scaled pattern for material ${mask.materialId}`);
           // Fallback to solid color
           ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
           ctx.fill();
         }
+      } else {
+        console.log(`[CompositeGenerator] Material ${mask.materialId} not found or has no texture URL`);
+        // Fallback to solid color
+        ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
+        ctx.fill();
       }
     } catch (error) {
       console.error(`[CompositeGenerator] Error applying material to mask ${mask.id}:`, error);
