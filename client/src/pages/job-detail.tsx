@@ -943,8 +943,47 @@ export default function JobDetail() {
                     variant="outline"
                     onClick={() => {
                       setPreviewPhoto(null);
-                      // Navigate to edit-canvas route (the correct route for the editor)
-                      navigate(`/jobs/${jobId}/photo/${previewPhoto.id}/edit-canvas`);
+                      
+                      // Set job and photo context in editor store FIRST (like the other edit button)
+                      const { dispatch } = useEditorStore.getState();
+                      
+                      if (jobId && previewPhoto.id) {
+                        dispatch({
+                          type: 'SET_JOB_CONTEXT',
+                          payload: {
+                            jobId: jobId,
+                            photoId: previewPhoto.id
+                          }
+                        });
+                      }
+                      
+                      // Clear previous state to prevent contamination (but preserve job context)
+                      dispatch({ type: 'RESET' });
+                      
+                      // Load image to get actual dimensions
+                      const img = new Image();
+                      img.onload = () => {
+                        dispatch({
+                          type: 'SET_IMAGE',
+                          payload: {
+                            url: previewPhoto.originalUrl,
+                            width: img.naturalWidth,
+                            height: img.naturalHeight
+                          }
+                        });
+                        
+                        // Navigate to /new-editor (same as the other edit button)
+                        navigate('/new-editor');
+                      };
+                      img.onerror = () => {
+                        console.error('Failed to load image for editor');
+                        toast({
+                          title: "Error",
+                          description: "Failed to load image for editing.",
+                          variant: "destructive"
+                        });
+                      };
+                      img.src = previewPhoto.originalUrl;
                     }}
                   >
                     <Edit className="w-4 h-4 mr-2" />
