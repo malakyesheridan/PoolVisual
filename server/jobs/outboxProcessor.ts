@@ -5,11 +5,88 @@
 import { executeQuery } from '../lib/dbHelpers.js';
 import { CreditsManager } from '../lib/creditsManager.js';
 import { metrics } from '../lib/metrics.js';
+import { createCanvas } from 'canvas';
+import { storageService } from '../lib/storageService.js';
+import { randomUUID } from 'crypto';
 
 function calcBackoff(attempts: number) {
   const base = 5000;
   const jitter = Math.random() * 1000;
   return Math.min(base * Math.pow(2, attempts) + jitter, 30000);
+}
+
+/**
+ * Generate a mask image from mask coordinates
+ * Creates a black/white PNG where white = mask regions, black = background
+ */
+async function generateMaskImage(
+  masks: Array<{ id: string; points: Array<{ x: number; y: number }> }>,
+  width: number,
+  height: number
+): Promise<string | null> {
+  try {
+    if (!masks || masks.length === 0) {
+      console.log('[Outbox] No masks to generate mask image');
+      return null;
+    }
+
+    if (!width || !height) {
+      console.warn('[Outbox] Missing width/height for mask image generation');
+      return null;
+    }
+
+    console.log(`[Outbox] Generating mask image: ${masks.length} masks, ${width}x${height}`);
+
+    // Create canvas with image dimensions
+    const canvas = createCanvas(width, height);
+    const ctx = canvas.getContext('2d');
+
+    // Fill with black (background)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, width, height);
+
+    // Draw each mask as white region
+    ctx.fillStyle = '#FFFFFF';
+    for (const mask of masks) {
+      if (!mask.points || mask.points.length < 3) {
+        console.warn(`[Outbox] Skipping mask ${mask.id} - insufficient points`);
+        continue;
+      }
+
+      // Normalize points to image coordinates (clamp to bounds)
+      const normalizedPoints = mask.points.map(pt => ({
+        x: Math.max(0, Math.min(width - 1, pt.x)),
+        y: Math.max(0, Math.min(height - 1, pt.y))
+      }));
+
+      // Draw polygon
+      ctx.beginPath();
+      ctx.moveTo(normalizedPoints[0].x, normalizedPoints[0].y);
+      for (let i = 1; i < normalizedPoints.length; i++) {
+        ctx.lineTo(normalizedPoints[i].x, normalizedPoints[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Convert to PNG buffer
+    const buffer = canvas.toBuffer('image/png');
+    console.log(`[Outbox] Generated mask image: ${buffer.length} bytes`);
+
+    // Upload to cloud storage
+    const maskId = randomUUID();
+    const path = `ai-enhancements/masks/${maskId}.png`;
+    const url = await storageService.put(path, buffer, {
+      contentType: 'image/png',
+      cacheControl: 'public, max-age=3600'
+    });
+
+    console.log(`[Outbox] Mask image uploaded: ${url}`);
+    return url;
+  } catch (error: any) {
+    console.error('[Outbox] Error generating mask image:', error);
+    return null; // Don't fail the entire job if mask generation fails
+  }
 }
 
 export async function processOutboxEvents() {
@@ -91,11 +168,24 @@ export async function processOutboxEvents() {
             // Explicitly remove mode from finalOptions if it somehow got back in
             delete finalOptions.mode;
             
+            // Generate mask image if masks are present
+            let maskImageUrl: string | null = null;
+            if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
+              console.log(`[Outbox] Generating mask image for ${payload.masks.length} masks`);
+              maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+              if (maskImageUrl) {
+                console.log(`[Outbox] Mask image generated: ${maskImageUrl}`);
+              } else {
+                console.warn(`[Outbox] Failed to generate mask image, continuing without it`);
+              }
+            }
+            
             const n8nPayload = {
               jobId: payload.jobId,
               tenantId: payload.tenantId,
               imageUrl: absoluteImageUrl,
               masks: payload.masks || [],
+              maskImageUrl: maskImageUrl, // Generated mask image URL for AI inpainting
               mode: mode, // Top-level mode field (required by n8n workflow)
               options: finalOptions,
               calibration: payload.calibration,
@@ -123,6 +213,8 @@ export async function processOutboxEvents() {
               mode: n8nPayload.mode,
               imageUrl: n8nPayload.imageUrl.substring(0, 80) + '...',
               masksCount: n8nPayload.masks.length,
+              hasMaskImageUrl: !!n8nPayload.maskImageUrl,
+              maskImageUrl: n8nPayload.maskImageUrl ? n8nPayload.maskImageUrl.substring(0, 80) + '...' : null,
               masks: n8nPayload.masks.map((m: any) => ({
                 id: m.id,
                 pointsCount: m.points?.length || 0,
