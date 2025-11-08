@@ -32,7 +32,18 @@ export class CompositeGenerator {
       }
 
       let masks = await storage.getMasksByPhoto(photoId);
-      console.log(`[CompositeGenerator] Found ${masks.length} masks for photo`);
+      console.log(`[CompositeGenerator] Photo ${photoId}: Found ${masks.length} masks in database`);
+      
+      if (masks.length === 0) {
+        console.warn(`[CompositeGenerator] ⚠️ No masks found for photo ${photoId} - returning original image`);
+        return {
+          status: 'completed',
+          hasEdits: false,
+          beforeUrl: photo.originalUrl,
+          afterUrl: photo.originalUrl,
+          sideBySideUrl: photo.originalUrl
+        };
+      }
       
       // Sort masks by zIndex to match client-side rendering order (lower zIndex renders first/behind)
       masks = masks.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));

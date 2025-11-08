@@ -1684,8 +1684,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       
       // Get masks for this photo to check if there are any edits
       const masks = await storage.getMasksByPhoto(photoId);
+      console.log(`[GetComposite] Photo ${photoId}: Found ${masks.length} masks in database`);
       
       if (masks.length === 0) {
+        console.log(`[GetComposite] No masks found for photo ${photoId}, returning original image`);
         // No edits, return original image
         res.json({
           beforeUrl: photo.originalUrl,
@@ -1696,6 +1698,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         });
         return;
       }
+      
+      console.log(`[GetComposite] Photo ${photoId}: Processing ${masks.length} masks for composite generation`);
       
       // Generate actual composite (force regenerate if requested or if code changed)
       // Always force regenerate for now to ensure we use the latest code

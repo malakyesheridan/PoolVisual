@@ -41,19 +41,54 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
     const effectivePhotoId = currentState.jobContext?.photoId || '134468b9-648e-4eb1-8434-d7941289fccf';
     
     try {
-      // Get masks from the mask store and convert to format expected by server
-      // Format matches server/lib/cacheNormalizer.ts: {id, points: [{x, y}], materialId?}
-      const maskStore = useMaskStore.getState();
-      const allMasks = Object.values(maskStore.masks || {});
+      // CRITICAL FIX: Load masks from database, not just local store
+      // Local store might be empty if user navigated away and came back
+      // Always use database as source of truth for enhancement jobs
+      const { apiClient } = await import('../../lib/api-client');
+      const dbMasks = await apiClient.getMasks(effectivePhotoId);
+      console.log(`[JobsDrawer] Loaded ${dbMasks.length} masks from database for photo ${effectivePhotoId}`);
       
-      console.log(`[JobsDrawer] Mask store state:`, {
+      // Also check local store for any unsaved masks (fallback)
+      const maskStore = useMaskStore.getState();
+      const localMasks = Object.values(maskStore.masks || {});
+      console.log(`[JobsDrawer] Local store has ${localMasks.length} masks`);
+      
+      // Combine database masks with any unsaved local masks (by ID to avoid duplicates)
+      const dbMaskIds = new Set(dbMasks.map(m => m.id));
+      const unsavedLocalMasks = localMasks.filter(m => !dbMaskIds.has(m.id));
+      
+      // Convert database masks to the format expected by server
+      const allMasks = [
+        ...dbMasks.map(m => {
+          // Parse pathJson if it's a string
+          let points: any[] = [];
+          try {
+            const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
+            points = Array.isArray(pathData) ? pathData : [];
+          } catch (e) {
+            console.warn(`[JobsDrawer] Failed to parse pathJson for mask ${m.id}:`, e);
+          }
+          
+          return {
+            id: m.id,
+            pts: points,
+            materialId: m.materialId || undefined,
+            isVisible: true, // Database masks are always visible
+            zIndex: m.zIndex || 0
+          };
+        }),
+        ...unsavedLocalMasks // Include any unsaved local masks
+      ];
+      
+      console.log(`[JobsDrawer] Total masks (${dbMasks.length} from DB + ${unsavedLocalMasks.length} unsaved):`, {
         totalMasks: allMasks.length,
         maskIds: allMasks.map(m => m.id),
         maskDetails: allMasks.map(m => ({
           id: m.id,
           ptsCount: m.pts?.length || 0,
-          isVisible: m.isVisible !== false, // Default is true
-          hasMaterialId: !!m.materialId
+          isVisible: m.isVisible !== false,
+          hasMaterialId: !!m.materialId,
+          source: dbMaskIds.has(m.id) ? 'database' : 'local'
         }))
       });
       
