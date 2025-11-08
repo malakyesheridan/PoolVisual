@@ -162,14 +162,8 @@ export class CompositeGenerator {
     const scaleX = actualLoadedWidth / maskReferenceWidth;
     const scaleY = actualLoadedHeight / maskReferenceHeight;
     
-    console.log(`[CompositeGenerator] Scale factors (actual->optimized): scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
-    
-    // Warn if database dimensions don't match actual dimensions (this indicates a data inconsistency)
-    if (Math.abs(actualOriginalWidth - originalWidth) > 1 || Math.abs(actualOriginalHeight - originalHeight) > 1) {
-      console.warn(`[CompositeGenerator] ⚠️ Database dimensions don't match actual image!`);
-      console.warn(`[CompositeGenerator] Database: ${originalWidth}x${originalHeight}, Actual: ${actualOriginalWidth}x${actualOriginalHeight}`);
-      console.warn(`[CompositeGenerator] Using ACTUAL dimensions for mask scaling (masks were created with actual image dimensions)`);
-    }
+    console.log(`[CompositeGenerator] Scale factors (database->optimized): scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+    console.log(`[CompositeGenerator] Reference dimensions: ${maskReferenceWidth}x${maskReferenceHeight} (database), Optimized: ${actualLoadedWidth}x${actualLoadedHeight}`);
     
     // Create canvas with actual optimized dimensions
     const canvas = createCanvas(actualLoadedWidth, actualLoadedHeight);
