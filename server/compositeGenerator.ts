@@ -31,8 +31,12 @@ export class CompositeGenerator {
         throw new Error('Photo not found');
       }
 
-      const masks = await storage.getMasksByPhoto(photoId);
+      let masks = await storage.getMasksByPhoto(photoId);
       console.log(`[CompositeGenerator] Found ${masks.length} masks for photo`);
+      
+      // Sort masks by zIndex to match client-side rendering order (lower zIndex renders first/behind)
+      masks = masks.sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0));
+      console.log(`[CompositeGenerator] Masks sorted by zIndex:`, masks.map(m => ({ id: m.id, zIndex: m.zIndex || 0, materialId: m.materialId })));
       
       // Log actual mask coordinates from database for debugging
       masks.forEach((mask, idx) => {
@@ -202,6 +206,11 @@ export class CompositeGenerator {
     const materialLoadTime = Date.now() - materialLoadStart;
     console.log(`[CompositeGenerator] Loaded ${materialMap.size} materials in ${materialLoadTime}ms`);
     
+    // Log material mapping for debugging
+    materialResults.forEach(r => {
+      console.log(`[CompositeGenerator] Material mapping: mask ${r.maskId} -> material ${r.material?.id || 'null'} (${r.material?.name || 'none'})`);
+    });
+    
     // Preload all material textures in parallel for better performance
     const textureLoadStart = Date.now();
     const texturePromises = materialResults
@@ -227,7 +236,13 @@ export class CompositeGenerator {
       if (mask.materialId) {
         const material = materialMap.get(mask.id);
         if (material) {
-          console.log(`[CompositeGenerator] Applying material ${mask.materialId} to mask ${mask.id}`);
+          console.log(`[CompositeGenerator] Applying material to mask:`, {
+            maskId: mask.id,
+            maskMaterialId: mask.materialId,
+            materialId: material.id,
+            materialName: material.name,
+            materialMatch: mask.materialId === material.id ? '✅ MATCH' : '❌ MISMATCH'
+          });
           const textureImage = textureMap.get(mask.id);
           await this.applyMaterialToMask(
             ctx, 
@@ -240,7 +255,8 @@ export class CompositeGenerator {
             textureImage || undefined
           );
         } else {
-          console.log(`[CompositeGenerator] Material ${mask.materialId} not found for mask ${mask.id}, skipping`);
+          console.warn(`[CompositeGenerator] ⚠️ Material not found in map for mask ${mask.id} (expected materialId: ${mask.materialId})`);
+          console.warn(`[CompositeGenerator] Available mask IDs in materialMap:`, Array.from(materialMap.keys()));
         }
       } else {
         console.log(`[CompositeGenerator] Mask ${mask.id} has no material, skipping`);
