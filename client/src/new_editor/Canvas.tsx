@@ -527,13 +527,13 @@ export function Canvas({ width, height }: CanvasProps) {
           }
           camera={photoSpace}
           imgFit={photoSpace?.imgW && photoSpace?.imgH 
-            ? calculateImageFit(
-                photoSpace.imgW,   // Use database dimensions (source of truth for masks)
-                photoSpace.imgH,   // Use database dimensions (source of truth for masks)
-                width,
-                height,
-                photoSpace.scale
-              )
+            ? {
+                // Image is drawn at (0,0) in world space, so originX/Y should be 0
+                // Centering is handled by panX/panY, not by imgFit
+                originX: 0,
+                originY: 0,
+                imgScale: 1.0
+              }
             : { originX: 0, originY: 0, imgScale: 1 }
           }
           dpr={window.devicePixelRatio || 1}
