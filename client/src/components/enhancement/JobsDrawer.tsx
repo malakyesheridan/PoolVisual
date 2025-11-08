@@ -46,6 +46,16 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
       const maskStore = useMaskStore.getState();
       const allMasks = Object.values(maskStore.masks || {});
       
+      console.log(`[JobsDrawer] Mask store state:`, {
+        totalMasks: allMasks.length,
+        maskIds: allMasks.map(m => m.id),
+        maskDetails: allMasks.map(m => ({
+          id: m.id,
+          ptsCount: m.pts?.length || 0,
+          hasMaterialId: !!m.materialId
+        }))
+      });
+      
       const masks = allMasks
         .filter(mask => mask.pts && mask.pts.length >= 3) // Only include valid masks with at least 3 points
         .map(mask => ({
@@ -58,7 +68,11 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
           materialId: mask.materialId || undefined
         }));
       
-      console.log(`[JobsDrawer] Extracted ${masks.length} masks for enhancement job`);
+      console.log(`[JobsDrawer] Extracted ${masks.length} masks for enhancement job:`, masks.map(m => ({
+        id: m.id,
+        pointsCount: m.points.length,
+        materialId: m.materialId
+      })));
       
       const payload = {
         tenantId: '123e4567-e89b-12d3-a456-426614174000',
@@ -75,6 +89,17 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
         height: photoSpace.imgH || 1500,
         idempotencyKey: `enhancement-${Date.now()}`
       };
+
+      console.log(`[JobsDrawer] Sending payload to API:`, {
+        masksCount: payload.masks.length,
+        masks: payload.masks.map(m => ({
+          id: m.id,
+          pointsCount: m.points.length,
+          materialId: m.materialId
+        })),
+        imageUrl: payload.imageUrl.substring(0, 80) + '...',
+        mode: payload.options.mode
+      });
 
       const { jobId } = await createJob(payload);
       upsertJob({ id: jobId, status: 'queued', progress_percent: 0 });

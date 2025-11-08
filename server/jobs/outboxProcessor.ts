@@ -14,6 +14,7 @@ function calcBackoff(attempts: number) {
 
 export async function processOutboxEvents() {
   try {
+    console.log('[Outbox] processOutboxEvents() called');
     const events = await executeQuery(`
       WITH next_batch AS (
         SELECT id
@@ -31,7 +32,11 @@ export async function processOutboxEvents() {
     `);
 
     if (events.length === 0) {
-      // No events to process - this is normal, don't log
+      // No events to process - this is normal, don't log every time
+      // Only log occasionally to confirm processor is running
+      if (Math.random() < 0.01) { // Log ~1% of the time
+        console.log('[Outbox] No pending events to process (processor is running)');
+      }
       return;
     }
 
@@ -42,6 +47,16 @@ export async function processOutboxEvents() {
       try {
         if (ev.event_type === 'enqueue_enhancement') {
           const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+        
+        console.log(`[Outbox] Parsed payload for job ${payload.jobId}:`, {
+          hasMasks: !!payload.masks,
+          masksCount: payload.masks?.length || 0,
+          masks: payload.masks?.map((m: any) => ({
+            id: m.id,
+            pointsCount: m.points?.length || 0,
+            materialId: m.materialId
+          })) || []
+        });
         
         // Check if we should use n8n webhook (if N8N_WEBHOOK_URL is set) or fallback to Bull queue
         const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
@@ -108,6 +123,11 @@ export async function processOutboxEvents() {
               mode: n8nPayload.mode,
               imageUrl: n8nPayload.imageUrl.substring(0, 80) + '...',
               masksCount: n8nPayload.masks.length,
+              masks: n8nPayload.masks.map((m: any) => ({
+                id: m.id,
+                pointsCount: m.points?.length || 0,
+                materialId: m.materialId
+              })),
               hasCallbackUrl: !!n8nPayload.callbackUrl,
               width: n8nPayload.width,
               height: n8nPayload.height

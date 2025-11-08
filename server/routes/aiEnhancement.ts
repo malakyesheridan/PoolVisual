@@ -213,10 +213,24 @@ router.post('/', authenticateSession, async (req, res) => {
       };
 
       console.log('[Create Enhancement] Creating outbox event for job:', jobId);
+      console.log('[Create Enhancement] Masks received from client:', {
+        masksCount: masks.length,
+        masks: masks.map((m: any) => ({
+          id: m.id,
+          pointsCount: m.points?.length || 0,
+          materialId: m.materialId
+        }))
+      });
       console.log('[Create Enhancement] Outbox payload preview:', JSON.stringify({
         jobId: outboxPayload.jobId,
         mode: outboxPayload.options?.mode,
         hasImageUrl: !!outboxPayload.imageUrl,
+        masksCount: outboxPayload.masks.length,
+        masks: outboxPayload.masks.map((m: any) => ({
+          id: m.id,
+          pointsCount: m.points?.length || 0,
+          materialId: m.materialId
+        })),
         callbackUrl: outboxPayload.callbackUrl
       }));
 

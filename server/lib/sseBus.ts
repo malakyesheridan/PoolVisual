@@ -2,10 +2,9 @@
  * SSE Bus - Cross-process Redis Pub/Sub for SSE
  */
 
-import Redis from 'ioredis';
 import { SSEManager } from './sseManager.js';
 
-let sub: Redis | null = null;
+let sub: any = null;
 const SAFE_MODE = process.env.SAFE_MODE === '1';
 
 export function initSSEBus() {
@@ -13,6 +12,8 @@ export function initSSEBus() {
   if (sub) return sub;
   
   try {
+    // Lazy import to avoid Redis connection on module load
+    const Redis = require('ioredis');
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     const isTLS = redisUrl.startsWith('rediss://');
     
