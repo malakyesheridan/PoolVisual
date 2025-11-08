@@ -985,11 +985,62 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       // Save all masks to database and update their IDs
       const savedMaskIds = new Set<string>(); // Track successfully saved masks
       
+      // Get image dimensions for coordinate clamping
+      const photoSpace = getState().photoSpace;
+      const imgWidth = photoSpace.imgW || 2048; // Fallback to reasonable default
+      const imgHeight = photoSpace.imgH || 2048; // Fallback to reasonable default
+      
+      // Helper function to clamp coordinates to image bounds
+      const clampToImageBounds = (x: number, y: number): { x: number; y: number } => ({
+        x: Math.max(0, Math.min(x, imgWidth - 1)),
+        y: Math.max(0, Math.min(y, imgHeight - 1))
+      });
+      
       for (const mask of masks) {
+        // Clamp all mask points to image bounds before saving
+        // This prevents negative coordinates or coordinates beyond image dimensions
+        const clampedPts = mask.pts.map(pt => {
+          const clamped = clampToImageBounds(pt.x, pt.y);
+          const clampedPt: typeof pt = {
+            ...pt,
+            x: clamped.x,
+            y: clamped.y
+          };
+          
+          // Also clamp bezier handles if they exist
+          if (pt.h1) {
+            const clampedH1 = clampToImageBounds(pt.h1.x, pt.h1.y);
+            clampedPt.h1 = {
+              x: clampedH1.x,
+              y: clampedH1.y
+            };
+          }
+          if (pt.h2) {
+            const clampedH2 = clampToImageBounds(pt.h2.x, pt.h2.y);
+            clampedPt.h2 = {
+              x: clampedH2.x,
+              y: clampedH2.y
+            };
+          }
+          
+          return clampedPt;
+        });
+        
+        // Log if any coordinates were clamped (for debugging)
+        const wasClamped = mask.pts.some((pt, idx) => {
+          const clamped = clampedPts[idx];
+          return pt.x !== clamped.x || pt.y !== clamped.y ||
+                 (pt.h1 && (pt.h1.x !== clamped.h1!.x || pt.h1.y !== clamped.h1!.y)) ||
+                 (pt.h2 && (pt.h2.x !== clamped.h2!.x || pt.h2.y !== clamped.h2!.y));
+        });
+        if (wasClamped) {
+          console.warn(`[SaveToJob] Mask ${mask.id} had coordinates clamped to image bounds (${imgWidth}x${imgHeight})`);
+        }
+        
         const maskData = {
           photoId: targetPhotoId,
           type: 'area' as const,
-          pathJson: JSON.stringify(mask.pts),
+          pathJson: JSON.stringify(clampedPts), // Use clamped coordinates
           materialId: mask.materialId,
           createdBy: orgMember!.id, // We know orgMember exists here
           calcMetaJson: mask.materialSettings || null,

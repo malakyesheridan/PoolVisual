@@ -258,6 +258,17 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             // Convert server mask format to mask core store format
             const convertedMasks: Record<string, any> = {};
             
+            // Get image dimensions for coordinate clamping
+            const photoSpace = getState().photoSpace;
+            const imgWidth = photoSpace.imgW || 2048; // Fallback to reasonable default
+            const imgHeight = photoSpace.imgH || 2048; // Fallback to reasonable default
+            
+            // Helper function to clamp coordinates to image bounds
+            const clampToImageBounds = (x: number, y: number): { x: number; y: number } => ({
+              x: Math.max(0, Math.min(x, imgWidth - 1)),
+              y: Math.max(0, Math.min(y, imgHeight - 1))
+            });
+            
             existingMasks.forEach((serverMask: any) => {
               try {
                 // console.log('[NewEditor] Processing server mask:', serverMask);
@@ -273,14 +284,43 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
                   pathData = [];
                 }
                 
-                // Convert path data to points array
+                // Convert path data to points array and clamp coordinates to image bounds
+                // This fixes existing masks with negative coordinates or coordinates beyond image dimensions
                 const pts = Array.isArray(pathData) 
                   ? pathData.map((point: any) => {
                       // Handle both {x, y} and [x, y] formats
                       if (typeof point === 'object' && point !== null) {
-                        return { x: point.x || point[0] || 0, y: point.y || point[1] || 0 };
+                        const rawX = point.x || point[0] || 0;
+                        const rawY = point.y || point[1] || 0;
+                        
+                        // Clamp main point coordinates
+                        const clamped = clampToImageBounds(rawX, rawY);
+                        
+                        // Build clamped point object
+                        const clampedPoint: any = {
+                          x: clamped.x,
+                          y: clamped.y,
+                          kind: point.kind || 'corner'
+                        };
+                        
+                        // Also clamp bezier handles if they exist
+                        if (point.h1) {
+                          const clampedH1 = clampToImageBounds(point.h1.x || 0, point.h1.y || 0);
+                          clampedPoint.h1 = { x: clampedH1.x, y: clampedH1.y };
+                        }
+                        if (point.h2) {
+                          const clampedH2 = clampToImageBounds(point.h2.x || 0, point.h2.y || 0);
+                          clampedPoint.h2 = { x: clampedH2.x, y: clampedH2.y };
+                        }
+                        
+                        // Log if coordinates were clamped (for debugging)
+                        if (rawX !== clamped.x || rawY !== clamped.y) {
+                          console.warn(`[NewEditor] Clamped mask point coordinates for mask ${serverMask.id}: (${rawX}, ${rawY}) -> (${clamped.x}, ${clamped.y})`);
+                        }
+                        
+                        return clampedPoint;
                       }
-                      return { x: 0, y: 0 };
+                      return { x: 0, y: 0, kind: 'corner' };
                     })
                   : [];
                 
