@@ -1037,6 +1037,20 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           console.warn(`[SaveToJob] Mask ${mask.id} had coordinates clamped to image bounds (${imgWidth}x${imgHeight})`);
         }
         
+        // Log detailed coordinate information for debugging
+        const minX = Math.min(...clampedPts.map(p => p.x));
+        const maxX = Math.max(...clampedPts.map(p => p.x));
+        const minY = Math.min(...clampedPts.map(p => p.y));
+        const maxY = Math.max(...clampedPts.map(p => p.y));
+        console.log(`[SaveToJob] Saving mask ${mask.id}:`, {
+          pointCount: clampedPts.length,
+          boundingBox: { minX, minY, maxX, maxY },
+          firstPoint: clampedPts[0],
+          lastPoint: clampedPts[clampedPts.length - 1],
+          photoDimensions: { width: imgWidth, height: imgHeight },
+          wasClamped
+        });
+        
         const maskData = {
           photoId: targetPhotoId,
           type: 'area' as const,
