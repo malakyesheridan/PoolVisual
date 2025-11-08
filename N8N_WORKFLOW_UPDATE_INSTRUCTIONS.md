@@ -6,6 +6,15 @@ The n8n workflow receives masks in the webhook payload, but the Seedream API cal
 ## Solution
 The server now generates a mask image from the mask coordinates and includes it in the payload as `maskImageUrl`. The n8n workflow needs to be updated to use this mask image in the Seedream API call.
 
+## Why Server-Side Generation?
+We generate the mask image server-side (rather than in n8n) because:
+- n8n's Function nodes don't have access to canvas/image generation libraries
+- Server-side generation is faster (happens before webhook, can be cached)
+- More reliable (full Node.js capabilities vs. n8n's limited runtime)
+- Simpler n8n workflow (just uses the URL vs. complex coordinate processing)
+
+**Alternative approach**: We could have created a separate API endpoint for mask generation that n8n calls, but doing it in the outbox processor is more efficient (single transaction, no extra network calls).
+
 ## Current Payload Structure
 The webhook now receives:
 ```json
