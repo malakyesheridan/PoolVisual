@@ -1654,6 +1654,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const photoId = req.params.id;
+      const forceRegenerate = req.query.force === 'true';
       const photo = await storage.getPhoto(photoId);
       
       if (!photo) {
@@ -1675,9 +1676,9 @@ export async function registerRoutes(app: Express): Promise<void> {
         return;
       }
       
-      // Generate actual composite
+      // Generate actual composite (force regenerate if requested)
       const generator = new CompositeGenerator();
-      const result = await generator.generateComposite(photoId);
+      const result = await generator.generateComposite(photoId, forceRegenerate);
       
       res.json(result);
     } catch (error) {

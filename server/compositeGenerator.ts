@@ -34,6 +34,37 @@ export class CompositeGenerator {
       const masks = await storage.getMasksByPhoto(photoId);
       console.log(`[CompositeGenerator] Found ${masks.length} masks for photo`);
       
+      // Log actual mask coordinates from database for debugging
+      masks.forEach((mask, idx) => {
+        try {
+          let pathData = mask.pathJson;
+          if (typeof pathData === 'string') {
+            pathData = JSON.parse(pathData);
+          }
+          if (Array.isArray(pathData) && pathData.length > 0) {
+            const firstPt = pathData[0];
+            const lastPt = pathData[pathData.length - 1];
+            const minX = Math.min(...pathData.map((p: any) => p.x || p[0] || 0));
+            const maxX = Math.max(...pathData.map((p: any) => p.x || p[0] || 0));
+            const minY = Math.min(...pathData.map((p: any) => p.y || p[1] || 0));
+            const maxY = Math.max(...pathData.map((p: any) => p.y || p[1] || 0));
+            console.log(`[CompositeGenerator] Mask ${idx + 1} (${mask.id}): ${pathData.length} points`);
+            console.log(`[CompositeGenerator]   First point:`, firstPt);
+            console.log(`[CompositeGenerator]   Last point:`, lastPt);
+            console.log(`[CompositeGenerator]   Bounding box: X[${minX.toFixed(2)}, ${maxX.toFixed(2)}], Y[${minY.toFixed(2)}, ${maxY.toFixed(2)}]`);
+            console.log(`[CompositeGenerator]   Photo dimensions (DB): ${photo.width}x${photo.height}`);
+            if (minX < 0 || minY < 0) {
+              console.warn(`[CompositeGenerator]   ⚠️ Mask has negative coordinates!`);
+            }
+            if (maxX > photo.width || maxY > photo.height) {
+              console.warn(`[CompositeGenerator]   ⚠️ Mask extends beyond photo dimensions!`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[CompositeGenerator] Failed to parse mask ${mask.id} coordinates:`, e);
+        }
+      });
+      
       if (masks.length === 0) {
         console.log(`[CompositeGenerator] No masks found, returning original image`);
         return {
