@@ -8,6 +8,8 @@ import { metrics } from '../lib/metrics.js';
 import { createCanvas } from 'canvas';
 import { storageService } from '../lib/storageService.js';
 import { randomUUID } from 'crypto';
+import { CompositeGenerator } from '../compositeGenerator.js';
+import { storage } from '../storage.js';
 
 function calcBackoff(attempts: number) {
   const base = 5000;
@@ -168,8 +170,35 @@ export async function processOutboxEvents() {
             // Explicitly remove mode from finalOptions if it somehow got back in
             delete finalOptions.mode;
             
-            // Generate mask image if masks are present
+            // Generate composite image (image with masks already applied) if photoId and masks are present
+            let compositeImageUrl: string | null = null;
             let maskImageUrl: string | null = null;
+            
+            if (payload.photoId && payload.masks && payload.masks.length > 0) {
+              try {
+                console.log(`[Outbox] Generating composite image for photo ${payload.photoId} with ${payload.masks.length} masks`);
+                const generator = new CompositeGenerator();
+                const compositeResult = await generator.generateComposite(payload.photoId, false);
+                
+                if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
+                  compositeImageUrl = compositeResult.afterUrl;
+                  console.log(`[Outbox] Composite image generated: ${compositeImageUrl}`);
+                } else {
+                  console.warn(`[Outbox] Composite generation failed or no edits: ${compositeResult.error || 'no edits'}`);
+                  // Fall back to original image if composite generation fails
+                  compositeImageUrl = absoluteImageUrl;
+                }
+              } catch (error: any) {
+                console.error(`[Outbox] Error generating composite image:`, error);
+                // Fall back to original image on error
+                compositeImageUrl = absoluteImageUrl;
+              }
+            } else {
+              // No masks or no photoId, use original image
+              compositeImageUrl = absoluteImageUrl;
+            }
+            
+            // Also generate mask image for AI inpainting (if needed for Seedream)
             if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
               console.log(`[Outbox] Generating mask image for ${payload.masks.length} masks`);
               maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
@@ -183,10 +212,11 @@ export async function processOutboxEvents() {
             const n8nPayload = {
               jobId: payload.jobId,
               tenantId: payload.tenantId,
-              photoId: payload.photoId, // Include photoId for composite endpoint access
-              imageUrl: absoluteImageUrl,
+              photoId: payload.photoId, // Include photoId for reference
+              imageUrl: absoluteImageUrl, // Original image URL (for reference)
+              compositeImageUrl: compositeImageUrl, // Image with masks already applied (USE THIS FOR DOWNLOAD)
               masks: payload.masks || [],
-              maskImageUrl: maskImageUrl, // Generated mask image URL for AI inpainting
+              maskImageUrl: maskImageUrl, // Generated mask image URL for AI inpainting (if needed)
               mode: mode, // Top-level mode field (required by n8n workflow)
               options: finalOptions,
               calibration: payload.calibration,
@@ -213,6 +243,8 @@ export async function processOutboxEvents() {
               jobId: n8nPayload.jobId,
               mode: n8nPayload.mode,
               imageUrl: n8nPayload.imageUrl.substring(0, 80) + '...',
+              hasCompositeImageUrl: !!n8nPayload.compositeImageUrl,
+              compositeImageUrl: n8nPayload.compositeImageUrl ? n8nPayload.compositeImageUrl.substring(0, 80) + '...' : null,
               masksCount: n8nPayload.masks.length,
               hasMaskImageUrl: !!n8nPayload.maskImageUrl,
               maskImageUrl: n8nPayload.maskImageUrl ? n8nPayload.maskImageUrl.substring(0, 80) + '...' : null,
