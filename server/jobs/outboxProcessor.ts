@@ -192,7 +192,8 @@ export async function processOutboxEvents() {
                 } else {
                   console.log(`[Outbox] Generating composite image for photo ${payload.photoId} with ${payload.masks.length} masks`);
                   const generator = new CompositeGenerator();
-                  const compositeResult = await generator.generateComposite(payload.photoId, false);
+                  // Force regenerate to ensure latest code is used and to bypass cache
+                  const compositeResult = await generator.generateComposite(payload.photoId, true);
                   
                   if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
                     compositeImageUrl = compositeResult.afterUrl;
