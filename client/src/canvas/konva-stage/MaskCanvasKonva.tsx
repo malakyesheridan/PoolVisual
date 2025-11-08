@@ -316,7 +316,24 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
                 return;
               }
               
-              console.log('[MaskCanvasKonva] Finalizing mask', { id, ptsCount: maskPoints.length, maskType });
+              // Log coordinate details for debugging
+              const photoSpace = useEditorStore.getState().photoSpace;
+              const minX = Math.min(...maskPoints.map(p => p.x));
+              const maxX = Math.max(...maskPoints.map(p => p.x));
+              const minY = Math.min(...maskPoints.map(p => p.y));
+              const maxY = Math.max(...maskPoints.map(p => p.y));
+              console.log('[MaskCanvasKonva] Finalizing mask', { 
+                id, 
+                ptsCount: maskPoints.length, 
+                maskType,
+                boundingBox: { minX, minY, maxX, maxY },
+                firstPoint: maskPoints[0],
+                lastPoint: maskPoints[maskPoints.length - 1],
+                photoSpace: { imgW: photoSpace.imgW, imgH: photoSpace.imgH },
+                imgFit: { originX: imgFit.originX, originY: imgFit.originY, imgScale: imgFit.imgScale },
+                hasNegative: minX < 0 || minY < 0,
+                extendsBeyond: maxX > (photoSpace.imgW || 0) || maxY > (photoSpace.imgH || 0)
+              });
               
               useMaskStore.setState(prev => {
                 // Final safety check inside setState callback to prevent race conditions
