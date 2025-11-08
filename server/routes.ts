@@ -1686,6 +1686,49 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Debug endpoint to inspect mask coordinates
+  app.get("/api/photos/:id/masks/debug", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      const photo = await storage.getPhoto(photoId);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      const masks = await storage.getMasksByPhoto(photoId);
+      const maskData = masks.map(mask => {
+        let pathData = mask.pathJson;
+        if (typeof pathData === 'string') {
+          pathData = JSON.parse(pathData);
+        }
+        const points = Array.isArray(pathData) ? pathData : (pathData?.points || []);
+        const coords = points.map((p: any) => ({ x: p.x || p[0] || 0, y: p.y || p[1] || 0 }));
+        const minX = Math.min(...coords.map(p => p.x));
+        const maxX = Math.max(...coords.map(p => p.x));
+        const minY = Math.min(...coords.map(p => p.y));
+        const maxY = Math.max(...coords.map(p => p.y));
+        
+        return {
+          id: mask.id,
+          pointCount: points.length,
+          firstPoint: coords[0],
+          lastPoint: coords[coords.length - 1],
+          boundingBox: { minX, maxX, minY, maxY },
+          hasNegative: minX < 0 || minY < 0,
+          extendsBeyond: maxX > photo.width || maxY > photo.height
+        };
+      });
+      
+      res.json({
+        photoId,
+        photoDimensions: { width: photo.width, height: photo.height },
+        masks: maskData
+      });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   // Notifications endpoints
   app.get("/api/notifications", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
