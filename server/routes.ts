@@ -1715,7 +1715,8 @@ export async function registerRoutes(app: Express): Promise<void> {
           lastPoint: coords[coords.length - 1],
           boundingBox: { minX, maxX, minY, maxY },
           hasNegative: minX < 0 || minY < 0,
-          extendsBeyond: maxX > photo.width || maxY > photo.height
+          extendsBeyond: maxX > photo.width || maxY > photo.height,
+          allPoints: coords.slice(0, 10) // First 10 points for detailed inspection
         };
       });
       
@@ -1726,6 +1727,58 @@ export async function registerRoutes(app: Express): Promise<void> {
       });
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Debug endpoint to force composite generation with detailed logging
+  app.get("/api/photos/:id/composite/debug", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      console.log(`[CompositeDebug] Endpoint called for photo: ${photoId}`);
+      
+      const photo = await storage.getPhoto(photoId);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+      
+      console.log(`[CompositeDebug] Photo found: ${photo.id}, dimensions: ${photo.width}x${photo.height}`);
+      
+      const masks = await storage.getMasksByPhoto(photoId);
+      console.log(`[CompositeDebug] Found ${masks.length} masks`);
+      
+      // Log detailed mask information
+      masks.forEach((mask, idx) => {
+        let pathData = mask.pathJson;
+        if (typeof pathData === 'string') {
+          pathData = JSON.parse(pathData);
+        }
+        if (Array.isArray(pathData) && pathData.length > 0) {
+          const coords = pathData.map((p: any) => ({ x: p.x || p[0] || 0, y: p.y || p[1] || 0 }));
+          const minX = Math.min(...coords.map(p => p.x));
+          const maxX = Math.max(...coords.map(p => p.x));
+          const minY = Math.min(...coords.map(p => p.y));
+          const maxY = Math.max(...coords.map(p => p.y));
+          console.log(`[CompositeDebug] Mask ${idx + 1}: ${coords.length} points, bbox: [${minX.toFixed(1)}, ${minY.toFixed(1)}] to [${maxX.toFixed(1)}, ${maxY.toFixed(1)}]`);
+          console.log(`[CompositeDebug]   First 3 points:`, coords.slice(0, 3));
+        }
+      });
+      
+      // Force regenerate composite
+      const generator = new CompositeGenerator();
+      const result = await generator.generateComposite(photoId, true);
+      
+      res.json({
+        ...result,
+        debug: {
+          photoId,
+          photoDimensions: { width: photo.width, height: photo.height },
+          maskCount: masks.length,
+          forceRegenerated: true
+        }
+      });
+    } catch (error) {
+      console.error('[CompositeDebug] Error:', error);
+      res.status(500).json({ message: (error as Error).message, stack: (error as Error).stack });
     }
   });
 
