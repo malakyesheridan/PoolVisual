@@ -343,18 +343,32 @@ async function initializeServer() {
   // Outbox processor should run if N8N_WEBHOOK_URL is set (even in SAFE_MODE)
   // It doesn't need Redis when using n8n webhooks
   const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+  console.log('[Server] Outbox processor check:', { 
+    n8nWebhookUrl: !!n8nWebhookUrl, 
+    SAFE_MODE, 
+    shouldStart: !!(n8nWebhookUrl || !SAFE_MODE) 
+  });
+  
   if (n8nWebhookUrl || !SAFE_MODE) {
     console.log('[Server] Starting outbox processor loop (runs every 5 seconds)');
     if (n8nWebhookUrl) {
-      console.log('[Server] Outbox processor will use n8n webhook (no Redis required)');
+      console.log('[Server] Outbox processor will use n8n webhook:', n8nWebhookUrl.substring(0, 50) + '...');
     }
-    setInterval(() => {
-      processOutboxEvents().catch((e) => console.error('[Outbox] loop error', e));
-    }, 5000);
     
-    // Also process immediately on startup to catch any pending events
+    // Process immediately on startup to catch any pending events
     console.log('[Server] Processing any pending outbox events on startup...');
-    processOutboxEvents().catch((e) => console.error('[Outbox] startup processing error', e));
+    processOutboxEvents().catch((e) => {
+      console.error('[Outbox] Startup processing error:', e);
+      console.error('[Outbox] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
+    });
+    
+    // Start interval loop
+    setInterval(() => {
+      processOutboxEvents().catch((e) => {
+        console.error('[Outbox] Loop error:', e);
+        console.error('[Outbox] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
+      });
+    }, 5000);
   } else {
     console.log('[Server] Outbox processor not started (N8N_WEBHOOK_URL not set and SAFE_MODE enabled)');
   }

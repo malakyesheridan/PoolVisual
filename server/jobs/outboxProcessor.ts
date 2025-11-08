@@ -94,6 +94,14 @@ async function generateMaskImage(
 export async function processOutboxEvents() {
   try {
     console.log('[Outbox] processOutboxEvents() called');
+    
+    // Check if we have N8N_WEBHOOK_URL configured
+    const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+    if (!n8nWebhookUrl) {
+      console.log('[Outbox] N8N_WEBHOOK_URL not set, skipping webhook processing');
+      return;
+    }
+    
     const events = await executeQuery(`
       WITH next_batch AS (
         SELECT id
