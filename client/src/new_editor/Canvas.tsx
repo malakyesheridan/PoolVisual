@@ -4,7 +4,7 @@ import { useEditorStore } from './store';
 import { Masking } from './Masking';
 // import { useMaskStore } from './Masking'; // Unused import
 import { MaskCanvasKonva } from '../canvas/konva-stage/MaskCanvasKonva';
-import { getImageFit } from '../maskcore/photoFit';
+import { calculateImageFit } from '../maskcore/photoFit';
 import { calculateCenterPan, calculateFitScale } from './utils';
 
 interface CanvasProps {
@@ -526,7 +526,16 @@ export function Canvas({ width, height }: CanvasProps) {
                 : activeTool
           }
           camera={photoSpace}
-          imgFit={getImageFit(imageRef, width, height, photoSpace.scale)}
+          imgFit={photoSpace?.imgW && photoSpace?.imgH 
+            ? calculateImageFit(
+                photoSpace.imgW,   // Use database dimensions (source of truth for masks)
+                photoSpace.imgH,   // Use database dimensions (source of truth for masks)
+                width,
+                height,
+                photoSpace.scale
+              )
+            : { originX: 0, originY: 0, imgScale: 1 }
+          }
           dpr={window.devicePixelRatio || 1}
         />
       </div>
