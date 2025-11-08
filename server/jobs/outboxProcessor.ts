@@ -183,6 +183,7 @@ export async function processOutboxEvents() {
             const n8nPayload = {
               jobId: payload.jobId,
               tenantId: payload.tenantId,
+              photoId: payload.photoId, // Include photoId for composite endpoint access
               imageUrl: absoluteImageUrl,
               masks: payload.masks || [],
               maskImageUrl: maskImageUrl, // Generated mask image URL for AI inpainting
