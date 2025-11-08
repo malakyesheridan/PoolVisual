@@ -1697,9 +1697,16 @@ export async function registerRoutes(app: Express): Promise<void> {
         return;
       }
       
-      // Generate actual composite (force regenerate if requested)
+      // Generate actual composite (force regenerate if requested or if code changed)
+      // Always force regenerate for now to ensure we use the latest code
       const generator = new CompositeGenerator();
-      const result = await generator.generateComposite(photoId, forceRegenerate);
+      const result = await generator.generateComposite(photoId, true); // Force regenerate to use new code
+      
+      console.log(`[GetComposite] Composite generated:`, {
+        status: result.status,
+        hasEdits: result.hasEdits,
+        afterUrl: result.afterUrl?.substring(0, 80) + '...'
+      });
       
       res.json(result);
     } catch (error) {
