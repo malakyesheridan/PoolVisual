@@ -62,6 +62,19 @@ router.post('/upload-url', authenticateSession, async (req, res) => {
 router.post('/', authenticateSession, async (req, res) => {
   try {
     const user = req.session.user;
+    
+    // Log the incoming request to debug mask issues
+    console.log('[Create Enhancement] Received request:', {
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      masksInBody: req.body?.masks ? req.body.masks.length : 0,
+      masksPreview: req.body?.masks ? req.body.masks.slice(0, 2).map((m: any) => ({
+        id: m.id,
+        pointsCount: m.points?.length || 0,
+        materialId: m.materialId
+      })) : []
+    });
+    
     const {
       tenantId,
       photoId,

@@ -52,12 +52,26 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
         maskDetails: allMasks.map(m => ({
           id: m.id,
           ptsCount: m.pts?.length || 0,
+          isVisible: m.isVisible !== false, // Default is true
           hasMaterialId: !!m.materialId
         }))
       });
       
+      // Filter masks: only include visible, valid masks with at least 3 points
       const masks = allMasks
-        .filter(mask => mask.pts && mask.pts.length >= 3) // Only include valid masks with at least 3 points
+        .filter(mask => {
+          // Only include visible masks (isVisible defaults to true, so check !== false)
+          if (mask.isVisible === false) {
+            console.log(`[JobsDrawer] Skipping hidden mask: ${mask.id}`);
+            return false;
+          }
+          // Only include masks with valid points
+          if (!mask.pts || mask.pts.length < 3) {
+            console.log(`[JobsDrawer] Skipping invalid mask: ${mask.id} (pts: ${mask.pts?.length || 0})`);
+            return false;
+          }
+          return true;
+        })
         .map(mask => ({
           id: mask.id,
           points: mask.pts.map(pt => ({
