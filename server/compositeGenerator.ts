@@ -346,8 +346,26 @@ export class CompositeGenerator {
         // Log first few points before scaling for debugging
         if (pathData.length > 0) {
           const firstPoint = pathData[0];
+          const lastPoint = pathData[pathData.length - 1];
           console.log(`[CompositeGenerator] First point before scaling:`, firstPoint);
+          console.log(`[CompositeGenerator] Last point before scaling:`, lastPoint);
           console.log(`[CompositeGenerator] Scale factors: scaleX=${scaleX.toFixed(4)}, scaleY=${scaleY.toFixed(4)}`);
+          
+          // Check for negative coordinates (indicates potential offset issue)
+          const hasNegative = pathData.some((pt: any) => {
+            const x = pt.x || pt[0] || 0;
+            const y = pt.y || pt[1] || 0;
+            return x < 0 || y < 0;
+          });
+          if (hasNegative) {
+            console.warn(`[CompositeGenerator] ⚠️ Mask ${mask.id} has negative coordinates! This may indicate an offset issue.`);
+            const negativePoints = pathData.filter((pt: any) => {
+              const x = pt.x || pt[0] || 0;
+              const y = pt.y || pt[1] || 0;
+              return x < 0 || y < 0;
+            });
+            console.warn(`[CompositeGenerator] Negative points:`, negativePoints.slice(0, 3));
+          }
         }
         
         points = pathData.map((point: any, index: number) => {
