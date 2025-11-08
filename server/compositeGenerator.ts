@@ -372,20 +372,38 @@ export class CompositeGenerator {
           if (typeof point === 'object' && point !== null) {
             const originalX = point.x || point[0] || 0;
             const originalY = point.y || point[1] || 0;
-            const scaledX = originalX * scaleX;
-            const scaledY = originalY * scaleY;
+            
+            // Scale coordinates
+            let scaledX = originalX * scaleX;
+            let scaledY = originalY * scaleY;
+            
+            // Clamp coordinates to canvas bounds to prevent negative or out-of-bounds values
+            // This handles cases where masks were drawn near edges with imgFit offsets
+            scaledX = Math.max(0, Math.min(scaledX, width - 1));
+            scaledY = Math.max(0, Math.min(scaledY, height - 1));
             
             // Log first and last points for debugging
             if (index === 0 || index === pathData.length - 1) {
-              console.log(`[CompositeGenerator] Point ${index}: (${originalX}, ${originalY}) -> (${scaledX.toFixed(2)}, ${scaledY.toFixed(2)})`);
+              const wasClamped = (originalX * scaleX !== scaledX) || (originalY * scaleY !== scaledY);
+              if (wasClamped) {
+                console.warn(`[CompositeGenerator] Point ${index} was clamped: (${originalX}, ${originalY}) -> (${scaledX.toFixed(2)}, ${scaledY.toFixed(2)}) [original scaled: (${(originalX * scaleX).toFixed(2)}, ${(originalY * scaleY).toFixed(2)})]`);
+              } else {
+                console.log(`[CompositeGenerator] Point ${index}: (${originalX}, ${originalY}) -> (${scaledX.toFixed(2)}, ${scaledY.toFixed(2)})`);
+              }
             }
             
             return { 
               x: scaledX, 
               y: scaledY,
               kind: point.kind || 'corner',
-              h1: point.h1 ? { x: point.h1.x * scaleX, y: point.h1.y * scaleY } : undefined,
-              h2: point.h2 ? { x: point.h2.x * scaleX, y: point.h2.y * scaleY } : undefined
+              h1: point.h1 ? { 
+                x: Math.max(0, Math.min(point.h1.x * scaleX, width - 1)), 
+                y: Math.max(0, Math.min(point.h1.y * scaleY, height - 1)) 
+              } : undefined,
+              h2: point.h2 ? { 
+                x: Math.max(0, Math.min(point.h2.x * scaleX, width - 1)), 
+                y: Math.max(0, Math.min(point.h2.y * scaleY, height - 1)) 
+              } : undefined
             };
           }
           return { x: 0, y: 0, kind: 'corner' };
