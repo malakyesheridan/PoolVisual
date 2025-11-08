@@ -184,36 +184,69 @@ export async function processOutboxEvents() {
             
             if (payload.photoId && payload.masks && payload.masks.length > 0) {
               try {
-                console.log(`[Outbox] Generating composite image for photo ${payload.photoId} with ${payload.masks.length} masks`);
-                const generator = new CompositeGenerator();
-                const compositeResult = await generator.generateComposite(payload.photoId, false);
-                
-                if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
-                  compositeImageUrl = compositeResult.afterUrl;
-                  console.log(`[Outbox] Composite image generated: ${compositeImageUrl}`);
-                } else {
-                  console.warn(`[Outbox] Composite generation failed or no edits: ${compositeResult.error || 'no edits'}`);
-                  // Fall back to original image if composite generation fails
+                // CRITICAL FIX: Fetch photo from database to get correct dimensions
+                const photo = await storage.getPhoto(payload.photoId);
+                if (!photo) {
+                  console.warn(`[Outbox] Photo ${payload.photoId} not found, using original image URL`);
                   compositeImageUrl = absoluteImageUrl;
+                } else {
+                  console.log(`[Outbox] Generating composite image for photo ${payload.photoId} with ${payload.masks.length} masks`);
+                  const generator = new CompositeGenerator();
+                  const compositeResult = await generator.generateComposite(payload.photoId, false);
+                  
+                  if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
+                    compositeImageUrl = compositeResult.afterUrl;
+                    console.log(`[Outbox] Composite image generated: ${compositeImageUrl}`);
+                  } else {
+                    console.warn(`[Outbox] Composite generation failed or no edits: ${compositeResult.error || 'no edits'}`);
+                    // Fall back to original image if composite generation fails
+                    compositeImageUrl = absoluteImageUrl;
+                  }
+                  
+                  // CRITICAL FIX: Use database dimensions for mask image generation
+                  // Client-provided dimensions (payload.width/height) may not match database
+                  console.log(`[Outbox] Generating mask image using database dimensions: ${photo.width}x${photo.height}`);
+                  maskImageUrl = await generateMaskImage(payload.masks, photo.width, photo.height);
+                  if (maskImageUrl) {
+                    console.log(`[Outbox] Mask image generated: ${maskImageUrl}`);
+                  } else {
+                    console.warn(`[Outbox] Failed to generate mask image, continuing without it`);
+                  }
                 }
               } catch (error: any) {
-                console.error(`[Outbox] Error generating composite image:`, error);
-                // Fall back to original image on error
+                console.error(`[Outbox] Error generating composite/mask image:`, error);
+                // Fallback to original image and client-provided dimensions
                 compositeImageUrl = absoluteImageUrl;
+                if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
+                  console.log(`[Outbox] Fallback: Using client-provided dimensions for mask image: ${payload.width}x${payload.height}`);
+                  maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                }
               }
             } else {
-              // No masks or no photoId, use original image
               compositeImageUrl = absoluteImageUrl;
-            }
-            
-            // Also generate mask image for AI inpainting (if needed for Seedream)
-            if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
-              console.log(`[Outbox] Generating mask image for ${payload.masks.length} masks`);
-              maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
-              if (maskImageUrl) {
-                console.log(`[Outbox] Mask image generated: ${maskImageUrl}`);
-              } else {
-                console.warn(`[Outbox] Failed to generate mask image, continuing without it`);
+              
+              // Generate mask image even if no composite (for AI inpainting)
+              if (payload.masks && payload.masks.length > 0) {
+                // Try to get dimensions from database if photoId available
+                if (payload.photoId) {
+                  try {
+                    const photo = await storage.getPhoto(payload.photoId);
+                    if (photo) {
+                      maskImageUrl = await generateMaskImage(payload.masks, photo.width, photo.height);
+                    } else if (payload.width && payload.height) {
+                      // Fallback to client-provided dimensions
+                      maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                    }
+                  } catch (error) {
+                    console.warn(`[Outbox] Failed to fetch photo for mask image, using client dimensions`);
+                    if (payload.width && payload.height) {
+                      maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                    }
+                  }
+                } else if (payload.width && payload.height) {
+                  // No photoId, use client-provided dimensions
+                  maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                }
               }
             }
             

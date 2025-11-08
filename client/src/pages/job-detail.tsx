@@ -970,12 +970,29 @@ export default function JobDetail() {
                       // Load image to get actual dimensions
                       const img = new Image();
                       img.onload = () => {
+                        // CRITICAL FIX: Use database dimensions from photo object (source of truth)
+                        // The originalPhoto object has width/height from database
+                        const dbWidth = originalPhoto?.width || previewPhoto.width;
+                        const dbHeight = originalPhoto?.height || previewPhoto.height;
+                        
+                        // Validate dimensions match (log warning if mismatch)
+                        const widthDiff = Math.abs(img.naturalWidth - dbWidth);
+                        const heightDiff = Math.abs(img.naturalHeight - dbHeight);
+                        if (widthDiff > 1 || heightDiff > 1) {
+                          console.warn(`[JobDetail] Dimension mismatch when loading photo for editing:`, {
+                            photoId: previewPhoto.id,
+                            database: `${dbWidth}x${dbHeight}`,
+                            natural: `${img.naturalWidth}x${img.naturalHeight}`,
+                            using: 'database dimensions'
+                          });
+                        }
+                        
                         dispatch({
                           type: 'SET_IMAGE',
                           payload: {
                             url: imageUrlToLoad, // Always use original, never composite
-                            width: img.naturalWidth,
-                            height: img.naturalHeight
+                            width: dbWidth,   // Use database dimensions
+                            height: dbHeight // Use database dimensions
                           }
                         });
                         

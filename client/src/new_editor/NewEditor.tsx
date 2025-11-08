@@ -476,12 +476,45 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           const img = new Image();
           img.onload = () => {
             console.log('[NewEditor] Setting image in store:', imageUrl);
+            
+            // CRITICAL FIX: Validate dimensions match database (source of truth for masks)
+            const dbWidth = photo.width;
+            const dbHeight = photo.height;
+            const naturalWidth = img.naturalWidth;
+            const naturalHeight = img.naturalHeight;
+            
+            // Check for dimension mismatch (allow 1px tolerance for rounding)
+            const widthDiff = Math.abs(naturalWidth - dbWidth);
+            const heightDiff = Math.abs(naturalHeight - dbHeight);
+            const hasMismatch = widthDiff > 1 || heightDiff > 1;
+            
+            if (hasMismatch) {
+              console.warn(`[NewEditor] ⚠️ Dimension mismatch detected:`, {
+                photoId: photoIdToUse,
+                database: `${dbWidth}x${dbHeight}`,
+                natural: `${naturalWidth}x${naturalHeight}`,
+                difference: {
+                  width: widthDiff,
+                  height: heightDiff
+                },
+                action: 'Using database dimensions for mask coordinate system'
+              });
+              
+              // TODO: Consider auto-fixing database if mismatch is significant (>10px)
+              // For now, use database dimensions as source of truth
+            }
+            
+            // Always use database dimensions for photoSpace to ensure mask coordinates match
+            // Masks were saved relative to database dimensions, so we must use those
             dispatch({
               type: 'SET_IMAGE',
               payload: {
                 url: imageUrl,
-                width: img.naturalWidth,
-                height: img.naturalHeight
+                width: dbWidth,   // Use database dimensions (source of truth)
+                height: dbHeight, // Use database dimensions (source of truth)
+                // Include natural dimensions for reference (optional, for Layer 4)
+                naturalWidth: naturalWidth,
+                naturalHeight: naturalHeight
               }
             });
             lastLoadedPhotoIdRef.current = photoIdToUse;

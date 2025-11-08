@@ -285,10 +285,22 @@ export const useEditorStore = create<EditorState & {
       }
       
       case 'SET_IMAGE': {
-        const { url, width, height } = action.payload;
+        const { url, width, height, naturalWidth, naturalHeight } = action.payload;
         if (!isFiniteNumber(width) || !isFiniteNumber(height)) {
           console.warn('[EditorStore] Invalid image dimensions ignored');
           return;
+        }
+        
+        // Log if natural dimensions differ from provided dimensions (for debugging)
+        if (naturalWidth && naturalHeight) {
+          const widthDiff = Math.abs(naturalWidth - width);
+          const heightDiff = Math.abs(naturalHeight - height);
+          if (widthDiff > 1 || heightDiff > 1) {
+            console.log('[EditorStore] Using database dimensions instead of natural dimensions:', {
+              database: `${width}x${height}`,
+              natural: `${naturalWidth}x${naturalHeight}`
+            });
+          }
         }
         
         set(state => ({

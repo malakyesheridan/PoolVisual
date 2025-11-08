@@ -207,6 +207,33 @@ router.post('/', authenticateSession, async (req, res) => {
       const callbackUrl = `${appUrl}/api/ai/enhancement/${jobId}/callback`;
       const callbackSecret = process.env.N8N_WEBHOOK_SECRET || 'secret';
 
+      // CRITICAL FIX: Fetch photo from database to get correct dimensions
+      // Client-provided dimensions may not match database
+      let finalWidth = width;
+      let finalHeight = height;
+
+      if (photoId) {
+        try {
+          const photo = await storage.getPhoto(photoId);
+          if (photo) {
+            finalWidth = photo.width;
+            finalHeight = photo.height;
+            
+            // Log warning if client provided different dimensions
+            if (width && height) {
+              const widthDiff = Math.abs(width - finalWidth);
+              const heightDiff = Math.abs(height - finalHeight);
+              if (widthDiff > 1 || heightDiff > 1) {
+                console.warn(`[AIEnhancement] Dimension mismatch: client provided ${width}x${height}, database ${finalWidth}x${finalHeight}. Using database dimensions.`);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(`[AIEnhancement] Failed to fetch photo ${photoId} for dimensions, using client-provided:`, error);
+          // Fallback to client-provided dimensions
+        }
+      }
+
       const outboxPayload = {
         jobId,
         tenantId,
@@ -217,8 +244,8 @@ router.post('/', authenticateSession, async (req, res) => {
         masks,
         options,
         calibration,
-        width,
-        height,
+        width: finalWidth,   // Use database dimensions
+        height: finalHeight, // Use database dimensions
         callbackUrl,
         callbackSecret,
         provider: 'comfy:inpaint',

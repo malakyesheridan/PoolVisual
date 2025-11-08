@@ -67,19 +67,25 @@ export function Canvas({ width, height }: CanvasProps) {
         
         // Initialize photo space when image loads - use Canvas props instead of containerSize
         if (img.naturalWidth > 0 && img.naturalHeight > 0 && width > 0 && height > 0) {
+          // CRITICAL FIX: Use photoSpace dimensions from store if already set (from SET_IMAGE)
+          // This ensures we use database dimensions (source of truth) instead of natural dimensions
+          const currentPhotoSpace = useEditorStore.getState().photoSpace;
+          const imgW = currentPhotoSpace.imgW || img.naturalWidth;
+          const imgH = currentPhotoSpace.imgH || img.naturalHeight;
+          
           // Auto-fit image to screen on initial load for better UX
           // This ensures large images are visible without requiring user interaction
           const finalScale = calculateFitScale(
-            img.naturalWidth,
-            img.naturalHeight,
+            imgW,
+            imgH,
             width,
             height,
             0.98 // 98% padding to leave some margin
           );
 
           const { panX, panY } = calculateCenterPan(
-            img.naturalWidth,
-            img.naturalHeight,
+            imgW,
+            imgH,
             width,
             height,
             finalScale
@@ -87,8 +93,10 @@ export function Canvas({ width, height }: CanvasProps) {
 
           console.log('[Canvas] Initializing photo space:', { 
             finalScale, panX, panY, 
-            imgW: img.naturalWidth, imgH: img.naturalHeight,
-            canvasW: width, canvasH: height 
+            imgW, imgH,
+            naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
+            canvasW: width, canvasH: height,
+            usingDatabaseDimensions: currentPhotoSpace.imgW !== undefined
           });
           dispatch({
             type: 'SET_PHOTO_SPACE',
@@ -96,8 +104,9 @@ export function Canvas({ width, height }: CanvasProps) {
               scale: finalScale,
               panX,
               panY,
-              imgW: img.naturalWidth,
-              imgH: img.naturalHeight
+              // Only set imgW/imgH if not already set (preserve database dimensions from SET_IMAGE)
+              ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
+              ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
             }
           });
         } else {

@@ -619,19 +619,40 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "No file buffer or path available" });
       }
 
-      // Derive dimensions if not provided by client
-      let finalWidth: number | null = width ? parseInt(width) : null;
-      let finalHeight: number | null = height ? parseInt(height) : null;
+      // CRITICAL FIX: Always use sharp metadata for dimensions (source of truth)
+      // Client-provided dimensions may not match actual image file (EXIF rotation, browser processing, etc.)
+      let finalWidth: number | null = null;
+      let finalHeight: number | null = null;
 
-      if (!finalWidth || !finalHeight || Number.isNaN(finalWidth) || Number.isNaN(finalHeight)) {
-        try {
-          const meta = await sharp(imageBuffer).metadata();
-          if (meta.width && meta.height) {
-            finalWidth = meta.width;
-            finalHeight = meta.height;
+      try {
+        const meta = await sharp(imageBuffer).metadata();
+        if (meta.width && meta.height) {
+          finalWidth = meta.width;
+          finalHeight = meta.height;
+          
+          // Log warning if client provided different dimensions
+          if (width && height) {
+            const clientWidth = parseInt(width);
+            const clientHeight = parseInt(height);
+            if (!Number.isNaN(clientWidth) && !Number.isNaN(clientHeight)) {
+              const widthDiff = Math.abs(clientWidth - finalWidth);
+              const heightDiff = Math.abs(clientHeight - finalHeight);
+              if (widthDiff > 1 || heightDiff > 1) {
+                console.warn(`[PhotoUpload] Dimension mismatch: client provided ${clientWidth}x${clientHeight}, actual ${finalWidth}x${finalHeight}. Using actual dimensions.`);
+              }
+            }
           }
-        } catch (e) {
-          console.warn('Failed to read image metadata with sharp:', (e as Error).message);
+        }
+      } catch (e) {
+        console.error('Failed to read image metadata with sharp:', (e as Error).message);
+        // Fallback to client-provided dimensions only if sharp fails
+        if (width && height) {
+          finalWidth = parseInt(width);
+          finalHeight = parseInt(height);
+          if (Number.isNaN(finalWidth) || Number.isNaN(finalHeight)) {
+            finalWidth = null;
+            finalHeight = null;
+          }
         }
       }
 

@@ -191,7 +191,7 @@ export interface EditorState {
 
 export type EditorAction = 
   | { type: 'SET_PHOTO_SPACE'; payload: Partial<PhotoSpace> }
-  | { type: 'SET_IMAGE'; payload: { url: string; width: number; height: number } }
+  | { type: 'SET_IMAGE'; payload: { url: string; width: number; height: number; naturalWidth?: number; naturalHeight?: number } }
   | { type: 'SET_STATE'; payload: EditorState['state'] }
   | { type: 'SET_JOB_CONTEXT'; payload: { jobId: string; photoId: string } }
   | { type: 'SET_ACTIVE_TOOL'; payload: EditorState['activeTool'] }
