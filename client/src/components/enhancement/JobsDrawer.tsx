@@ -87,15 +87,44 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
             console.warn(`[JobsDrawer] Failed to parse pathJson for mask ${m.id}:`, e);
           }
           
+          // CRITICAL FIX: Extract materialSettings from calcMetaJson
+          let materialSettings: any = undefined;
+          if (m.calcMetaJson) {
+            try {
+              materialSettings = typeof m.calcMetaJson === 'string' 
+                ? JSON.parse(m.calcMetaJson) 
+                : m.calcMetaJson;
+              console.log(`[JobsDrawer] Extracted materialSettings from calcMetaJson for mask ${m.id}:`, {
+                hasTextureScale: !!materialSettings.textureScale,
+                hasIntensity: !!materialSettings.intensity,
+                textureScale: materialSettings.textureScale,
+                intensity: materialSettings.intensity
+              });
+            } catch (e) {
+              console.warn(`[JobsDrawer] Failed to parse calcMetaJson for mask ${m.id}:`, e);
+            }
+          } else {
+            console.log(`[JobsDrawer] Mask ${m.id} has no calcMetaJson (no material settings)`);
+          }
+          
           return {
             id: m.id,
             pts: points,
             materialId: m.materialId || undefined,
+            materialSettings: materialSettings, // Include materialSettings from database
             isVisible: true, // Database masks are always visible
             zIndex: m.zIndex || 0
           };
         }),
-        ...unsavedLocalMasks // Include any unsaved local masks
+        ...unsavedLocalMasks.map(m => ({
+          // Preserve materialSettings from local masks
+          id: m.id,
+          pts: m.pts || [],
+          materialId: m.materialId || undefined,
+          materialSettings: m.materialSettings || undefined, // Preserve from local store
+          isVisible: m.isVisible !== false,
+          zIndex: m.zIndex || 0
+        }))
       ];
       
       console.log(`[JobsDrawer] Total masks (${dbMasks.length} from DB + ${unsavedLocalMasks.length} unsaved):`, {
@@ -106,6 +135,12 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
           ptsCount: m.pts?.length || 0,
           isVisible: m.isVisible !== false,
           hasMaterialId: !!m.materialId,
+          hasMaterialSettings: !!m.materialSettings,
+          materialSettings: m.materialSettings ? {
+            textureScale: m.materialSettings.textureScale,
+            intensity: m.materialSettings.intensity,
+            opacity: m.materialSettings.opacity
+          } : null,
           source: dbMaskIds.has(m.id) ? 'database' : 'local'
         }))
       });
@@ -132,13 +167,20 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
             y: pt.y
             // Note: Server only needs x, y for cache key - not h1, h2, or kind
           })),
-          materialId: mask.materialId || undefined
+          materialId: mask.materialId || undefined,
+          materialSettings: mask.materialSettings || undefined // CRITICAL: Include materialSettings in payload
         }));
       
       console.log(`[JobsDrawer] Extracted ${masks.length} masks for enhancement job:`, masks.map(m => ({
         id: m.id,
         pointsCount: m.points.length,
-        materialId: m.materialId
+        materialId: m.materialId,
+        hasMaterialSettings: !!m.materialSettings,
+        materialSettings: m.materialSettings ? {
+          textureScale: m.materialSettings.textureScale,
+          intensity: m.materialSettings.intensity,
+          opacity: m.materialSettings.opacity
+        } : null
       })));
       
       const payload = {

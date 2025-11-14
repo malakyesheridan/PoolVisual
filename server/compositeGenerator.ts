@@ -43,20 +43,38 @@ export class CompositeGenerator {
       if (providedMasks && providedMasks.length > 0) {
         console.log(`[CompositeGenerator] Using ${providedMasks.length} masks from payload (not yet saved to database)`);
         // Convert payload masks to database format
-        masks = providedMasks.map(m => ({
-          id: m.id,
-          photoId: photoId,
-          type: 'area' as const,
-          pathJson: m.points, // pathJson can be array or JSON string - renderComposite handles both
-          materialId: m.materialId || null,
-          calcMetaJson: m.materialSettings ? (typeof m.materialSettings === 'string' ? m.materialSettings : JSON.stringify(m.materialSettings)) : null, // Preserve materialSettings from payload
-          depthLevel: 0,
-          elevationM: '0',
-          zIndex: 0,
-          isStepped: false,
-          createdBy: '', // Will be set if needed
-          createdAt: new Date()
-        }));
+        masks = providedMasks.map(m => {
+          // CRITICAL: Preserve materialSettings from payload
+          const calcMetaJson = m.materialSettings 
+            ? (typeof m.materialSettings === 'string' ? m.materialSettings : JSON.stringify(m.materialSettings))
+            : null;
+          
+          console.log(`[CompositeGenerator] Processing payload mask ${m.id}:`, {
+            hasMaterialId: !!m.materialId,
+            hasMaterialSettings: !!m.materialSettings,
+            materialSettings: m.materialSettings ? {
+              textureScale: m.materialSettings.textureScale,
+              intensity: m.materialSettings.intensity,
+              opacity: m.materialSettings.opacity
+            } : null,
+            calcMetaJson: calcMetaJson ? calcMetaJson.substring(0, 100) + '...' : null
+          });
+          
+          return {
+            id: m.id,
+            photoId: photoId,
+            type: 'area' as const,
+            pathJson: m.points, // pathJson can be array or JSON string - renderComposite handles both
+            materialId: m.materialId || null,
+            calcMetaJson: calcMetaJson, // Preserve materialSettings from payload
+            depthLevel: 0,
+            elevationM: '0',
+            zIndex: 0,
+            isStepped: false,
+            createdBy: '', // Will be set if needed
+            createdAt: new Date()
+          };
+        });
       } else {
         masks = await storage.getMasksByPhoto(photoId);
         console.log(`[CompositeGenerator] Photo ${photoId}: Found ${masks.length} masks in database`);
@@ -603,10 +621,20 @@ export class CompositeGenerator {
             materialSettings = typeof mask.calcMetaJson === 'string' 
               ? JSON.parse(mask.calcMetaJson) 
               : mask.calcMetaJson;
-            console.log(`[CompositeGenerator] Parsed material settings for mask ${mask.id}:`, materialSettings);
+            console.log(`[CompositeGenerator] ✅ Parsed material settings for mask ${mask.id}:`, {
+              textureScale: materialSettings.textureScale,
+              intensity: materialSettings.intensity,
+              opacity: materialSettings.opacity,
+              hasTextureScale: !!materialSettings.textureScale,
+              hasIntensity: !!materialSettings.intensity,
+              fullSettings: materialSettings
+            });
           } catch (parseError) {
-            console.log(`[CompositeGenerator] Failed to parse calcMetaJson for mask ${mask.id}:`, parseError);
+            console.warn(`[CompositeGenerator] ⚠️ Failed to parse calcMetaJson for mask ${mask.id}:`, parseError);
+            console.warn(`[CompositeGenerator] calcMetaJson value:`, mask.calcMetaJson);
           }
+        } else {
+          console.log(`[CompositeGenerator] ⚠️ Mask ${mask.id} has no calcMetaJson - using default material settings`);
         }
         
         // CRITICAL FIX: Match client-side texture scaling exactly
@@ -617,6 +645,13 @@ export class CompositeGenerator {
         // Get textureScale from materialSettings (100 = 1.0x multiplier)
         const textureScale = materialSettings.textureScale ?? 100;
         const userScale = textureScale / 100;  // Convert to multiplier: 100 = 1.0x, 200 = 2.0x
+        
+        console.log(`[CompositeGenerator] Texture scale calculation for mask ${mask.id}:`, {
+          materialSettingsTextureScale: materialSettings.textureScale,
+          finalTextureScale: textureScale,
+          userScale: userScale,
+          source: materialSettings.textureScale !== undefined ? 'materialSettings' : 'default (100)'
+        });
         
         // Calculate repeatPx exactly like client
         let repeatPx: number;

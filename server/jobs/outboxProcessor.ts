@@ -141,7 +141,13 @@ export async function processOutboxEvents() {
           masks: payload.masks?.map((m: any) => ({
             id: m.id,
             pointsCount: m.points?.length || 0,
-            materialId: m.materialId
+            materialId: m.materialId,
+            hasMaterialSettings: !!m.materialSettings,
+            materialSettings: m.materialSettings ? {
+              textureScale: m.materialSettings.textureScale,
+              intensity: m.materialSettings.intensity,
+              opacity: m.materialSettings.opacity
+            } : null
           })) || []
         });
         
@@ -205,10 +211,15 @@ export async function processOutboxEvents() {
                     height: photo.height,
                     originalUrl: photo.originalUrl?.substring(0, 80) + '...'
                   });
-                  console.log(`[Outbox] Masks to apply:`, payload.masks.map(m => ({
+                  console.log(`[Outbox] Masks to apply:`, payload.masks.map((m: any) => ({
                     id: m.id,
                     pointsCount: m.points?.length || 0,
-                    materialId: m.materialId
+                    materialId: m.materialId,
+                    hasMaterialSettings: !!m.materialSettings,
+                    materialSettings: m.materialSettings ? {
+                      textureScale: m.materialSettings.textureScale,
+                      intensity: m.materialSettings.intensity
+                    } : null
                   })));
                   
                   // OPTIMIZATION: Generate composite and mask image in parallel to speed up webhook delivery
@@ -378,7 +389,12 @@ export async function processOutboxEvents() {
               masks: n8nPayload.masks.map((m: any) => ({
                 id: m.id,
                 pointsCount: m.points?.length || 0,
-                materialId: m.materialId
+                materialId: m.materialId,
+                hasMaterialSettings: !!m.materialSettings,
+                materialSettings: m.materialSettings ? {
+                  textureScale: m.materialSettings.textureScale,
+                  intensity: m.materialSettings.intensity
+                } : null
               })),
               hasCallbackUrl: !!n8nPayload.callbackUrl,
               width: n8nPayload.width,
