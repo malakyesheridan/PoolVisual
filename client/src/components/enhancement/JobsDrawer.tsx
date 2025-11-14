@@ -247,7 +247,7 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
         })),
         imageUrl: payload.imageUrl.substring(0, 80) + '...',
         mode: payload.options.mode
-      });
+      }, null, 2));
 
       const { jobId } = await createJob(payload);
       upsertJob({ 
