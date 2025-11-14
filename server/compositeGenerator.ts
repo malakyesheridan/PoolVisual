@@ -41,7 +41,14 @@ export class CompositeGenerator {
       // If masks are provided directly (e.g., from enhancement job payload), use those
       // Otherwise, load from database
       if (providedMasks && providedMasks.length > 0) {
-        console.log(`[CompositeGenerator] Using ${providedMasks.length} masks from payload (not yet saved to database)`);
+        console.log(`[CompositeGenerator] ✅ Using ${providedMasks.length} masks from payload (not yet saved to database)`);
+        console.log(`[CompositeGenerator] Provided masks summary:`, providedMasks.map(m => ({
+          id: m.id,
+          pointsCount: m.points?.length || 0,
+          hasMaterialId: !!m.materialId,
+          hasMaterialSettings: !!m.materialSettings,
+          materialSettingsKeys: m.materialSettings ? Object.keys(m.materialSettings) : []
+        })));
         // Convert payload masks to database format
         masks = providedMasks.map(m => {
           // CRITICAL: Preserve materialSettings from payload
@@ -55,12 +62,14 @@ export class CompositeGenerator {
             materialSettings: m.materialSettings ? {
               textureScale: m.materialSettings.textureScale,
               intensity: m.materialSettings.intensity,
-              opacity: m.materialSettings.opacity
+              opacity: m.materialSettings.opacity,
+              fullKeys: Object.keys(m.materialSettings)
             } : null,
-            calcMetaJson: calcMetaJson ? calcMetaJson.substring(0, 100) + '...' : null
+            calcMetaJson: calcMetaJson ? calcMetaJson.substring(0, 150) + '...' : null,
+            calcMetaJsonLength: calcMetaJson ? calcMetaJson.length : 0
           });
           
-          return {
+          const convertedMask = {
             id: m.id,
             photoId: photoId,
             type: 'area' as const,
@@ -74,10 +83,28 @@ export class CompositeGenerator {
             createdBy: '', // Will be set if needed
             createdAt: new Date()
           };
+          
+          // Verify calcMetaJson was set correctly
+          console.log(`[CompositeGenerator] ✅ Converted mask ${m.id} - calcMetaJson set:`, !!convertedMask.calcMetaJson);
+          
+          return convertedMask;
         });
       } else {
         masks = await storage.getMasksByPhoto(photoId);
         console.log(`[CompositeGenerator] Photo ${photoId}: Found ${masks.length} masks in database`);
+        // Log calcMetaJson for each mask from database
+        masks.forEach(m => {
+          console.log(`[CompositeGenerator] Database mask ${m.id}:`, {
+            hasMaterialId: !!m.materialId,
+            hasCalcMetaJson: !!m.calcMetaJson,
+            calcMetaJsonType: m.calcMetaJson ? typeof m.calcMetaJson : 'null',
+            calcMetaJsonPreview: m.calcMetaJson 
+              ? (typeof m.calcMetaJson === 'string' 
+                  ? m.calcMetaJson.substring(0, 100) 
+                  : JSON.stringify(m.calcMetaJson).substring(0, 100))
+              : 'null'
+          });
+        });
       }
       
       if (masks.length === 0) {

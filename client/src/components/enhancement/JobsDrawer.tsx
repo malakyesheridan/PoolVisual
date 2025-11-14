@@ -65,11 +65,36 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
       const { apiClient } = await import('../../lib/api-client');
       const dbMasks = await apiClient.getMasks(effectivePhotoId);
       console.log(`[JobsDrawer] Loaded ${dbMasks.length} masks from database for photo ${effectivePhotoId}`);
+      // Log raw database response to verify calcMetaJson is present
+      dbMasks.forEach(m => {
+        console.log(`[JobsDrawer] Raw DB mask ${m.id}:`, {
+          hasMaterialId: !!m.materialId,
+          hasCalcMetaJson: !!m.calcMetaJson,
+          calcMetaJsonType: m.calcMetaJson ? typeof m.calcMetaJson : 'null',
+          calcMetaJsonValue: m.calcMetaJson 
+            ? (typeof m.calcMetaJson === 'string' 
+                ? m.calcMetaJson.substring(0, 150) 
+                : JSON.stringify(m.calcMetaJson).substring(0, 150))
+            : 'null'
+        });
+      });
       
       // Also check local store for any unsaved masks (fallback)
       const maskStore = useMaskStore.getState();
       const localMasks = Object.values(maskStore.masks || {});
       console.log(`[JobsDrawer] Local store has ${localMasks.length} masks`);
+      // Log materialSettings from local masks
+      localMasks.forEach(m => {
+        console.log(`[JobsDrawer] Local mask ${m.id}:`, {
+          hasMaterialId: !!m.materialId,
+          hasMaterialSettings: !!m.materialSettings,
+          materialSettings: m.materialSettings ? {
+            textureScale: m.materialSettings.textureScale,
+            intensity: m.materialSettings.intensity,
+            opacity: m.materialSettings.opacity
+          } : null
+        });
+      });
       
       // Combine database masks with any unsaved local masks (by ID to avoid duplicates)
       const dbMaskIds = new Set(dbMasks.map(m => m.id));
