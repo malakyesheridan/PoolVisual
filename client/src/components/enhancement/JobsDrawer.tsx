@@ -204,9 +204,20 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
         materialSettings: m.materialSettings ? {
           textureScale: m.materialSettings.textureScale,
           intensity: m.materialSettings.intensity,
-          opacity: m.materialSettings.opacity
+          opacity: m.materialSettings.opacity,
+          fullKeys: Object.keys(m.materialSettings)
         } : null
       })));
+      
+      // CRITICAL: Log the actual payload being sent to verify materialSettings are included
+      const payloadMasks = masks.map(mask => ({
+        id: mask.id,
+        points: mask.points.map(pt => ({ x: pt.x, y: pt.y })),
+        materialId: mask.materialId || undefined,
+        materialSettings: mask.materialSettings || undefined
+      }));
+      
+      console.log(`[JobsDrawer] 🔍 FINAL PAYLOAD MASKS (being sent to API):`, JSON.stringify(payloadMasks, null, 2));
       
       const payload = {
         tenantId: '123e4567-e89b-12d3-a456-426614174000',
@@ -224,12 +235,15 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
         idempotencyKey: `enhancement-${Date.now()}`
       };
 
-      console.log(`[JobsDrawer] Sending payload to API:`, {
+      // CRITICAL: Log full payload with materialSettings to verify they're included
+      console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify({
         masksCount: payload.masks.length,
         masks: payload.masks.map(m => ({
           id: m.id,
           pointsCount: m.points.length,
-          materialId: m.materialId
+          materialId: m.materialId,
+          hasMaterialSettings: !!m.materialSettings,
+          materialSettings: m.materialSettings
         })),
         imageUrl: payload.imageUrl.substring(0, 80) + '...',
         mode: payload.options.mode
