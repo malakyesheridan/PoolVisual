@@ -213,10 +213,13 @@ export async function processOutboxEvents() {
                   
                   // OPTIMIZATION: Generate composite and mask image in parallel to speed up webhook delivery
                   const generator = new CompositeGenerator();
+                  // Pass calibration if available (from payload or photo metadata)
+                  const photoPxPerMeter = payload.calibration || undefined;
                   const compositePromise = generator.generateComposite(
                     payload.photoId, 
                     true,
-                    payload.masks // Pass masks directly from payload
+                    payload.masks, // Pass masks directly from payload
+                    photoPxPerMeter // Pass calibration for accurate texture scaling
                   );
                   
                   const maskImagePromise = generateMaskImage(payload.masks, photo.width, photo.height);

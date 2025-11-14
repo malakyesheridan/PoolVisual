@@ -19,6 +19,9 @@ export type Job = {
   variants?: Array<{ id: string; url: string; rank?: number }>;
   error_message?: string | null;
   updated_at?: string;
+  created_at?: string;
+  completed_at?: string;
+  mode?: 'add_pool' | 'add_decoration'; // Enhancement type
 };
 
 const BASE = '/api/ai/enhancement';

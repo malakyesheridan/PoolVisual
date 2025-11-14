@@ -24,7 +24,8 @@ export class CompositeGenerator {
   async generateComposite(
     photoId: string, 
     forceRegenerate: boolean = false,
-    providedMasks?: Array<{ id: string; points: Array<{ x: number; y: number }>; materialId?: string }>
+    providedMasks?: Array<{ id: string; points: Array<{ x: number; y: number }>; materialId?: string; materialSettings?: any }>,
+    photoPxPerMeter?: number  // Optional calibration (pixels per meter)
   ): Promise<CompositeResult> {
     try {
       console.log(`[CompositeGenerator] Starting composite generation for photo: ${photoId}`);
@@ -48,7 +49,7 @@ export class CompositeGenerator {
           type: 'area' as const,
           pathJson: m.points, // pathJson can be array or JSON string - renderComposite handles both
           materialId: m.materialId || null,
-          calcMetaJson: null,
+          calcMetaJson: m.materialSettings ? (typeof m.materialSettings === 'string' ? m.materialSettings : JSON.stringify(m.materialSettings)) : null, // Preserve materialSettings from payload
           depthLevel: 0,
           elevationM: '0',
           zIndex: 0,
@@ -143,8 +144,8 @@ export class CompositeGenerator {
         }
       }
 
-      // Generate composite
-      const compositeUrl = await this.renderComposite(photo.originalUrl, masks, photo.width, photo.height);
+      // Generate composite (pass calibration if available)
+      const compositeUrl = await this.renderComposite(photo.originalUrl, masks, photo.width, photo.height, photoPxPerMeter);
       console.log(`[CompositeGenerator] Composite generated successfully: ${compositeUrl}`);
       
       // Store composite URL in database
@@ -175,7 +176,8 @@ export class CompositeGenerator {
     originalUrl: string, 
     masks: Mask[], 
     originalWidth: number,
-    originalHeight: number
+    originalHeight: number,
+    photoPxPerMeter?: number  // Optional calibration (pixels per meter)
   ): Promise<string> {
     console.log(`[CompositeGenerator] Loading original image: ${originalUrl}`);
     console.log(`[CompositeGenerator] Database dimensions: ${originalWidth}x${originalHeight}`);
@@ -252,10 +254,24 @@ export class CompositeGenerator {
     // Preload all material textures in parallel for better performance
     const textureLoadStart = Date.now();
     const texturePromises = materialResults
-      .filter(r => r.material && r.material.textureUrl)
+      .filter(r => {
+        // Support multiple texture URL field names (textureUrl, texture_url, albedoURL)
+        const material = r.material;
+        if (!material) return false;
+        const textureUrl = (material as any).textureUrl || (material as any).texture_url || (material as any).albedoURL;
+        return !!textureUrl;
+      })
       .map(async (r) => {
         try {
-          const textureImage = await this.loadImage(r.material!.textureUrl!);
+          // Support multiple texture URL field names
+          const material = r.material!;
+          const textureUrl = (material as any).textureUrl || (material as any).texture_url || (material as any).albedoURL;
+          if (!textureUrl) {
+            console.warn(`[CompositeGenerator] No texture URL found for material ${material.id}`);
+            return { maskId: r.maskId, textureImage: null };
+          }
+          console.log(`[CompositeGenerator] Loading texture for mask ${r.maskId} from: ${textureUrl.substring(0, 80)}...`);
+          const textureImage = await this.loadImage(textureUrl);
           return { maskId: r.maskId, textureImage };
         } catch (error) {
           console.warn(`[CompositeGenerator] Failed to load texture for mask ${r.maskId}:`, error);
@@ -290,7 +306,8 @@ export class CompositeGenerator {
             scaleX,
             scaleY,
             material,
-            textureImage || undefined
+            textureImage || undefined,
+            photoPxPerMeter  // Pass calibration for accurate texture scaling
           );
         } else {
           console.warn(`[CompositeGenerator] ⚠️ Material not found in map for mask ${mask.id} (expected materialId: ${mask.materialId})`);
@@ -407,7 +424,8 @@ export class CompositeGenerator {
     scaleX: number,
     scaleY: number,
     material?: Material | null,
-    preloadedTextureImage?: any
+    preloadedTextureImage?: any,
+    photoPxPerMeter?: number  // Optional calibration (pixels per meter)
   ): Promise<void> {
     try {
       console.log(`[CompositeGenerator] Processing mask ${mask.id}, pathJson type:`, typeof mask.pathJson);
@@ -566,9 +584,11 @@ export class CompositeGenerator {
       }
       
       // Load and apply material with improved scaling
-      if (mask.materialId && material && material.textureUrl) {
+      // Support multiple texture URL field names (textureUrl, texture_url, albedoURL)
+      const textureUrl = material ? ((material as any).textureUrl || (material as any).texture_url || (material as any).albedoURL) : null;
+      if (mask.materialId && material && textureUrl) {
         // Use preloaded texture if available, otherwise load it
-        const materialImage = preloadedTextureImage || await this.loadImage(material.textureUrl);
+        const materialImage = preloadedTextureImage || await this.loadImage(textureUrl);
         if (!materialImage) {
           console.log(`[CompositeGenerator] Failed to load material texture for mask ${mask.id}`);
           ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
@@ -589,26 +609,118 @@ export class CompositeGenerator {
           }
         }
         
-        // Apply improved texture scaling similar to client-side
-        // Check for both textureScale and tileScale (textureScale is the correct field name)
-        const tileScale = materialSettings.textureScale || materialSettings.tileScale || 1.0;
-        console.log(`[CompositeGenerator] Using tileScale: ${tileScale} for mask ${mask.id}`);
-        const pattern = this.createScaledPattern(ctx, materialImage, tileScale, width, height, material);
+        // CRITICAL FIX: Match client-side texture scaling exactly
+        // Client uses: patternScaleFor(img, repeatPx) -> { x: repeat / img.width, y: repeat / img.height }
+        // Then: sx = (base.x * userScale) / stageScale where userScale = (textureScale ?? 100) / 100
+        // Server: We're at 1:1 scale, so no stageScale division needed
         
-        if (pattern) {
-          ctx.fillStyle = pattern;
-          ctx.fill();
-          console.log(`[CompositeGenerator] Scaled material pattern applied to mask ${mask.id} with tileScale: ${tileScale}`);
-          
-          // Apply basic underwater effects if settings exist
-          if (materialSettings.underwaterRealism) {
-            this.applyBasicUnderwaterEffects(ctx, materialSettings.underwaterRealism, points);
-          }
+        // Get textureScale from materialSettings (100 = 1.0x multiplier)
+        const textureScale = materialSettings.textureScale ?? 100;
+        const userScale = textureScale / 100;  // Convert to multiplier: 100 = 1.0x, 200 = 2.0x
+        
+        // Calculate repeatPx exactly like client
+        let repeatPx: number;
+        const physicalRepeatM = material?.physicalRepeatM ? parseFloat(material.physicalRepeatM.toString()) : undefined;
+        if (photoPxPerMeter && physicalRepeatM) {
+          repeatPx = Math.max(32, Math.min(2048, photoPxPerMeter * physicalRepeatM));
         } else {
-          console.log(`[CompositeGenerator] Failed to create scaled pattern for material ${mask.materialId}`);
-          // Fallback to solid color
+          // Fallback: same as client (256 * defaultTileScale)
+          const defaultTileScale = material?.defaultTileScale ?? 1;
+          repeatPx = Math.max(32, Math.min(1024, Math.floor(256 * defaultTileScale)));
+        }
+        
+        // Calculate base pattern scale (exactly like client patternScaleFor)
+        const baseX = repeatPx / materialImage.width;
+        const baseY = repeatPx / materialImage.height;
+        
+        // Apply user texture scale multiplier (no stageScale division on server)
+        const finalScaleX = baseX * userScale;
+        const finalScaleY = baseY * userScale;
+        
+        console.log(`[CompositeGenerator] Texture scaling for mask ${mask.id}:`, {
+          textureScale,
+          userScale,
+          repeatPx,
+          imgSize: `${materialImage.width}x${materialImage.height}`,
+          base: { x: baseX.toFixed(4), y: baseY.toFixed(4) },
+          final: { x: finalScaleX.toFixed(4), y: finalScaleY.toFixed(4) },
+          photoPxPerMeter: photoPxPerMeter || 'default',
+          physicalRepeatM: physicalRepeatM || 'default'
+        });
+        
+        // Create scaled pattern canvas (Node.js canvas doesn't support pattern transforms)
+        // The pattern should repeat every `repeatPx * userScale` pixels
+        // So we create a canvas of that size and draw the image scaled to fit
+        const patternRepeatSizeX = repeatPx * userScale;
+        const patternRepeatSizeY = repeatPx * userScale;
+        
+        // Ensure minimum size for pattern canvas
+        const patternCanvasWidth = Math.max(16, Math.floor(patternRepeatSizeX));
+        const patternCanvasHeight = Math.max(16, Math.floor(patternRepeatSizeY));
+        
+        const patternCanvas = createCanvas(patternCanvasWidth, patternCanvasHeight);
+        const patternCtx = patternCanvas.getContext('2d');
+        
+        if (!patternCtx) {
+          console.log(`[CompositeGenerator] Failed to get 2D context for pattern canvas`);
           ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
           ctx.fill();
+          return;
+        }
+        
+        // Draw the material image scaled to fit the pattern canvas
+        // This creates a pattern that repeats at the desired size
+        patternCtx.drawImage(materialImage, 0, 0, patternCanvasWidth, patternCanvasHeight);
+        
+        // Create pattern from the scaled canvas
+        const pattern = ctx.createPattern(patternCanvas, 'repeat');
+        if (!pattern) {
+          console.log(`[CompositeGenerator] Failed to create pattern for material ${mask.materialId}`);
+          ctx.fillStyle = 'rgba(0, 170, 0, 0.25)';
+          ctx.fill();
+          return;
+        }
+        
+        ctx.fillStyle = pattern;
+        
+        // Apply intensity/contrast filters (matching client)
+        const intensity = materialSettings.intensity ?? 50;
+        if (intensity !== 50) {
+          const contrast = (intensity - 50) / 50;  // range -1..+1
+          const brightness = (intensity - 50) / 200;  // small adjustment
+          
+          // Fill with pattern first
+          ctx.fill();
+          
+          // Apply brightness adjustment
+          if (Math.abs(brightness) > 0.001) {
+            ctx.globalCompositeOperation = brightness > 0 ? 'screen' : 'multiply';
+            ctx.globalAlpha = Math.abs(brightness) * 0.5;
+            ctx.fillStyle = brightness > 0 ? 'rgba(255,255,255,1)' : 'rgba(0,0,0,1)';
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
+          }
+          
+          // Apply contrast adjustment
+          if (Math.abs(contrast) > 0.01) {
+            ctx.globalCompositeOperation = 'multiply';
+            ctx.globalAlpha = Math.abs(contrast) * 0.3;
+            ctx.fillStyle = contrast > 0 ? 'rgba(255,255,255,0.8)' : 'rgba(0,0,0,0.8)';
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 1.0;
+          }
+        } else {
+          // No intensity adjustment needed
+          ctx.fill();
+        }
+        
+        console.log(`[CompositeGenerator] ✅ Scaled material pattern applied to mask ${mask.id} with textureScale: ${textureScale}`);
+        
+        // Apply basic underwater effects if settings exist
+        if (materialSettings.underwaterRealism) {
+          this.applyBasicUnderwaterEffects(ctx, materialSettings.underwaterRealism, points);
         }
       } else {
         console.log(`[CompositeGenerator] Material ${mask.materialId} not found or has no texture URL`);
@@ -624,49 +736,6 @@ export class CompositeGenerator {
     }
   }
 
-  private createScaledPattern(
-    ctx: CanvasRenderingContext2D, 
-    materialImage: any, 
-    tileScale: number, 
-    imageWidth: number, 
-    imageHeight: number,
-    material?: any
-  ): CanvasPattern | null {
-    try {
-      // Use heuristic PPM similar to client-side (1000 pixels per meter)
-      const heuristicPPM = 1000;
-      // Use material's physicalRepeatM if available, otherwise default to 0.3 meters per tile
-      const physicalRepeatM = material?.physicalRepeatM ? parseFloat(material.physicalRepeatM) : 0.3;
-      const tileSizePx = (heuristicPPM * physicalRepeatM) / tileScale;
-      
-      console.log(`[CompositeGenerator] Creating scaled pattern: tileSizePx=${tileSizePx}, tileScale=${tileScale}, physicalRepeatM=${physicalRepeatM}`);
-      
-      // Create a temporary canvas for the scaled pattern
-      const tempCanvas = createCanvas(tileSizePx, tileSizePx);
-      const tempCtx = tempCanvas.getContext('2d');
-      
-      if (!tempCtx) {
-        console.log(`[CompositeGenerator] Failed to get 2D context for pattern canvas`);
-        return null;
-      }
-      
-      // Draw the material image scaled to the calculated tile size
-      tempCtx.drawImage(materialImage, 0, 0, tileSizePx, tileSizePx);
-      
-      // Create pattern from the scaled canvas
-      const pattern = ctx.createPattern(tempCanvas, 'repeat');
-      
-      if (!pattern) {
-        console.log(`[CompositeGenerator] Failed to create pattern from scaled canvas`);
-        return null;
-      }
-      
-      return pattern;
-    } catch (error) {
-      console.error(`[CompositeGenerator] Error creating scaled pattern:`, error);
-      return null;
-    }
-  }
 
   private applyBasicUnderwaterEffects(
     ctx: CanvasRenderingContext2D, 

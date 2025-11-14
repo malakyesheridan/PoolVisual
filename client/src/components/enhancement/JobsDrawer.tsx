@@ -1,7 +1,7 @@
 // client/src/components/enhancement/JobsDrawer.tsx
 import { useEffect, useState } from 'react';
-import { X, Sparkles, Loader2, Waves, Sparkles as SparklesIcon } from 'lucide-react';
-import { useEnhancementStore } from '../../state/useEnhancementStore';
+import { X, Sparkles, Loader2, Waves, Sparkles as SparklesIcon, Search, Filter, ArrowUpDown } from 'lucide-react';
+import { useEnhancementStore, type SortOption, type StatusFilter, type TypeFilter, type DateFilter } from '../../state/useEnhancementStore';
 import { getRecentJobs, createJob } from '../../services/aiEnhancement';
 import { useJobStream } from '../../hooks/useJobStream';
 import { JobProgress } from './JobProgress';
@@ -13,13 +13,31 @@ interface JobsDrawerProps {
 }
 
 export function JobsDrawer({ onClose }: JobsDrawerProps) {
-  const { order, setInitial, upsertJob } = useEnhancementStore();
+  const { 
+    setInitial, 
+    upsertJob, 
+    getFilteredAndSortedJobs,
+    sortBy,
+    statusFilter,
+    typeFilter,
+    dateFilter,
+    searchQuery,
+    setSortBy,
+    setStatusFilter,
+    setTypeFilter,
+    setDateFilter,
+    setSearchQuery
+  } = useEnhancementStore();
+  
   const [selectedMode, setSelectedMode] = useState<'add_pool' | 'add_decoration' | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | undefined>();
+  const [showFilters, setShowFilters] = useState(false);
 
   // Stream updates for the active job
   useJobStream(activeJobId);
+  
+  const filteredJobs = getFilteredAndSortedJobs();
 
   useEffect(() => {
     getRecentJobs(20).then(d => setInitial(d.jobs)).catch(() => {});
@@ -151,7 +169,13 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
       });
 
       const { jobId } = await createJob(payload);
-      upsertJob({ id: jobId, status: 'queued', progress_percent: 0 });
+      upsertJob({ 
+        id: jobId, 
+        status: 'queued', 
+        progress_percent: 0,
+        mode: mode, // Store the enhancement type
+        created_at: new Date().toISOString()
+      });
       setActiveJobId(jobId);
       setSelectedMode(null); // Reset selection after creation
       
@@ -166,22 +190,144 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
   };
 
   return (
-    <aside className="fixed right-4 top-20 w-[420px] max-h-[80vh] overflow-auto bg-white shadow-2xl rounded-xl border z-50 flex flex-col">
+    <aside className="fixed right-4 top-20 w-[480px] max-h-[85vh] overflow-hidden bg-white shadow-2xl rounded-xl border z-50 flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white rounded-t-xl">
+      <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-white rounded-t-xl z-10">
         <div className="flex items-center gap-2">
           <Sparkles className="w-5 h-5 text-blue-600" />
           <div className="font-semibold text-base">AI Enhancements</div>
+          {filteredJobs.length > 0 && (
+            <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full">
+              {filteredJobs.length}
+            </span>
+          )}
         </div>
-        {onClose && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100 transition-colors"
-            title="Close"
+            onClick={() => setShowFilters(!showFilters)}
+            className={`p-1.5 rounded hover:bg-gray-100 transition-colors ${showFilters ? 'bg-gray-100' : ''}`}
+            title="Toggle filters"
           >
-            <X size={18} />
+            <Filter className="w-4 h-4 text-gray-600" />
           </button>
-        )}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100 transition-colors"
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+          )}
+        </div>
+      </div>
+      
+      {/* Search and Filters */}
+      <div className={`border-b bg-gray-50 transition-all duration-200 ${showFilters ? 'max-h-96' : 'max-h-0'} overflow-hidden`}>
+        <div className="p-3 space-y-3">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by job ID or date..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+          
+          {/* Filter Chips */}
+          <div className="space-y-2">
+            {/* Status Filter */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1.5 block">Status</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(['all', 'completed', 'processing', 'failed'] as StatusFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setStatusFilter(filter)}
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                      statusFilter === filter
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All' : filter === 'processing' ? 'Processing' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Type Filter */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1.5 block">Type</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(['all', 'add_pool', 'add_decoration'] as TypeFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setTypeFilter(filter)}
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors flex items-center gap-1 ${
+                      typeFilter === filter
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All' : filter === 'add_pool' ? (
+                      <>
+                        <Waves className="w-3 h-3" />
+                        Pool
+                      </>
+                    ) : (
+                      <>
+                        <SparklesIcon className="w-3 h-3" />
+                        Decor
+                      </>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Date Filter */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1.5 block">Date</label>
+              <div className="flex flex-wrap gap-1.5">
+                {(['all', 'today', 'week', 'month'] as DateFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setDateFilter(filter)}
+                    className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                      dateFilter === filter
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {filter === 'all' ? 'All Time' : filter === 'week' ? 'This Week' : filter === 'month' ? 'This Month' : 'Today'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Sort */}
+            <div>
+              <label className="text-xs font-medium text-gray-700 mb-1.5 block">Sort By</label>
+              <div className="relative">
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortOption)}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
+                >
+                  <option value="newest">Newest First</option>
+                  <option value="oldest">Oldest First</option>
+                  <option value="status">By Status</option>
+                  <option value="progress">By Progress</option>
+                </select>
+                <ArrowUpDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Create New Enhancement Form */}
@@ -225,12 +371,39 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
 
       {/* Jobs List */}
       <div className="flex-1 overflow-auto p-4 space-y-3">
-        {order.length === 0 ? (
-          <div className="text-sm text-gray-500 text-center py-8">
-            No enhancements yet. Create your first one above!
+        {filteredJobs.length === 0 ? (
+          <div className="text-center py-12">
+            {searchQuery || statusFilter !== 'all' || typeFilter !== 'all' || dateFilter !== 'all' ? (
+              <>
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                  <Search className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">No jobs found</h3>
+                <p className="text-xs text-gray-500 mb-4">Try adjusting your filters or search</p>
+                <button
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                    setTypeFilter('all');
+                    setDateFilter('all');
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700"
+                >
+                  Clear all filters
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                  <Sparkles className="w-8 h-8 text-gray-400" />
+                </div>
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">No enhancements yet</h3>
+                <p className="text-xs text-gray-500">Create your first one above!</p>
+              </>
+            )}
           </div>
         ) : (
-          order.map(id => <JobProgress key={id} jobId={id} />)
+          filteredJobs.map(job => <JobProgress key={job.id} jobId={job.id} />)
         )}
       </div>
     </aside>

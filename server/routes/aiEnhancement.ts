@@ -315,7 +315,7 @@ router.get('/', authenticateSession, async (req, res) => {
     const rows = await executeQuery(
       `SELECT 
         id, status, progress_stage, progress_percent,
-        error_message, created_at, updated_at, completed_at
+        error_message, created_at, updated_at, completed_at, options
       FROM ai_enhancement_jobs 
       WHERE user_id = $1 
       ORDER BY created_at DESC 
@@ -323,16 +323,29 @@ router.get('/', authenticateSession, async (req, res) => {
       [user.id, limit]
     );
     
-    // Fetch variants for completed jobs
+    // Fetch variants for completed jobs and extract mode from options
     const jobs = await Promise.all(rows.map(async (job: any) => {
+      // Extract mode from options JSONB
+      let mode: 'add_pool' | 'add_decoration' | undefined;
+      if (job.options) {
+        try {
+          const options = typeof job.options === 'string' ? JSON.parse(job.options) : job.options;
+          mode = options.mode;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      const jobWithMode = { ...job, mode };
+      
       if (job.status === 'completed') {
         const variants = await executeQuery(
           `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
           [job.id]
         );
-        return { ...job, variants };
+        return { ...jobWithMode, variants };
       }
-      return job;
+      return jobWithMode;
     }));
     
     res.json({ jobs });
