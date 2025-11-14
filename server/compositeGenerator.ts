@@ -21,7 +21,11 @@ export class CompositeGenerator {
   // JPEG quality for composite output (smaller file size, faster upload)
   private static readonly COMPOSITE_QUALITY = 85;
 
-  async generateComposite(photoId: string, forceRegenerate: boolean = false): Promise<CompositeResult> {
+  async generateComposite(
+    photoId: string, 
+    forceRegenerate: boolean = false,
+    providedMasks?: Array<{ id: string; points: Array<{ x: number; y: number }>; materialId?: string }>
+  ): Promise<CompositeResult> {
     try {
       console.log(`[CompositeGenerator] Starting composite generation for photo: ${photoId}`);
       
@@ -31,8 +35,31 @@ export class CompositeGenerator {
         throw new Error('Photo not found');
       }
 
-      let masks = await storage.getMasksByPhoto(photoId);
-      console.log(`[CompositeGenerator] Photo ${photoId}: Found ${masks.length} masks in database`);
+      let masks: Mask[];
+      
+      // If masks are provided directly (e.g., from enhancement job payload), use those
+      // Otherwise, load from database
+      if (providedMasks && providedMasks.length > 0) {
+        console.log(`[CompositeGenerator] Using ${providedMasks.length} masks from payload (not yet saved to database)`);
+        // Convert payload masks to database format
+        masks = providedMasks.map(m => ({
+          id: m.id,
+          photoId: photoId,
+          type: 'area' as const,
+          pathJson: m.points, // pathJson can be array or JSON string - renderComposite handles both
+          materialId: m.materialId || null,
+          calcMetaJson: null,
+          depthLevel: 0,
+          elevationM: '0',
+          zIndex: 0,
+          isStepped: false,
+          createdBy: '', // Will be set if needed
+          createdAt: new Date()
+        }));
+      } else {
+        masks = await storage.getMasksByPhoto(photoId);
+        console.log(`[CompositeGenerator] Photo ${photoId}: Found ${masks.length} masks in database`);
+      }
       
       if (masks.length === 0) {
         console.warn(`[CompositeGenerator] ⚠️ No masks found for photo ${photoId} - returning original image`);

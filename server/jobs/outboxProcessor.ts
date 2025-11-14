@@ -182,26 +182,74 @@ export async function processOutboxEvents() {
             let compositeImageUrl: string | null = null;
             let maskImageUrl: string | null = null;
             
+            console.log(`[Outbox] Composite generation check:`, {
+              hasPhotoId: !!payload.photoId,
+              photoId: payload.photoId,
+              hasMasks: !!payload.masks,
+              maskCount: payload.masks?.length || 0,
+              maskIds: payload.masks?.map(m => m.id) || []
+            });
+            
             if (payload.photoId && payload.masks && payload.masks.length > 0) {
               try {
                 // CRITICAL FIX: Fetch photo from database to get correct dimensions
                 const photo = await storage.getPhoto(payload.photoId);
                 if (!photo) {
-                  console.warn(`[Outbox] Photo ${payload.photoId} not found, using original image URL`);
+                  console.warn(`[Outbox] ⚠️ Photo ${payload.photoId} not found in database, using original image URL`);
                   compositeImageUrl = absoluteImageUrl;
                 } else {
-                  console.log(`[Outbox] Generating composite image for photo ${payload.photoId} with ${payload.masks.length} masks`);
+                  console.log(`[Outbox] ✅ Generating composite image for photo ${payload.photoId}`);
+                  console.log(`[Outbox] Photo details:`, {
+                    id: photo.id,
+                    width: photo.width,
+                    height: photo.height,
+                    originalUrl: photo.originalUrl?.substring(0, 80) + '...'
+                  });
+                  console.log(`[Outbox] Masks to apply:`, payload.masks.map(m => ({
+                    id: m.id,
+                    pointsCount: m.points?.length || 0,
+                    materialId: m.materialId
+                  })));
+                  
                   const generator = new CompositeGenerator();
                   // Force regenerate to ensure latest code is used and to bypass cache
-                  const compositeResult = await generator.generateComposite(payload.photoId, true);
+                  // Pass masks from payload in case they're not yet saved to database
+                  const compositeResult = await generator.generateComposite(
+                    payload.photoId, 
+                    true,
+                    payload.masks // Pass masks directly from payload
+                  );
+                  
+                  console.log(`[Outbox] Composite generation result:`, {
+                    status: compositeResult.status,
+                    hasAfterUrl: !!compositeResult.afterUrl,
+                    hasEdits: compositeResult.hasEdits,
+                    error: compositeResult.error,
+                    afterUrl: compositeResult.afterUrl ? compositeResult.afterUrl.substring(0, 80) + '...' : null
+                  });
                   
                   if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
-                    compositeImageUrl = compositeResult.afterUrl;
-                    console.log(`[Outbox] Composite image generated: ${compositeImageUrl}`);
+                    // Ensure URL is absolute (storageService should return absolute, but double-check)
+                    let finalCompositeUrl = compositeResult.afterUrl;
+                    if (!finalCompositeUrl.startsWith('http')) {
+                      const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+                      const cleanAppUrl = appUrl.replace(/\/$/, '');
+                      const cleanCompositeUrl = finalCompositeUrl.startsWith('/') ? finalCompositeUrl : `/${finalCompositeUrl}`;
+                      finalCompositeUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
+                      console.log(`[Outbox] Converted relative composite URL to absolute: ${finalCompositeUrl}`);
+                    }
+                    compositeImageUrl = finalCompositeUrl;
+                    console.log(`[Outbox] ✅ Composite image generated successfully: ${compositeImageUrl.substring(0, 100)}...`);
                   } else {
-                    console.warn(`[Outbox] Composite generation failed or no edits: ${compositeResult.error || 'no edits'}`);
+                    console.warn(`[Outbox] ⚠️ Composite generation failed or no edits:`, {
+                      status: compositeResult.status,
+                      error: compositeResult.error,
+                      hasEdits: compositeResult.hasEdits,
+                      afterUrl: compositeResult.afterUrl
+                    });
                     // Fall back to original image if composite generation fails
                     compositeImageUrl = absoluteImageUrl;
+                    console.warn(`[Outbox] ⚠️ Falling back to original image URL: ${absoluteImageUrl.substring(0, 100)}...`);
                   }
                   
                   // CRITICAL FIX: Use database dimensions for mask image generation
@@ -224,6 +272,12 @@ export async function processOutboxEvents() {
                 }
               }
             } else {
+              // No photoId or no masks - use original image
+              if (!payload.photoId) {
+                console.warn(`[Outbox] ⚠️ No photoId in payload, cannot generate composite. Using original image.`);
+              } else if (!payload.masks || payload.masks.length === 0) {
+                console.warn(`[Outbox] ⚠️ No masks in payload (count: ${payload.masks?.length || 0}), cannot generate composite. Using original image.`);
+              }
               compositeImageUrl = absoluteImageUrl;
               
               // Generate mask image even if no composite (for AI inpainting)
@@ -268,19 +322,24 @@ export async function processOutboxEvents() {
               callbackSecret: payload.callbackSecret
             };
 
+            console.log(`[Outbox] ========================================`);
             console.log(`[Outbox] Sending enhancement job ${payload.jobId} to n8n webhook`);
             console.log(`[Outbox] Webhook URL: ${n8nWebhookUrl}`);
             console.log(`[Outbox] Payload mode: ${mode}`);
-            console.log(`[Outbox] Original payload from DB:`, JSON.stringify({
-              jobId: payload.jobId,
-              imageUrl: payload.imageUrl,
-              hasMode: !!payload.options?.mode,
-              modeLocation: payload.options?.mode ? 'in options' : 'missing',
-              hasWidth: !!payload.width,
-              hasHeight: !!payload.height,
-              hasCallbackUrl: !!payload.callbackUrl
-            }));
-            console.log(`[Outbox] Transformed payload being sent:`, JSON.stringify(n8nPayload, null, 2));
+            console.log(`[Outbox] ========================================`);
+            console.log(`[Outbox] 🖼️ IMAGE URLS:`);
+            console.log(`[Outbox]   Original (imageUrl): ${absoluteImageUrl.substring(0, 100)}...`);
+            console.log(`[Outbox]   Composite (compositeImageUrl): ${compositeImageUrl ? compositeImageUrl.substring(0, 100) + '...' : 'NULL'}`);
+            console.log(`[Outbox]   Mask Image (maskImageUrl): ${maskImageUrl ? maskImageUrl.substring(0, 100) + '...' : 'NULL'}`);
+            console.log(`[Outbox]   ⚠️ n8n should use: compositeImageUrl (image with masks applied)`);
+            console.log(`[Outbox] ========================================`);
+            console.log(`[Outbox] 📦 PAYLOAD SUMMARY:`);
+            console.log(`[Outbox]   Masks count: ${n8nPayload.masks.length}`);
+            console.log(`[Outbox]   Photo ID: ${n8nPayload.photoId || 'MISSING'}`);
+            console.log(`[Outbox]   Has compositeImageUrl: ${!!n8nPayload.compositeImageUrl}`);
+            console.log(`[Outbox]   Composite URL matches original: ${n8nPayload.compositeImageUrl === n8nPayload.imageUrl ? '⚠️ YES (FALLBACK)' : '✅ NO (GENERATED)'}`);
+            console.log(`[Outbox] ========================================`);
+            console.log(`[Outbox] Full payload:`, JSON.stringify(n8nPayload, null, 2));
             console.log(`[Outbox] Payload preview:`, JSON.stringify({
               jobId: n8nPayload.jobId,
               mode: n8nPayload.mode,
