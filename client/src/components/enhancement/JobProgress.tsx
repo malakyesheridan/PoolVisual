@@ -67,6 +67,12 @@ export function JobProgress({ jobId }: { jobId: string }) {
               style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
             />
           </div>
+          {/* Loading message for processing states */}
+          {(status === 'queued' || status === 'downloading' || status === 'preprocessing' || status === 'rendering' || status === 'postprocessing' || status === 'uploading') && (
+            <div className="mt-2 text-xs text-gray-500 text-center">
+              Please allow up to 2 minutes for your enhancement
+            </div>
+          )}
         </div>
       )}
 

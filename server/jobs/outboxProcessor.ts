@@ -198,7 +198,7 @@ export async function processOutboxEvents() {
                   console.warn(`[Outbox] ⚠️ Photo ${payload.photoId} not found in database, using original image URL`);
                   compositeImageUrl = absoluteImageUrl;
                 } else {
-                  console.log(`[Outbox] ✅ Generating composite image for photo ${payload.photoId}`);
+                  console.log(`[Outbox] ✅ Generating composite and mask images in parallel for photo ${payload.photoId}`);
                   console.log(`[Outbox] Photo details:`, {
                     id: photo.id,
                     width: photo.width,
@@ -211,55 +211,78 @@ export async function processOutboxEvents() {
                     materialId: m.materialId
                   })));
                   
+                  // OPTIMIZATION: Generate composite and mask image in parallel to speed up webhook delivery
                   const generator = new CompositeGenerator();
-                  // Force regenerate to ensure latest code is used and to bypass cache
-                  // Pass masks from payload in case they're not yet saved to database
-                  const compositeResult = await generator.generateComposite(
+                  const compositePromise = generator.generateComposite(
                     payload.photoId, 
                     true,
                     payload.masks // Pass masks directly from payload
                   );
                   
-                  console.log(`[Outbox] Composite generation result:`, {
-                    status: compositeResult.status,
-                    hasAfterUrl: !!compositeResult.afterUrl,
-                    hasEdits: compositeResult.hasEdits,
-                    error: compositeResult.error,
-                    afterUrl: compositeResult.afterUrl ? compositeResult.afterUrl.substring(0, 80) + '...' : null
-                  });
+                  const maskImagePromise = generateMaskImage(payload.masks, photo.width, photo.height);
                   
-                  if (compositeResult.status === 'completed' && compositeResult.afterUrl) {
-                    // Ensure URL is absolute (storageService should return absolute, but double-check)
-                    let finalCompositeUrl = compositeResult.afterUrl;
-                    if (!finalCompositeUrl.startsWith('http')) {
-                      const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
-                      const cleanAppUrl = appUrl.replace(/\/$/, '');
-                      const cleanCompositeUrl = finalCompositeUrl.startsWith('/') ? finalCompositeUrl : `/${finalCompositeUrl}`;
-                      finalCompositeUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
-                      console.log(`[Outbox] Converted relative composite URL to absolute: ${finalCompositeUrl}`);
-                    }
-                    compositeImageUrl = finalCompositeUrl;
-                    console.log(`[Outbox] ✅ Composite image generated successfully: ${compositeImageUrl.substring(0, 100)}...`);
-                  } else {
-                    console.warn(`[Outbox] ⚠️ Composite generation failed or no edits:`, {
-                      status: compositeResult.status,
-                      error: compositeResult.error,
-                      hasEdits: compositeResult.hasEdits,
-                      afterUrl: compositeResult.afterUrl
+                  // Wait for both with timeout - composite has 15s timeout, mask has 5s timeout
+                  const [compositeResult, maskResult] = await Promise.allSettled([
+                    Promise.race([
+                      compositePromise,
+                      new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Composite generation timeout (15s)')), 15000)
+                      )
+                    ]),
+                    Promise.race([
+                      maskImagePromise,
+                      new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Mask image generation timeout (5s)')), 5000)
+                      )
+                    ])
+                  ]);
+                  
+                  // Process composite result
+                  if (compositeResult.status === 'fulfilled') {
+                    const result = compositeResult.value;
+                    console.log(`[Outbox] Composite generation result:`, {
+                      status: result.status,
+                      hasAfterUrl: !!result.afterUrl,
+                      hasEdits: result.hasEdits,
+                      error: result.error,
+                      afterUrl: result.afterUrl ? result.afterUrl.substring(0, 80) + '...' : null
                     });
-                    // Fall back to original image if composite generation fails
+                    
+                    if (result.status === 'completed' && result.afterUrl) {
+                      // Ensure URL is absolute (storageService should return absolute, but double-check)
+                      let finalCompositeUrl = result.afterUrl;
+                      if (!finalCompositeUrl.startsWith('http')) {
+                        const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+                        const cleanAppUrl = appUrl.replace(/\/$/, '');
+                        const cleanCompositeUrl = finalCompositeUrl.startsWith('/') ? finalCompositeUrl : `/${finalCompositeUrl}`;
+                        finalCompositeUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
+                        console.log(`[Outbox] Converted relative composite URL to absolute: ${finalCompositeUrl}`);
+                      }
+                      compositeImageUrl = finalCompositeUrl;
+                      console.log(`[Outbox] ✅ Composite image generated successfully: ${compositeImageUrl.substring(0, 100)}...`);
+                    } else {
+                      console.warn(`[Outbox] ⚠️ Composite generation failed or no edits:`, {
+                        status: result.status,
+                        error: result.error,
+                        hasEdits: result.hasEdits,
+                        afterUrl: result.afterUrl
+                      });
+                      compositeImageUrl = absoluteImageUrl;
+                      console.warn(`[Outbox] ⚠️ Falling back to original image URL: ${absoluteImageUrl.substring(0, 100)}...`);
+                    }
+                  } else {
+                    console.warn(`[Outbox] ⚠️ Composite generation failed or timed out:`, compositeResult.reason);
                     compositeImageUrl = absoluteImageUrl;
-                    console.warn(`[Outbox] ⚠️ Falling back to original image URL: ${absoluteImageUrl.substring(0, 100)}...`);
+                    console.warn(`[Outbox] ⚠️ Falling back to original image URL due to error/timeout`);
                   }
                   
-                  // CRITICAL FIX: Use database dimensions for mask image generation
-                  // Client-provided dimensions (payload.width/height) may not match database
-                  console.log(`[Outbox] Generating mask image using database dimensions: ${photo.width}x${photo.height}`);
-                  maskImageUrl = await generateMaskImage(payload.masks, photo.width, photo.height);
-                  if (maskImageUrl) {
-                    console.log(`[Outbox] Mask image generated: ${maskImageUrl}`);
+                  // Process mask image result
+                  if (maskResult.status === 'fulfilled' && maskResult.value) {
+                    maskImageUrl = maskResult.value;
+                    console.log(`[Outbox] ✅ Mask image generated: ${maskImageUrl.substring(0, 100)}...`);
                   } else {
-                    console.warn(`[Outbox] Failed to generate mask image, continuing without it`);
+                    console.warn(`[Outbox] ⚠️ Mask image generation failed or timed out:`, maskResult.reason || 'unknown error');
+                    // Continue without mask image - not critical for webhook delivery
                   }
                 }
               } catch (error: any) {
