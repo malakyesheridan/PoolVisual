@@ -230,11 +230,19 @@ export async function processOutboxEvents() {
             
             if (effectivePhotoId) {
               // Check database for masks using job's photo_id (source of truth)
+              console.log(`[Outbox] 🔍 Querying database for masks (photoId: ${effectivePhotoId})...`);
               const dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-              console.log(`[Outbox] Found ${dbMasks.length} masks in database for photo ${effectivePhotoId} (from ${jobPhotoId ? 'job table' : 'payload'})`);
+              console.log(`[Outbox] 📊 Database query result:`, {
+                photoId: effectivePhotoId,
+                masksFound: dbMasks.length,
+                maskIds: dbMasks.map(m => m.id),
+                source: jobPhotoId ? 'job table' : 'payload'
+              });
               
               if (dbMasks.length === 0) {
-                console.log(`[Outbox] No masks in database, using original image URL`);
+                console.warn(`[Outbox] ⚠️ No masks found in database for photo ${effectivePhotoId}`);
+                console.warn(`[Outbox] ⚠️ This will cause fallback to original image URL`);
+                console.warn(`[Outbox] ⚠️ Check if masks exist for this photoId in the database`);
                 compositeImageUrl = absoluteImageUrl;
               } else {
               try {
