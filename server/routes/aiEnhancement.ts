@@ -287,13 +287,16 @@ router.post('/', authenticateSession, async (req, res) => {
       // CRITICAL FIX: Trigger outbox processor immediately instead of waiting for interval
       // This ensures webhook is sent promptly, especially important in Vercel serverless
       // where setInterval may not run reliably
+      console.log('[Create Enhancement] 🔄 Triggering outbox processor immediately...');
       import('../jobs/outboxProcessor.js').then(({ processOutboxEvents }) => {
-        processOutboxEvents().catch((e) => {
-          console.error('[Create Enhancement] Failed to trigger outbox processor immediately:', e);
-          // Don't fail the request - processor will retry via interval if needed
-        });
+        console.log('[Create Enhancement] ✅ Outbox processor imported, calling processOutboxEvents()...');
+        return processOutboxEvents();
+      }).then(() => {
+        console.log('[Create Enhancement] ✅ Outbox processor completed successfully');
       }).catch((e) => {
-        console.error('[Create Enhancement] Failed to import outbox processor:', e);
+        console.error('[Create Enhancement] ❌ Failed to trigger outbox processor immediately:', e);
+        console.error('[Create Enhancement] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
+        // Don't fail the request - processor will retry via interval if needed
       });
 
       return { id: jobId };

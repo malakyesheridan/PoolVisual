@@ -93,14 +93,18 @@ async function generateMaskImage(
 
 export async function processOutboxEvents() {
   try {
+    console.log('[Outbox] ========================================');
     console.log('[Outbox] processOutboxEvents() called');
+    console.log('[Outbox] Timestamp:', new Date().toISOString());
+    console.log('[Outbox] ========================================');
     
     // Check if we have N8N_WEBHOOK_URL configured
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
     if (!n8nWebhookUrl) {
-      console.log('[Outbox] N8N_WEBHOOK_URL not set, skipping webhook processing');
+      console.log('[Outbox] ❌ N8N_WEBHOOK_URL not set, skipping webhook processing');
       return;
     }
+    console.log('[Outbox] ✅ N8N_WEBHOOK_URL is set');
     
     const events = await executeQuery(`
       WITH next_batch AS (
@@ -137,6 +141,7 @@ export async function processOutboxEvents() {
         
         // CRITICAL FIX: Get photoId from job table (source of truth) instead of payload
         // The payload photoId might not match the job's photo_id where masks are actually stored
+        console.log(`[Outbox] 🔍 Querying job table for photo_id (job_id: ${ev.job_id})...`);
         const jobRows = await executeQuery(
           `SELECT photo_id FROM ai_enhancement_jobs WHERE id = $1`,
           [ev.job_id]
@@ -144,12 +149,20 @@ export async function processOutboxEvents() {
         const jobPhotoId = jobRows.length > 0 ? jobRows[0].photo_id : null;
         const effectivePhotoId = jobPhotoId || payload.photoId;
         
-        console.log(`[Outbox] PhotoId resolution:`, {
+        console.log(`[Outbox] 📊 PhotoId resolution:`, {
           payloadPhotoId: payload.photoId,
           jobPhotoId: jobPhotoId,
           effectivePhotoId: effectivePhotoId,
-          usingJobPhotoId: !!jobPhotoId && jobPhotoId !== payload.photoId
+          usingJobPhotoId: !!jobPhotoId && jobPhotoId !== payload.photoId,
+          jobRowsFound: jobRows.length
         });
+        
+        if (!jobPhotoId && payload.photoId) {
+          console.warn(`[Outbox] ⚠️ WARNING: Job ${ev.job_id} has no photo_id in database, using payload.photoId as fallback`);
+        }
+        if (jobPhotoId && jobPhotoId !== payload.photoId) {
+          console.warn(`[Outbox] ⚠️ WARNING: PhotoId mismatch! Job.photo_id (${jobPhotoId}) != payload.photoId (${payload.photoId})`);
+        }
         
         console.log(`[Outbox] Parsed payload for job ${payload.jobId}:`, {
           hasMasks: !!payload.masks,
