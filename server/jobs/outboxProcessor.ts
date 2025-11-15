@@ -231,13 +231,61 @@ export async function processOutboxEvents() {
             if (effectivePhotoId) {
               // Check database for masks using job's photo_id (source of truth)
               console.log(`[Outbox] 🔍 Querying database for masks (photoId: ${effectivePhotoId})...`);
-              const dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-              console.log(`[Outbox] 📊 Database query result:`, {
-                photoId: effectivePhotoId,
-                masksFound: dbMasks.length,
-                maskIds: dbMasks.map(m => m.id),
-                source: jobPhotoId ? 'job table' : 'payload'
-              });
+              let dbMasks: any[] = [];
+              try {
+                dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
+                console.log(`[Outbox] ✅ getMasksByPhoto succeeded: ${dbMasks.length} masks`);
+                console.log(`[Outbox] 📊 Database query result:`, {
+                  photoId: effectivePhotoId,
+                  masksFound: dbMasks.length,
+                  maskIds: dbMasks.map(m => m.id),
+                  source: jobPhotoId ? 'job table' : 'payload'
+                });
+              } catch (queryError: any) {
+                console.error(`[Outbox] ❌ getMasksByPhoto failed:`, queryError);
+                console.error(`[Outbox] ❌ Error details:`, {
+                  message: queryError?.message,
+                  stack: queryError?.stack,
+                  photoId: effectivePhotoId,
+                  errorName: queryError?.name,
+                  errorCode: queryError?.code
+                });
+                // Try direct SQL query as fallback to verify data is accessible
+                try {
+                  console.log(`[Outbox] 🔄 Attempting direct SQL query as fallback...`);
+                  const directQuery = await executeQuery(
+                    `SELECT id, photo_id, material_id, calc_meta_json FROM masks WHERE photo_id = $1`,
+                    [effectivePhotoId]
+                  );
+                  console.log(`[Outbox] 🔄 Direct SQL query found ${directQuery.length} masks`);
+                  if (directQuery.length > 0) {
+                    console.log(`[Outbox] 🔄 Direct SQL mask IDs:`, directQuery.map((m: any) => m.id));
+                    // Convert SQL result to match expected format
+                    dbMasks = directQuery.map((row: any) => ({
+                      id: row.id,
+                      photoId: row.photo_id,
+                      materialId: row.material_id,
+                      calcMetaJson: row.calc_meta_json,
+                      // Add other required fields with defaults
+                      type: 'area' as const,
+                      pathJson: null, // Will need to fetch separately if needed
+                      depthLevel: 0,
+                      elevationM: '0',
+                      zIndex: 0,
+                      isStepped: false,
+                      createdBy: '',
+                      createdAt: new Date()
+                    }));
+                  }
+                } catch (sqlError: any) {
+                  console.error(`[Outbox] ❌ Direct SQL query also failed:`, sqlError);
+                  console.error(`[Outbox] ❌ SQL Error details:`, {
+                    message: sqlError?.message,
+                    stack: sqlError?.stack,
+                    photoId: effectivePhotoId
+                  });
+                }
+              }
               
               if (dbMasks.length === 0) {
                 console.warn(`[Outbox] ⚠️ No masks found in database for photo ${effectivePhotoId}`);
