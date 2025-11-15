@@ -135,6 +135,22 @@ export async function processOutboxEvents() {
         if (ev.event_type === 'enqueue_enhancement') {
           const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
         
+        // CRITICAL FIX: Get photoId from job table (source of truth) instead of payload
+        // The payload photoId might not match the job's photo_id where masks are actually stored
+        const jobRows = await executeQuery(
+          `SELECT photo_id FROM ai_enhancement_jobs WHERE id = $1`,
+          [ev.job_id]
+        );
+        const jobPhotoId = jobRows.length > 0 ? jobRows[0].photo_id : null;
+        const effectivePhotoId = jobPhotoId || payload.photoId;
+        
+        console.log(`[Outbox] PhotoId resolution:`, {
+          payloadPhotoId: payload.photoId,
+          jobPhotoId: jobPhotoId,
+          effectivePhotoId: effectivePhotoId,
+          usingJobPhotoId: !!jobPhotoId && jobPhotoId !== payload.photoId
+        });
+        
         console.log(`[Outbox] Parsed payload for job ${payload.jobId}:`, {
           hasMasks: !!payload.masks,
           masksCount: payload.masks?.length || 0,
@@ -185,35 +201,37 @@ export async function processOutboxEvents() {
             delete finalOptions.mode;
             
             // Generate composite image (image with masks already applied) if photoId is present
-            // CRITICAL FIX: Check database for masks instead of payload.masks
-            // We now use database masks (same as preview), so we need to check database, not payload
+            // CRITICAL FIX: Use job's photo_id (from database) as source of truth for mask queries
+            // This ensures we query masks using the same photoId that masks are actually stored under
             let compositeImageUrl: string | null = null;
             let maskImageUrl: string | null = null;
             
             console.log(`[Outbox] Composite generation check:`, {
-              hasPhotoId: !!payload.photoId,
-              photoId: payload.photoId,
+              hasEffectivePhotoId: !!effectivePhotoId,
+              effectivePhotoId: effectivePhotoId,
+              payloadPhotoId: payload.photoId,
+              jobPhotoId: jobPhotoId,
               payloadMaskCount: payload.masks?.length || 0,
-              note: 'Will check database for masks (same as preview)'
+              note: 'Using job.photo_id as source of truth for mask queries'
             });
             
-            if (payload.photoId) {
-              // Check database for masks (same as preview endpoint does)
-              const dbMasks = await storage.getMasksByPhoto(payload.photoId);
-              console.log(`[Outbox] Found ${dbMasks.length} masks in database for photo ${payload.photoId}`);
+            if (effectivePhotoId) {
+              // Check database for masks using job's photo_id (source of truth)
+              const dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
+              console.log(`[Outbox] Found ${dbMasks.length} masks in database for photo ${effectivePhotoId} (from ${jobPhotoId ? 'job table' : 'payload'})`);
               
               if (dbMasks.length === 0) {
                 console.log(`[Outbox] No masks in database, using original image URL`);
                 compositeImageUrl = absoluteImageUrl;
               } else {
               try {
-                // CRITICAL FIX: Fetch photo from database to get correct dimensions
-                const photo = await storage.getPhoto(payload.photoId);
+                // CRITICAL FIX: Fetch photo from database using effectivePhotoId (job's photo_id)
+                const photo = await storage.getPhoto(effectivePhotoId);
                 if (!photo) {
-                  console.warn(`[Outbox] ⚠️ Photo ${payload.photoId} not found in database, using original image URL`);
+                  console.warn(`[Outbox] ⚠️ Photo ${effectivePhotoId} not found in database, using original image URL`);
                   compositeImageUrl = absoluteImageUrl;
                 } else {
-                  console.log(`[Outbox] ✅ Generating composite and mask images in parallel for photo ${payload.photoId}`);
+                  console.log(`[Outbox] ✅ Generating composite and mask images in parallel for photo ${effectivePhotoId}`);
                   console.log(`[Outbox] Photo details:`, {
                     id: photo.id,
                     width: photo.width,
@@ -254,15 +272,15 @@ export async function processOutboxEvents() {
                   // Pass calibration if available (from payload or photo metadata)
                   const photoPxPerMeter = payload.calibration || undefined;
                   
-                  // CRITICAL FIX: Use database masks instead of payload masks
+                  // CRITICAL FIX: Use database masks with effectivePhotoId (job's photo_id)
                   // This ensures webhook composite matches preview composite (both use database as source of truth)
                   // The preview endpoint (GET /api/photos/:id/composite) uses database masks, so webhook should too
                   console.log(`[Outbox] Using database masks for composite generation (same as preview)`);
-                  console.log(`[Outbox] Photo ID: ${payload.photoId}`);
+                  console.log(`[Outbox] Photo ID: ${effectivePhotoId} (from ${jobPhotoId ? 'job table' : 'payload'})`);
                   console.log(`[Outbox] Note: Payload had ${payload.masks?.length || 0} masks, but using database masks for consistency`);
                   
                   const compositePromise = generator.generateComposite(
-                    payload.photoId, 
+                    effectivePhotoId, 
                     true,
                     undefined, // Don't pass payload masks - use database masks instead (same as preview)
                     photoPxPerMeter // Pass calibration for accurate texture scaling
