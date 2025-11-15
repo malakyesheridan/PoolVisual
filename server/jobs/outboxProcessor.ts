@@ -233,11 +233,16 @@ export async function processOutboxEvents() {
             
             if (effectivePhotoId) {
               // Check database for masks using job's photo_id (source of truth)
+              console.log(`[Outbox] ========================================`);
+              console.log(`[Outbox] 🔍 MASK QUERY START`);
               console.log(`[Outbox] 🔍 Querying database for masks (photoId: ${effectivePhotoId})...`);
+              console.log(`[Outbox] 🔍 PhotoId type: ${typeof effectivePhotoId}, value: ${effectivePhotoId}`);
               let dbMasks: any[] = [];
               try {
+                console.log(`[Outbox] 🔍 Calling storage.getMasksByPhoto(${effectivePhotoId})...`);
                 dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
                 console.log(`[Outbox] ✅ getMasksByPhoto succeeded: ${dbMasks.length} masks`);
+                console.log(`[Outbox] ✅ Mask IDs returned:`, dbMasks.map(m => m.id));
                 console.log(`[Outbox] 📊 Database query result:`, {
                   photoId: effectivePhotoId,
                   masksFound: dbMasks.length,
