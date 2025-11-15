@@ -82,9 +82,9 @@ export function JobProgress({ jobId }: { jobId: string }) {
           )}
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <span className={`text-sm font-medium ${config.textColor} truncate`}>
-              {config.label}
-            </span>
-            {pct > 0 && pct < 100 && (
+            {config.label}
+          </span>
+          {pct > 0 && pct < 100 && (
               <span className="text-xs text-gray-500 whitespace-nowrap">({pct}%)</span>
             )}
           </div>
@@ -106,11 +106,11 @@ export function JobProgress({ jobId }: { jobId: string }) {
           )}
         </div>
         <div className="flex items-center gap-2 ml-2">
-          {status === 'completed' && job.variants?.length && (
+        {status === 'completed' && job.variants?.length && (
             <div className="text-xs text-gray-500 whitespace-nowrap">
-              {job.variants.length} variant{job.variants.length !== 1 ? 's' : ''}
-            </div>
-          )}
+            {job.variants.length} variant{job.variants.length !== 1 ? 's' : ''}
+          </div>
+        )}
           {/* Delete Button */}
           {(status === 'completed' || status === 'failed' || status === 'canceled') && (
             <button

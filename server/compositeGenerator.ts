@@ -743,7 +743,7 @@ export class CompositeGenerator {
           return;
         }
         
-        ctx.fillStyle = pattern;
+          ctx.fillStyle = pattern;
         
         // Apply intensity/contrast filters (matching client)
         const intensity = materialSettings.intensity ?? 50;

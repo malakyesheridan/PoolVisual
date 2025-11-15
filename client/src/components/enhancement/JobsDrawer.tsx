@@ -291,15 +291,15 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
           >
             <Filter className="w-4 h-4 text-gray-600" />
           </button>
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100 transition-colors"
-              title="Close"
-            >
-              <X size={18} />
-            </button>
-          )}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-700 p-1 rounded hover:bg-gray-100 transition-colors"
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        )}
         </div>
       </div>
       
