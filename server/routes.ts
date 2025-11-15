@@ -1814,6 +1814,107 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Diagnostic endpoint for enhancement jobs
+  app.get("/api/debug/enhancement/:jobId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.jobId;
+      const { executeQuery } = await import('./lib/dbHelpers.js');
+      
+      // 1. Check if outbox event exists
+      const outboxEvents = await executeQuery(
+        `SELECT id, event_type, status, attempts, created_at, next_retry_at, payload 
+         FROM outbox 
+         WHERE job_id = $1 
+         ORDER BY created_at DESC 
+         LIMIT 5`,
+        [jobId]
+      );
+      
+      // 2. Check job details
+      const job = await executeQuery(
+        `SELECT id, status, photo_id, created_at, updated_at 
+         FROM ai_enhancement_jobs 
+         WHERE id = $1`,
+        [jobId]
+      );
+      
+      // 3. If job has photoId, check masks
+      let masks: any[] = [];
+      let photoDetails: any = null;
+      if (job.length > 0 && job[0].photo_id) {
+        try {
+          photoDetails = await storage.getPhoto(job[0].photo_id);
+          masks = await storage.getMasksByPhoto(job[0].photo_id);
+        } catch (error: any) {
+          console.error(`[Debug] Error fetching photo/masks:`, error);
+        }
+      }
+      
+      // 4. Parse outbox payload to check photoId
+      let payloadPhotoId = null;
+      let payloadMasksCount = 0;
+      if (outboxEvents.length > 0 && outboxEvents[0].payload) {
+        try {
+          const payload = typeof outboxEvents[0].payload === 'string' 
+            ? JSON.parse(outboxEvents[0].payload) 
+            : outboxEvents[0].payload;
+          payloadPhotoId = payload.photoId;
+          payloadMasksCount = payload.masks?.length || 0;
+        } catch (e) {
+          console.error(`[Debug] Error parsing payload:`, e);
+        }
+      }
+      
+      res.json({
+        job: job[0] || null,
+        outboxEvents: outboxEvents.map(ev => ({
+          id: ev.id,
+          event_type: ev.event_type,
+          status: ev.status,
+          attempts: ev.attempts,
+          created_at: ev.created_at,
+          next_retry_at: ev.next_retry_at,
+          payloadPhotoId: ev.payload ? (() => {
+            try {
+              const p = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
+              return p.photoId;
+            } catch {
+              return null;
+            }
+          })() : null
+        })),
+        photoDetails: photoDetails ? {
+          id: photoDetails.id,
+          width: photoDetails.width,
+          height: photoDetails.height,
+          originalUrl: photoDetails.originalUrl?.substring(0, 80) + '...'
+        } : null,
+        masks: {
+          count: masks.length,
+          photoId: job[0]?.photo_id || null,
+          masks: masks.map(m => ({
+            id: m.id,
+            materialId: m.materialId,
+            hasCalcMetaJson: !!m.calcMetaJson,
+            calcMetaJsonPreview: m.calcMetaJson ? (typeof m.calcMetaJson === 'string' ? m.calcMetaJson.substring(0, 100) : JSON.stringify(m.calcMetaJson).substring(0, 100)) : null
+          }))
+        },
+        diagnostic: {
+          hasOutboxEvent: outboxEvents.length > 0,
+          outboxEventStatus: outboxEvents[0]?.status || 'none',
+          jobPhotoId: job[0]?.photo_id || null,
+          payloadPhotoId: payloadPhotoId,
+          photoIdMatch: job[0]?.photo_id === payloadPhotoId,
+          masksFound: masks.length,
+          photoExists: !!photoDetails,
+          payloadMasksCount: payloadMasksCount
+        }
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, stack: error.stack });
+    }
+  });
+
   // Notifications endpoints
   app.get("/api/notifications", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
