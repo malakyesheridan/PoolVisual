@@ -226,10 +226,18 @@ export async function processOutboxEvents() {
                   const generator = new CompositeGenerator();
                   // Pass calibration if available (from payload or photo metadata)
                   const photoPxPerMeter = payload.calibration || undefined;
+                  
+                  // CRITICAL FIX: Use database masks instead of payload masks
+                  // This ensures webhook composite matches preview composite (both use database as source of truth)
+                  // The preview endpoint (GET /api/photos/:id/composite) uses database masks, so webhook should too
+                  console.log(`[Outbox] Using database masks for composite generation (same as preview)`);
+                  console.log(`[Outbox] Photo ID: ${payload.photoId}`);
+                  console.log(`[Outbox] Note: Payload had ${payload.masks?.length || 0} masks, but using database masks for consistency`);
+                  
                   const compositePromise = generator.generateComposite(
                     payload.photoId, 
                     true,
-                    payload.masks, // Pass masks directly from payload
+                    undefined, // Don't pass payload masks - use database masks instead (same as preview)
                     photoPxPerMeter // Pass calibration for accurate texture scaling
                   );
                   
