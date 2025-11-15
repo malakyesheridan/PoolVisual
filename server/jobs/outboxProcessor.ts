@@ -371,11 +371,11 @@ export async function processOutboxEvents() {
                 console.error(`[Outbox] Error generating composite/mask image:`, error);
                 // Fallback to original image
                 compositeImageUrl = absoluteImageUrl;
-                // Try to generate mask image from database if photoId available
-                if (payload.photoId) {
+                // Try to generate mask image from database if effectivePhotoId available
+                if (effectivePhotoId) {
                   try {
-                    const fallbackDbMasks = await storage.getMasksByPhoto(payload.photoId);
-                    const photo = await storage.getPhoto(payload.photoId);
+                    const fallbackDbMasks = await storage.getMasksByPhoto(effectivePhotoId);
+                    const photo = await storage.getPhoto(effectivePhotoId);
                     if (fallbackDbMasks.length > 0 && photo) {
                       const maskImagePoints = fallbackDbMasks.map(m => {
                         let points: any[] = [];
@@ -415,7 +415,7 @@ export async function processOutboxEvents() {
             const n8nPayload = {
               jobId: payload.jobId,
               tenantId: payload.tenantId,
-              photoId: payload.photoId, // Include photoId for reference
+              photoId: effectivePhotoId || payload.photoId, // Use effectivePhotoId (job's photo_id) as source of truth
               imageUrl: absoluteImageUrl, // Original image URL (for reference)
               compositeImageUrl: compositeImageUrl, // Image with masks already applied (USE THIS FOR DOWNLOAD)
               masks: payload.masks || [],
