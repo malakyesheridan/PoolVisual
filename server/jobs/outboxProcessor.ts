@@ -132,9 +132,12 @@ export async function processOutboxEvents() {
     }
 
     console.log(`[Outbox] Processing ${events.length} event(s)`);
+    console.log(`[Outbox] Event IDs:`, events.map((e: any) => e.id));
 
     for (const ev of events) {
+      console.log(`[Outbox] ========================================`);
       console.log(`[Outbox] Processing event ${ev.id}, type: ${ev.event_type}, job_id: ${ev.job_id}`);
+      console.log(`[Outbox] Event status: ${ev.status}, attempts: ${ev.attempts}`);
       try {
         if (ev.event_type === 'enqueue_enhancement') {
           const payload = typeof ev.payload === 'string' ? JSON.parse(ev.payload) : ev.payload;
