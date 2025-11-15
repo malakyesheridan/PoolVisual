@@ -184,19 +184,28 @@ export async function processOutboxEvents() {
             // Explicitly remove mode from finalOptions if it somehow got back in
             delete finalOptions.mode;
             
-            // Generate composite image (image with masks already applied) if photoId and masks are present
+            // Generate composite image (image with masks already applied) if photoId is present
+            // CRITICAL FIX: Check database for masks instead of payload.masks
+            // We now use database masks (same as preview), so we need to check database, not payload
             let compositeImageUrl: string | null = null;
             let maskImageUrl: string | null = null;
             
             console.log(`[Outbox] Composite generation check:`, {
               hasPhotoId: !!payload.photoId,
               photoId: payload.photoId,
-              hasMasks: !!payload.masks,
-              maskCount: payload.masks?.length || 0,
-              maskIds: payload.masks?.map(m => m.id) || []
+              payloadMaskCount: payload.masks?.length || 0,
+              note: 'Will check database for masks (same as preview)'
             });
             
-            if (payload.photoId && payload.masks && payload.masks.length > 0) {
+            if (payload.photoId) {
+              // Check database for masks (same as preview endpoint does)
+              const dbMasks = await storage.getMasksByPhoto(payload.photoId);
+              console.log(`[Outbox] Found ${dbMasks.length} masks in database for photo ${payload.photoId}`);
+              
+              if (dbMasks.length === 0) {
+                console.log(`[Outbox] No masks in database, using original image URL`);
+                compositeImageUrl = absoluteImageUrl;
+              } else {
               try {
                 // CRITICAL FIX: Fetch photo from database to get correct dimensions
                 const photo = await storage.getPhoto(payload.photoId);
@@ -211,16 +220,34 @@ export async function processOutboxEvents() {
                     height: photo.height,
                     originalUrl: photo.originalUrl?.substring(0, 80) + '...'
                   });
-                  console.log(`[Outbox] Masks to apply:`, payload.masks.map((m: any) => ({
-                    id: m.id,
-                    pointsCount: m.points?.length || 0,
-                    materialId: m.materialId,
-                    hasMaterialSettings: !!m.materialSettings,
-                    materialSettings: m.materialSettings ? {
-                      textureScale: m.materialSettings.textureScale,
-                      intensity: m.materialSettings.intensity
-                    } : null
-                  })));
+                  console.log(`[Outbox] Database masks to apply (${dbMasks.length} masks):`, dbMasks.map((m: any) => {
+                    let points: any[] = [];
+                    try {
+                      const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
+                      points = Array.isArray(pathData) ? pathData : [];
+                    } catch (e) {
+                      // Ignore parse errors for logging
+                    }
+                    let materialSettings: any = null;
+                    if (m.calcMetaJson) {
+                      try {
+                        materialSettings = typeof m.calcMetaJson === 'string' ? JSON.parse(m.calcMetaJson) : m.calcMetaJson;
+                      } catch (e) {
+                        // Ignore parse errors for logging
+                      }
+                    }
+                    return {
+                      id: m.id,
+                      pointsCount: points.length,
+                      materialId: m.materialId,
+                      hasCalcMetaJson: !!m.calcMetaJson,
+                      materialSettings: materialSettings ? {
+                        textureScale: materialSettings.textureScale,
+                        intensity: materialSettings.intensity,
+                        opacity: materialSettings.opacity
+                      } : null
+                    };
+                  }));
                   
                   // OPTIMIZATION: Generate composite and mask image in parallel to speed up webhook delivery
                   const generator = new CompositeGenerator();
@@ -241,7 +268,22 @@ export async function processOutboxEvents() {
                     photoPxPerMeter // Pass calibration for accurate texture scaling
                   );
                   
-                  const maskImagePromise = generateMaskImage(payload.masks, photo.width, photo.height);
+                  // Generate mask image using database masks (for consistency)
+                  // Convert database masks to format expected by generateMaskImage
+                  const maskImagePoints = dbMasks.map(m => {
+                    let points: any[] = [];
+                    try {
+                      const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
+                      points = Array.isArray(pathData) ? pathData : [];
+                    } catch (e) {
+                      console.warn(`[Outbox] Failed to parse pathJson for mask image generation:`, e);
+                    }
+                    return {
+                      id: m.id,
+                      points: points.map((pt: any) => ({ x: pt.x, y: pt.y }))
+                    };
+                  });
+                  const maskImagePromise = generateMaskImage(maskImagePoints, photo.width, photo.height);
                   
                   // Wait for both with timeout - composite has 15s timeout, mask has 5s timeout
                   const [compositeResult, maskResult] = await Promise.allSettled([
@@ -309,43 +351,45 @@ export async function processOutboxEvents() {
                 }
               } catch (error: any) {
                 console.error(`[Outbox] Error generating composite/mask image:`, error);
-                // Fallback to original image and client-provided dimensions
+                // Fallback to original image
                 compositeImageUrl = absoluteImageUrl;
-                if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
-                  console.log(`[Outbox] Fallback: Using client-provided dimensions for mask image: ${payload.width}x${payload.height}`);
-                  maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                // Try to generate mask image from database if photoId available
+                if (payload.photoId) {
+                  try {
+                    const fallbackDbMasks = await storage.getMasksByPhoto(payload.photoId);
+                    const photo = await storage.getPhoto(payload.photoId);
+                    if (fallbackDbMasks.length > 0 && photo) {
+                      const maskImagePoints = fallbackDbMasks.map(m => {
+                        let points: any[] = [];
+                        try {
+                          const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
+                          points = Array.isArray(pathData) ? pathData : [];
+                        } catch (e) {
+                          // Ignore parse errors
+                        }
+                        return {
+                          id: m.id,
+                          points: points.map((pt: any) => ({ x: pt.x, y: pt.y }))
+                        };
+                      });
+                      maskImageUrl = await generateMaskImage(maskImagePoints, photo.width, photo.height);
+                    }
+                  } catch (fallbackError) {
+                    console.warn(`[Outbox] Fallback mask image generation also failed:`, fallbackError);
+                  }
                 }
               }
             } else {
-              // No photoId or no masks - use original image
-              if (!payload.photoId) {
-                console.warn(`[Outbox] ⚠️ No photoId in payload, cannot generate composite. Using original image.`);
-              } else if (!payload.masks || payload.masks.length === 0) {
-                console.warn(`[Outbox] ⚠️ No masks in payload (count: ${payload.masks?.length || 0}), cannot generate composite. Using original image.`);
-              }
+              // No photoId - use original image
+              console.warn(`[Outbox] ⚠️ No photoId in payload, cannot generate composite. Using original image.`);
               compositeImageUrl = absoluteImageUrl;
               
-              // Generate mask image even if no composite (for AI inpainting)
-              if (payload.masks && payload.masks.length > 0) {
-                // Try to get dimensions from database if photoId available
-                if (payload.photoId) {
-                  try {
-                    const photo = await storage.getPhoto(payload.photoId);
-                    if (photo) {
-                      maskImageUrl = await generateMaskImage(payload.masks, photo.width, photo.height);
-                    } else if (payload.width && payload.height) {
-                      // Fallback to client-provided dimensions
-                      maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
-                    }
-                  } catch (error) {
-                    console.warn(`[Outbox] Failed to fetch photo for mask image, using client dimensions`);
-                    if (payload.width && payload.height) {
-                      maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
-                    }
-                  }
-                } else if (payload.width && payload.height) {
-                  // No photoId, use client-provided dimensions
+              // Generate mask image from payload if available (fallback for cases without photoId)
+              if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
+                try {
                   maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
+                } catch (error) {
+                  console.warn(`[Outbox] Failed to generate mask image from payload:`, error);
                 }
               }
             }
