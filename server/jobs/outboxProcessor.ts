@@ -254,7 +254,7 @@ export async function processOutboxEvents() {
                 try {
                   console.log(`[Outbox] 🔄 Attempting direct SQL query as fallback...`);
                   const directQuery = await executeQuery(
-                    `SELECT id, photo_id, material_id, calc_meta_json FROM masks WHERE photo_id = $1`,
+                    `SELECT id, photo_id, material_id, calc_meta_json, path_json, type, depth_level, elevation_m, z_index, is_stepped, created_by, created_at FROM masks WHERE photo_id = $1`,
                     [effectivePhotoId]
                   );
                   console.log(`[Outbox] 🔄 Direct SQL query found ${directQuery.length} masks`);
@@ -266,16 +266,16 @@ export async function processOutboxEvents() {
                       photoId: row.photo_id,
                       materialId: row.material_id,
                       calcMetaJson: row.calc_meta_json,
-                      // Add other required fields with defaults
-                      type: 'area' as const,
-                      pathJson: null, // Will need to fetch separately if needed
-                      depthLevel: 0,
-                      elevationM: '0',
-                      zIndex: 0,
-                      isStepped: false,
-                      createdBy: '',
-                      createdAt: new Date()
+                      pathJson: row.path_json, // Required for composite generation
+                      type: row.type || 'area',
+                      depthLevel: row.depth_level || 0,
+                      elevationM: row.elevation_m?.toString() || '0',
+                      zIndex: row.z_index || 0,
+                      isStepped: row.is_stepped || false,
+                      createdBy: row.created_by || '',
+                      createdAt: row.created_at || new Date()
                     }));
+                    console.log(`[Outbox] ✅ Converted ${dbMasks.length} masks from direct SQL query`);
                   }
                 } catch (sqlError: any) {
                   console.error(`[Outbox] ❌ Direct SQL query also failed:`, sqlError);
