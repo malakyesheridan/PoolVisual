@@ -450,8 +450,9 @@ export async function processOutboxEvents() {
               callbackSecret: payload.callbackSecret
             };
 
+            const isFallback = compositeImageUrl === absoluteImageUrl;
             console.log(`[Outbox] ========================================`);
-            console.log(`[Outbox] Sending enhancement job ${payload.jobId} to n8n webhook`);
+            console.log(`[Outbox] 📤 Sending enhancement job ${payload.jobId} to n8n webhook`);
             console.log(`[Outbox] Webhook URL: ${n8nWebhookUrl}`);
             console.log(`[Outbox] Payload mode: ${mode}`);
             console.log(`[Outbox] ========================================`);
@@ -464,8 +465,16 @@ export async function processOutboxEvents() {
             console.log(`[Outbox] 📦 PAYLOAD SUMMARY:`);
             console.log(`[Outbox]   Masks count: ${n8nPayload.masks.length}`);
             console.log(`[Outbox]   Photo ID: ${n8nPayload.photoId || 'MISSING'}`);
+            console.log(`[Outbox]   Job Photo ID: ${jobPhotoId || 'NULL'}`);
+            console.log(`[Outbox]   Payload Photo ID: ${payload.photoId || 'NULL'}`);
             console.log(`[Outbox]   Has compositeImageUrl: ${!!n8nPayload.compositeImageUrl}`);
-            console.log(`[Outbox]   Composite URL matches original: ${n8nPayload.compositeImageUrl === n8nPayload.imageUrl ? '⚠️ YES (FALLBACK)' : '✅ NO (GENERATED)'}`);
+            console.log(`[Outbox]   Composite URL matches original: ${isFallback ? '⚠️⚠️⚠️ YES (FALLBACK - NO MASKS FOUND!)' : '✅ NO (GENERATED WITH MASKS)'}`);
+            if (isFallback) {
+              console.error(`[Outbox] ❌❌❌ CRITICAL: Composite image is same as original!`);
+              console.error(`[Outbox] ❌❌❌ This means no masks were found in database for photoId: ${effectivePhotoId}`);
+              console.error(`[Outbox] ❌❌❌ Check diagnostic endpoint: GET /api/debug/enhancement/${payload.jobId}`);
+              console.error(`[Outbox] ❌❌❌ Verify masks exist in database for this photoId`);
+            }
             console.log(`[Outbox] ========================================`);
             console.log(`[Outbox] Full payload:`, JSON.stringify(n8nPayload, null, 2));
             console.log(`[Outbox] Payload preview:`, JSON.stringify({
