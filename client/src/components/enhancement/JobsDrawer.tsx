@@ -229,85 +229,127 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
           const originalWidth = photoSpace.imgW || 2000;
           const originalHeight = photoSpace.imgH || 1500;
           
-          // Step 1: Export Konva stage (masks layer) as data URL
-          const konvaDataURL = konvaStageRef.toDataURL({
-            pixelRatio: 2, // High quality
-            mimeType: 'image/png',
-            width: originalWidth,
-            height: originalHeight,
-            x: 0,
-            y: 0
-          });
+          // Get the WorldGroup node to temporarily reset camera transform
+          // This ensures masks export at their true image coordinates (world space)
+          // matching how the background image is drawn (no transforms)
+          const worldGroup = konvaStageRef.findOne((node: any) => node.name() === 'world-group') as any;
+          const originalTransform = worldGroup ? {
+            x: worldGroup.x(),
+            y: worldGroup.y(),
+            scaleX: worldGroup.scaleX(),
+            scaleY: worldGroup.scaleY()
+          } : null;
           
-          console.log('[JobsDrawer] Konva stage exported, loading images...');
+          console.log('[JobsDrawer] Current camera transform:', originalTransform);
           
-          // Step 2: Load both images in parallel (faster)
-          const [bgImg, konvaImg] = await Promise.all([
-            new Promise<HTMLImageElement>((resolve, reject) => {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = () => resolve(img);
-              img.onerror = reject;
-              img.src = currentImageUrl;
-            }),
-            new Promise<HTMLImageElement>((resolve, reject) => {
-              const img = new Image();
-              img.onload = () => resolve(img);
-              img.onerror = reject;
-              img.src = konvaDataURL;
-            })
-          ]);
-          
-          console.log('[JobsDrawer] Images loaded, compositing...');
-          
-          // Step 3: Composite both layers onto new canvas
-          const compositeCanvas = document.createElement('canvas');
-          compositeCanvas.width = originalWidth;
-          compositeCanvas.height = originalHeight;
-          const ctx = compositeCanvas.getContext('2d');
-          
-          if (!ctx) {
-            throw new Error('Failed to get canvas context');
+          try {
+            // Temporarily reset camera transform to identity (scale=1, pan=0)
+            // This ensures masks export in world space, matching the background
+            if (worldGroup) {
+              worldGroup.x(0);
+              worldGroup.y(0);
+              worldGroup.scaleX(1);
+              worldGroup.scaleY(1);
+              worldGroup.getLayer()?.batchDraw(); // Force redraw with new transform
+              console.log('[JobsDrawer] Camera transform reset for export');
+            }
+            
+            // Step 1: Export Konva stage (masks layer) as data URL at full image dimensions
+            // Now the masks are in world space (no camera transform), matching the background
+            const konvaDataURL = konvaStageRef.toDataURL({
+              pixelRatio: 2, // High quality
+              mimeType: 'image/png',
+              width: originalWidth,
+              height: originalHeight,
+              x: 0,
+              y: 0
+            });
+            
+            console.log('[JobsDrawer] Konva stage exported, loading images...');
+            
+            // Step 2: Load both images in parallel (faster)
+            const [bgImg, konvaImg] = await Promise.all([
+              new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = currentImageUrl;
+              }),
+              new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = reject;
+                img.src = konvaDataURL;
+              })
+            ]);
+            
+            console.log('[JobsDrawer] Images loaded, compositing...');
+            
+            // Step 3: Composite both layers onto new canvas
+            const compositeCanvas = document.createElement('canvas');
+            compositeCanvas.width = originalWidth;
+            compositeCanvas.height = originalHeight;
+            const ctx = compositeCanvas.getContext('2d');
+            
+            if (!ctx) {
+              throw new Error('Failed to get canvas context');
+            }
+            
+            // Enable high-quality image smoothing
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            
+            // Draw background first (full size, no transforms)
+            ctx.drawImage(bgImg, 0, 0, originalWidth, originalHeight);
+            // Draw masks on top (now also in world space, no transforms)
+            ctx.drawImage(konvaImg, 0, 0, originalWidth, originalHeight);
+            
+            console.log('[JobsDrawer] Composite created, converting to blob...');
+            
+            // Step 4: Convert to blob and upload
+            const blob = await new Promise<Blob>((resolve, reject) => {
+              compositeCanvas.toBlob((blob) => {
+                if (blob) {
+                  resolve(blob);
+                } else {
+                  reject(new Error('Failed to convert canvas to blob'));
+                }
+              }, 'image/png');
+            });
+            
+            const tempJobId = `temp-${Date.now()}`;
+            const formData = new FormData();
+            formData.append('composite', blob, 'composite.png');
+            formData.append('jobId', tempJobId);
+            
+            console.log('[JobsDrawer] Uploading composite image to server...');
+            const uploadRes = await fetch('/api/ai/enhancement/upload-composite', {
+              method: 'POST',
+              body: formData
+            });
+            
+            if (!uploadRes.ok) {
+              const errorText = await uploadRes.text();
+              throw new Error(`Upload failed: ${uploadRes.status} ${errorText}`);
+            }
+            
+            const uploadResult = await uploadRes.json();
+            compositeImageUrl = uploadResult.url;
+            
+            console.log('[JobsDrawer] ✅ Composite image uploaded successfully:', compositeImageUrl);
+          } finally {
+            // ALWAYS restore the original camera transform, even if export fails
+            // This ensures the UI never gets stuck with a reset transform
+            if (worldGroup && originalTransform) {
+              worldGroup.x(originalTransform.x);
+              worldGroup.y(originalTransform.y);
+              worldGroup.scaleX(originalTransform.scaleX);
+              worldGroup.scaleY(originalTransform.scaleY);
+              worldGroup.getLayer()?.batchDraw(); // Restore visual state immediately
+              console.log('[JobsDrawer] Camera transform restored');
+            }
           }
-          
-          // Draw background first
-          ctx.drawImage(bgImg, 0, 0, originalWidth, originalHeight);
-          // Draw masks on top
-          ctx.drawImage(konvaImg, 0, 0, originalWidth, originalHeight);
-          
-          console.log('[JobsDrawer] Composite created, converting to blob...');
-          
-          // Step 4: Convert to blob and upload
-          const blob = await new Promise<Blob>((resolve, reject) => {
-            compositeCanvas.toBlob((blob) => {
-              if (blob) {
-                resolve(blob);
-              } else {
-                reject(new Error('Failed to convert canvas to blob'));
-              }
-            }, 'image/png');
-          });
-          
-          const tempJobId = `temp-${Date.now()}`;
-          const formData = new FormData();
-          formData.append('composite', blob, 'composite.png');
-          formData.append('jobId', tempJobId);
-          
-          console.log('[JobsDrawer] Uploading composite image to server...');
-          const uploadRes = await fetch('/api/ai/enhancement/upload-composite', {
-            method: 'POST',
-            body: formData
-          });
-          
-          if (!uploadRes.ok) {
-            const errorText = await uploadRes.text();
-            throw new Error(`Upload failed: ${uploadRes.status} ${errorText}`);
-          }
-          
-          const uploadResult = await uploadRes.json();
-          compositeImageUrl = uploadResult.url;
-          
-          console.log('[JobsDrawer] ✅ Composite image uploaded successfully:', compositeImageUrl);
         } catch (exportError: any) {
           console.error('[JobsDrawer] ❌ Failed to export/upload composite:', exportError);
           // Fallback to original image URL - job will still be created
