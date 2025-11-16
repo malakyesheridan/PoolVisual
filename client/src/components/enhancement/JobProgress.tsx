@@ -31,14 +31,32 @@ export function JobProgress({ jobId }: { jobId: string }) {
 
   const formatDate = (dateString?: string) => {
     if (!dateString) return '';
+    
+    // Parse the date string
     const date = new Date(dateString);
+    
+    // Validate the date is valid
+    if (isNaN(date.getTime())) {
+      console.warn('[JobProgress] Invalid date string:', dateString);
+      return 'Invalid date';
+    }
+    
     const now = new Date();
     const diff = now.getTime() - date.getTime();
+    
+    // Handle future dates (timezone issues or clock skew)
+    if (diff < 0) {
+      // If date is in the future, treat it as "just now"
+      return 'Just now';
+    }
+    
+    const seconds = Math.floor(diff / 1000);
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
     const days = Math.floor(diff / 86400000);
     
-    if (minutes < 1) return 'Just now';
+    if (seconds < 10) return 'Just now';
+    if (seconds < 60) return `${seconds}s ago`;
     if (minutes < 60) return `${minutes}m ago`;
     if (hours < 24) return `${hours}h ago`;
     if (days < 7) return `${days}d ago`;

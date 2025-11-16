@@ -399,17 +399,22 @@ export function JobsDrawer({ onClose }: JobsDrawerProps) {
       if (compositeImageUrl && compositeImageUrl.includes('temp-')) {
         console.log('[JobsDrawer] Note: Composite URL uses temp jobId, but that\'s fine - URL is already uploaded');
       }
+      // Store job with current timestamp (will be updated when API returns actual dates)
+      const now = new Date().toISOString();
       upsertJob({ 
         id: jobId, 
         status: 'queued', 
         progress_percent: 0,
         mode: mode, // Store the enhancement type
-        created_at: new Date().toISOString()
+        created_at: now,
+        updated_at: now
       });
       setActiveJobId(jobId);
       setSelectedMode(null); // Reset selection after creation
       
-      // Refresh job list
+      // Refresh job list to get actual dates from database
+      // This will update the job with database timestamps, but our formatDate
+      // function now handles timezone issues and invalid dates properly
       getRecentJobs(20).then(d => setInitial(d.jobs)).catch(() => {});
     } catch (error: any) {
       console.error('Failed to create enhancement:', error);

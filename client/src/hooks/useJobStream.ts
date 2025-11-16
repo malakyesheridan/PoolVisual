@@ -16,6 +16,8 @@ export function useJobStream(jobId?: string) {
       if (variants) partial.variants = variants;
       if (errorMessage) partial.error_message = errorMessage;
       if (error_code) partial.error_code = error_code;
+      // Update updated_at when receiving stream updates
+      partial.updated_at = new Date().toISOString();
       upsertJob(partial);
     });
     return close;
