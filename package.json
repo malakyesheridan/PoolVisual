@@ -24,7 +24,9 @@
     "db:push": "drizzle-kit push",
     "db:ping": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/dbPing.ts",
     "db:check": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/dbCheck.ts",
-    "db:projects": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/migrateProjects.ts"
+    "db:projects": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/migrateProjects.ts",
+    "test:system-masks": "npx tsx ./test-system-mask-query.ts",
+    "db:migrate:system-masks": "npx tsx ./scripts/runMigration.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.918.0",

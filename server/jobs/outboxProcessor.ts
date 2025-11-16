@@ -10,6 +10,7 @@ import { storageService } from '../lib/storageService.js';
 import { randomUUID } from 'crypto';
 import { CompositeGenerator } from '../compositeGenerator.js';
 import { storage } from '../storage.js';
+import { getMasksByPhotoSystem } from '../lib/systemQueries.js';
 
 function calcBackoff(attempts: number) {
   const base = 5000;
@@ -238,19 +239,26 @@ export async function processOutboxEvents() {
               console.log(`[Outbox] 🔍 Querying database for masks (photoId: ${effectivePhotoId})...`);
               console.log(`[Outbox] 🔍 PhotoId type: ${typeof effectivePhotoId}, value: ${effectivePhotoId}`);
               let dbMasks: any[] = [];
+              
+              // CRITICAL FIX: Use system query function that bypasses RLS
+              // The outbox processor runs in background context without user session,
+              // so RLS policies would block access. The system function uses SECURITY DEFINER
+              // to run with elevated privileges and bypass RLS.
               try {
-                console.log(`[Outbox] 🔍 Calling storage.getMasksByPhoto(${effectivePhotoId})...`);
-                dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-                console.log(`[Outbox] ✅ getMasksByPhoto succeeded: ${dbMasks.length} masks`);
+                console.log(`[Outbox] 🔍 Calling getMasksByPhotoSystem(${effectivePhotoId})...`);
+                console.log(`[Outbox] 📝 Note: Using system query function to bypass RLS (background process)`);
+                dbMasks = await getMasksByPhotoSystem(effectivePhotoId);
+                console.log(`[Outbox] ✅ getMasksByPhotoSystem succeeded: ${dbMasks.length} masks`);
                 console.log(`[Outbox] ✅ Mask IDs returned:`, dbMasks.map(m => m.id));
                 console.log(`[Outbox] 📊 Database query result:`, {
                   photoId: effectivePhotoId,
                   masksFound: dbMasks.length,
                   maskIds: dbMasks.map(m => m.id),
-                  source: jobPhotoId ? 'job table' : 'payload'
+                  source: jobPhotoId ? 'job table' : 'payload',
+                  queryMethod: 'system_function_bypass_rls'
                 });
               } catch (queryError: any) {
-                console.error(`[Outbox] ❌ getMasksByPhoto failed:`, queryError);
+                console.error(`[Outbox] ❌ getMasksByPhotoSystem failed:`, queryError);
                 console.error(`[Outbox] ❌ Error details:`, {
                   message: queryError?.message,
                   stack: queryError?.stack,
@@ -258,40 +266,14 @@ export async function processOutboxEvents() {
                   errorName: queryError?.name,
                   errorCode: queryError?.code
                 });
-                // Try direct SQL query as fallback to verify data is accessible
+                // Fallback to regular storage method (may fail due to RLS, but worth trying)
                 try {
-                  console.log(`[Outbox] 🔄 Attempting direct SQL query as fallback...`);
-                  const directQuery = await executeQuery(
-                    `SELECT id, photo_id, material_id, calc_meta_json, path_json, type, depth_level, elevation_m, z_index, is_stepped, created_by, created_at FROM masks WHERE photo_id = $1`,
-                    [effectivePhotoId]
-                  );
-                  console.log(`[Outbox] 🔄 Direct SQL query found ${directQuery.length} masks`);
-                  if (directQuery.length > 0) {
-                    console.log(`[Outbox] 🔄 Direct SQL mask IDs:`, directQuery.map((m: any) => m.id));
-                    // Convert SQL result to match expected format
-                    dbMasks = directQuery.map((row: any) => ({
-                      id: row.id,
-                      photoId: row.photo_id,
-                      materialId: row.material_id,
-                      calcMetaJson: row.calc_meta_json,
-                      pathJson: row.path_json, // Required for composite generation
-                      type: row.type || 'area',
-                      depthLevel: row.depth_level || 0,
-                      elevationM: row.elevation_m?.toString() || '0',
-                      zIndex: row.z_index || 0,
-                      isStepped: row.is_stepped || false,
-                      createdBy: row.created_by || '',
-                      createdAt: row.created_at || new Date()
-                    }));
-                    console.log(`[Outbox] ✅ Converted ${dbMasks.length} masks from direct SQL query`);
-                  }
-                } catch (sqlError: any) {
-                  console.error(`[Outbox] ❌ Direct SQL query also failed:`, sqlError);
-                  console.error(`[Outbox] ❌ SQL Error details:`, {
-                    message: sqlError?.message,
-                    stack: sqlError?.stack,
-                    photoId: effectivePhotoId
-                  });
+                  console.log(`[Outbox] 🔄 Attempting fallback to storage.getMasksByPhoto()...`);
+                  dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
+                  console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
+                } catch (fallbackError: any) {
+                  console.error(`[Outbox] ❌ Fallback also failed:`, fallbackError);
+                  console.error(`[Outbox] ❌ This confirms RLS is blocking access - system function is required`);
                 }
               }
               
