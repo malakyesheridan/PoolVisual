@@ -36,7 +36,21 @@ export async function getMasksByPhotoSystem(photoId: string): Promise<any[]> {
       createdAt: row.created_at || new Date()
     }));
   } catch (error: any) {
-    console.error(`[SystemQueries] Error querying masks for photo ${photoId}:`, error);
+    // Check if the error is because the function doesn't exist
+    if (error.message?.includes('does not exist') || 
+        error.message?.includes('function get_masks_by_photo_system') ||
+        error.code === '42883') {
+      console.error(`[SystemQueries] ❌ CRITICAL: Function get_masks_by_photo_system() does not exist in database!`);
+      console.error(`[SystemQueries] ❌ This means the migration has not been run in production.`);
+      console.error(`[SystemQueries] ❌ Run: npm run db:migrate:system-masks (or psql $DATABASE_URL -f migrations/010_system_mask_query.sql)`);
+      console.error(`[SystemQueries] Error details:`, {
+        message: error.message,
+        code: error.code,
+        photoId: photoId
+      });
+    } else {
+      console.error(`[SystemQueries] Error querying masks for photo ${photoId}:`, error);
+    }
     throw error;
   }
 }

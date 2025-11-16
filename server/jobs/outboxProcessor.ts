@@ -266,14 +266,30 @@ export async function processOutboxEvents() {
                   errorName: queryError?.name,
                   errorCode: queryError?.code
                 });
+                
+                // Check if function doesn't exist (migration not run)
+                if (queryError.message?.includes('does not exist') || 
+                    queryError.message?.includes('function get_masks_by_photo_system') ||
+                    queryError.code === '42883') {
+                  console.error(`[Outbox] ❌❌❌ CRITICAL: Migration not run in production!`);
+                  console.error(`[Outbox] ❌❌❌ The function get_masks_by_photo_system() does not exist.`);
+                  console.error(`[Outbox] ❌❌❌ Run migration: npm run db:migrate:system-masks`);
+                  console.error(`[Outbox] ❌❌❌ Or: psql $DATABASE_URL -f migrations/010_system_mask_query.sql`);
+                }
+                
                 // Fallback to regular storage method (may fail due to RLS, but worth trying)
                 try {
                   console.log(`[Outbox] 🔄 Attempting fallback to storage.getMasksByPhoto()...`);
                   dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
                   console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
+                  if (dbMasks.length === 0) {
+                    console.warn(`[Outbox] ⚠️ Fallback also found 0 masks - this confirms RLS is blocking access`);
+                    console.warn(`[Outbox] ⚠️ The system function is required but migration hasn't been run`);
+                  }
                 } catch (fallbackError: any) {
                   console.error(`[Outbox] ❌ Fallback also failed:`, fallbackError);
                   console.error(`[Outbox] ❌ This confirms RLS is blocking access - system function is required`);
+                  console.error(`[Outbox] ❌ But the migration hasn't been run, so the function doesn't exist`);
                 }
               }
               
