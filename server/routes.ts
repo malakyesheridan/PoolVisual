@@ -1814,6 +1814,41 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Check if system function exists in database
+  app.get("/api/debug/system-function-check", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { executeQuery } = await import('./lib/dbHelpers.js');
+      
+      // Check if function exists
+      const functionCheck = await executeQuery(`
+        SELECT 
+          proname, 
+          prosecdef,
+          pg_get_function_identity_arguments(oid) as args
+        FROM pg_proc 
+        WHERE proname = 'get_masks_by_photo_system'
+      `);
+      
+      if (functionCheck.length === 0) {
+        return res.json({
+          exists: false,
+          message: 'Function get_masks_by_photo_system() does not exist. Run migration: npm run db:migrate:system-masks'
+        });
+      }
+      
+      const func = functionCheck[0];
+      return res.json({
+        exists: true,
+        hasSecurityDefiner: func.prosecdef === true,
+        functionName: func.proname,
+        arguments: func.args,
+        message: func.prosecdef ? '✅ Function exists with SECURITY DEFINER (will bypass RLS)' : '⚠️ Function exists but missing SECURITY DEFINER'
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message, stack: error.stack });
+    }
+  });
+
   // Diagnostic endpoint for enhancement jobs
   app.get("/api/debug/enhancement/:jobId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
