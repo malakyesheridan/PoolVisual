@@ -358,7 +358,7 @@ router.post('/', authenticateSession, async (req, res) => {
       }));
 
       await tx.execute(
-        `INSERT INTO outbox (job_id, event_type, payload) VALUES ($1, 'enqueue_enhancement', $2)`,
+        `INSERT INTO outbox (job_id, event_type, payload, status) VALUES ($1, 'enqueue_enhancement', $2, 'pending')`,
         [
           jobId,
           JSON.stringify(outboxPayload)
@@ -366,21 +366,6 @@ router.post('/', authenticateSession, async (req, res) => {
       );
 
       console.log('[Create Enhancement] ✅ Outbox event created successfully');
-
-      // CRITICAL FIX: Trigger outbox processor immediately instead of waiting for interval
-      // This ensures webhook is sent promptly, especially important in Vercel serverless
-      // where setInterval may not run reliably
-      console.log('[Create Enhancement] 🔄 Triggering outbox processor immediately...');
-      import('../jobs/outboxProcessor.js').then(({ processOutboxEvents }) => {
-        console.log('[Create Enhancement] ✅ Outbox processor imported, calling processOutboxEvents()...');
-        return processOutboxEvents();
-      }).then(() => {
-        console.log('[Create Enhancement] ✅ Outbox processor completed successfully');
-      }).catch((e) => {
-        console.error('[Create Enhancement] ❌ Failed to trigger outbox processor immediately:', e);
-        console.error('[Create Enhancement] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
-        // Don't fail the request - processor will retry via interval if needed
-      });
 
       return { id: jobId };
       });
@@ -395,6 +380,27 @@ router.post('/', authenticateSession, async (req, res) => {
       console.error('[Create Enhancement] Job creation returned no ID');
       return res.status(500).json({ message: 'Failed to create job' });
     }
+
+    // CRITICAL FIX: Trigger outbox processor AFTER transaction completes
+    // Add small delay to ensure database commit is visible across instances
+    // This is especially important in Vercel serverless where:
+    // 1. Each request might be in a different instance
+    // 2. Function lifecycle might kill async calls after response is sent
+    // 3. Database visibility might have slight delay
+    // Using setTimeout keeps the function alive and ensures proper timing
+    console.log('[Create Enhancement] 🔄 Scheduling outbox processor trigger (200ms delay)...');
+    setTimeout(async () => {
+      try {
+        const { processOutboxEvents } = await import('../jobs/outboxProcessor.js');
+        console.log('[Create Enhancement] ✅ Outbox processor imported, calling processOutboxEvents()...');
+        await processOutboxEvents();
+        console.log('[Create Enhancement] ✅ Outbox processor completed successfully');
+      } catch (e) {
+        console.error('[Create Enhancement] ❌ Failed to trigger outbox processor immediately:', e);
+        console.error('[Create Enhancement] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
+        // Don't fail the request - processor will retry via interval if needed
+      }
+    }, 200); // 200ms delay to ensure database commit is visible
 
     res.json({ jobId, status: 'queued' });
   } catch (err: any) {
