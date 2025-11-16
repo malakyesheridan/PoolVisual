@@ -232,244 +232,137 @@ export async function processOutboxEvents() {
               note: 'Using job.photo_id as source of truth for mask queries'
             });
             
-            if (effectivePhotoId) {
+            // NEW: Use client-exported composite image if available (simpler, faster, more reliable)
+            if (payload.compositeImageUrl) {
+              console.log(`[Outbox] ✅ Using client-exported composite image from payload`);
+              console.log(`[Outbox] Composite URL: ${payload.compositeImageUrl.substring(0, 100)}...`);
+              compositeImageUrl = payload.compositeImageUrl;
+              
+              // Ensure URL is absolute
+              if (!compositeImageUrl.startsWith('http')) {
+                const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+                const cleanAppUrl = appUrl.replace(/\/$/, '');
+                const cleanCompositeUrl = compositeImageUrl.startsWith('/') ? compositeImageUrl : `/${compositeImageUrl}`;
+                compositeImageUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
+                console.log(`[Outbox] Converted relative composite URL to absolute: ${compositeImageUrl.substring(0, 100)}...`);
+              }
+              
+              // Still generate mask image if needed (for AI inpainting)
+              if (effectivePhotoId && payload.masks && payload.masks.length > 0) {
+                try {
+                  const photo = await storage.getPhoto(effectivePhotoId);
+                  if (photo) {
+                    const maskImagePoints = payload.masks.map((m: any) => ({
+                      id: m.id,
+                      points: m.points || []
+                    }));
+                    maskImageUrl = await generateMaskImage(maskImagePoints, photo.width, photo.height);
+                  }
+                } catch (maskError) {
+                  console.warn(`[Outbox] Failed to generate mask image:`, maskError);
+                }
+              }
+            } else if (effectivePhotoId) {
+              // FALLBACK: Generate composite server-side if client didn't provide one
+              // This maintains backward compatibility
+              console.log(`[Outbox] ⚠️ No compositeImageUrl in payload, falling back to server-side generation`);
+              console.log(`[Outbox] ⚠️ This is slower and less reliable - client should export canvas`);
+              
               // Check database for masks using job's photo_id (source of truth)
               console.log(`[Outbox] ========================================`);
               console.log(`[Outbox] 🔍 MASK QUERY START`);
               console.log(`[Outbox] 🔍 Querying database for masks (photoId: ${effectivePhotoId})...`);
-              console.log(`[Outbox] 🔍 PhotoId type: ${typeof effectivePhotoId}, value: ${effectivePhotoId}`);
               let dbMasks: any[] = [];
               
               // CRITICAL FIX: Use system query function that bypasses RLS
-              // The outbox processor runs in background context without user session,
-              // so RLS policies would block access. The system function uses SECURITY DEFINER
-              // to run with elevated privileges and bypass RLS.
               try {
-                console.log(`[Outbox] 🔍 Calling getMasksByPhotoSystem(${effectivePhotoId})...`);
-                console.log(`[Outbox] 📝 Note: Using system query function to bypass RLS (background process)`);
                 dbMasks = await getMasksByPhotoSystem(effectivePhotoId);
                 console.log(`[Outbox] ✅ getMasksByPhotoSystem succeeded: ${dbMasks.length} masks`);
-                console.log(`[Outbox] ✅ Mask IDs returned:`, dbMasks.map(m => m.id));
-                console.log(`[Outbox] 📊 Database query result:`, {
-                  photoId: effectivePhotoId,
-                  masksFound: dbMasks.length,
-                  maskIds: dbMasks.map(m => m.id),
-                  source: jobPhotoId ? 'job table' : 'payload',
-                  queryMethod: 'system_function_bypass_rls'
-                });
               } catch (queryError: any) {
                 console.error(`[Outbox] ❌ getMasksByPhotoSystem failed:`, queryError);
-                console.error(`[Outbox] ❌ Error details:`, {
-                  message: queryError?.message,
-                  stack: queryError?.stack,
-                  photoId: effectivePhotoId,
-                  errorName: queryError?.name,
-                  errorCode: queryError?.code
-                });
-                
-                // Check if function doesn't exist (migration not run)
-                if (queryError.message?.includes('does not exist') || 
-                    queryError.message?.includes('function get_masks_by_photo_system') ||
-                    queryError.code === '42883') {
-                  console.error(`[Outbox] ❌❌❌ CRITICAL: Migration not run in production!`);
-                  console.error(`[Outbox] ❌❌❌ The function get_masks_by_photo_system() does not exist.`);
-                  console.error(`[Outbox] ❌❌❌ Run migration: npm run db:migrate:system-masks`);
-                  console.error(`[Outbox] ❌❌❌ Or: psql $DATABASE_URL -f migrations/010_system_mask_query.sql`);
-                }
-                
-                // Fallback to regular storage method (may fail due to RLS, but worth trying)
+                // Fallback to regular storage method
                 try {
-                  console.log(`[Outbox] 🔄 Attempting fallback to storage.getMasksByPhoto()...`);
                   dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-                  console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
-                  if (dbMasks.length === 0) {
-                    console.warn(`[Outbox] ⚠️ Fallback also found 0 masks - this confirms RLS is blocking access`);
-                    console.warn(`[Outbox] ⚠️ The system function is required but migration hasn't been run`);
-                  }
+                console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
                 } catch (fallbackError: any) {
                   console.error(`[Outbox] ❌ Fallback also failed:`, fallbackError);
-                  console.error(`[Outbox] ❌ This confirms RLS is blocking access - system function is required`);
-                  console.error(`[Outbox] ❌ But the migration hasn't been run, so the function doesn't exist`);
                 }
               }
               
               if (dbMasks.length === 0) {
-                console.warn(`[Outbox] ⚠️ No masks found in database for photo ${effectivePhotoId}`);
-                console.warn(`[Outbox] ⚠️ This will cause fallback to original image URL`);
-                console.warn(`[Outbox] ⚠️ Check if masks exist for this photoId in the database`);
+                console.warn(`[Outbox] ⚠️ No masks found in database, using original image URL`);
                 compositeImageUrl = absoluteImageUrl;
               } else {
-              try {
-                // CRITICAL FIX: Fetch photo from database using effectivePhotoId (job's photo_id)
-                const photo = await storage.getPhoto(effectivePhotoId);
-                if (!photo) {
-                  console.warn(`[Outbox] ⚠️ Photo ${effectivePhotoId} not found in database, using original image URL`);
-                  compositeImageUrl = absoluteImageUrl;
-                } else {
-                  console.log(`[Outbox] ✅ Generating composite and mask images in parallel for photo ${effectivePhotoId}`);
-                  console.log(`[Outbox] Photo details:`, {
-                    id: photo.id,
-                    width: photo.width,
-                    height: photo.height,
-                    originalUrl: photo.originalUrl?.substring(0, 80) + '...'
-                  });
-                  console.log(`[Outbox] Database masks to apply (${dbMasks.length} masks):`, dbMasks.map((m: any) => {
-                    let points: any[] = [];
-                    try {
-                      const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
-                      points = Array.isArray(pathData) ? pathData : [];
-                    } catch (e) {
-                      // Ignore parse errors for logging
-                    }
-                    let materialSettings: any = null;
-                    if (m.calcMetaJson) {
-                      try {
-                        materialSettings = typeof m.calcMetaJson === 'string' ? JSON.parse(m.calcMetaJson) : m.calcMetaJson;
-                      } catch (e) {
-                        // Ignore parse errors for logging
-                      }
-                    }
-                    return {
-                      id: m.id,
-                      pointsCount: points.length,
-                      materialId: m.materialId,
-                      hasCalcMetaJson: !!m.calcMetaJson,
-                      materialSettings: materialSettings ? {
-                        textureScale: materialSettings.textureScale,
-                        intensity: materialSettings.intensity,
-                        opacity: materialSettings.opacity
-                      } : null
-                    };
-                  }));
-                  
-                  // OPTIMIZATION: Generate composite and mask image in parallel to speed up webhook delivery
-                  const generator = new CompositeGenerator();
-                  // Pass calibration if available (from payload or photo metadata)
-                  const photoPxPerMeter = payload.calibration || undefined;
-                  
-                  // CRITICAL FIX: Use database masks with effectivePhotoId (job's photo_id)
-                  // This ensures webhook composite matches preview composite (both use database as source of truth)
-                  // The preview endpoint (GET /api/photos/:id/composite) uses database masks, so webhook should too
-                  console.log(`[Outbox] Using database masks for composite generation (same as preview)`);
-                  console.log(`[Outbox] Photo ID: ${effectivePhotoId} (from ${jobPhotoId ? 'job table' : 'payload'})`);
-                  console.log(`[Outbox] Note: Payload had ${payload.masks?.length || 0} masks, but using database masks for consistency`);
-                  
-                  const compositePromise = generator.generateComposite(
-                    effectivePhotoId, 
-                    true,
-                    undefined, // Don't pass payload masks - use database masks instead (same as preview)
-                    photoPxPerMeter // Pass calibration for accurate texture scaling
-                  );
-                  
-                  // Generate mask image using database masks (for consistency)
-                  // Convert database masks to format expected by generateMaskImage
-                  const maskImagePoints = dbMasks.map(m => {
-                    let points: any[] = [];
-                    try {
-                      const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
-                      points = Array.isArray(pathData) ? pathData : [];
-                    } catch (e) {
-                      console.warn(`[Outbox] Failed to parse pathJson for mask image generation:`, e);
-                    }
-                    return {
-                      id: m.id,
-                      points: points.map((pt: any) => ({ x: pt.x, y: pt.y }))
-                    };
-                  });
-                  const maskImagePromise = generateMaskImage(maskImagePoints, photo.width, photo.height);
-                  
-                  // Wait for both with timeout - composite has 15s timeout, mask has 5s timeout
-                  const [compositeResult, maskResult] = await Promise.allSettled([
-                    Promise.race([
-                      compositePromise,
-                      new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Composite generation timeout (15s)')), 15000)
-                      )
-                    ]),
-                    Promise.race([
-                      maskImagePromise,
-                      new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Mask image generation timeout (5s)')), 5000)
-                      )
-                    ])
-                  ]);
-                  
-                  // Process composite result
-                  if (compositeResult.status === 'fulfilled') {
-                    const result = compositeResult.value;
-                    console.log(`[Outbox] Composite generation result:`, {
-                      status: result.status,
-                      hasAfterUrl: !!result.afterUrl,
-                      hasEdits: result.hasEdits,
-                      error: result.error,
-                      afterUrl: result.afterUrl ? result.afterUrl.substring(0, 80) + '...' : null
-                    });
-                    
-                    if (result.status === 'completed' && result.afterUrl) {
-                      // Ensure URL is absolute (storageService should return absolute, but double-check)
-                      let finalCompositeUrl = result.afterUrl;
-                      if (!finalCompositeUrl.startsWith('http')) {
-                        const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
-                        const cleanAppUrl = appUrl.replace(/\/$/, '');
-                        const cleanCompositeUrl = finalCompositeUrl.startsWith('/') ? finalCompositeUrl : `/${finalCompositeUrl}`;
-                        finalCompositeUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
-                        console.log(`[Outbox] Converted relative composite URL to absolute: ${finalCompositeUrl}`);
-                      }
-                      compositeImageUrl = finalCompositeUrl;
-                      console.log(`[Outbox] ✅ Composite image generated successfully: ${compositeImageUrl.substring(0, 100)}...`);
-                    } else {
-                      console.warn(`[Outbox] ⚠️ Composite generation failed or no edits:`, {
-                        status: result.status,
-                        error: result.error,
-                        hasEdits: result.hasEdits,
-                        afterUrl: result.afterUrl
-                      });
-                      compositeImageUrl = absoluteImageUrl;
-                      console.warn(`[Outbox] ⚠️ Falling back to original image URL: ${absoluteImageUrl.substring(0, 100)}...`);
-                    }
-                  } else {
-                    console.warn(`[Outbox] ⚠️ Composite generation failed or timed out:`, compositeResult.reason);
+                try {
+                  const photo = await storage.getPhoto(effectivePhotoId);
+                  if (!photo) {
                     compositeImageUrl = absoluteImageUrl;
-                    console.warn(`[Outbox] ⚠️ Falling back to original image URL due to error/timeout`);
-                  }
-                  
-                  // Process mask image result
-                  if (maskResult.status === 'fulfilled' && maskResult.value) {
-                    maskImageUrl = maskResult.value;
-                    console.log(`[Outbox] ✅ Mask image generated: ${maskImageUrl.substring(0, 100)}...`);
                   } else {
-                    console.warn(`[Outbox] ⚠️ Mask image generation failed or timed out:`, maskResult.reason || 'unknown error');
-                    // Continue without mask image - not critical for webhook delivery
-                  }
-                }
-              } catch (error: any) {
-                console.error(`[Outbox] Error generating composite/mask image:`, error);
-                // Fallback to original image
-                compositeImageUrl = absoluteImageUrl;
-                // Try to generate mask image from database if effectivePhotoId available
-                if (effectivePhotoId) {
-                  try {
-                    const fallbackDbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-                    const photo = await storage.getPhoto(effectivePhotoId);
-                    if (fallbackDbMasks.length > 0 && photo) {
-                      const maskImagePoints = fallbackDbMasks.map(m => {
-                        let points: any[] = [];
-                        try {
-                          const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
-                          points = Array.isArray(pathData) ? pathData : [];
-                        } catch (e) {
-                          // Ignore parse errors
+                    const generator = new CompositeGenerator();
+                    const photoPxPerMeter = payload.calibration || undefined;
+                    
+                    const compositePromise = generator.generateComposite(
+                      effectivePhotoId, 
+                      true,
+                      undefined,
+                      photoPxPerMeter
+                    );
+                    
+                    const maskImagePoints = dbMasks.map(m => {
+                      let points: any[] = [];
+                      try {
+                        const pathData = typeof m.pathJson === 'string' ? JSON.parse(m.pathJson) : m.pathJson;
+                        points = Array.isArray(pathData) ? pathData : [];
+                      } catch (e) {
+                        console.warn(`[Outbox] Failed to parse pathJson:`, e);
+                      }
+                      return {
+                        id: m.id,
+                        points: points.map((pt: any) => ({ x: pt.x, y: pt.y }))
+                      };
+                    });
+                    const maskImagePromise = generateMaskImage(maskImagePoints, photo.width, photo.height);
+                    
+                    const [compositeResult, maskResult] = await Promise.allSettled([
+                      Promise.race([
+                        compositePromise,
+                        new Promise((_, reject) => 
+                          setTimeout(() => reject(new Error('Composite generation timeout (15s)')), 15000)
+                        )
+                      ]),
+                      Promise.race([
+                        maskImagePromise,
+                        new Promise((_, reject) => 
+                          setTimeout(() => reject(new Error('Mask image generation timeout (5s)')), 5000)
+                        )
+                      ])
+                    ]);
+                    
+                    if (compositeResult.status === 'fulfilled') {
+                      const result = compositeResult.value;
+                      if (result.status === 'completed' && result.afterUrl) {
+                        let finalCompositeUrl = result.afterUrl;
+                        if (!finalCompositeUrl.startsWith('http')) {
+                          const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+                          const cleanAppUrl = appUrl.replace(/\/$/, '');
+                          const cleanCompositeUrl = finalCompositeUrl.startsWith('/') ? finalCompositeUrl : `/${finalCompositeUrl}`;
+                          finalCompositeUrl = `${cleanAppUrl}${cleanCompositeUrl}`;
                         }
-                        return {
-                          id: m.id,
-                          points: points.map((pt: any) => ({ x: pt.x, y: pt.y }))
-                        };
-                      });
-                      maskImageUrl = await generateMaskImage(maskImagePoints, photo.width, photo.height);
+                        compositeImageUrl = finalCompositeUrl;
+                      } else {
+                        compositeImageUrl = absoluteImageUrl;
+                      }
+                    } else {
+                      compositeImageUrl = absoluteImageUrl;
                     }
-                  } catch (fallbackError) {
-                    console.warn(`[Outbox] Fallback mask image generation also failed:`, fallbackError);
+                    
+                    if (maskResult.status === 'fulfilled') {
+                      maskImageUrl = maskResult.value;
+                    }
                   }
+                } catch (error: any) {
+                  console.error(`[Outbox] ❌ Error generating composite:`, error);
+                  compositeImageUrl = absoluteImageUrl;
                 }
               }
             } else {
@@ -477,7 +370,7 @@ export async function processOutboxEvents() {
               console.warn(`[Outbox] ⚠️ No photoId in payload, cannot generate composite. Using original image.`);
               compositeImageUrl = absoluteImageUrl;
               
-              // Generate mask image from payload if available (fallback for cases without photoId)
+              // Try to generate mask image from payload if available (fallback for cases without photoId)
               if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
                 try {
                   maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
@@ -485,6 +378,11 @@ export async function processOutboxEvents() {
                   console.warn(`[Outbox] Failed to generate mask image from payload:`, error);
                 }
               }
+            }
+            
+            // Ensure compositeImageUrl is set (fallback to original if not set)
+            if (!compositeImageUrl) {
+              compositeImageUrl = absoluteImageUrl;
             }
             
             const n8nPayload = {

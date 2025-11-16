@@ -139,6 +139,18 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
     };
   }, [calibrationMode]);
 
+  // Register/unregister Konva stage reference with store for canvas export
+  useEffect(() => {
+    if (stageRef.current) {
+      dispatch({ type: 'SET_KONVA_STAGE_REF', payload: stageRef.current });
+      console.log('[MaskCanvasKonva] Registered Konva stage reference with store');
+    }
+    return () => {
+      dispatch({ type: 'SET_KONVA_STAGE_REF', payload: null });
+      console.log('[MaskCanvasKonva] Unregistered Konva stage reference from store');
+    };
+  }, [dispatch]);
+
   // Log world transform once on mount
   useEffect(() => {
     console.log('[WorldTransform]', { 

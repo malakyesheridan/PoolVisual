@@ -3,6 +3,7 @@
  */
 
 import { Router } from 'express';
+import multer from 'multer';
 import { storage } from '../storage.js';
 import { storageService } from '../lib/storageService.js';
 import { enhancementQueue } from '../jobs/aiEnhancementQueue.js';
@@ -11,6 +12,7 @@ import { generateCacheKey } from '../lib/cacheNormalizer.js';
 import { verifyWebhookSignature } from '../middleware/hmacVerification.js';
 import { SSEManager } from '../lib/sseManager.js';
 import { executeQuery, transaction } from '../lib/dbHelpers.js';
+import { randomUUID } from 'crypto';
 
 export const router = Router();
 
@@ -23,6 +25,85 @@ function authenticateSession(req: any, res: any, next: any) {
   req.session = { user: { id: '027a7c88-9d4b-4ee4-9246-c5da53a120ab' } };
   next();
 }
+
+// Multer configuration for composite upload
+const getUpload = () => {
+  if (process.env.VERCEL) {
+    return multer({
+      storage: multer.memoryStorage(),
+      limits: {
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '52428800'), // 50MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+        }
+      },
+    });
+  } else {
+    const uploadDir = 'uploads/';
+    return multer({
+      dest: uploadDir,
+      limits: {
+        fileSize: parseInt(process.env.MAX_IMAGE_SIZE || '52428800'), // 50MB
+      },
+      fileFilter: (req, file, cb) => {
+        const allowedTypes = (process.env.ALLOWED_IMAGE_TYPES || 'image/jpeg,image/png,image/webp').split(',');
+        if (allowedTypes.includes(file.mimetype)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'));
+        }
+      },
+    });
+  }
+};
+
+// POST /api/ai/enhancement/upload-composite
+// Upload composite image exported from client canvas
+router.post('/upload-composite', authenticateSession, getUpload().single('composite'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    const jobId = req.body.jobId;
+    if (!jobId) {
+      return res.status(400).json({ error: 'jobId required' });
+    }
+    
+    // Get file buffer
+    let imageBuffer: Buffer;
+    if (req.file.buffer) {
+      // Memory storage (Vercel)
+      imageBuffer = req.file.buffer;
+    } else if (req.file.path) {
+      // Disk storage (local)
+      const fs = await import('fs');
+      imageBuffer = fs.readFileSync(req.file.path);
+    } else {
+      return res.status(400).json({ error: 'No file buffer or path available' });
+    }
+    
+    // Upload to cloud storage
+    const path = `ai-enhancements/composite/${jobId}-${Date.now()}.png`;
+    const url = await storageService.put(
+      path,
+      imageBuffer,
+      req.file.mimetype || 'image/png'
+    );
+    
+    console.log(`[UploadComposite] Uploaded composite image for job ${jobId}: ${url}`);
+    
+    res.json({ url });
+  } catch (error: any) {
+    console.error('[UploadComposite] Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // POST /api/ai/enhancement/upload-url
 router.post('/upload-url', authenticateSession, async (req, res) => {
@@ -79,6 +160,7 @@ router.post('/', authenticateSession, async (req, res) => {
       tenantId,
       photoId,
       imageUrl,
+      compositeImageUrl, // Client-exported canvas (optional)
       inputHash,
       masks = [],
       options = {},
@@ -240,6 +322,7 @@ router.post('/', authenticateSession, async (req, res) => {
         userId: user.id,
         photoId,
         imageUrl,
+        compositeImageUrl, // Client-exported canvas (image with masks applied)
         inputHash,
         masks,
         options,

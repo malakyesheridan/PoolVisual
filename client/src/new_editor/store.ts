@@ -252,7 +252,9 @@ const initialState: EditorState = {
     gridOpacity: 0.3
   },
   // NEW: Drawing mode for freehand vs area
-  drawingMode: 'area' as const // Default to area mode
+  drawingMode: 'area' as const, // Default to area mode
+  // NEW: Konva stage reference for canvas export
+  konvaStageRef: undefined
 };
 
 // Create store with reducer pattern
@@ -750,6 +752,14 @@ export const useEditorStore = create<EditorState & {
         set(state => ({ 
           ...state, 
           drawingMode: action.payload
+        }));
+        break;
+      }
+      
+      case 'SET_KONVA_STAGE_REF': {
+        set(state => ({ 
+          ...state, 
+          konvaStageRef: action.payload
         }));
         break;
       }

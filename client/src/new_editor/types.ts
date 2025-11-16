@@ -187,6 +187,9 @@ export interface EditorState {
   
   // NEW: Drawing mode for freehand vs area
   drawingMode: 'area' | 'freehand'; // 'area' = closed polygon, 'freehand' = open polyline
+  
+  // NEW: Konva stage reference for canvas export
+  konvaStageRef?: any; // Konva.Stage | null
 }
 
 export type EditorAction = 
@@ -240,4 +243,6 @@ export type EditorAction =
   | { type: 'TOGGLE_GRID_VISIBILITY' }
   // NEW: Drawing mode actions
   | { type: 'SET_DRAWING_MODE'; payload: 'area' | 'freehand' }
-  | { type: 'TOGGLE_GRID_SNAPPING' };
+  | { type: 'TOGGLE_GRID_SNAPPING' }
+  // NEW: Konva stage reference for canvas export
+  | { type: 'SET_KONVA_STAGE_REF'; payload: any | null }; // Konva.Stage | null

@@ -3,6 +3,7 @@ export type CreateJobPayload = {
   tenantId: string;
   photoId: string;
   imageUrl: string;
+  compositeImageUrl?: string; // Client-exported canvas (image with masks applied)
   inputHash: string;
   masks: any[];
   options: Record<string, any>;
