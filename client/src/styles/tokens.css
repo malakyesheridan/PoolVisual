@@ -1,0 +1,63 @@
+/* Auto-generated from design-tokens/tokens.ts */
+/* DO NOT EDIT MANUALLY - Run: npm run tokens:generate-css */
+
+:root {
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 0.75rem;
+  --spacing-base: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+  /* Colors - Light */
+  --primary-default: hsl(203.8863 88.2845% 53.1373%);
+  --primary-hover: hsl(203.8863 88.2845% 48%);
+  --primary-active: hsl(203.8863 88.2845% 43%);
+  --primary-foreground: hsl(0 0% 100%);
+  --surface-canvas: hsl(240, 4.8%, 95.9%);
+  --surface-panel: hsl(0 0% 100%);
+  --surface-toolbar: hsl(0 0% 100%);
+  --surface-sidebar: hsl(0 0% 100%);
+  --surface-footer: hsl(0 0% 100%);
+  --border-default: hsl(201.4286 30.4348% 90.9804%);
+  --border-divider: hsl(220 13% 91%);
+  --border-focus: hsl(202.8169 89.1213% 53.1373%);
+  /* Elevation */
+  --elevation-none: none;
+  --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --elevation-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --elevation-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --elevation-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --elevation-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  /* Radius */
+  --radius-none: 0;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-full: 9999px;
+}
+
+.dark {
+  /* Colors - Dark */
+  --primary-default: hsl(203.8863 88.2845% 53.1373%);
+  --primary-hover: hsl(203.8863 88.2845% 58%);
+  --primary-active: hsl(203.8863 88.2845% 48%);
+  --primary-foreground: hsl(0 0% 100%);
+  --surface-canvas: hsl(240, 5.9%, 10%);
+  --surface-panel: hsl(240, 5.9%, 12%);
+  --surface-toolbar: hsl(240, 5.9%, 12%);
+  --surface-sidebar: hsl(240, 5.9%, 12%);
+  --surface-footer: hsl(240, 5.9%, 12%);
+  --border-default: hsl(240, 3.7%, 15.9%);
+  --border-divider: hsl(240, 3.7%, 15.9%);
+  --border-focus: hsl(202.8169 89.1213% 53.1373%);
+  /* High Contrast - Dark (same var names) */
+  --surface-foreground: hsl(0, 0%, 100%);
+  --surface-background: hsl(0, 0%, 0%);
+  --surface-border: hsl(0, 0%, 100%);
+  --surface-focus: hsl(0, 0%, 100%);
+}
