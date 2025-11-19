@@ -114,6 +114,7 @@
     "iron-session": "^8.0.4",
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^2.5.2",
+    "jszip": "^3.10.1",
     "konva": "^9.3.22",
     "lucide-react": "^0.453.0",
     "memorystore": "^1.6.7",

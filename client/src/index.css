@@ -1,9 +1,9 @@
+/* Import generated design tokens - must come before other CSS rules */
+@import './styles/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Import generated design tokens */
-@import './styles/tokens.css';
 
 :root {
   --background: hsl(0 0% 100%);
