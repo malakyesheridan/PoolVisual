@@ -320,8 +320,15 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     if (photoSpace.imgW <= 0 || photoSpace.imgH <= 0) return;
     if (containerSize.width <= 0 || containerSize.height <= 0) return;
     
-    // Always fit to 100% zoom for calibration compatibility
-    const fitScale = 1.0;
+    // Calculate scale to fit entire image in container (no padding - exact fit)
+    // This matches the initial load behavior and is the "100% zoom" baseline
+    const fitScale = calculateFitScale(
+      photoSpace.imgW,
+      photoSpace.imgH,
+      containerSize.width,
+      containerSize.height,
+      1.0 // No padding - image should fit exactly
+    );
     
     const { panX, panY } = calculateCenterPan(
       photoSpace.imgW,

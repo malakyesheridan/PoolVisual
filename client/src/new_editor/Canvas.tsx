@@ -77,8 +77,19 @@ export function Canvas({ width, height }: CanvasProps) {
         imageRef.current = img;
         dispatch({ type: 'SET_STATE', payload: 'ready' });
         
-        // Initialize photo space when image loads - use Canvas props instead of containerSize
-        if (img.naturalWidth > 0 && img.naturalHeight > 0 && width > 0 && height > 0) {
+        // Get actual container size from ref (more reliable than props)
+        const container = containerRef.current;
+        if (!container) {
+          console.warn('[Canvas] Container ref not available');
+          return;
+        }
+        
+        const containerRect = container.getBoundingClientRect();
+        const containerW = containerRect.width;
+        const containerH = containerRect.height;
+        
+        // Initialize photo space when image loads
+        if (img.naturalWidth > 0 && img.naturalHeight > 0 && containerW > 0 && containerH > 0) {
           const currentState = useEditorStore.getState();
           const currentPhotoSpace = currentState.photoSpace;
           const photoId = currentState.jobContext?.photoId;
@@ -126,28 +137,30 @@ export function Canvas({ width, height }: CanvasProps) {
             });
           } else if (!isPhotoSpaceInitialized) {
             // Only auto-fit if photo space is not initialized (first load)
-            // This ensures we don't overwrite user's zoom/pan when returning to canvas
+            // Calculate scale to fit entire image in container (no padding - exact fit)
+            // This becomes the "100% zoom" baseline
             const finalScale = calculateFitScale(
               imgW,
               imgH,
-              width,
-              height,
-              0.98 // 98% padding to leave some margin
+              containerW,
+              containerH,
+              1.0 // No padding - image should fit exactly
             );
 
             const { panX, panY } = calculateCenterPan(
               imgW,
               imgH,
-              width,
-              height,
+              containerW,
+              containerH,
               finalScale
             );
 
-            console.log('[Canvas] Initializing photo space (first load):', { 
+            console.log('[Canvas] Initializing photo space (first load - fit to canvas):', { 
               finalScale, panX, panY, 
               imgW, imgH,
               naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
-              canvasW: width, canvasH: height
+              containerW, containerH,
+              note: 'This scale is the 100% zoom baseline'
             });
             dispatch({
               type: 'SET_PHOTO_SPACE',
@@ -171,11 +184,11 @@ export function Canvas({ width, height }: CanvasProps) {
             });
           }
         } else {
-          console.warn('[Canvas] Cannot initialize photo space - missing image or canvas dimensions', { 
+          console.warn('[Canvas] Cannot initialize photo space - missing image or container dimensions', { 
             imgW: img.naturalWidth, 
             imgH: img.naturalHeight, 
-            canvasW: width, 
-            canvasH: height 
+            containerW: container?.getBoundingClientRect().width, 
+            containerH: container?.getBoundingClientRect().height 
           });
         }
       };
@@ -187,7 +200,63 @@ export function Canvas({ width, height }: CanvasProps) {
     } else {
       console.log('[Canvas] No activeImageUrl provided');
     }
-  }, [activeImageUrl, dispatch, width, height]); // Use activeImageUrl instead of imageUrl
+  }, [activeImageUrl, dispatch, canvasSize]); // Use canvasSize to trigger when container is resized
+  
+  // Recalculate fit when container size changes (if image is loaded but not yet fitted)
+  useEffect(() => {
+    if (!imageRef.current || !containerRef.current) return;
+    
+    const img = imageRef.current;
+    const container = containerRef.current;
+    const containerRect = container.getBoundingClientRect();
+    const containerW = containerRect.width;
+    const containerH = containerRect.height;
+    
+    if (img.naturalWidth > 0 && img.naturalHeight > 0 && containerW > 0 && containerH > 0) {
+      const currentState = useEditorStore.getState();
+      const currentPhotoSpace = currentState.photoSpace;
+      
+      // Only recalculate if photo space scale is 0 or invalid (not yet initialized)
+      const needsInitialization = !currentPhotoSpace.scale || currentPhotoSpace.scale <= 0;
+      
+      if (needsInitialization && state === 'ready') {
+        const imgW = img.naturalWidth;
+        const imgH = img.naturalHeight;
+        
+        const finalScale = calculateFitScale(
+          imgW,
+          imgH,
+          containerW,
+          containerH,
+          1.0 // No padding - exact fit
+        );
+
+        const { panX, panY } = calculateCenterPan(
+          imgW,
+          imgH,
+          containerW,
+          containerH,
+          finalScale
+        );
+
+        console.log('[Canvas] Recalculating fit due to container size change:', { 
+          finalScale, panX, panY, 
+          containerW, containerH 
+        });
+        
+        dispatch({
+          type: 'SET_PHOTO_SPACE',
+          payload: {
+            scale: finalScale,
+            panX,
+            panY,
+            imgW,
+            imgH
+          }
+        });
+      }
+    }
+  }, [canvasSize, state, dispatch]); // Recalculate when container size changes
 
   // Set canvas size with ResizeObserver to match CSS size * DPR
   useLayoutEffect(() => {
