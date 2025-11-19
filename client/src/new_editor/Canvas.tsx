@@ -79,13 +79,28 @@ export function Canvas({ width, height }: CanvasProps) {
         
         // Initialize photo space when image loads - use Canvas props instead of containerSize
         if (img.naturalWidth > 0 && img.naturalHeight > 0 && width > 0 && height > 0) {
-          // CRITICAL FIX: Use photoSpace dimensions from store if already set (from SET_IMAGE)
-          // This ensures we use database dimensions (source of truth) instead of natural dimensions
           const currentState = useEditorStore.getState();
           const currentPhotoSpace = currentState.photoSpace;
-          const imgW = currentPhotoSpace.imgW || img.naturalWidth;
-          const imgH = currentPhotoSpace.imgH || img.naturalHeight;
           const photoId = currentState.jobContext?.photoId;
+          
+          // Always use natural dimensions for photoSpace to match how we draw the image
+          // This prevents distortion when database dimensions differ from natural dimensions
+          const imgW = img.naturalWidth;
+          const imgH = img.naturalHeight;
+          
+          // Check if database dimensions differ significantly (warn but use natural)
+          if (currentPhotoSpace.imgW && currentPhotoSpace.imgH) {
+            const widthDiff = Math.abs(currentPhotoSpace.imgW - imgW);
+            const heightDiff = Math.abs(currentPhotoSpace.imgH - imgH);
+            if (widthDiff > 1 || heightDiff > 1) {
+              console.warn('[Canvas] PhotoSpace dimensions differ from natural dimensions:', {
+                photoSpace: `${currentPhotoSpace.imgW}x${currentPhotoSpace.imgH}`,
+                natural: `${imgW}x${imgH}`,
+                difference: { width: widthDiff, height: heightDiff },
+                action: 'Using natural dimensions to prevent image distortion'
+              });
+            }
+          }
           
           // Check if photo space is already initialized (user has zoomed/panned)
           const isPhotoSpaceInitialized = currentPhotoSpace.scale > 0 && 
@@ -132,8 +147,7 @@ export function Canvas({ width, height }: CanvasProps) {
               finalScale, panX, panY, 
               imgW, imgH,
               naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
-              canvasW: width, canvasH: height,
-              usingDatabaseDimensions: currentPhotoSpace.imgW !== undefined
+              canvasW: width, canvasH: height
             });
             dispatch({
               type: 'SET_PHOTO_SPACE',
@@ -141,20 +155,18 @@ export function Canvas({ width, height }: CanvasProps) {
                 scale: finalScale,
                 panX,
                 panY,
-                // Only set imgW/imgH if not already set (preserve database dimensions from SET_IMAGE)
-                ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
-                ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
+                imgW,
+                imgH
               }
             });
           } else {
-            // Photo space is already initialized, just ensure dimensions are set
-            console.log('[Canvas] Photo space already initialized, preserving zoom/pan');
+            // Photo space is already initialized, update dimensions to match natural
+            console.log('[Canvas] Photo space already initialized, updating dimensions to natural size');
             dispatch({
               type: 'SET_PHOTO_SPACE',
               payload: {
-                // Only update dimensions if not already set
-                ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
-                ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
+                imgW,
+                imgH
               }
             });
           }
@@ -371,14 +383,14 @@ export function Canvas({ width, height }: CanvasProps) {
       ctx.translate(dpr * photoSpace.panX, dpr * photoSpace.panY);
       ctx.scale(dpr * photoSpace.scale, dpr * photoSpace.scale);
       
-      // Draw image at origin
-      ctx.drawImage(
-        imageRef.current,
-        0,
-        0,
-        photoSpace.imgW,
-        photoSpace.imgH
-      );
+      // Draw image at origin - always use natural dimensions to preserve aspect ratio
+      // photoSpace.imgW/imgH are used for coordinate calculations (mask alignment),
+      // but the image should always be drawn at its natural size to prevent distortion
+      const img = imageRef.current;
+      
+      // Always draw at natural dimensions to maintain correct aspect ratio
+      // The photoSpace scale/pan will handle positioning and zoom
+      ctx.drawImage(img, 0, 0);
       
       ctx.restore();
       console.log('[Canvas] Image drawn successfully');
