@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, MousePointer, Square, RotateCcw, Eye } from 'lucide-react';
+import { X, MousePointer, Square, RotateCcw, Eye, Keyboard, ZoomIn, ZoomOut, Save, Undo2, Redo2, Move, Trash2 } from 'lucide-react';
 
 interface KeyLegendProps {
   isOpen: boolean;
@@ -23,7 +23,7 @@ export function KeyLegend({ isOpen, onClose }: KeyLegendProps) {
 
   if (!isOpen) return null;
 
-  const interactions = [
+  const mouseInteractions = [
     {
       icon: <MousePointer className="w-4 h-4" />,
       action: "Single click mask",
@@ -50,9 +50,61 @@ export function KeyLegend({ isOpen, onClose }: KeyLegendProps) {
       result: "Deselect mask"
     },
     {
-      icon: <X className="w-4 h-4" />,
-      action: "Press ESC key",
-      result: "Exit current mode"
+      icon: <ZoomIn className="w-4 h-4" />,
+      action: "Scroll wheel",
+      result: "Zoom in/out"
+    },
+    {
+      icon: <Move className="w-4 h-4" />,
+      action: "Space + drag",
+      result: "Pan canvas"
+    }
+  ];
+
+  const keyboardShortcuts = [
+    {
+      keys: ["V"],
+      action: "Select tool"
+    },
+    {
+      keys: ["A"],
+      action: "Area tool"
+    },
+    {
+      keys: ["Ctrl", "Z"],
+      action: "Undo"
+    },
+    {
+      keys: ["Ctrl", "Shift", "Z"],
+      action: "Redo"
+    },
+    {
+      keys: ["Ctrl", "S"],
+      action: "Save changes"
+    },
+    {
+      keys: ["Ctrl", "+"],
+      action: "Zoom in"
+    },
+    {
+      keys: ["Ctrl", "-"],
+      action: "Zoom out"
+    },
+    {
+      keys: ["C"],
+      action: "Calibrate measurements"
+    },
+    {
+      keys: ["Delete", "/", "Backspace"],
+      action: "Delete selected mask/vertex"
+    },
+    {
+      keys: ["Enter"],
+      action: "Commit drawing"
+    },
+    {
+      keys: ["ESC"],
+      action: "Exit current mode"
     }
   ];
 
@@ -62,7 +114,7 @@ export function KeyLegend({ isOpen, onClose }: KeyLegendProps) {
       onClick={onClose}
     >
       <div 
-        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -75,22 +127,56 @@ export function KeyLegend({ isOpen, onClose }: KeyLegendProps) {
           </button>
         </div>
         
-        <div className="space-y-3">
-          {interactions.map((interaction, index) => (
-            <div key={index} className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-50">
-              <div className="text-gray-600">
-                {interaction.icon}
+        {/* Mouse Interactions */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <MousePointer className="w-4 h-4" />
+            Mouse & Gestures
+          </h3>
+          <div className="space-y-2">
+            {mouseInteractions.map((interaction, index) => (
+              <div key={index} className="flex items-center space-x-3 p-2 rounded-md hover:bg-gray-50">
+                <div className="text-gray-600">
+                  {interaction.icon}
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-900">
+                    {interaction.action}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {interaction.result}
+                  </div>
+                </div>
               </div>
-              <div className="flex-1">
+            ))}
+          </div>
+        </div>
+
+        {/* Keyboard Shortcuts */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <Keyboard className="w-4 h-4" />
+            Keyboard Shortcuts
+          </h3>
+          <div className="space-y-2">
+            {keyboardShortcuts.map((shortcut, index) => (
+              <div key={index} className="flex items-center justify-between p-2 rounded-md hover:bg-gray-50">
                 <div className="text-sm font-medium text-gray-900">
-                  {interaction.action}
+                  {shortcut.action}
                 </div>
-                <div className="text-sm text-gray-600">
-                  {interaction.result}
+                <div className="flex items-center gap-1">
+                  {shortcut.keys.map((key, keyIndex) => (
+                    <React.Fragment key={keyIndex}>
+                      {keyIndex > 0 && <span className="text-gray-400 text-xs">+</span>}
+                      <kbd className="px-2 py-1 text-xs font-mono bg-gray-100 text-gray-700 rounded border border-gray-300">
+                        {key}
+                      </kbd>
+                    </React.Fragment>
+                  ))}
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
         
         <div className="mt-6 pt-4 border-t border-gray-200">

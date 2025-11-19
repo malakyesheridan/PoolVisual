@@ -91,6 +91,21 @@ export interface Mask {
   isPoolSection?: boolean;
   poolSectionType?: 'interior' | 'waterline' | 'coping' | 'paving';
   parentPoolId?: string;
+  
+  // NEW: Custom calibration for perspective correction
+  customCalibration?: {
+    estimatedLength?: number;
+    estimatedWidth?: number;
+    edgeMeasurements?: {
+      edgeIndex: number;
+      pixelLength: number;
+      realWorldLength: number;
+      pixelsPerMeter: number;
+    }[];
+    calibrationMethod: 'reference' | 'estimated' | 'auto' | 'manual_edges';
+    confidence: 'high' | 'medium' | 'low';
+    lastUpdated: number;
+  };
 }
 
 // Mask Group - For organizing masks into logical categories

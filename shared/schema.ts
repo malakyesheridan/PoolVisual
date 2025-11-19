@@ -160,6 +160,7 @@ export const importRuns = pgTable("import_runs", {
 export const quotes = pgTable("quotes", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   jobId: uuid("job_id").references(() => jobs.id).notNull(),
+  name: text("name"),
   status: quoteStatusEnum("status").default("draft").notNull(),
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }),
   gst: numeric("gst", { precision: 10, scale: 2 }),

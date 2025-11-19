@@ -41,6 +41,7 @@ export function GridOverlay({ imgFit, photoSpace }: Props) {
         stroke="#E5E7EB"
         strokeWidth={0.5}
         opacity={pointEditing.gridOpacity}
+        shapeRendering="crispEdges"
       />
     );
   }
@@ -57,6 +58,7 @@ export function GridOverlay({ imgFit, photoSpace }: Props) {
         stroke="#E5E7EB"
         strokeWidth={0.5}
         opacity={pointEditing.gridOpacity}
+        shapeRendering="crispEdges"
       />
     );
   }

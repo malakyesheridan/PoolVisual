@@ -10,18 +10,22 @@ import {
   handleDropEvent, 
   handleDragOverEvent 
 } from './photoUpload';
-import { Upload, Maximize2, MousePointer, Square, Undo2, Redo2, ZoomIn, ZoomOut, Ruler, Eye, EyeOff, DollarSign, Key, FileText, ChevronDown, Save, ArrowLeft, Loader2, Sparkles, MoreVertical } from 'lucide-react';
+import { Upload, Maximize2, MousePointer, Square, ZoomIn, ZoomOut, Ruler, Key, FileText, ChevronDown, Save, ArrowLeft, Loader2, Sparkles, CheckCircle2, AlertCircle, Receipt } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 import { PV_PRECISE_MASKS } from './featureFlags';
 import { CalibrationTool } from './CalibrationTool';
 import { KeyLegend } from './KeyLegend';
 import { JobSelector } from './JobSelector';
+import { PhotoSelectionModal } from './PhotoSelectionModal';
 import { JobsDrawer } from '../components/enhancement/JobsDrawer';
+import { QuoteSelectionModal } from '../components/quotes/QuoteSelectionModal';
 import { useMaskStore } from '../maskcore/store';
 import { useProjectStore } from '../stores/projectStore';
 import { useUnifiedTemplateStore } from '../stores/unifiedTemplateStore';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api-client';
+import { useQuery } from '@tanstack/react-query';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -53,6 +57,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   const [isSavingToJob, setIsSavingToJob] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [showPhotoSelection, setShowPhotoSelection] = useState(false);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [, navigate] = useLocation();
   
   // Handle ESC key to close legend
@@ -66,6 +72,10 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [showKeyLegend]);
+  
+  // Listen for keyboard shortcut events from NewEditor
+  // Note: This effect must be after handleZoomIn, handleZoomOut, and handleSaveToJob are defined
+  // So we'll move it later in the component
   
   const {
     photoSpace,
@@ -86,6 +96,13 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   const jobContext = useEditorStore(state => state.jobContext);
   const effectiveJobId = jobId || jobContext?.jobId;
   const effectivePhotoId = photoId || jobContext?.photoId;
+  
+  // Fetch job to get orgId for quote modal
+  const { data: job } = useQuery({
+    queryKey: ['/api/jobs', effectiveJobId],
+    queryFn: () => effectiveJobId ? apiClient.getJob(effectiveJobId) : Promise.resolve(null),
+    enabled: !!effectiveJobId,
+  });
   
   // Update selectedJobId when effectiveJobId changes
   useEffect(() => {
@@ -386,6 +403,16 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
   const handleRedo = () => {
     dispatch({ type: 'REDO' });
+  };
+
+  const canUndo = () => {
+    const currentState = getState();
+    return currentState.historyIndex > 0;
+  };
+
+  const canRedo = () => {
+    const currentState = getState();
+    return currentState.historyIndex < currentState.history.length - 1;
   };
 
   const handleToggleMeasurements = () => {
@@ -789,19 +816,49 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         }
       }
       
-      // Convert to blob and download
-      canvas.toBlob((blob) => {
-        if (blob) {
-          const url = URL.createObjectURL(blob);
+      // Use ExportService for export with options
+      import('../services/export/exportService').then(({ ExportService }) => {
+        const exportService = new ExportService();
+        exportService.exportCanvas(canvas, {
+          format: 'png',
+          scale: 1,
+          transparentBackground: false,
+          watermark: {
+            enabled: true,
+            text: 'EasyFlow',
+            position: 'bottom-right',
+            opacity: 0.3
+          }
+        }).then((result) => {
+          // Download the exported file
           const a = document.createElement('a');
-          a.href = url;
-          a.download = 'pool-visualization.png';
+          a.href = result.url;
+          a.download = `pool-visualization-${Date.now()}.png`;
           document.body.appendChild(a);
           a.click();
           document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-        }
-      }, 'image/png');
+          URL.revokeObjectURL(result.url);
+          toast.success('Export completed', { description: `Exported ${(result.size / 1024 / 1024).toFixed(2)}MB PNG` });
+        }).catch((error) => {
+          console.error('[Toolbar] Export failed:', error);
+          toast.error('Export failed', { description: error.message });
+        });
+      }).catch((error) => {
+        console.error('[Toolbar] Failed to load ExportService:', error);
+        // Fallback to original export
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'pool-visualization.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+          }
+        }, 'image/png');
+      });
     };
     
     // Load image from current state
@@ -824,6 +881,115 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
   const handleJobSelect = (jobId: string) => {
     setSelectedJobId(jobId);
+    // Open photo selection modal when a job is selected
+    setShowPhotoSelection(true);
+  };
+
+  const handlePhotoSelect = async (photoId: string) => {
+    try {
+      dispatch({ type: 'SET_STATE', payload: 'loading' });
+      
+      // Load the photo data
+      const photo = await apiClient.getPhoto(photoId);
+      if (!photo || !photo.originalUrl) {
+        toast.error('Photo not found');
+        dispatch({ type: 'SET_STATE', payload: 'error' });
+        return;
+      }
+
+      // Convert local paths to proxy URLs for old photos (same as NewEditor does)
+      let imageUrl = photo.originalUrl;
+      if (imageUrl.startsWith('/uploads/')) {
+        // Old photos with local paths - use proxy endpoint
+        imageUrl = `/api/photos/${photoId}/image`;
+        console.log('[Toolbar] Converting local path to proxy URL:', imageUrl);
+      }
+
+      // Clear existing masks when loading a new photo (same as handleFileUpload)
+      const { useMaskStore } = await import('../maskcore/store');
+      useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
+      console.log('[Toolbar] Cleared masks for new photo load');
+
+      // Load image to get natural dimensions
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => {
+          // Use database dimensions as source of truth (same as NewEditor does)
+          const dbWidth = photo.width || img.naturalWidth;
+          const dbHeight = photo.height || img.naturalHeight;
+          
+          // Calculate fit scale and center pan (same as handleFileUpload)
+          const fitScale = calculateFitScale(
+            dbWidth,
+            dbHeight,
+            containerSize.width,
+            containerSize.height
+          );
+
+          // Snap to 100% if close (within 5%)
+          const finalScale = Math.abs(fitScale - 1.0) <= 0.05 ? 1.0 : fitScale;
+
+          const { panX, panY } = calculateCenterPan(
+            dbWidth,
+            dbHeight,
+            containerSize.width,
+            containerSize.height,
+            finalScale
+          );
+
+          // Update PhotoSpace first
+          dispatch({
+            type: 'SET_PHOTO_SPACE',
+            payload: { 
+              scale: finalScale, 
+              panX, 
+              panY,
+              imgW: dbWidth,
+              imgH: dbHeight
+            }
+          });
+
+          // Update the editor store with the photo (same pattern as handleFileUpload)
+          dispatch({
+            type: 'SET_IMAGE',
+            payload: {
+              url: imageUrl,
+              width: dbWidth,
+              height: dbHeight,
+              naturalWidth: img.naturalWidth,
+              naturalHeight: img.naturalHeight
+            }
+          });
+
+          // Set job context
+          dispatch({
+            type: 'SET_JOB_CONTEXT',
+            payload: {
+              jobId: selectedJobId!,
+              photoId: photoId
+            }
+          });
+
+          // Take snapshot
+          dispatch({ type: 'SNAPSHOT' });
+
+          resolve();
+        };
+        img.onerror = () => {
+          console.error('[Toolbar] Failed to load image from photo URL:', imageUrl);
+          reject(new Error('Failed to load image'));
+        };
+        img.src = imageUrl;
+      });
+
+      toast.success('Photo loaded successfully');
+    } catch (error: any) {
+      console.error('Failed to load photo:', error);
+      dispatch({ type: 'SET_STATE', payload: 'error' });
+      toast.error(error.message || 'Failed to load photo');
+    }
   };
 
   const exportCanvasToBlob = async (onlyExportMaskIds?: Set<string>): Promise<File> => {
@@ -1399,10 +1565,66 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     return { minX, minY, maxX, maxY };
   };
 
+  // Determine current workflow step
+  const getCurrentStep = () => {
+    if (state === 'loading' || !photoSpace) return 'upload';
+    if (currentMasks.length === 0) return 'mockup';
+    if (showEnhancementDrawer) return 'enhance';
+    return 'export';
+  };
+  
+  const currentStep = getCurrentStep();
+  const workflowSteps = [
+    { id: 'upload', label: 'Upload' },
+    { id: 'mockup', label: 'Mock Up' },
+    { id: 'enhance', label: 'Enhance' },
+    { id: 'export', label: 'Export' }
+  ];
+
+  // Listen for keyboard shortcut events from NewEditor (after handlers are defined)
+  useEffect(() => {
+    const handleOpenCalibration = () => {
+      if (state === 'ready') {
+        setShowCalibrationTool(true);
+      }
+    };
+    
+    const handleTriggerSave = () => {
+      if (state === 'ready' && selectedJobId && hasUnsavedChanges) {
+        handleSaveToJob();
+      }
+    };
+    
+    const handleTriggerZoomIn = () => {
+      if (state === 'ready') {
+        handleZoomIn();
+      }
+    };
+    
+    const handleTriggerZoomOut = () => {
+      if (state === 'ready') {
+        handleZoomOut();
+      }
+    };
+    
+    window.addEventListener('openCalibrationTool', handleOpenCalibration);
+    window.addEventListener('triggerSave', handleTriggerSave);
+    window.addEventListener('triggerZoomIn', handleTriggerZoomIn);
+    window.addEventListener('triggerZoomOut', handleTriggerZoomOut);
+    
+    return () => {
+      window.removeEventListener('openCalibrationTool', handleOpenCalibration);
+      window.removeEventListener('triggerSave', handleTriggerSave);
+      window.removeEventListener('triggerZoomIn', handleTriggerZoomIn);
+      window.removeEventListener('triggerZoomOut', handleTriggerZoomOut);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state, selectedJobId, hasUnsavedChanges]);
+
   return (
     <TooltipProvider>
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center justify-between gap-4">
+      <div className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100" role="toolbar" aria-label="Canvas Editor Toolbar">
+        <div className="flex items-center justify-between gap-4 px-6 py-3">
           {/* Left Section: File Operations */}
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* File Dropdown Menu */}
@@ -1411,7 +1633,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-semibold"
+                      aria-label="File Operations Menu"
                     >
                       <FileText size={16} />
                       <span className="font-medium">File</span>
@@ -1458,7 +1681,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
             {/* Job Controls - only show when in job context */}
             {jobId && (
-              <div className="flex items-center border-l border-gray-300 pl-3">
+              <div className="flex items-center border-l border-[var(--border-divider)] pl-3">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1472,66 +1695,66 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
             )}
           </div>
 
-          {/* Center Section: Tools */}
-          <div className="flex items-center gap-3 flex-1 justify-center">
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' })}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                    activeTool === 'select'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <MousePointer size={16} />
-                  <span className="font-medium">Select</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex items-center gap-2">
-                  <span>Select Tool</span>
-                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">V</kbd>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-md transition-colors ${
-                    activeTool === 'area'
-                      ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  <Square size={16} />
-                  <span className="font-medium">Area</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex items-center gap-2">
-                  <span>Area Tool</span>
-                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">A</kbd>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-            
-            {/* Drawing Mode Controls - Only show when Area tool is active */}
-            {activeTool === 'area' && (
-              <div className="flex items-center space-x-2 ml-2 pl-2 border-l border-gray-300">
-                {/* Drawing Mode Toggle */}
-                <div className="flex items-center space-x-1">
+          {/* Center Section: Tools & Zoom (Combined) */}
+          <div className="flex items-center gap-2 flex-1 justify-center">
+            {/* Tools Group */}
+            <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' })}
+                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-[var(--radius-sm)] transition-colors ${
+                      activeTool === 'select'
+                        ? 'bg-[var(--surface-panel)] text-[var(--primary-default)] shadow-[var(--elevation-xs)]'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)]'
+                    }`}
+                  >
+                    <MousePointer size={16} />
+                    <span className="text-sm font-medium">Select</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-2">
+                    <span>Select Tool</span>
+                    <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">V</kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
+                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                      activeTool === 'area'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800 hover:bg-white'
+                    }`}
+                    aria-label="Area Tool"
+                  >
+                    <Square size={16} />
+                    <span className="text-sm font-medium">Area</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-2">
+                    <span>Area Tool</span>
+                    <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">A</kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+              
+              {/* Drawing Mode Toggle - Inline when Area tool is active */}
+              {activeTool === 'area' && (
+                <div className="flex items-center ml-1 pl-1 border-l border-[var(--border-divider)]">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'area' })}
-                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[10px] font-medium rounded-[var(--radius-sm)] transition-colors ${
                           drawingMode === 'area'
-                            ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                            ? 'bg-blue-50 text-[var(--primary-default)]'
+                            : 'text-gray-500 hover:text-gray-700'
                         }`}
                       >
                         Area
@@ -1545,13 +1768,13 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'freehand' })}
-                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                        className={`px-1.5 py-0.5 text-[10px] font-medium rounded-[var(--radius-sm)] transition-colors ${
                           drawingMode === 'freehand'
-                            ? 'bg-blue-100 text-blue-700 border border-blue-300'
-                            : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+                            ? 'bg-blue-50 text-[var(--primary-default)]'
+                            : 'text-gray-500 hover:text-gray-700'
                         }`}
                       >
-                        Freehand
+                        Free
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
@@ -1559,129 +1782,169 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                
+              )}
+            </div>
+            
+            {/* Zoom & Calibration Controls - Compact Toolbar Section */}
+            <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
+              {/* Zoom Controls */}
+              <div className="flex items-center bg-white rounded-lg p-0.5 border border-gray-200">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleZoomOut}
+                    disabled={state !== 'ready'}
+                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      aria-label="Zoom Out"
+                  >
+                    <ZoomOut size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-2">
+                    <span>Zoom Out</span>
+                    <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+-</kbd>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+              
+                <div className="px-2 py-1 text-xs font-mono text-gray-700 min-w-[50px] text-center">
+                {zoomLabel}
               </div>
-            )}
-          </div>
-          
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleZoomOut}
-                  disabled={state !== 'ready'}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  <ZoomOut size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex items-center gap-2">
-                  <span>Zoom Out</span>
-                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+-</kbd>
-                </div>
-              </TooltipContent>
-            </Tooltip>
-            
-            <div className="px-3 py-2 text-sm font-mono text-gray-700 bg-white rounded-md shadow-sm min-w-[60px] text-center">
-              {zoomLabel}
+              
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={handleZoomIn}
+                    disabled={state !== 'ready'}
+                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      aria-label="Zoom In"
+                  >
+                    <ZoomIn size={14} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <div className="flex items-center gap-2">
+                    <span>Zoom In</span>
+                    <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl++</kbd>
+                  </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              
+              {/* Calibration Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowCalibrationTool(true)}
+                    disabled={state !== 'ready'}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                      calibration.isCalibrated
+                        ? 'bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    aria-label="Calibrate Measurements"
+                  >
+                    <Ruler size={14} />
+                    {calibration.isCalibrated 
+                      ? `${calibration.pixelsPerMeter.toFixed(0)} px/m` 
+                      : 'Calibrate'}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <span>Calibrate Measurements (C)</span>
+                </TooltipContent>
+              </Tooltip>
             </div>
-            
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleZoomIn}
-                  disabled={state !== 'ready'}
-                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-colors"
-                >
-                  <ZoomIn size={16} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex items-center gap-2">
-                  <span>Zoom In</span>
-                  <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl++</kbd>
-                </div>
-              </TooltipContent>
-            </Tooltip>
           </div>
-        </div>
         
-          {/* Right Section: Status & Actions */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            {/* Compact Status Badge */}
-            <div className={`px-2 py-1 rounded text-xs font-medium whitespace-nowrap ${
-              calibration.isCalibrated 
-                ? 'bg-green-100 text-green-700' 
-                : 'bg-yellow-100 text-yellow-700'
-            }`}>
-              {calibration.isCalibrated 
-                ? `✓ ${calibration.pixelsPerMeter.toFixed(0)} px/m` 
-                : 'Not Calibrated'
-              }
-            </div>
-            
-            {/* Primary Actions */}
-            <div className="flex items-center gap-2">
+          {/* Right Section: Actions (Simplified) */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {/* Job Selection - Replace Create Quote */}
             {!selectedJobId && (
               <JobSelector onJobSelect={handleJobSelect} />
             )}
             
-            {/* Save State Indicator and Save Button - Show when job selected */}
+            {/* Save State Indicator (Icon-only) and Save Button - Show when job selected */}
             {selectedJobId && (
-              <div className="flex items-center gap-2">
-                <SaveStateIndicator
-                  state={
-                    isSavingToJob 
-                      ? 'saving' 
-                      : saveError 
-                        ? 'error' 
-                        : hasUnsavedChanges 
-                          ? 'unsaved' 
-                          : 'saved'
-                  }
-                  lastSaved={lastSavedAt}
-                  errorMessage={saveError || undefined}
-                  onSaveClick={handleSaveToJob}
-                />
+              <>
+                {/* Compact Save Indicator - Icon only */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
-                      onClick={handleSaveToJob}
-                      disabled={state !== 'ready' || isSavingToJob || !hasUnsavedChanges}
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                      onClick={hasUnsavedChanges ? handleSaveToJob : undefined}
+                      className={`p-2 rounded-[var(--radius-md)] transition-colors ${
+                        isSavingToJob
+                          ? 'text-blue-600'
+                          : saveError
+                            ? 'text-red-600'
+                            : hasUnsavedChanges
+                              ? 'text-yellow-600'
+                              : 'text-green-600'
+                      } hover:bg-[var(--surface-panel)]`}
                     >
                       {isSavingToJob ? (
                         <Loader2 size={16} className="animate-spin" />
+                      ) : saveError ? (
+                        <AlertCircle size={16} />
+                      ) : hasUnsavedChanges ? (
+                        <AlertCircle size={16} />
                       ) : (
-                        <Save size={16} />
+                        <CheckCircle2 size={16} />
                       )}
-                      <span className="font-medium">
-                        {isSavingToJob ? 'Saving...' : 'Save Changes'}
-                      </span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>
-                    <div className="flex items-center gap-2">
-                      <span>Save Changes to Job</span>
-                      <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+S</kbd>
+                    <div>
+                      {isSavingToJob && <p>Saving...</p>}
+                      {saveError && <p className="text-red-600">{saveError}</p>}
+                      {hasUnsavedChanges && <p>Unsaved changes - Click to save</p>}
+                      {!hasUnsavedChanges && !isSavingToJob && !saveError && (
+                        <p>All changes saved{lastSavedAt ? ` (${formatDistanceToNow(lastSavedAt, { addSuffix: true })})` : ''}</p>
+                      )}
                     </div>
                   </TooltipContent>
                 </Tooltip>
-              </div>
+                
+                {/* Save Button - Only show when there are unsaved changes */}
+                {hasUnsavedChanges && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={handleSaveToJob}
+                        disabled={state !== 'ready' || isSavingToJob}
+                        className="flex items-center space-x-2 px-3 py-1.5 bg-blue-600 text-white rounded-[var(--radius-md)] hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[var(--elevation-sm)] text-sm font-medium"
+                      >
+                        {isSavingToJob ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Save size={14} />
+                        )}
+                        <span>Save</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <div className="flex items-center gap-2">
+                        <span>Save Changes</span>
+                        <kbd className="px-1.5 py-0.5 text-xs bg-muted rounded border border-slate-300 font-mono">Ctrl+S</kbd>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </>
             )}
             
-            {/* Enhance button - replaces Export */}
+            {/* Enhance button - Primary Action */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
                   disabled={state !== 'ready'}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm font-semibold"
+                  aria-label="Enhance with AI"
                 >
                   <Sparkles size={16} />
-                  <span className="font-medium">Enhance</span>
+                  <span>Enhance</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -1689,59 +1952,69 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
               </TooltipContent>
             </Tooltip>
             
-            {/* More Menu - Secondary Actions */}
-            <DropdownMenu>
+            {/* Quote Button - Only show when job is selected */}
+            {effectiveJobId && job && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      className="p-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-                  </DropdownMenuTrigger>
+                  <button
+                    onClick={() => setShowQuoteModal(true)}
+                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)] rounded-[var(--radius-md)] transition-colors"
+                    aria-label="View Quotes"
+                  >
+                    <Receipt size={16} />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <span>More Options</span>
+                  <span>View Quotes</span>
                 </TooltipContent>
               </Tooltip>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem onClick={handleToggleMeasurements}>
-                  {measurements.showMeasurements ? (
-                    <Eye className="mr-2 h-4 w-4" />
-                  ) : (
-                    <EyeOff className="mr-2 h-4 w-4" />
-                  )}
-                  <span>{measurements.showMeasurements ? 'Hide' : 'Show'} Measurements</span>
-                </DropdownMenuItem>
-                
-                <DropdownMenuItem onClick={handleToggleCosts}>
-                  <DollarSign className="mr-2 h-4 w-4" />
-                  <span>{measurements.showCosts ? 'Hide' : 'Show'} Costs</span>
-                </DropdownMenuItem>
-                
-                <DropdownMenuSeparator />
-                
-                <DropdownMenuItem onClick={handleUndo}>
-                  <Undo2 className="mr-2 h-4 w-4" />
-                  <span>Undo</span>
-                  <span className="ml-auto text-xs text-gray-500">Ctrl+Z</span>
-                </DropdownMenuItem>
-                
-                <DropdownMenuItem onClick={handleRedo}>
-                  <Redo2 className="mr-2 h-4 w-4" />
-                  <span>Redo</span>
-                  <span className="ml-auto text-xs text-gray-500">Ctrl+Shift+Z</span>
-                </DropdownMenuItem>
-                
-                <DropdownMenuSeparator />
-                
-                <DropdownMenuItem onClick={() => setShowKeyLegend(true)}>
-                  <Key className="mr-2 h-4 w-4" />
-                  <span>Show Controls Legend</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            )}
+            
+            {/* Controls Legend Button */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowKeyLegend(true)}
+                  className="p-2 text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)] rounded-[var(--radius-md)] transition-colors"
+                  aria-label="Show Controls Legend"
+                >
+                  <Key size={16} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <span>Show Controls Legend</span>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+        
+        {/* Progress Indicator */}
+        <div className="px-6 py-2 border-t border-gray-100 bg-gray-50/50" role="progressbar" aria-label="Workflow Progress">
+          <div className="flex items-center gap-2">
+            {workflowSteps.map((step, index) => (
+              <React.Fragment key={step.id}>
+                <div className="flex items-center gap-2">
+                  <div
+                    className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-150 ${
+                      currentStep === step.id
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : workflowSteps.findIndex(s => s.id === currentStep) > index
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-gray-100 text-gray-500'
+                    }`}
+                  >
+                    <span>{step.label}</span>
+                  </div>
+                </div>
+                {index < workflowSteps.length - 1 && (
+                  <div className={`h-0.5 w-4 transition-all duration-150 ${
+                    workflowSteps.findIndex(s => s.id === currentStep) > index
+                      ? 'bg-blue-600'
+                      : 'bg-gray-300'
+                  }`} />
+                )}
+              </React.Fragment>
+            ))}
           </div>
         </div>
       </div>
@@ -1768,9 +2041,47 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       
       {/* AI Enhancements Drawer */}
       {showEnhancementDrawer && (
-        <JobsDrawer onClose={() => setShowEnhancementDrawer(false)} />
+        <JobsDrawer 
+          onClose={() => setShowEnhancementDrawer(false)}
+          onApplyEnhancedImage={(data) => {
+            // Create new variant and set as active
+            const variantId = `enhanced-${Date.now()}`;
+            dispatch({
+              type: 'ADD_VARIANT',
+              payload: {
+                id: variantId,
+                label: data.label,
+                imageUrl: data.imageUrl
+              }
+            });
+          }}
+        />
       )}
-      </div>
+
+      {/* Photo Selection Modal */}
+      {selectedJobId && (
+        <PhotoSelectionModal
+          open={showPhotoSelection}
+          onClose={() => setShowPhotoSelection(false)}
+          jobId={selectedJobId}
+          onSelectPhoto={handlePhotoSelect}
+        />
+      )}
+      
+      {/* Quote Selection Modal */}
+      {effectiveJobId && job && (
+        <QuoteSelectionModal
+          open={showQuoteModal}
+          onOpenChange={setShowQuoteModal}
+          onSelectQuote={(quoteId) => {
+            navigate(`/quotes/${quoteId}`);
+            setShowQuoteModal(false);
+          }}
+          jobId={effectiveJobId}
+          jobOrgId={job.orgId}
+          allowCreateNew={true}
+        />
+      )}
     </TooltipProvider>
   );
 }

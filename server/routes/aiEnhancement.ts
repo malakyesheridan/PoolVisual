@@ -98,10 +98,10 @@ router.post('/upload-composite', authenticateSession, getUpload().single('compos
     
     console.log(`[UploadComposite] Uploaded composite image for job ${jobId}: ${url}`);
     
-    res.json({ url });
+    return res.json({ url });
   } catch (error: any) {
     console.error('[UploadComposite] Error:', error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 });
 
@@ -129,13 +129,13 @@ router.post('/upload-url', authenticateSession, async (req, res) => {
     const path = `ai-enhancements/${photoId}/${contentHash}.png`;
     const url = await storageService.getSignedUploadUrl(path, 3600);
     
-    res.json({ 
+    return res.json({ 
       uploadUrl: url, 
       objectPath: path, 
       expiresAt: Date.now() + 3600000 
     });
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 });
 
@@ -374,7 +374,7 @@ router.post('/', authenticateSession, async (req, res) => {
       throw txErr;
     }
     
-    const jobId = result?.[0]?.id || result?.id;
+    const jobId = result?.id;
     
     if (!jobId) {
       console.error('[Create Enhancement] Job creation returned no ID');
@@ -402,7 +402,7 @@ router.post('/', authenticateSession, async (req, res) => {
       }
     }, 200); // 200ms delay to ensure database commit is visible
 
-    res.json({ jobId, status: 'queued' });
+    return res.json({ jobId, status: 'queued' });
   } catch (err: any) {
     console.error('[Create Enhancement] Error:', err?.message || err);
     console.error('[Create Enhancement] Stack:', err?.stack);
@@ -452,9 +452,58 @@ router.get('/', authenticateSession, async (req, res) => {
       return jobWithMode;
     }));
     
-    res.json({ jobs });
+    return res.json({ jobs });
   } catch (err: any) {
-    res.status(500).json({ message: err?.message || 'Failed to fetch jobs' });
+    return res.status(500).json({ message: err?.message || 'Failed to fetch jobs' });
+  }
+});
+
+// GET /api/ai/enhancement/:id
+router.get('/:id', authenticateSession, async (req, res) => {
+  try {
+    const jobId = req.params.id;
+    const user = req.session.user;
+    
+    const rows = await executeQuery(
+      `SELECT 
+        id, status, progress_stage, progress_percent,
+        error_message, error_code, created_at, updated_at, completed_at, options
+      FROM ai_enhancement_jobs 
+      WHERE id = $1 AND user_id = $2`,
+      [jobId, user.id]
+    );
+    
+    if (!rows.length) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    const job = rows[0];
+    
+    // Extract mode from options
+    let mode: 'add_pool' | 'add_decoration' | 'blend_materials' | undefined;
+    if (job.options) {
+      try {
+        const options = typeof job.options === 'string' ? JSON.parse(job.options) : job.options;
+        mode = options.mode;
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+    
+    const jobWithMode = { ...job, mode };
+    
+    // Fetch variants if completed
+    if (job.status === 'completed') {
+      const variants = await executeQuery(
+        `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
+        [jobId]
+      );
+      return res.json({ ...jobWithMode, variants });
+    }
+    
+    return res.json(jobWithMode);
+  } catch (err: any) {
+    return res.status(500).json({ message: err?.message || 'Failed to fetch job' });
   }
 });
 
@@ -520,13 +569,199 @@ router.post('/:id/cancel', authenticateSession, async (req, res) => {
     // Refund credits
     const refund = rows[0].reserved_cost_micros || rows[0].cost_micros || 0;
     if (refund > 0) {
-      await CreditsManager.refundCredits(storage.db, rows[0].tenant_id, refund);
+      await executeQuery(
+        `UPDATE orgs SET credits_balance = credits_balance + $1, credits_updated_at = NOW() WHERE id = $2`,
+        [refund, rows[0].tenant_id]
+      );
     }
 
     SSEManager.emit(jobId, { status: 'canceled', progress: 0 });
-    res.json({ ok: true, status: 'canceled' });
+    return res.json({ ok: true, status: 'canceled' });
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
+  }
+});
+
+// POST /api/ai/enhancement/bulk-delete
+router.post('/bulk-delete', authenticateSession, async (req, res) => {
+  try {
+    const { jobIds } = req.body;
+    const user = req.session.user;
+    
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.status(400).json({ message: 'jobIds must be a non-empty array' });
+    }
+    
+    // Verify all jobs belong to user
+    const placeholders = jobIds.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await executeQuery(
+      `SELECT id FROM ai_enhancement_jobs WHERE id IN (${placeholders}) AND user_id = $${jobIds.length + 1}`,
+      [...jobIds, user.id]
+    );
+    
+    const validJobIds = rows.map((r: any) => r.id);
+    const deleted = validJobIds.length;
+    const failed = jobIds.length - deleted;
+    
+    // Delete jobs (cascade will handle variants)
+    if (validJobIds.length > 0) {
+      const deletePlaceholders = validJobIds.map((_, i) => `$${i + 1}`).join(',');
+      await executeQuery(
+        `DELETE FROM ai_enhancement_jobs WHERE id IN (${deletePlaceholders})`,
+        validJobIds
+      );
+    }
+    
+    return res.json({ deleted, failed });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message || 'Failed to delete jobs' });
+  }
+});
+
+// POST /api/ai/enhancement/bulk-cancel
+router.post('/bulk-cancel', authenticateSession, async (req, res) => {
+  try {
+    const { jobIds } = req.body;
+    const user = req.session.user;
+    
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.status(400).json({ message: 'jobIds must be a non-empty array' });
+    }
+    
+    // Verify all jobs belong to user and are cancelable
+    const placeholders = jobIds.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await executeQuery(
+      `SELECT id, status, reserved_cost_micros, cost_micros, tenant_id 
+       FROM ai_enhancement_jobs 
+       WHERE id IN (${placeholders}) AND user_id = $${jobIds.length + 1}
+       AND status NOT IN ('completed', 'failed', 'canceled')`,
+      [...jobIds, user.id]
+    );
+    
+    const validJobIds = rows.map((r: any) => r.id);
+    let canceled = 0;
+    let failed = jobIds.length - validJobIds.length;
+    
+    // Cancel each job
+    for (const row of rows) {
+      try {
+        await executeQuery(
+          `UPDATE ai_enhancement_jobs 
+           SET status = 'canceled', progress_stage = 'canceled', updated_at = NOW(), canceled_at = NOW() 
+           WHERE id = $1`,
+          [row.id]
+        );
+        
+        // Remove from Bull queue
+        try {
+          if (enhancementQueue) {
+            const bullJob = await enhancementQueue.getJob(row.id);
+            if (bullJob) await bullJob.remove();
+          }
+        } catch (error) {
+          // Ignore
+        }
+        
+        // Refund credits
+        const refund = row.reserved_cost_micros || row.cost_micros || 0;
+        if (refund > 0) {
+          await executeQuery(
+            `UPDATE orgs SET credits_balance = credits_balance + $1, credits_updated_at = NOW() WHERE id = $2`,
+            [refund, row.tenant_id]
+          );
+        }
+        
+        SSEManager.emit(row.id, { status: 'canceled', progress: 0 });
+        canceled++;
+      } catch (error) {
+        console.error(`[BulkCancel] Failed to cancel job ${row.id}:`, error);
+        failed++;
+      }
+    }
+    
+    return res.json({ canceled, failed });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message || 'Failed to cancel jobs' });
+  }
+});
+
+// POST /api/ai/enhancement/bulk-retry
+router.post('/bulk-retry', authenticateSession, async (req, res) => {
+  try {
+    const { jobIds } = req.body;
+    const user = req.session.user;
+    
+    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+      return res.status(400).json({ message: 'jobIds must be a non-empty array' });
+    }
+    
+    // Verify all jobs belong to user and are retryable (failed only)
+    const placeholders = jobIds.map((_, i) => `$${i + 1}`).join(',');
+    const rows = await executeQuery(
+      `SELECT * FROM ai_enhancement_jobs 
+       WHERE id IN (${placeholders}) AND user_id = $${jobIds.length + 1}
+       AND status = 'failed'`,
+      [...jobIds, user.id]
+    );
+    
+    const validJobIds = rows.map((r: any) => r.id);
+    let retried = 0;
+    let failed = jobIds.length - validJobIds.length;
+    
+    // Retry each job (create new job with same configuration)
+    for (const row of rows) {
+      try {
+        // Extract original payload from job
+        const options = typeof row.options === 'string' ? JSON.parse(row.options) : row.options;
+        
+        // Create new job with same configuration
+        const newJobId = randomUUID();
+        await executeQuery(
+          `INSERT INTO ai_enhancement_jobs (
+            id, user_id, tenant_id, photo_id, input_hash, status, 
+            progress_stage, progress_percent, options, calibration, 
+            width, height, created_at, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, 'queued', 'queued', 0, $6, $7, $8, $9, NOW(), NOW())`,
+          [
+            newJobId,
+            row.user_id,
+            row.tenant_id,
+            row.photo_id,
+            row.input_hash,
+            JSON.stringify(options),
+            row.calibration,
+            row.width,
+            row.height
+          ]
+        );
+        
+        // Add to queue
+        if (enhancementQueue) {
+          await enhancementQueue.add('enhancement', {
+            jobId: newJobId,
+            tenantId: row.tenant_id,
+            userId: row.user_id,
+            photoId: row.photo_id,
+            imageUrl: row.input_image_url,
+            inputHash: row.input_hash,
+            masks: [], // Will be loaded by worker
+            options: options,
+            calibration: row.calibration,
+            provider: options.provider || 'mock:inpaint',
+            model: options.model || 'default'
+          });
+        }
+        
+        retried++;
+      } catch (error) {
+        console.error(`[BulkRetry] Failed to retry job ${row.id}:`, error);
+        failed++;
+      }
+    }
+    
+    return res.json({ retried, failed });
+  } catch (error: any) {
+    return res.status(500).json({ message: error.message || 'Failed to retry jobs' });
   }
 });
 
@@ -653,10 +888,10 @@ router.post('/:id/callback', async (req, res) => {
     
     SSEManager.emit(jobId, { status: nextStatus, progress: nextProgress });
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (error: any) {
     console.error('[Callback] Error processing callback:', error);
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 });
 

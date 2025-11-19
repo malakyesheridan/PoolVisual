@@ -117,6 +117,13 @@ class ApiClient {
     });
   }
 
+  async updateJob(id: string, data: Partial<any>) {
+    return this.request<any>(`/jobs/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Photos
   async createPhoto(data: any) {
     return this.request<any>('/photos', {
@@ -282,6 +289,19 @@ class ApiClient {
     });
   }
 
+  async updateQuote(id: string, data: any) {
+    return this.request<any>(`/quotes/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteQuote(id: string) {
+    return this.request(`/quotes/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   async recalculateQuote(id: string) {
     return this.request<any>(`/quotes/${id}/recalculate`, {
       method: 'POST',
@@ -324,10 +344,10 @@ class ApiClient {
   }
 
   // Canvas-Quote Integration
-  async addMeasurementsToQuote(jobId: string, measurements: any[]) {
+  async addMeasurementsToQuote(jobId: string, measurements: any[], quoteId?: string) {
     return this.request<any>(`/quotes/add-measurements/${jobId}`, {
       method: 'POST',
-      body: JSON.stringify({ measurements }),
+      body: JSON.stringify({ measurements, quoteId }),
     });
   }
 

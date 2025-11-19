@@ -1,15 +1,33 @@
 import React, { useState, useEffect } from 'react';
 import { useEditorStore } from './store';
+import { useMaskStore } from '../maskcore/store';
 import { Mask } from './types';
+import { EdgeCalibrationDialog } from './EdgeCalibrationDialog';
 
 interface MaskCalibrationDialogProps {
   maskId: string;
   onClose: () => void;
 }
 
+type CalibrationMode = 'quick' | 'edges';
+
 export function MaskCalibrationDialog({ maskId, onClose }: MaskCalibrationDialogProps) {
-  const { masks, dispatch } = useEditorStore();
-  const mask = masks.find(m => m.id === maskId);
+  const [mode, setMode] = useState<CalibrationMode>('quick');
+  const { masks: editorMasks, dispatch } = useEditorStore();
+  const { masks: maskcoreMasks } = useMaskStore();
+  
+  // Try to find mask in both stores
+  const editorMask = editorMasks.find(m => m.id === maskId);
+  const maskcoreMask = maskcoreMasks[maskId];
+  
+  // Prefer editor store mask, fallback to maskcore mask
+  const mask = editorMask || (maskcoreMask ? {
+    id: maskcoreMask.id,
+    points: maskcoreMask.pts.map(pt => ({ x: pt.x, y: pt.y })),
+    name: maskcoreMask.name,
+    customCalibration: maskcoreMask.customCalibration,
+    type: maskcoreMask.type || (maskcoreMask.mode === 'polygon' ? 'area' : 'area')
+  } : null);
   
   const [estimatedLength, setEstimatedLength] = useState<string>('');
   const [estimatedWidth, setEstimatedWidth] = useState<string>('');
@@ -51,13 +69,29 @@ export function MaskCalibrationDialog({ maskId, onClose }: MaskCalibrationDialog
       lastUpdated: Date.now()
     };
 
-    dispatch({
-      type: 'UPDATE_MASK',
-      payload: {
-        id: maskId,
-        updates: { customCalibration }
-      }
-    });
+    // Update in editor store if mask exists there
+    if (editorMask) {
+      dispatch({
+        type: 'UPDATE_MASK',
+        payload: {
+          id: maskId,
+          updates: { customCalibration }
+        }
+      });
+    }
+    
+    // Also update in maskcore store
+    if (maskcoreMask) {
+      useMaskStore.setState(prev => ({
+        masks: {
+          ...prev.masks,
+          [maskId]: {
+            ...prev.masks[maskId],
+            customCalibration
+          }
+        }
+      }));
+    }
 
     onClose();
   };
@@ -92,6 +126,20 @@ export function MaskCalibrationDialog({ maskId, onClose }: MaskCalibrationDialog
     return null;
   }
 
+  // If in edge mode, show EdgeCalibrationDialog
+  if (mode === 'edges') {
+    return (
+      <EdgeCalibrationDialog
+        maskId={maskId}
+        onClose={() => {
+          setMode('quick');
+          onClose();
+        }}
+        globalPixelsPerMeter={useEditorStore.getState().calibration?.pixelsPerMeter || 100}
+      />
+    );
+  }
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
@@ -108,6 +156,29 @@ export function MaskCalibrationDialog({ maskId, onClose }: MaskCalibrationDialog
         </div>
 
         <div className="space-y-4">
+          {/* Mode Selection Tabs */}
+          <div className="flex items-center gap-2 border-b border-gray-200">
+            <button
+              onClick={() => setMode('quick')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                mode === 'quick'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Quick Estimate
+            </button>
+            <button
+              onClick={() => setMode('edges')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                mode === 'edges'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Manual Edges
+            </button>
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Calibration Method

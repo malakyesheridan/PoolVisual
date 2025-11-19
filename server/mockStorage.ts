@@ -351,6 +351,7 @@ export class MockStorage {
       createdAt: new Date(),
       status: insertQuote.status ?? 'draft',
       jobId: insertQuote.jobId,
+      name: insertQuote.name ?? null,
       subtotal: insertQuote.subtotal ?? null,
       gst: insertQuote.gst ?? null,
       total: insertQuote.total ?? null,
@@ -396,6 +397,13 @@ export class MockStorage {
     return this.quoteItems.filter(i => i.quoteId === quoteId);
   }
 
+  async deleteQuote(id: string): Promise<void> {
+    // Delete quote items first
+    this.quoteItems = this.quoteItems.filter(item => item.quoteId !== id);
+    // Then delete the quote
+    this.quotes = this.quotes.filter(q => q.id !== id);
+  }
+
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {
     const index = this.quotes.findIndex(q => q.id === id);
     if (index === -1) {
@@ -412,6 +420,7 @@ export class MockStorage {
       createdAt: existingQuote.createdAt,
       status: updates.status !== undefined ? updates.status : existingQuote.status,
       jobId: updates.jobId !== undefined ? updates.jobId : existingQuote.jobId,
+      name: updates.name !== undefined ? updates.name : existingQuote.name,
       subtotal: updates.subtotal !== undefined ? updates.subtotal : existingQuote.subtotal,
       gst: updates.gst !== undefined ? updates.gst : existingQuote.gst,
       total: updates.total !== undefined ? updates.total : existingQuote.total,

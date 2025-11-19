@@ -205,6 +205,12 @@ export default function CanvasEditor() {
   // Keyboard handlers
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Guard: Don't trigger shortcuts when typing in inputs
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.getAttribute('role') === 'textbox') {
+        return;
+      }
+      
       if (e.key === 'Enter' && drawing?.active) {
         if (drawing.points.length >= 6) {
           const mask: AreaMask = {

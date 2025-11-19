@@ -286,10 +286,10 @@ export function MaterialsPanel() {
   return (
     <div className="absolute inset-0 flex flex-col">
       {/* Header - Fixed */}
-      <div className="flex-shrink-0 border-b bg-white">
-        <div className="p-3 border-b">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-base font-semibold">Materials</h3>
+      <div className="flex-shrink-0 border-b border-gray-100 bg-white">
+        <div className="p-6 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-gray-900">Materials</h3>
             {!loading && (
               <div className="text-xs text-gray-500">
                 {filteredMaterials.length} of {Object.keys(materials).length}
@@ -303,20 +303,23 @@ export function MaterialsPanel() {
             placeholder="Search..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 mb-2"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4 transition-all duration-150"
+            aria-label="Search materials"
           />
           
-          {/* Category filter */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {/* Category filter - Pill Style */}
+          <div className="flex gap-2 overflow-x-auto pb-1">
             {categories.map(category => (
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-2 py-0.5 text-xs rounded-full whitespace-nowrap ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
                   selectedCategory === category
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-sm'
+                    : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
+                aria-label={`Filter by ${category === 'all' ? 'all categories' : category}`}
+                aria-pressed={selectedCategory === category}
               >
                 {category === 'all' ? 'All' : category.replace('_', ' ')}
               </button>
@@ -327,7 +330,7 @@ export function MaterialsPanel() {
       
       {/* Contextual Message */}
       {!selectedId && (
-        <div className="flex-shrink-0 p-4 border-b bg-blue-50">
+        <div className="flex-shrink-0 p-6 border-b border-gray-100 bg-blue-50">
           <div className="text-sm text-blue-700">
             <strong>Select a mask</strong> to assign materials
           </div>
@@ -335,13 +338,13 @@ export function MaterialsPanel() {
       )}
       
       {/* Scrollable Material Grid */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-6">
         {filteredMaterials.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-600 text-sm">No materials found</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-3">
             {filteredMaterials.map((material) => {
               const imageUrl = material.thumbnailURL || material.albedoURL;
               const proxiedUrl = imageUrl ? getProxiedTextureUrl(imageUrl) : null;
@@ -350,15 +353,19 @@ export function MaterialsPanel() {
                 <button
                   key={material.id}
                   onClick={() => handleMaterialSelect(material.id)}
-                  className={`p-1.5 border rounded text-left hover:shadow-sm transition-all ${
-                    activeMaterialId === material.id ? 'border-blue-500 bg-blue-50 shadow-sm' : 'border-gray-200'
+                  className={`p-2 border rounded-xl text-left transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                    activeMaterialId === material.id 
+                      ? 'border-blue-500 bg-blue-50 shadow-md scale-100' 
+                      : 'border-gray-200 hover:scale-[1.02] hover:shadow-md hover:border-gray-300'
                   }`}
+                  aria-label={`Select material: ${material.name}`}
+                  aria-pressed={activeMaterialId === material.id}
                 >
                   {proxiedUrl ? (
                     <img 
                       src={proxiedUrl} 
                       alt={material.name}
-                      className="w-full h-14 object-cover rounded"
+                      className="w-full h-14 object-cover rounded-lg"
                       loading="lazy"
                       onError={(e) => {
                         console.warn('[MaterialMissingThumbnail]', { id: material.id, name: material.name });
@@ -366,7 +373,7 @@ export function MaterialsPanel() {
                       }}
                     />
                   ) : (
-                    <div className="w-full h-14 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">
+                    <div className="w-full h-14 bg-gray-100 rounded-lg flex items-center justify-center text-xs text-gray-500">
                       No Image
                     </div>
                   )}
@@ -744,16 +751,6 @@ export function MaterialsPanel() {
             </div>
           </div>
         )}
-      </div>
-      
-      {/* Test AI Enhancement Button */}
-      <div className="p-3 border-t bg-gray-50">
-        <button
-          onClick={startTestJob}
-          className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm shadow hover:bg-blue-700 w-full"
-        >
-          🎨 Test AI Enhancement
-        </button>
       </div>
     </div>
   );

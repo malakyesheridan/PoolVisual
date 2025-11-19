@@ -55,7 +55,14 @@ export interface Mask {
   customCalibration?: {
     estimatedLength?: number; // User's estimated length in meters
     estimatedWidth?: number;  // User's estimated width in meters
-    calibrationMethod: 'reference' | 'estimated' | 'auto';
+    // NEW: Per-edge calibration for perspective correction
+    edgeMeasurements?: {
+      edgeIndex: number;        // Which edge (0, 1, 2, ...)
+      pixelLength: number;      // Measured pixel length
+      realWorldLength: number;   // User-entered real-world length (meters)
+      pixelsPerMeter: number;   // Calculated: pixelLength / realWorldLength
+    }[];
+    calibrationMethod: 'reference' | 'estimated' | 'auto' | 'manual_edges';
     confidence: 'high' | 'medium' | 'low';
     lastUpdated: number; // timestamp
   };
@@ -116,11 +123,21 @@ export interface MeasurementSettings {
   unit: 'metric' | 'imperial';
 }
 
+export interface CanvasVariant {
+  id: string;
+  label: string; // e.g. "Original", "AI Enhanced 1"
+  imageUrl: string;
+}
+
 export interface EditorState {
   // Photo state
   photoSpace: PhotoSpace;
   imageUrl?: string;
   state: 'idle' | 'loading' | 'ready' | 'error';
+  
+  // Canvas variants (for enhanced images)
+  variants: CanvasVariant[];
+  activeVariantId: string | null;
   
   // Job context
   jobContext?: {
@@ -245,4 +262,8 @@ export type EditorAction =
   | { type: 'SET_DRAWING_MODE'; payload: 'area' | 'freehand' }
   | { type: 'TOGGLE_GRID_SNAPPING' }
   // NEW: Konva stage reference for canvas export
-  | { type: 'SET_KONVA_STAGE_REF'; payload: any | null }; // Konva.Stage | null
+  | { type: 'SET_KONVA_STAGE_REF'; payload: any | null } // Konva.Stage | null
+  // NEW: Canvas variant actions
+  | { type: 'ADD_VARIANT'; payload: CanvasVariant }
+  | { type: 'SET_ACTIVE_VARIANT'; payload: string | null }
+  | { type: 'REMOVE_VARIANT'; payload: string }

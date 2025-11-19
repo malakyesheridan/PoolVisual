@@ -26,7 +26,12 @@
     "db:check": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/dbCheck.ts",
     "db:projects": "npx tsx -r ./server/bootstrapEnv.ts ./scripts/migrateProjects.ts",
     "test:system-masks": "npx tsx ./test-system-mask-query.ts",
-    "db:migrate:system-masks": "npx tsx ./scripts/runMigration.ts"
+    "db:migrate:system-masks": "npx tsx ./scripts/runMigration.ts",
+    "tokens:generate": "tsx scripts/generate-tailwind-config.ts",
+    "tokens:generate-css": "tsx scripts/generate-css-variables.ts",
+    "tokens:watch": "chokidar 'client/src/design-tokens/**/*.ts' -c 'npm run tokens:generate && npm run tokens:generate-css'",
+    "i18n:extract": "tsx scripts/extract-i18n-messages.ts",
+    "i18n:check": "tsx scripts/check-i18n-keys.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.918.0",
@@ -133,7 +138,7 @@
     "react-icons": "^5.4.0",
     "react-konva": "^18.2.12",
     "react-resizable-panels": "^2.1.7",
-    "recharts": "^2.15.2",
+    "recharts": "^2.15.4",
     "resend": "^3.5.0",
     "sharp": "^0.34.3",
     "sonner": "^2.0.7",

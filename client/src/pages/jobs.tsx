@@ -4,10 +4,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/hooks/use-toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { 
   ArrowLeft, 
   Search, 
@@ -27,7 +34,8 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  FolderOpen
+  FolderOpen,
+  Eye
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
@@ -41,6 +49,7 @@ export default function Jobs() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: orgs = [] } = useQuery({
     queryKey: ['/api/me/orgs'],
@@ -63,19 +72,47 @@ export default function Jobs() {
         jobs.map(async (job) => {
           try {
             const photos = await apiClient.getJobPhotos(job.id);
-            const photosWithCanvasWork = photos.filter(photo => photo.canvasState);
+            
+            // Check for masks on each photo to determine canvas work
+            const photosWithCanvasWork = await Promise.all(
+              photos.map(async (photo) => {
+                try {
+                  const masks = await apiClient.getMasks(photo.id);
+                  return masks.length > 0 ? { ...photo, maskCount: masks.length } : null;
+                } catch (error) {
+                  console.warn(`Failed to fetch masks for photo ${photo.id}:`, error);
+                  return null;
+                }
+              })
+            );
+            
+            const validPhotosWithWork = photosWithCanvasWork.filter(p => p !== null);
+            
+            // Get the most recent mask creation date for lastCanvasWork
+            let lastCanvasWork: number | null = null;
+            for (const photo of validPhotosWithWork) {
+              try {
+                const masks = await apiClient.getMasks(photo!.id);
+                if (masks.length > 0) {
+                  const maxCreatedAt = Math.max(...masks.map(m => new Date(m.createdAt || 0).getTime()));
+                  if (maxCreatedAt > 0 && (!lastCanvasWork || maxCreatedAt > lastCanvasWork)) {
+                    lastCanvasWork = maxCreatedAt;
+                  }
+                }
+              } catch (error) {
+                // Ignore errors for individual photos
+              }
+            }
             
             return {
               ...job,
               photos,
-              photosWithCanvasWork,
+              photosWithCanvasWork: validPhotosWithWork,
               canvasWorkProgress: {
                 totalPhotos: photos.length,
-                photosWithCanvasWork: photosWithCanvasWork.length,
-                completionPercentage: photos.length > 0 ? Math.round((photosWithCanvasWork.length / photos.length) * 100) : 0,
-                lastCanvasWork: photosWithCanvasWork.length > 0 
-                  ? Math.max(...photosWithCanvasWork.map(p => new Date(p.lastModified || p.uploadedAt).getTime()))
-                  : null
+                photosWithCanvasWork: validPhotosWithWork.length,
+                completionPercentage: photos.length > 0 ? Math.round((validPhotosWithWork.length / photos.length) * 100) : 0,
+                lastCanvasWork: lastCanvasWork
               }
             };
           } catch (error) {
@@ -110,16 +147,56 @@ export default function Jobs() {
     job.address?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  // Calculate job health indicator (green if no issues, yellow/red if there are)
+  const hasOverdueJobs = filteredJobs.some(job => {
+    // Consider jobs that are in progress but haven't been updated in a while as potentially overdue
+    const isActive = ['estimating', 'sent', 'accepted', 'scheduled'].includes(job.status);
+    if (!isActive) return false;
+    
+    const lastUpdate = job.canvasWorkProgress.lastCanvasWork 
+      ? new Date(job.canvasWorkProgress.lastCanvasWork)
+      : new Date(job.createdAt);
+    const daysSinceUpdate = (Date.now() - lastUpdate.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // Consider overdue if active job hasn't been updated in 30+ days
+    return daysSinceUpdate > 30;
+  });
+
+  const jobHealthStatus = hasOverdueJobs ? 'warning' : 'healthy';
+
+  // Mutation to update job status
+  const updateJobStatusMutation = useMutation({
+    mutationFn: async ({ jobId, status }: { jobId: string; status: string }) => {
+      return apiClient.updateJob(jobId, { status });
+    },
+    onSuccess: (data, variables) => {
+      toast({
+        title: "Job Updated",
+        description: `Job status updated to ${variables.status}.`,
+      });
+      // Invalidate queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs/canvas-status'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update job status",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800';
-      case 'estimating': return 'bg-yellow-100 text-yellow-800';
-      case 'sent': return 'bg-purple-100 text-purple-800';
-      case 'accepted': return 'bg-green-100 text-green-800';
-      case 'declined': return 'bg-red-100 text-red-800';
-      case 'scheduled': return 'bg-indigo-100 text-indigo-800';
-      case 'completed': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'new': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'estimating': return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
+      case 'sent': return 'bg-purple-50 text-purple-700 border border-purple-200';
+      case 'accepted': return 'bg-green-50 text-green-700 border border-green-200';
+      case 'declined': return 'bg-red-50 text-red-700 border border-red-200';
+      case 'scheduled': return 'bg-indigo-50 text-indigo-700 border border-indigo-200';
+      case 'completed': return 'bg-gray-50 text-gray-700 border border-gray-200';
+      default: return 'bg-gray-50 text-gray-700 border border-gray-200';
     }
   };
 
@@ -153,11 +230,13 @@ export default function Jobs() {
       };
     }
     
+    // If we have photos but no canvas work yet, the job has been started
+    // (photos are uploaded), so show "Started" instead of "Not Started"
     return { 
-      status: 'not-started', 
-      label: 'Not Started', 
-      color: 'text-orange-600',
-      icon: AlertCircle 
+      status: 'started', 
+      label: 'Started', 
+      color: 'text-blue-600',
+      icon: Clock 
     };
   };
 
@@ -169,42 +248,40 @@ export default function Jobs() {
 
   // Jobs list view
   return (
-    <div className="bg-slate-50">      
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
+    <div className="min-h-screen bg-[#F6F7F9] px-8 py-6">
+      {/* Jobs Header Row */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-slate-900" data-testid="text-page-title">
               Jobs
             </h1>
-            <p className="text-slate-600 mt-1">
-              Manage and track your pool renovation projects
-            </p>
+          <div className={`w-1.5 h-1.5 rounded-full ${
+            jobHealthStatus === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'
+          }`} aria-label={jobHealthStatus === 'healthy' ? 'All jobs healthy' : 'Some jobs need attention'} />
           </div>
           
-          <div className="flex items-center gap-3">
-            <Button variant="outline" data-testid="button-filters">
-              <Filter className="w-4 h-4 mr-2" />
-              Filters
-            </Button>
-            
-            <Button onClick={() => navigate('/jobs/new')} data-testid="button-new-job">
-              <Plus className="w-4 h-4 mr-2" />
+        <Button 
+          onClick={() => navigate('/jobs/new')} 
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5 h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          data-testid="button-new-job"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1.5" />
               New Job
             </Button>
-          </div>
         </div>
 
-        {/* Search */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
+      <div className="max-w-6xl mx-auto w-full px-6">
+        {/* Search + Filters Strip */}
+        <div className="mb-6 rounded-2xl bg-white shadow-sm border border-slate-100 px-4 py-3 flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Search jobs by client or address..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
               data-testid="input-search-jobs"
+              aria-label="Search jobs"
             />
           </div>
           
@@ -212,7 +289,7 @@ export default function Jobs() {
             <select
               value={selectedOrgId || ''}
               onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+              className="px-3 py-1.5 h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
               data-testid="select-organization"
             >
               {orgs.map((org) => (
@@ -222,157 +299,171 @@ export default function Jobs() {
               ))}
             </select>
           )}
+          
+          <Button 
+            variant="outline" 
+            size="sm"
+            className="rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 px-3 py-1.5 flex items-center gap-2 transition-all duration-150"
+            data-testid="button-filters"
+          >
+            <Filter className="w-3.5 h-3.5" />
+            Filters
+          </Button>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Total Jobs</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-total-jobs">
+        {/* Metrics Row - Compact Stat Chips */}
+        <div className="mb-6 rounded-2xl bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)] border border-slate-100 px-4 py-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+            <div className="rounded-xl bg-slate-50/70 hover:bg-slate-100 transition-colors px-3 py-2 flex items-center gap-3 cursor-default">
+              <div className="rounded-full bg-white shadow-sm w-8 h-8 flex items-center justify-center text-slate-500 flex-shrink-0">
+                <FileText className="w-4 h-4" />
+              </div>
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 leading-none" data-testid="stat-total-jobs">
                     {jobs.length}
                   </p>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">Total</p>
                 </div>
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-blue-600" />
                 </div>
+            
+            <div className="rounded-xl bg-slate-50/70 hover:bg-slate-100 transition-colors px-3 py-2 flex items-center gap-3 cursor-default">
+              <div className="rounded-full bg-white shadow-sm w-8 h-8 flex items-center justify-center text-slate-500 flex-shrink-0">
+                <Calendar className="w-4 h-4" />
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">In Progress</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-in-progress">
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 leading-none" data-testid="stat-in-progress">
                     {jobs.filter(j => ['estimating', 'sent'].includes(j.status)).length}
                   </p>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">In Progress</p>
                 </div>
-                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-5 h-5 text-yellow-600" />
                 </div>
+            
+            <div className="rounded-xl bg-slate-50/70 hover:bg-slate-100 transition-colors px-3 py-2 flex items-center gap-3 cursor-default">
+              <div className="rounded-full bg-white shadow-sm w-8 h-8 flex items-center justify-center text-slate-500 flex-shrink-0">
+                <User className="w-4 h-4" />
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Accepted</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-accepted">
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 leading-none" data-testid="stat-accepted">
                     {jobs.filter(j => j.status === 'accepted').length}
                   </p>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">Accepted</p>
                 </div>
-                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                  <User className="w-5 h-5 text-green-600" />
                 </div>
+            
+            <div className="rounded-xl bg-slate-50/70 hover:bg-slate-100 transition-colors px-3 py-2 flex items-center gap-3 cursor-default">
+              <div className="rounded-full bg-white shadow-sm w-8 h-8 flex items-center justify-center text-slate-500 flex-shrink-0">
+                <Palette className="w-4 h-4" />
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Canvas Work</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-canvas-work">
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 leading-none" data-testid="stat-canvas-work">
                     {jobsWithCanvasStatus.filter(j => j.canvasWorkProgress.photosWithCanvasWork > 0).length}
                   </p>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">Canvas Work</p>
                 </div>
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Palette className="w-5 h-5 text-purple-600" />
                 </div>
+            
+            <div className="rounded-xl bg-slate-50/70 hover:bg-slate-100 transition-colors px-3 py-2 flex items-center gap-3 cursor-default">
+              <div className="rounded-full bg-white shadow-sm w-8 h-8 flex items-center justify-center text-slate-500 flex-shrink-0">
+                <CheckCircle className="w-4 h-4" />
               </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-slate-600">Completed</p>
-                  <p className="text-2xl font-bold text-slate-900" data-testid="stat-completed">
+              <div className="flex flex-col justify-center min-w-0 flex-1">
+                <p className="text-base font-semibold text-slate-900 leading-none" data-testid="stat-completed">
                     {jobs.filter(j => j.status === 'completed').length}
                   </p>
-                </div>
-                <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <FileText className="w-5 h-5 text-gray-600" />
-                </div>
+                <p className="text-xs font-medium text-slate-500 mt-0.5">Completed</p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </div>
 
-        {/* Jobs List */}
-        <Card>
-          <CardHeader className="border-b border-slate-200">
-            <CardTitle>Recent Jobs</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
+        {/* Recent Jobs Section - Clean Card */}
+        <section className="mt-6 rounded-2xl bg-white border border-slate-200 shadow-[0_10px_30px_rgba(15,23,42,0.04)] overflow-hidden">
+          {/* Header Row */}
+          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+            <h2 className="text-sm font-semibold text-slate-900">Recent Jobs</h2>
+            <p className="text-xs text-slate-500">Your most recent activity</p>
+          </div>
+          
+          {/* Jobs List - Timeline List */}
+          <div className="divide-y divide-slate-100">
             {isLoading ? (
-              <div className="divide-y divide-slate-100">
+              <>
                 {[1, 2, 3].map((i) => (
-                  <JobCardSkeleton key={i} />
+                  <div key={i} className="px-4 py-3">
+                    <JobCardSkeleton />
+                  </div>
                 ))}
-              </div>
+              </>
             ) : filteredJobs.length === 0 ? (
-              <EmptyState
-                icon={FolderOpen}
-                title={searchTerm ? "No jobs found" : "No jobs yet"}
-                description={searchTerm 
+              <div className="flex items-center justify-center min-h-[280px] px-6 py-12">
+                <div className="flex flex-col items-center text-center">
+                  <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FolderOpen className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <h3 className="text-base font-semibold text-gray-900 mb-1.5">
+                    {searchTerm ? "No jobs found" : "No jobs yet"}
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-5 max-w-md mx-auto">
+                    {searchTerm 
                   ? "No jobs match your search criteria. Try adjusting your filters." 
                   : "Get started by creating your first job. Track projects, manage photos, and generate quotes all in one place."}
-                primaryAction={!searchTerm ? {
-                  label: "Create Your First Job",
-                  onClick: () => navigate('/jobs/new'),
-                  icon: Plus
-                } : undefined}
-                secondaryAction={searchTerm ? {
-                  label: "Clear search",
-                  onClick: () => setSearchTerm(''),
-                  variant: 'button'
-                } : undefined}
-              />
+                  </p>
+                  {!searchTerm ? (
+                    <Button
+                      onClick={() => navigate('/jobs/new')}
+                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 h-9 text-sm font-medium transition-all duration-150"
+                    >
+                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      Create Your First Job
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      onClick={() => setSearchTerm('')}
+                      className="border-gray-200 hover:bg-gray-50 rounded-lg px-3 py-1.5 h-9 text-sm transition-all duration-150"
+                    >
+                      Clear search
+                    </Button>
+                  )}
+                </div>
+              </div>
             ) : (
-              <div className="divide-y divide-slate-100">
-                {filteredJobs.map((job) => {
+              <>
+                {filteredJobs.map((job, index) => {
                   const canvasStatus = getCanvasWorkStatus(job);
                   const StatusIcon = canvasStatus.icon;
                   
                   // Determine which badges to show
-                  // Clean logic: avoid redundant badges when job has started
                   const hasPhotos = job.canvasWorkProgress.totalPhotos > 0;
-                  const canvasWorkActive = canvasStatus.status === 'in-progress' || canvasStatus.status === 'complete';
-                  
-                  // Show canvas badge if there are photos and status is meaningful
+                  const canvasWorkActive = canvasStatus.status === 'in-progress' || canvasStatus.status === 'complete' || canvasStatus.status === 'started';
                   const shouldShowCanvasBadge = hasPhotos && canvasStatus.status !== 'no-photos';
-                  
-                  // Show job status badge only if:
-                  // - Canvas work is active (show canvas status instead), OR
-                  // - Job is "new" AND has photos with "Not Started" canvas (avoid redundancy), OR
-                  // - Job is not "new" (always show meaningful statuses like "estimating", "accepted", etc.)
-                  const isRedundant = job.status === 'new' && hasPhotos && canvasStatus.status === 'not-started';
-                  const shouldShowJobStatus = !canvasWorkActive && !isRedundant;
+                  // Don't show job status badge if canvas work is active (started, in-progress, or complete)
+                  const shouldShowJobStatus = !canvasWorkActive;
                   
                   return (
                     <div 
                       key={job.id}
-                      className="p-6 hover:bg-slate-50 transition-colors"
+                      className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
                       data-testid={`job-item-${job.id}`}
+                      onClick={() => navigate(`/jobs/${job.id}`)}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="font-medium text-slate-900" data-testid={`text-client-name-${job.id}`}>
+                      {/* Left Side: Timeline + Job Info */}
+                      <div className="flex items-start gap-4 min-w-0 flex-1">
+                        {/* Timeline Column */}
+                        <div className="flex flex-col items-center pt-1 flex-shrink-0">
+                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                          <div className="flex-1 w-px bg-slate-200"></div>
+                        </div>
+                        
+                        {/* Job Info */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-sm font-medium text-slate-900 truncate" data-testid={`text-client-name-${job.id}`}>
                               {job.clientName}
                             </h3>
                             {shouldShowJobStatus && (
                               <Badge 
-                                className={`text-xs ${getStatusColor(job.status)}`}
+                                className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5 ${job.status === 'estimating' ? getStatusColor(job.status).replace('text-yellow-700', 'text-orange-600/90') : getStatusColor(job.status)}`}
                                 data-testid={`badge-status-${job.id}`}
                               >
                                 {job.status}
@@ -381,99 +472,97 @@ export default function Jobs() {
                             {shouldShowCanvasBadge && (
                               <Badge 
                                 variant="outline"
-                                className={`text-xs ${canvasStatus.color}`}
+                                className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5 border-slate-200 ${canvasStatus.color}`}
                                 data-testid={`badge-canvas-status-${job.id}`}
                               >
-                                <StatusIcon className="w-3 h-3 mr-1" />
+                                <StatusIcon className="w-2.5 h-2.5" />
                                 {canvasStatus.label}
                               </Badge>
                             )}
                           </div>
-                          
-                          <div className="flex items-center gap-4 text-sm text-slate-600 mb-2">
-                            {job.address && (
-                              <div className="flex items-center gap-1">
-                                <MapPin className="w-4 h-4" />
-                                <span data-testid={`text-address-${job.id}`}>{job.address}</span>
-                              </div>
-                            )}
-                            
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-4 h-4" />
-                              <span data-testid={`text-created-${job.id}`}>
-                                {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-                              </span>
-                            </div>
-                            
-                            {job.canvasWorkProgress.lastCanvasWork && (
-                              <div className="flex items-center gap-1">
-                                <Palette className="w-4 h-4" />
-                                <span>
-                                  Last canvas work: {formatDistanceToNow(new Date(job.canvasWorkProgress.lastCanvasWork), { addSuffix: true })}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                          <p className="text-xs text-slate-500" data-testid={`text-created-${job.id}`}>
+                            Updated {formatDistanceToNow(new Date(job.canvasWorkProgress.lastCanvasWork || job.createdAt), { addSuffix: true })}
+                          </p>
                         </div>
-                        
-                        <div className="flex items-center gap-2">
-                          {/* Quick Canvas Edit Button */}
-                          {job.photos.length > 0 && (
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const firstPhoto = job.photos[0];
-                                navigate(`/jobs/${job.id}/photo/${firstPhoto.id}/edit-canvas`);
-                              }}
-                              data-testid={`button-edit-canvas-${job.id}`}
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
-                            >
-                              <Palette className="w-4 h-4 mr-1" />
-                              Edit Canvas
-                              {job.photos.length > 1 && (
-                                <Badge variant="secondary" className="ml-2 text-xs">
-                                  {job.photos.length} photos
-                                </Badge>
-                              )}
-                            </Button>
-                          )}
+                              </div>
+                      
+                      {/* Right Side: Actions Cluster */}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {job.photos.length > 0 && job.photos.length > 1 && (
+                          <span className="rounded-full bg-slate-100 text-slate-600 text-xs px-3 py-1">
+                            {job.photos.length} photos
+                          </span>
+                        )}
                           
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
+                        <button 
                             onClick={(e) => {
                               e.stopPropagation();
                               navigate(`/jobs/${job.id}`);
                             }}
                             data-testid={`button-view-job-${job.id}`}
+                          className="text-slate-400 hover:text-slate-700 transition-colors"
+                          aria-label="View job"
                           >
-                            <FileText className="w-4 h-4 mr-1" />
-                            View
-                          </Button>
+                          <Eye className="w-4 h-4" />
+                        </button>
                           
-                          <Button 
-                            variant="ghost" 
-                            size="icon"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // TODO: Add job menu functionality
-                            }}
-                            data-testid={`button-job-menu-${job.id}`}
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </div>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                              }}
+                              data-testid={`button-job-menu-${job.id}`}
+                              className="text-slate-400 hover:text-slate-700 transition-colors"
+                              aria-label="Job options"
+                            >
+                              <MoreHorizontal className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            {job.status !== 'completed' && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    updateJobStatusMutation.mutate({ jobId: job.id, status: 'completed' });
+                                  }}
+                                  disabled={updateJobStatusMutation.isPending}
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Mark as Completed
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => navigate(`/jobs/${job.id}`)}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            {job.status === 'completed' && (
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  updateJobStatusMutation.mutate({ jobId: job.id, status: 'new' });
+                                }}
+                                disabled={updateJobStatusMutation.isPending}
+                              >
+                                <Clock className="w-4 h-4 mr-2" />
+                                Reopen Job
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                   );
                 })}
-              </div>
+              </>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
       </div>
     </div>
   );
 }
+

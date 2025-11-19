@@ -5,12 +5,20 @@
 
 import { EditorMask, CalibrationData } from '@shared/schema';
 
+export interface EditorOperation {
+  id: string;
+  type: 'mask' | 'material' | 'calibration' | 'transform' | 'batch';
+  action: string;
+  timestamp: number;
+}
+
 export interface EditorSnapshot {
   masks: EditorMask[];
   selectedMaskId?: string;
   calibration?: CalibrationData;
   timestamp: number;
   action: string;
+  history?: EditorOperation[]; // Extended with history
 }
 
 export interface EditorHistory {

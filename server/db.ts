@@ -6,7 +6,7 @@ import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 let sql: ReturnType<typeof neon> | null = null;
 let db: NeonHttpDatabase | null = null;
 
-function createConnection() {
+function createConnection(): ReturnType<typeof neon> | null {
   const cs = process.env.DATABASE_URL;
   if (!cs) {
     if (process.env.NO_DB_MODE === 'true') {
@@ -20,7 +20,8 @@ function createConnection() {
     // Use Neon serverless driver for better Vercel compatibility
     const neonClient = neon(cs);
     console.log('[DB] Neon client created successfully');
-    return neonClient;
+    // Type assertion needed due to Neon's strict generic types
+    return neonClient as ReturnType<typeof neon>;
   } catch (error: any) {
     console.error('[DB] Failed to create Neon client:', error?.message || String(error));
     throw error;
@@ -28,7 +29,7 @@ function createConnection() {
 }
 
 // Initialize connection lazily (not at module load time for better serverless compatibility)
-function getSql() {
+function getSql(): ReturnType<typeof neon> | null {
   if (!sql) {
     sql = createConnection();
   }

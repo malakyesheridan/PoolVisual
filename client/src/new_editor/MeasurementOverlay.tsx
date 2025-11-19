@@ -3,11 +3,12 @@ import { useEditorStore } from './store';
 import { useMaskStore } from '../maskcore/store';
 import { calculateMaskCost, calculateProjectTotals } from './utils';
 import { MaskCalibrationDialog } from './MaskCalibrationDialog';
+import { QuoteSelectionModal } from '../components/quotes/QuoteSelectionModal';
 import { getAll } from '../materials/registry';
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
-import { PlusCircle, X } from "lucide-react";
+import { PlusCircle, X, ChevronDown, ChevronUp, Calculator } from "lucide-react";
 
 interface MeasurementOverlayProps {
   className?: string;
@@ -19,7 +20,15 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
   const { masks } = useMaskStore(); // Use the actual mask store
   const [calibratingMaskId, setCalibratingMaskId] = useState<string | null>(null);
   const [isAddingToQuote, setIsAddingToQuote] = useState(false);
+  const [showQuoteSelectionModal, setShowQuoteSelectionModal] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [isMinimized, setIsMinimized] = useState(() => {
+    // Check localStorage for minimized state
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('measurements-minimized') === 'true';
+    }
+    return false;
+  });
   const [calibrationTooltipDismissed, setCalibrationTooltipDismissed] = useState(() => {
     // Check localStorage for dismissal state
     if (typeof window !== 'undefined') {
@@ -29,6 +38,21 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Fetch job to get orgId
+  const { data: job } = useQuery({
+    queryKey: ['/api/jobs', jobId],
+    queryFn: () => jobId ? apiClient.getJob(jobId) : Promise.resolve(null),
+    enabled: !!jobId,
+  });
+  
+  const handleToggleMinimize = () => {
+    const newMinimized = !isMinimized;
+    setIsMinimized(newMinimized);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('measurements-minimized', newMinimized.toString());
+    }
+  };
   
   
   // Get materials from registry
@@ -42,8 +66,8 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
   
   // Add mutation for adding measurements to quote
   const addToQuoteMutation = useMutation({
-    mutationFn: async (data: { jobId: string; measurements: any[] }) => {
-      return apiClient.addMeasurementsToQuote(data.jobId, data.measurements);
+    mutationFn: async (data: { jobId: string; measurements: any[]; quoteId?: string }) => {
+      return apiClient.addMeasurementsToQuote(data.jobId, data.measurements, data.quoteId);
     },
     onSuccess: () => {
       toast({
@@ -52,6 +76,7 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
       });
       queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       setLastSyncTime(new Date());
+      setShowQuoteSelectionModal(false);
     },
     onError: (error: any) => {
       toast({
@@ -62,8 +87,21 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
     },
   });
   
-  // Add function to handle adding measurements to quote
-  const handleAddToQuote = async () => {
+  // Add function to handle opening quote selection modal
+  const handleAddToQuoteClick = () => {
+    if (!jobId) {
+      toast({
+        title: "No Job Selected",
+        description: "Please select a job to add measurements to quote.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setShowQuoteSelectionModal(true);
+  };
+  
+  // Add function to handle adding measurements to selected quote
+  const handleAddToQuote = async (quoteId?: string) => {
     if (!jobId) {
       toast({
         title: "No Job Selected",
@@ -96,7 +134,8 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
       
       await addToQuoteMutation.mutateAsync({
         jobId,
-        measurements: measurementsData
+        measurements: measurementsData,
+        quoteId
       });
     } finally {
       setIsAddingToQuote(false);
@@ -145,11 +184,13 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
     return null;
   }
   
+  // Note: isMinimized check happens after calibration checks, so minimized state only applies when calibrated
+  
   // Convert mask store format to the format expected by calculation functions
   const maskArray = Object.values(masks).map(mask => ({
-    points: mask.pts,
+    points: mask.pts.map(pt => ({ x: pt.x, y: pt.y })), // Convert MaskPoint[] to Point[]
     materialId: mask.materialId,
-    customCalibration: undefined // TODO: Add custom calibration support
+    customCalibration: mask.customCalibration // Pass through custom calibration if available
   }));
   
   // Calculate measurements for each mask
@@ -165,14 +206,54 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
   // Calculate totals
   const totals = calculateProjectTotals(maskArray, materials, calibration.pixelsPerMeter);
   
+  // If minimized, show just an icon button
+  if (isMinimized) {
+    return (
+      <>
+        <button
+          onClick={handleToggleMinimize}
+          className={`absolute top-4 right-4 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg p-2.5 shadow-lg hover:shadow-xl transition-all hover:bg-white ${className}`}
+          style={{ zIndex: 20 }}
+          title="Show Measurements"
+          aria-label="Show Measurements"
+        >
+          <div className="relative">
+            <Calculator className="w-5 h-5 text-gray-700" />
+            {totals.totalArea > 0 && (
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+                {totals.maskCount}
+              </span>
+            )}
+          </div>
+        </button>
+        {calibratingMaskId && (
+          <MaskCalibrationDialog
+            maskId={calibratingMaskId}
+            onClose={() => setCalibratingMaskId(null)}
+          />
+        )}
+      </>
+    );
+  }
+  
   return (
     <>
       <div className={`absolute top-4 right-4 bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg p-4 shadow-lg max-w-sm ${className}`} style={{ zIndex: 20 }}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Measurements</h3>
-        <div className="flex items-center">
-          <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-          <span className="text-xs text-gray-600">Calibrated</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center">
+            <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+            <span className="text-xs text-gray-600">Calibrated</span>
+          </div>
+          <button
+            onClick={handleToggleMinimize}
+            className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded p-1 transition-colors"
+            title="Minimize to icon"
+            aria-label="Minimize Measurements"
+          >
+            <ChevronDown className="w-4 h-4" />
+          </button>
         </div>
       </div>
       
@@ -194,11 +275,17 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
                 <div className="text-xs text-gray-600">
                   Area: {measurement.areaSquareMeters.toFixed(2)} m²
                   <span className={`ml-2 px-1 py-0.5 rounded text-xs ${
-                    measurement.calibrationMethod === 'mask-specific' 
+                    measurement.calibrationMethod === 'edge-based'
+                      ? 'bg-purple-100 text-purple-700'
+                      : measurement.calibrationMethod === 'mask-specific' 
                       ? 'bg-blue-100 text-blue-700' 
                       : 'bg-gray-100 text-gray-600'
                   }`}>
-                    {measurement.calibrationMethod === 'mask-specific' ? 'Custom' : 'Global'}
+                    {measurement.calibrationMethod === 'edge-based' 
+                      ? 'Edge-Based' 
+                      : measurement.calibrationMethod === 'mask-specific' 
+                      ? 'Custom' 
+                      : 'Global'}
                   </span>
                   <span className={`ml-1 px-1 py-0.5 rounded text-xs ${
                     measurement.confidence === 'high' 
@@ -263,7 +350,7 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
             {!!(maskMeasurements.length > 0 && jobId) && (
               <div className="mt-4 pt-3 border-t border-gray-200">
                 <button
-                  onClick={handleAddToQuote}
+                  onClick={handleAddToQuoteClick}
                   disabled={isAddingToQuote}
                   className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
@@ -316,6 +403,18 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
       <MaskCalibrationDialog
         maskId={calibratingMaskId}
         onClose={() => setCalibratingMaskId(null)}
+      />
+    )}
+    
+    {/* Quote Selection Modal */}
+    {jobId && job && (
+      <QuoteSelectionModal
+        open={showQuoteSelectionModal}
+        onOpenChange={setShowQuoteSelectionModal}
+        onSelectQuote={handleAddToQuote}
+        jobId={jobId}
+        jobOrgId={job.orgId}
+        allowCreateNew={true}
       />
     )}
     </>

@@ -177,9 +177,9 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
+      {/* Search + Filters Bar */}
+      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             value={search}
@@ -242,19 +242,19 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
           </div>
         ) : (
           // Materials grid
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
             {filteredMaterials.map((material) => (
               <div
                 key={material.id}
-                className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow"
+                className="group flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] hover:border-slate-300 transition-colors transition-shadow"
               >
                 {/* Texture/Thumbnail */}
-                <div className="aspect-square bg-gray-100 rounded-t-lg relative overflow-hidden">
+                <div className="relative aspect-[4/3] w-full overflow-hidden">
                   {material.albedoURL ? (
                     <img
                       src={getProxiedTextureUrl(`${material.albedoURL}?v=${Date.now()}`)}
                       alt={material.name}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                       crossOrigin="anonymous"
                       loading="lazy"
                       referrerPolicy="no-referrer"
@@ -269,13 +269,17 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                     </div>
                   )}
                   
-                  <div className="absolute top-2 right-2 flex gap-1">
-                    <Badge variant="secondary" className="text-xs">
+                  {/* Category pill + kebab alignment */}
+                  <div className="pointer-events-none absolute inset-x-0 top-3 flex items-start justify-between px-3">
+                    <Badge 
+                      variant="secondary" 
+                      className="inline-flex items-center rounded-full bg-slate-900/80 px-2.5 py-1 text-xs font-medium text-white shadow-sm pointer-events-auto"
+                    >
                       {categories.find(c => c.value === material.category)?.label || material.category}
                     </Badge>
                     
                     {/* Actions menu */}
-                    <div className="relative group">
+                    <div className="relative group pointer-events-auto">
                       <button className="p-1 bg-white/80 hover:bg-white rounded shadow-sm">
                         <MoreVertical className="w-3 h-3" />
                       </button>
@@ -300,7 +304,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                 </div>
 
                 {/* Content */}
-                <div className="p-4">
+                <div className="flex flex-col gap-1 px-4 py-3">
                   <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
                     {material.name}
                   </h3>

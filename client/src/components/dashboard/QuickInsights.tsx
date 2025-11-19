@@ -4,82 +4,119 @@
  */
 
 import React from 'react';
+import { useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
-import { AlertCircle, TrendingUp, Clock, CheckCircle2 } from 'lucide-react';
+import { Button } from '../ui/button';
+import { AlertCircle, TrendingUp, Clock, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
 
 interface QuickInsightsProps {
   jobs: any[];
+  quotes?: any[];
   className?: string;
 }
 
-export function QuickInsights({ jobs, className = '' }: QuickInsightsProps) {
+export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsightsProps) {
+  const [, navigate] = useLocation();
+  
+  // Group quotes by jobId for quick lookup
+  const quotesByJobId = new Map<string, any[]>();
+  quotes.forEach(quote => {
+    if (!quotesByJobId.has(quote.jobId)) {
+      quotesByJobId.set(quote.jobId, []);
+    }
+    quotesByJobId.get(quote.jobId)!.push(quote);
+  });
+  
+  // Attach quotes to jobs
+  const jobsWithQuotes = jobs.map(job => ({
+    ...job,
+    quotes: quotesByJobId.get(job.id) || []
+  }));
+  
   // Calculate insights
-  const activeJobs = jobs.filter(job => 
+  const activeJobs = jobsWithQuotes.filter(job => 
     ['new', 'estimating', 'sent', 'accepted', 'scheduled'].includes(job.status)
   );
   
-  const needsQuote = activeJobs.filter(job => 
-    !job.quotes || job.quotes.length === 0 || 
-    job.status === 'new' || job.status === 'estimating'
-  ).length;
+  const jobsNeedingQuote = activeJobs.filter(job => 
+    (!job.quotes || job.quotes.length === 0) && 
+    (job.status === 'new' || job.status === 'estimating')
+  );
   
-  const pendingResponse = activeJobs.filter(job => 
+  const jobsPendingResponse = activeJobs.filter(job => 
     job.status === 'sent'
-  ).length;
+  );
   
-  const readyToSchedule = activeJobs.filter(job => 
+  const jobsReadyToSchedule = activeJobs.filter(job => 
     job.status === 'accepted'
-  ).length;
+  );
 
   const insights = [];
   
-  if (needsQuote > 0) {
+  if (jobsNeedingQuote.length > 0) {
     insights.push({
       type: 'quote',
-      message: `${needsQuote} ${needsQuote === 1 ? 'project needs' : 'projects need'} a quote`,
+      message: `${jobsNeedingQuote.length} ${jobsNeedingQuote.length === 1 ? 'project needs' : 'projects need'} a quote`,
       icon: AlertCircle,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
-      action: 'Create Quote'
+      action: 'Create Quote',
+      jobs: jobsNeedingQuote,
+      onClick: () => {
+        // Navigate to the first job that needs a quote, or show a list
+        if (jobsNeedingQuote.length === 1) {
+          navigate(`/jobs/${jobsNeedingQuote[0].id}`);
+        } else {
+          // Navigate to jobs page with filter
+          navigate('/jobs');
+        }
+      }
     });
   }
   
-  if (pendingResponse > 0) {
+  if (jobsPendingResponse.length > 0) {
     insights.push({
       type: 'pending',
-      message: `${pendingResponse} ${pendingResponse === 1 ? 'quote is' : 'quotes are'} pending client response`,
+      message: `${jobsPendingResponse.length} ${jobsPendingResponse.length === 1 ? 'quote is' : 'quotes are'} pending client response`,
       icon: Clock,
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
-      action: 'Follow Up'
+      action: 'Follow Up',
+      jobs: jobsPendingResponse,
+      onClick: () => navigate('/jobs')
     });
   }
   
-  if (readyToSchedule > 0) {
+  if (jobsReadyToSchedule.length > 0) {
     insights.push({
       type: 'ready',
-      message: `${readyToSchedule} ${readyToSchedule === 1 ? 'project is' : 'projects are'} ready to schedule`,
+      message: `${jobsReadyToSchedule.length} ${jobsReadyToSchedule.length === 1 ? 'project is' : 'projects are'} ready to schedule`,
       icon: CheckCircle2,
       color: 'text-green-600',
       bgColor: 'bg-green-50',
-      action: 'Schedule'
+      action: 'Schedule',
+      jobs: jobsReadyToSchedule,
+      onClick: () => navigate('/jobs')
     });
   }
 
   if (insights.length === 0) {
     return (
-      <Card className={`border border-gray-200 shadow-sm ${className}`}>
+      <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-gray-600" />
+          <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-blue-600" />
             Quick Insights
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="text-center py-6 text-gray-500">
-            <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-            <p className="text-sm">All caught up! No action items.</p>
+        <CardContent className="pb-4">
+          <div className="text-center py-6 px-4 bg-gradient-to-br from-slate-50 to-gray-50 rounded-lg">
+            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-6 h-6 text-blue-600" />
+            </div>
+            <p className="text-sm font-medium text-gray-700 mb-1">All caught up!</p>
+            <p className="text-xs text-gray-500">No action items at this time</p>
           </div>
         </CardContent>
       </Card>
@@ -87,30 +124,52 @@ export function QuickInsights({ jobs, className = '' }: QuickInsightsProps) {
   }
 
   return (
-    <Card className={`border border-gray-200 shadow-sm ${className}`}>
+    <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-gray-600" />
+        <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-blue-600" />
           Quick Insights
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
+      <CardContent className="pb-3">
+        <div className="space-y-2">
           {insights.map((insight, index) => (
-            <div 
+            <button
               key={index}
-              className="flex items-center gap-3 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+              onClick={insight.onClick}
+              className="w-full flex items-center gap-3 p-3 rounded-lg bg-slate-50 hover:bg-slate-100 transition-all duration-150 hover:shadow-sm cursor-pointer text-left"
             >
               <div className={`w-10 h-10 ${insight.bgColor} rounded-lg flex items-center justify-center flex-shrink-0`}>
                 <insight.icon className={`w-5 h-5 ${insight.color}`} />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900">{insight.message}</p>
+                {insight.jobs && insight.jobs.length > 0 && insight.type === 'quote' && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {insight.jobs.length === 1 
+                      ? insight.jobs[0].clientName || 'Unnamed project'
+                      : `${insight.jobs.length} projects`}
+                  </p>
+                )}
               </div>
-              <Badge variant="outline" className="text-xs">
-                {insight.action}
-              </Badge>
-            </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {insight.type === 'quote' && insight.jobs && insight.jobs.length === 1 && (
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/jobs/${insight.jobs[0].id}`);
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7"
+                  >
+                    <FileText className="w-3 h-3 mr-1" />
+                    Create Quote
+                  </Button>
+                )}
+                <ArrowRight className="w-4 h-4 text-gray-400" />
+              </div>
+            </button>
           ))}
         </div>
       </CardContent>

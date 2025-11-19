@@ -71,32 +71,32 @@ export default function Library() {
         </div>
       </div>
       
-      <div className="max-w-7xl mx-auto mobile-container md:px-6 mobile-spacing md:py-8">
+      <div className="max-w-6xl mx-auto w-full px-6 pb-10">
         {/* Desktop Header */}
-        <div className="hidden md:flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
-              Library
-            </h1>
-            <p className="text-slate-600 mt-1">
-              Manage your pool renovation materials, assets, and templates
-            </p>
+        <header className="pt-8 pb-4">
+          <div className="hidden md:flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
+                Library
+              </h1>
+              <p className="text-slate-600 mt-1">
+                Manage your pool renovation materials, assets, and templates
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-3">
+              <Button 
+                onClick={handleAddClick}
+                data-testid="button-add-item-desktop"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                {getAddButtonText()}
+              </Button>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <Button 
-              onClick={handleAddClick}
-              data-testid="button-add-item-desktop"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              {getAddButtonText()}
-            </Button>
-          </div>
-        </div>
 
-        {/* Tab Navigation */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
+          {/* Tab Navigation */}
+          <div className="mt-6 flex items-center gap-8 border-b border-slate-200">
             <nav className="-mb-px flex space-x-8">
               {tabs.map((tab) => {
                 const Icon = tab.icon;
@@ -120,7 +120,7 @@ export default function Library() {
               })}
             </nav>
           </div>
-        </div>
+        </header>
 
         {/* Tab Content */}
         <div className="tab-content">

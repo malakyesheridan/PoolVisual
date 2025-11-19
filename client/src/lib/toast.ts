@@ -21,17 +21,18 @@ class ToastManager {
   private config = TOAST_CONFIG;
 
   /**
-   * Success toast
+   * Success toast - auto-dismisses after 3s by default
    */
   success(message: string, options?: { description?: string; duration?: number; action?: { label: string; onClick: () => void } }) {
     return sonnerToast.success(message, {
       ...this.config,
+      duration: options?.duration ?? 3000, // Auto-dismiss after 3s
       ...options
     });
   }
 
   /**
-   * Error toast with automatic AppError handling
+   * Error toast with automatic AppError handling - persists unless duration is set
    */
   error(error: string | Error | AppError, options?: { description?: string; duration?: number }) {
     let message: string;
@@ -63,26 +64,28 @@ class ToastManager {
     return sonnerToast.error(message, {
       ...this.config,
       description: code ? `${description || ''} (${code})`.trim() : description,
-      duration: options?.duration ?? 6000 // Longer duration for errors
+      duration: options?.duration ?? 0 // Persistent unless duration is set
     });
   }
 
   /**
-   * Warning toast
+   * Warning toast - persists unless duration is set
    */
   warning(message: string, options?: { description?: string; duration?: number }) {
     return sonnerToast.warning(message, {
       ...this.config,
+      duration: options?.duration ?? 0, // Persistent unless duration is set
       ...options
     });
   }
 
   /**
-   * Info toast
+   * Info toast - auto-dismisses after 3s by default
    */
   info(message: string, options?: { description?: string; duration?: number }) {
     return sonnerToast.info(message, {
       ...this.config,
+      duration: options?.duration ?? 3000, // Auto-dismiss after 3s
       ...options
     });
   }
@@ -237,3 +240,27 @@ export { sonnerToast };
 
 // Export default for convenience
 export default toast;
+
+/**
+ * Async-safe retry utility with exponential backoff
+ */
+export async function withRetry<T>(
+  fn: () => Promise<T>,
+  options: { maxRetries: number; backoffMs: number }
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let i = 0; i < options.maxRetries; i++) {
+    try {
+      return await fn(); // Await the promise
+    } catch (error) {
+      lastError = error as Error;
+      
+      if (i < options.maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, options.backoffMs * Math.pow(2, i)));
+      }
+    }
+  }
+  
+  throw lastError!;
+}

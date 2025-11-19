@@ -169,6 +169,10 @@ export async function registerRoutes(app: Express): Promise<void> {
   const { registerQuoteRoutes } = await import('./routes/quotes.js');
   registerQuoteRoutes(app);
   
+  // Register export routes (presigned URLs)
+  const { registerExportRoutes } = await import('./routes/export.js');
+  registerExportRoutes(app);
+  
   // Legacy health check for compatibility
   app.get("/api/health", async (req, res) => {
     try {
@@ -556,6 +560,35 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       res.json(job);
     } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.patch("/api/jobs/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      // Verify org access
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update job with provided fields
+      const updatedJob = await storage.updateJob(jobId, req.body);
+      res.json(updatedJob);
+    } catch (error) {
+      console.error('[Routes] Error updating job:', error);
       res.status(500).json({ message: (error as Error).message });
     }
   });
@@ -1422,6 +1455,46 @@ export async function registerRoutes(app: Express): Promise<void> {
       const items = await storage.getQuoteItems(quote.id);
       res.json({ ...quote, items });
     } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Update quote
+  app.patch("/api/quotes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { id } = req.params;
+      
+      console.log('[Routes] PATCH /api/quotes/:id', { id, body: req.body });
+      
+      if (!id) {
+        return res.status(400).json({ message: "Quote ID is required" });
+      }
+
+      // Verify quote access
+      const quote = await storage.getQuote(id);
+      if (!quote) {
+        return res.status(404).json({ message: "Quote not found" });
+      }
+
+      const job = await storage.getJob(quote.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update quote with provided fields
+      console.log('[Routes] Updating quote with:', req.body);
+      const updatedQuote = await storage.updateQuote(id, req.body);
+      console.log('[Routes] Quote updated successfully:', updatedQuote);
+      res.json(updatedQuote);
+    } catch (error) {
+      console.error('[Routes] Error updating quote:', error);
       res.status(500).json({ message: (error as Error).message });
     }
   });

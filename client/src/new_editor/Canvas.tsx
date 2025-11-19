@@ -1,11 +1,12 @@
 // Canvas Component with Proper Zoom, Pan, and Mask Drawing
-import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { useEditorStore } from './store';
 import { Masking } from './Masking';
 // import { useMaskStore } from './Masking'; // Unused import
 import { MaskCanvasKonva } from '../canvas/konva-stage/MaskCanvasKonva';
 import { calculateImageFit } from '../maskcore/photoFit';
 import { calculateCenterPan, calculateFitScale } from './utils';
+import { loadPhotoSpace, isPhotoSpaceValid } from './photoSpacePersistence';
 
 interface CanvasProps {
   width: number;
@@ -38,11 +39,22 @@ export function Canvas({ width, height }: CanvasProps) {
   const {
     photoSpace,
     imageUrl,
+    variants,
+    activeVariantId,
     state,
     activeTool,
     calibrationMode,
     dispatch
   } = useEditorStore();
+  
+  // Get the active variant's image URL, or fallback to imageUrl
+  const activeImageUrl = React.useMemo(() => {
+    if (activeVariantId) {
+      const variant = variants.find(v => v.id === activeVariantId);
+      if (variant) return variant.imageUrl;
+    }
+    return imageUrl;
+  }, [variants, activeVariantId, imageUrl]);
 
   // Initialize material library adapter
   useEffect(() => {
@@ -55,13 +67,13 @@ export function Canvas({ width, height }: CanvasProps) {
     });
   }, []);
 
-  // Load image with proper state management
+  // Load image with proper state management - use active variant URL
   useEffect(() => {
-    if (imageUrl) {
-      console.log('[Canvas] Starting to load image:', imageUrl);
+    if (activeImageUrl) {
+      console.log('[Canvas] Starting to load image:', activeImageUrl);
       const img = new Image();
       img.onload = () => {
-        console.log('[Canvas] Image loaded successfully:', imageUrl, { width: img.naturalWidth, height: img.naturalHeight });
+        console.log('[Canvas] Image loaded successfully:', activeImageUrl, { width: img.naturalWidth, height: img.naturalHeight });
         imageRef.current = img;
         dispatch({ type: 'SET_STATE', payload: 'ready' });
         
@@ -69,46 +81,83 @@ export function Canvas({ width, height }: CanvasProps) {
         if (img.naturalWidth > 0 && img.naturalHeight > 0 && width > 0 && height > 0) {
           // CRITICAL FIX: Use photoSpace dimensions from store if already set (from SET_IMAGE)
           // This ensures we use database dimensions (source of truth) instead of natural dimensions
-          const currentPhotoSpace = useEditorStore.getState().photoSpace;
+          const currentState = useEditorStore.getState();
+          const currentPhotoSpace = currentState.photoSpace;
           const imgW = currentPhotoSpace.imgW || img.naturalWidth;
           const imgH = currentPhotoSpace.imgH || img.naturalHeight;
+          const photoId = currentState.jobContext?.photoId;
           
-          // Auto-fit image to screen on initial load for better UX
-          // This ensures large images are visible without requiring user interaction
-          const finalScale = calculateFitScale(
-            imgW,
-            imgH,
-            width,
-            height,
-            0.98 // 98% padding to leave some margin
-          );
+          // Check if photo space is already initialized (user has zoomed/panned)
+          const isPhotoSpaceInitialized = currentPhotoSpace.scale > 0 && 
+                                         currentPhotoSpace.panX !== undefined && 
+                                         currentPhotoSpace.panY !== undefined;
+          
+          // Try to load persisted photo space state
+          const persistedState = loadPhotoSpace(photoId);
+          const isValidPersistedState = isPhotoSpaceValid(persistedState, imgW, imgH);
+          
+          if (isValidPersistedState && persistedState) {
+            // Restore persisted state (user's previous zoom/pan)
+            console.log('[Canvas] Restoring persisted photo space:', persistedState);
+            dispatch({
+              type: 'SET_PHOTO_SPACE',
+              payload: {
+                scale: persistedState.scale!,
+                panX: persistedState.panX!,
+                panY: persistedState.panY!,
+                imgW,
+                imgH
+              }
+            });
+          } else if (!isPhotoSpaceInitialized) {
+            // Only auto-fit if photo space is not initialized (first load)
+            // This ensures we don't overwrite user's zoom/pan when returning to canvas
+            const finalScale = calculateFitScale(
+              imgW,
+              imgH,
+              width,
+              height,
+              0.98 // 98% padding to leave some margin
+            );
 
-          const { panX, panY } = calculateCenterPan(
-            imgW,
-            imgH,
-            width,
-            height,
-            finalScale
-          );
+            const { panX, panY } = calculateCenterPan(
+              imgW,
+              imgH,
+              width,
+              height,
+              finalScale
+            );
 
-          console.log('[Canvas] Initializing photo space:', { 
-            finalScale, panX, panY, 
-            imgW, imgH,
-            naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
-            canvasW: width, canvasH: height,
-            usingDatabaseDimensions: currentPhotoSpace.imgW !== undefined
-          });
-          dispatch({
-            type: 'SET_PHOTO_SPACE',
-            payload: {
-              scale: finalScale,
-              panX,
-              panY,
-              // Only set imgW/imgH if not already set (preserve database dimensions from SET_IMAGE)
-              ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
-              ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
-            }
-          });
+            console.log('[Canvas] Initializing photo space (first load):', { 
+              finalScale, panX, panY, 
+              imgW, imgH,
+              naturalWidth: img.naturalWidth, naturalHeight: img.naturalHeight,
+              canvasW: width, canvasH: height,
+              usingDatabaseDimensions: currentPhotoSpace.imgW !== undefined
+            });
+            dispatch({
+              type: 'SET_PHOTO_SPACE',
+              payload: {
+                scale: finalScale,
+                panX,
+                panY,
+                // Only set imgW/imgH if not already set (preserve database dimensions from SET_IMAGE)
+                ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
+                ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
+              }
+            });
+          } else {
+            // Photo space is already initialized, just ensure dimensions are set
+            console.log('[Canvas] Photo space already initialized, preserving zoom/pan');
+            dispatch({
+              type: 'SET_PHOTO_SPACE',
+              payload: {
+                // Only update dimensions if not already set
+                ...(currentPhotoSpace.imgW === undefined && { imgW: img.naturalWidth }),
+                ...(currentPhotoSpace.imgH === undefined && { imgH: img.naturalHeight })
+              }
+            });
+          }
         } else {
           console.warn('[Canvas] Cannot initialize photo space - missing image or canvas dimensions', { 
             imgW: img.naturalWidth, 
@@ -119,14 +168,14 @@ export function Canvas({ width, height }: CanvasProps) {
         }
       };
       img.onerror = (error) => {
-        console.error('[Canvas] Failed to load image:', imageUrl, error);
+        console.error('[Canvas] Failed to load image:', activeImageUrl, error);
         dispatch({ type: 'SET_STATE', payload: 'error' });
       };
-      img.src = imageUrl;
+      img.src = activeImageUrl;
     } else {
-      console.log('[Canvas] No imageUrl provided');
+      console.log('[Canvas] No activeImageUrl provided');
     }
-  }, [imageUrl, dispatch, width, height]); // Remove containerSize from dependencies to prevent infinite re-renders
+  }, [activeImageUrl, dispatch, width, height]); // Use activeImageUrl instead of imageUrl
 
   // Set canvas size with ResizeObserver to match CSS size * DPR
   useLayoutEffect(() => {

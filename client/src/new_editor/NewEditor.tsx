@@ -9,7 +9,8 @@ import { UnifiedTemplatesPanel } from './UnifiedTemplatesPanel';
 import { useEditorStore } from './store';
 import { useMaskStore } from '../maskcore/store';
 import { apiClient } from '../lib/api-client';
-import { Package, Square, FileText } from 'lucide-react';
+import { shouldIgnoreShortcut } from '../editor/keyboard/shortcuts';
+import { Package, Square, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
 import { 
   Tooltip, 
   TooltipContent, 
@@ -28,8 +29,26 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const lastLoadedPhotoIdRef = useRef<string | null>(null);
   const justSavedRef = useRef<{ photoId: string; timestamp: number } | null>(null);
-  const { dispatch, getState, jobContext } = useEditorStore();
+  const { dispatch, getState, jobContext, variants, activeVariantId } = useEditorStore();
   const [activeTab, setActiveTab] = React.useState<'materials' | 'templates' | 'masks'>('materials');
+  
+  // Handle variant navigation
+  const handlePreviousVariant = () => {
+    if (variants.length <= 1) return;
+    const currentIndex = variants.findIndex(v => v.id === activeVariantId);
+    const previousIndex = currentIndex > 0 ? currentIndex - 1 : variants.length - 1;
+    dispatch({ type: 'SET_ACTIVE_VARIANT', payload: variants[previousIndex].id });
+  };
+  
+  const handleNextVariant = () => {
+    if (variants.length <= 1) return;
+    const currentIndex = variants.findIndex(v => v.id === activeVariantId);
+    const nextIndex = currentIndex < variants.length - 1 ? currentIndex + 1 : 0;
+    dispatch({ type: 'SET_ACTIVE_VARIANT', payload: variants[nextIndex].id });
+  };
+  
+  const activeVariant = variants.find(v => v.id === activeVariantId);
+  const canNavigate = variants.length > 1;
   
   // Extract jobId and photoId from URL parameters
   const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
@@ -139,16 +158,93 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
     };
   }, [dispatch]);
 
-  // Handle Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z
+  // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Guard: Don't trigger shortcuts when typing in inputs
+      if (shouldIgnoreShortcut(e.target)) {
+        return;
+      }
+      
+      const state = useEditorStore.getState();
+      
+      // Tool selection shortcuts
+      if (e.key.toLowerCase() === 'v' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' });
+        return;
+      }
+      
+      if (e.key.toLowerCase() === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' });
+        return;
+      }
+      
+      // Calibration shortcut
+      if (e.key.toLowerCase() === 'c' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.state === 'ready') {
+        e.preventDefault();
+        // Dispatch event to open calibration tool (Toolbar will listen)
+        window.dispatchEvent(new CustomEvent('openCalibrationTool'));
+        return;
+      }
+      
+      // Undo/Redo
       if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
         e.preventDefault();
         dispatch({ type: 'UNDO' });
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        return;
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
         e.preventDefault();
         dispatch({ type: 'REDO' });
+        return;
       }
+      
+      // Save shortcut (Ctrl+S / Cmd+S)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's' && state.state === 'ready') {
+        e.preventDefault();
+        // Dispatch event to trigger save (Toolbar will listen)
+        window.dispatchEvent(new CustomEvent('triggerSave'));
+        return;
+      }
+      
+      // Zoom shortcuts
+      if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '=')) {
+        e.preventDefault();
+        // Dispatch event to trigger zoom in (Toolbar will listen)
+        window.dispatchEvent(new CustomEvent('triggerZoomIn'));
+        return;
+      }
+      
+      if ((e.ctrlKey || e.metaKey) && e.key === '-') {
+        e.preventDefault();
+        // Dispatch event to trigger zoom out (Toolbar will listen)
+        window.dispatchEvent(new CustomEvent('triggerZoomOut'));
+        return;
+      }
+      
+      // Delete/Backspace - Delete selected mask
+      if ((e.key === 'Delete' || e.key === 'Backspace') && state.state === 'ready') {
+        const maskStore = useMaskStore.getState();
+        if (maskStore.selectedId && maskStore.masks[maskStore.selectedId]) {
+          const selectedMask = maskStore.masks[maskStore.selectedId];
+          // Check if mask is locked
+          if (selectedMask.isLocked) {
+            return; // Don't delete locked masks
+          }
+          e.preventDefault();
+          // Use DELETE action from mask store
+          maskStore.DELETE(maskStore.selectedId).catch(err => {
+            console.error('Failed to delete mask:', err);
+          });
+          return;
+        }
+      }
+      
+      // Enter - Commit drawing (handled by MaskCanvasKonva, but we can add a fallback)
+      // ESC - Exit mode (handled by various components)
     };
 
     document.addEventListener('keydown', handleKeyDown);
@@ -407,7 +503,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   }, [effectivePhotoId, jobContext, photoId]);
 
   // Load photo image URL when photoId is available
-  // ONLY if there's no user-loaded image already in the store
+  // If we have a photoId, always reload from API to ensure we have the latest data
   useEffect(() => {
     const loadPhotoImage = async () => {
       const photoIdToUse = effectivePhotoId || jobContext?.photoId || photoId;
@@ -421,24 +517,29 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
       // Get fresh state directly (not from closure)
       const currentState = useEditorStore.getState();
       
-      // CRITICAL: Don't auto-load if user has already loaded an image
-      // Only load from API if there's no image OR if it's a Picsum placeholder
-      const hasUserImage = currentState.imageUrl && !currentState.imageUrl.includes('picsum.photos');
-      if (hasUserImage) {
-        console.log('[NewEditor] User has already loaded an image, skipping API photo load:', currentState.imageUrl);
-        return;
-      }
-      
-      // If we already loaded this exact photoId, skip (unless URL changed)
+      // CRITICAL FIX: If we have a photoId, we should always reload from API
+      // The only exception is if we just loaded this exact photoId and the URL matches
+      // This ensures that when returning to the editor, the image is always loaded
       if (lastLoadedPhotoIdRef.current === photoIdToUse) {
-        // Double-check the URL matches - if photo was updated, reload
-        if (currentState.imageUrl && !currentState.imageUrl.includes('picsum.photos')) {
-          console.log('[NewEditor] Photo already loaded for photoId:', photoIdToUse);
-          return;
+        // Check if URL matches and is not a placeholder
+        if (currentState.imageUrl && 
+            !currentState.imageUrl.includes('picsum.photos') &&
+            currentState.imageUrl !== '') {
+          // Verify the URL is actually valid by checking if it's from the API
+          const isApiUrl = currentState.imageUrl.includes(`/api/photos/${photoIdToUse}`) ||
+                         currentState.imageUrl.includes(photoIdToUse);
+          if (isApiUrl) {
+            console.log('[NewEditor] Photo already loaded for photoId:', photoIdToUse, 'URL:', currentState.imageUrl);
+            return;
+          }
         }
-        // If we have Picsum URL but a real photoId, reload
+        // If URL doesn't match or is placeholder, reload
         console.log('[NewEditor] PhotoId matches but URL may be stale, reloading...');
       }
+      
+      // If no photoId but user has manually loaded an image, don't overwrite it
+      // This only applies when there's NO photoId (user uploaded manually)
+      // Since we have a photoId here, we should always load from API
       
       console.log('[NewEditor] Loading photo for photoId:', photoIdToUse);
       
@@ -453,17 +554,6 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             return;
           }
           
-          // Get fresh state again after API call
-          const freshState = useEditorStore.getState();
-          
-          // Only update if URL is different and not a test URL
-          const isTestUrl = freshState.imageUrl?.includes('picsum.photos');
-          if (!isTestUrl && freshState.imageUrl === photo.originalUrl) {
-            console.log('[NewEditor] Photo URL already matches, skipping update');
-            lastLoadedPhotoIdRef.current = photoIdToUse;
-            return;
-          }
-          
           // Convert local paths to proxy URLs for old photos
           let imageUrl = photo.originalUrl;
           if (imageUrl.startsWith('/uploads/')) {
@@ -471,6 +561,25 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             imageUrl = `/api/photos/${photoIdToUse}/image`;
             console.log('[NewEditor] Converting local path to proxy URL:', imageUrl);
           }
+          
+          // Get fresh state again after API call
+          const freshState = useEditorStore.getState();
+          
+          // Check if URL matches (accounting for proxy URL conversion)
+          const isTestUrl = freshState.imageUrl?.includes('picsum.photos');
+          const currentUrlMatches = freshState.imageUrl === imageUrl || 
+                                   freshState.imageUrl === photo.originalUrl ||
+                                   (freshState.imageUrl?.includes(`/api/photos/${photoIdToUse}`) && imageUrl.includes(`/api/photos/${photoIdToUse}`));
+          
+          // Only skip if URL matches, not a test URL, and we just loaded this photoId
+          // If ref is null (just remounted), always reload to ensure image is loaded
+          if (!isTestUrl && currentUrlMatches && lastLoadedPhotoIdRef.current === photoIdToUse) {
+            console.log('[NewEditor] Photo URL already matches and was just loaded, skipping update');
+            return;
+          }
+          
+          // If we're here, we need to reload (either ref is null or URL doesn't match)
+          console.log('[NewEditor] Reloading image - ref:', lastLoadedPhotoIdRef.current, 'photoId:', photoIdToUse, 'URL match:', currentUrlMatches);
           
           // Load image to get dimensions
           const img = new Image();
@@ -729,17 +838,17 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   // }, []);
 
   return (
-    <div className="h-full flex flex-col bg-gray-50">
+    <div className="h-full flex flex-col bg-gray-50 relative">
           <Toolbar 
             {...(effectiveJobId && { jobId: effectiveJobId })}
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
           />
       
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-4">
         {/* Canvas viewport container - fixed box that does NOT resize on zoom */}
         <div 
           ref={containerRef}
-          className="flex-1 relative bg-white min-h-0"
+          className="flex-1 relative bg-white rounded-xl shadow-md min-h-0"
           style={{
             position: 'relative',
             overflow: 'hidden',
@@ -747,6 +856,8 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             // Prevent horizontal scroll during zoom
             overflowX: 'hidden'
           }}
+          role="main"
+          aria-label="Canvas Editor"
         >
           <Canvas 
             width={containerRef.current?.clientWidth || 800} 
@@ -755,6 +866,44 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           
           {/* Measurement Overlay */}
           <MeasurementOverlay jobId={effectiveJobId || undefined} />
+          
+          {/* Variant Switcher - Bottom of Canvas */}
+          {variants.length > 0 && (
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-30">
+              <div className="bg-white/95 backdrop-blur-sm border border-gray-200 rounded-lg shadow-lg px-4 py-2 flex items-center gap-3">
+                <button
+                  onClick={handlePreviousVariant}
+                  disabled={!canNavigate}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-gray-600 hover:text-gray-900"
+                  title="Previous variant"
+                  aria-label="Previous variant"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                
+                <div className="flex items-center gap-2 min-w-[120px] justify-center">
+                  <span className="text-sm font-medium text-gray-900">
+                    {activeVariant?.label || 'Original'}
+                  </span>
+                  {variants.length > 1 && (
+                    <span className="text-xs text-gray-500">
+                      {variants.findIndex(v => v.id === activeVariantId) + 1} / {variants.length}
+                    </span>
+                  )}
+                </div>
+                
+                <button
+                  onClick={handleNextVariant}
+                  disabled={!canNavigate}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors text-gray-600 hover:text-gray-900"
+                  title="Next variant"
+                  aria-label="Next variant"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         
         {/* Resize Handle */}
@@ -770,11 +919,13 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
         <div 
           ref={sidebarRef} 
           style={{ width: `${sidebarWidth}px`, flex: '0 0 auto' }} 
-          className="h-full overflow-hidden flex flex-col bg-white border-l border-gray-200"
+          className="h-full overflow-hidden flex flex-col bg-white shadow-sm border-l border-gray-100 rounded-xl"
+          role="complementary"
+          aria-label="Editor Sidebar"
         >
           {/* Tab Navigation */}
           <TooltipProvider>
-            <div className="flex border-b bg-white">
+            <div className="flex border-b border-gray-100 bg-white px-6 pt-6">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { EditorState, EditorAction, PhotoSpace, Mask, Point, UnderwaterRealismSettings, MaskPoint, CalibrationState, MeasurementSettings } from './types';
 import { getMaskBounds, pointInPolygon } from './utils';
 import { insertVertexAtEdge, removeVertex, moveVertex, toggleVertexKind } from './precisionMasks';
+import { HistoryManager } from '../editor/undoRedo/historyManager';
 
 // Guard against NaN/Infinity values
 function isFiniteNumber(value: number): boolean {
@@ -199,6 +200,8 @@ const initialState: EditorState = {
     dpr: window.devicePixelRatio || 1
   },
   imageUrl: undefined,
+  variants: [],
+  activeVariantId: null,
   state: 'idle',
   activeTool: 'select',
   drawingPoints: [],
@@ -279,10 +282,24 @@ export const useEditorStore = create<EditorState & {
           return;
         }
         
-        set(state => ({
-          ...state,
-          photoSpace: { ...state.photoSpace, ...guarded }
-        }));
+        set(state => {
+          const newPhotoSpace = { ...state.photoSpace, ...guarded };
+          
+          // Persist photo space state to localStorage (keyed by photoId)
+          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+            // Use dynamic import instead of require to avoid errors in browser
+            import('./photoSpacePersistence').then(({ savePhotoSpace }) => {
+              savePhotoSpace(state.jobContext!.photoId!, newPhotoSpace);
+            }).catch((error) => {
+              console.warn('[EditorStore] Failed to persist photo space:', error);
+            });
+          }
+          
+          return {
+            ...state,
+            photoSpace: newPhotoSpace
+          };
+        });
         break;
       }
       
@@ -305,16 +322,33 @@ export const useEditorStore = create<EditorState & {
           }
         }
         
-        set(state => ({
-          ...state,
-          imageUrl: url,
-          photoSpace: {
-            ...state.photoSpace,
+        set(state => {
+          // CRITICAL: Preserve existing zoom/pan when setting image
+          // Only update dimensions, don't reset scale/panX/panY
+          const currentPhotoSpace = state.photoSpace;
+          const newPhotoSpace = {
+            ...currentPhotoSpace,
             imgW: width,
             imgH: height
-          },
-          state: 'ready'
-        }));
+            // Preserve scale, panX, panY from current state
+          };
+          
+          // Initialize variants with Original if this is the first image load
+          const originalVariantId = 'original';
+          const hasOriginalVariant = state.variants.some(v => v.id === originalVariantId);
+          const newVariants = hasOriginalVariant 
+            ? state.variants 
+            : [{ id: originalVariantId, label: 'Original', imageUrl: url }, ...state.variants];
+          
+          return {
+            ...state,
+            imageUrl: url,
+            photoSpace: newPhotoSpace,
+            state: 'ready',
+            variants: newVariants,
+            activeVariantId: state.activeVariantId || originalVariantId
+          };
+        });
         break;
       }
       
@@ -496,6 +530,47 @@ export const useEditorStore = create<EditorState & {
           historyIndex: currentState.historyIndex
         };
         
+        // Persist to HistoryManager if projectId available
+        const projectId = currentState.jobContext?.photoId || 'default';
+        try {
+          const hm = getHistoryManager(projectId);
+          hm.push({
+            id: crypto.randomUUID(),
+            type: 'batch',
+            action: 'snapshot',
+            timestamp: Date.now(),
+          });
+          // Persist checkpoint with full snapshot
+          // Convert Mask[] to EditorMask[] format (AreaMask)
+          const snapshotForHistory: EditorSnapshot = {
+            masks: currentState.masks.map(m => ({
+              id: m.id,
+              photoId: currentState.jobContext?.photoId || '',
+              type: 'area' as const,
+              createdBy: 'current-user', // TODO: Get from auth
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              polygon: {
+                points: m.points,
+              },
+              materialId: m.materialId,
+            })),
+            selectedMaskId: currentState.selectedMaskId,
+            calibration: currentState.calibration ? {
+              pixelsPerMeter: currentState.calibration.pixelsPerMeter,
+              a: { x: 0, y: 0 }, // TODO: Store actual calibration points
+              b: { x: 0, y: 0 },
+              lengthMeters: currentState.calibration.referenceLength,
+            } : undefined,
+            timestamp: Date.now(),
+            action: 'snapshot',
+            history: [],
+          };
+          hm.persistCheckpoint(snapshotForHistory).catch(console.error);
+        } catch (error) {
+          console.warn('[Store] Failed to persist history:', error);
+        }
+        
         set(state => ({
           ...state,
           history: [...state.history.slice(0, state.historyIndex + 1), snapshot],
@@ -508,6 +583,16 @@ export const useEditorStore = create<EditorState & {
         const currentState = get();
         if (currentState.historyIndex > 0) {
           const previousState = currentState.history[currentState.historyIndex - 1];
+          
+          // Track in HistoryManager
+          const projectId = currentState.jobContext?.photoId || 'default';
+          try {
+            const hm = getHistoryManager(projectId);
+            hm.undo();
+          } catch (error) {
+            console.warn('[Store] Failed to track undo in HistoryManager:', error);
+          }
+          
           set(state => ({
             ...previousState,
             history: state.history,
@@ -521,6 +606,16 @@ export const useEditorStore = create<EditorState & {
         const currentState = get();
         if (currentState.historyIndex < currentState.history.length - 1) {
           const nextState = currentState.history[currentState.historyIndex + 1];
+          
+          // Track in HistoryManager
+          const projectId = currentState.jobContext?.photoId || 'default';
+          try {
+            const hm = getHistoryManager(projectId);
+            hm.redo();
+          } catch (error) {
+            console.warn('[Store] Failed to track redo in HistoryManager:', error);
+          }
+          
           set(state => ({
             ...nextState,
             history: state.history,
@@ -761,6 +856,69 @@ export const useEditorStore = create<EditorState & {
           ...state, 
           konvaStageRef: action.payload
         }));
+        break;
+      }
+      
+      // NEW: Canvas variant actions
+      case 'ADD_VARIANT': {
+        const variant = action.payload;
+        set(state => {
+          // Check if variant with same ID already exists
+          const exists = state.variants.some(v => v.id === variant.id);
+          if (exists) {
+            console.warn('[EditorStore] Variant with ID already exists:', variant.id);
+            return state;
+          }
+          return {
+            ...state,
+            variants: [...state.variants, variant],
+            activeVariantId: variant.id
+          };
+        });
+        break;
+      }
+      
+      case 'SET_ACTIVE_VARIANT': {
+        const variantId = action.payload;
+        set(state => {
+          // Validate variant exists
+          const variant = state.variants.find(v => v.id === variantId);
+          if (!variant && variantId !== null) {
+            console.warn('[EditorStore] Variant not found:', variantId);
+            return state;
+          }
+          return {
+            ...state,
+            activeVariantId: variantId,
+            // Update imageUrl to match active variant
+            imageUrl: variant ? variant.imageUrl : state.imageUrl
+          };
+        });
+        break;
+      }
+      
+      case 'REMOVE_VARIANT': {
+        const variantId = action.payload;
+        set(state => {
+          // Don't allow removing the original variant
+          if (variantId === 'original') {
+            console.warn('[EditorStore] Cannot remove original variant');
+            return state;
+          }
+          
+          const newVariants = state.variants.filter(v => v.id !== variantId);
+          const newActiveVariantId = state.activeVariantId === variantId
+            ? (newVariants.length > 0 ? newVariants[0].id : 'original')
+            : state.activeVariantId;
+          
+          return {
+            ...state,
+            variants: newVariants,
+            activeVariantId: newActiveVariantId,
+            // Update imageUrl to match new active variant
+            imageUrl: newVariants.find(v => v.id === newActiveVariantId)?.imageUrl || state.imageUrl
+          };
+        });
         break;
       }
     }

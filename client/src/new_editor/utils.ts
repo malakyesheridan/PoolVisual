@@ -1,6 +1,7 @@
 import { PhotoSpace, Point } from './types';
 // B) MASK CURSOR OFFSET - Use unified coordinate mapping
 import { screenToImage as unifiedScreenToImage, imageToScreen as unifiedImageToScreen } from './coord';
+import { calculateWeightedPixelsPerMeter, calculateAreaWithEdgeCalibration } from './edgeCalibrationUtils';
 
 /**
  * Convert screen coordinates (CSS pixels) to image coordinates
@@ -523,7 +524,7 @@ export function testCalibrationSystem(): void {
 
 /**
  * Calculate the cost for a mask based on its area and material
- * Now supports mask-specific calibration overrides
+ * Now supports mask-specific calibration overrides including edge-based calibration
  * 
  * @param mask - The mask to calculate cost for
  * @param materials - Array of available materials
@@ -537,7 +538,13 @@ export function calculateMaskCost(
     customCalibration?: {
       estimatedLength?: number;
       estimatedWidth?: number;
-      calibrationMethod: 'reference' | 'estimated' | 'auto';
+      edgeMeasurements?: {
+        edgeIndex: number;
+        pixelLength: number;
+        realWorldLength: number;
+        pixelsPerMeter: number;
+      }[];
+      calibrationMethod: 'reference' | 'estimated' | 'auto' | 'manual_edges';
       confidence: 'high' | 'medium' | 'low';
       lastUpdated: number;
     };
@@ -549,22 +556,35 @@ export function calculateMaskCost(
   cost: number;
   materialName: string;
   hasCostData: boolean;
-  calibrationMethod: 'global' | 'mask-specific';
+  calibrationMethod: 'global' | 'mask-specific' | 'edge-based';
   confidence: 'high' | 'medium' | 'low';
 } {
   let areaSquareMeters: number;
-  let calibrationMethod: 'global' | 'mask-specific' = 'global';
+  let calibrationMethod: 'global' | 'mask-specific' | 'edge-based' = 'global';
   let confidence: 'high' | 'medium' | 'low' = 'medium';
 
-  // Use mask-specific calibration if available
-  if (mask.customCalibration?.estimatedLength && mask.customCalibration?.estimatedWidth) {
+  // Priority 1: Use edge-based calibration if available (most accurate for perspective correction)
+  if (mask.customCalibration?.edgeMeasurements && mask.customCalibration.edgeMeasurements.length > 0) {
+    const weightedPpm = calculateWeightedPixelsPerMeter(mask.customCalibration.edgeMeasurements);
+    if (weightedPpm > 0) {
+      areaSquareMeters = calculateAreaWithEdgeCalibration(mask.points, mask.customCalibration.edgeMeasurements);
+      calibrationMethod = 'edge-based';
+      confidence = mask.customCalibration.confidence;
+    } else {
+      // Fallback to global if edge calibration is invalid
+      areaSquareMeters = calculatePolygonAreaInSquareMeters(mask.points, globalPixelsPerMeter);
+    }
+  }
+  // Priority 2: Use rectangular estimate if available
+  else if (mask.customCalibration?.estimatedLength && mask.customCalibration?.estimatedWidth) {
     // Calculate area using estimated dimensions
     const estimatedArea = mask.customCalibration.estimatedLength * mask.customCalibration.estimatedWidth;
     areaSquareMeters = estimatedArea;
     calibrationMethod = 'mask-specific';
     confidence = mask.customCalibration.confidence;
-  } else {
-    // Use global calibration
+  }
+  // Priority 3: Use global calibration
+  else {
     areaSquareMeters = calculatePolygonAreaInSquareMeters(mask.points, globalPixelsPerMeter);
   }
   
@@ -607,7 +627,13 @@ export function calculateProjectTotals(
     customCalibration?: {
       estimatedLength?: number;
       estimatedWidth?: number;
-      calibrationMethod: 'reference' | 'estimated' | 'auto';
+      edgeMeasurements?: {
+        edgeIndex: number;
+        pixelLength: number;
+        realWorldLength: number;
+        pixelsPerMeter: number;
+      }[];
+      calibrationMethod: 'reference' | 'estimated' | 'auto' | 'manual_edges';
       confidence: 'high' | 'medium' | 'low';
       lastUpdated: number;
     };

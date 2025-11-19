@@ -119,6 +119,7 @@ export interface IStorage {
   updateQuoteItem(itemId: string, updates: Partial<QuoteItem>): Promise<QuoteItem>;
   deleteQuoteItem(itemId: string): Promise<void>;
   updateQuote(id: string, updates: Partial<Quote>): Promise<Quote>;
+  deleteQuote(id: string): Promise<void>;
   
   // Settings
   getOrgSettings(orgId: string): Promise<Settings | undefined>;
@@ -231,6 +232,16 @@ export class PostgresStorage implements IStorage {
 
   async getJobs(orgId: string): Promise<Job[]> {
     return await ensureDb().select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt));
+  }
+
+  async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
+    const [job] = await ensureDb()
+      .update(jobs)
+      .set(updates)
+      .where(eq(jobs.id, id))
+      .returning();
+    if (!job) throw new Error("Failed to update job");
+    return job;
   }
 
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
@@ -514,13 +525,31 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {
-    const [quote] = await ensureDb()
-      .update(quotes)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(quotes.id, id))
-      .returning();
-    if (!quote) throw new Error("Failed to update quote");
-    return quote;
+    console.log('[Storage] updateQuote called with:', { id, updates });
+    try {
+      const [quote] = await ensureDb()
+        .update(quotes)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(quotes.id, id))
+        .returning();
+      if (!quote) throw new Error("Failed to update quote");
+      console.log('[Storage] Quote updated successfully:', quote);
+      return quote;
+    } catch (error) {
+      console.error('[Storage] Error in updateQuote:', error);
+      throw error;
+    }
+  }
+
+  async deleteQuote(id: string): Promise<void> {
+    // First delete all quote items, then delete the quote
+    await ensureDb()
+      .delete(quoteItems)
+      .where(eq(quoteItems.quoteId, id));
+    
+    await ensureDb()
+      .delete(quotes)
+      .where(eq(quotes.id, id));
   }
 
   async getOrgSettings(orgId: string): Promise<Settings | undefined> {

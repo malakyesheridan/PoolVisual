@@ -61,17 +61,20 @@ export function RecentActivityCompact({ jobs, className = '' }: RecentActivityCo
   };
 
   return (
-    <Card className={`border border-gray-200 shadow-sm ${className}`}>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-lg font-semibold flex items-center gap-2">
-          <Activity className="w-5 h-5 text-gray-600" />
+    <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
+      <CardHeader className="pb-4">
+        <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-blue-600" />
           Recent Activity
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
+      <CardContent className="pb-4">
+        <div className="space-y-2">
           {activities.map((activity) => (
-            <div key={activity.id} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+            <div 
+              key={activity.id} 
+              className="flex items-center justify-between py-2.5 px-2 rounded-lg hover:bg-slate-50 transition-all duration-150 border-b border-gray-100 last:border-0"
+            >
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 truncate">
                   {activity.title}

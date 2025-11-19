@@ -4,7 +4,7 @@
  * Displays PDF preview in a modal with download functionality
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, FileText, X } from "lucide-react";
@@ -68,12 +68,12 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
     }
   };
 
-  // Load PDF when modal opens
-  useState(() => {
-    if (isOpen && !pdfData) {
+  // Load PDF when modal opens or quoteId changes
+  useEffect(() => {
+    if (isOpen) {
       loadPDF();
     }
-  });
+  }, [isOpen, quoteId]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
