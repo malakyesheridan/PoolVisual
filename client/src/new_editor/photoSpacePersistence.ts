@@ -23,6 +23,7 @@ export function savePhotoSpace(photoId: string | null | undefined, photoSpace: P
       panY: photoSpace.panY,
       imgW: photoSpace.imgW,
       imgH: photoSpace.imgH,
+      fitScale: photoSpace.fitScale, // Save fitScale for 100% zoom baseline
       timestamp: Date.now()
     };
     localStorage.setItem(key, JSON.stringify(data));
@@ -59,7 +60,8 @@ export function loadPhotoSpace(photoId: string | null | undefined): Partial<Phot
         panX: data.panX,
         panY: data.panY,
         imgW: data.imgW,
-        imgH: data.imgH
+        imgH: data.imgH,
+        fitScale: data.fitScale // Load fitScale if available (for backward compatibility, may be undefined)
       };
     }
   } catch (error) {

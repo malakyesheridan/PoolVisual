@@ -37,6 +37,10 @@ function guardPhotoSpace(photoSpace: Partial<PhotoSpace>): Partial<PhotoSpace> {
     guarded.dpr = Math.max(0.5, Math.min(3, photoSpace.dpr));
   }
   
+  if (photoSpace.fitScale !== undefined && isFiniteNumber(photoSpace.fitScale)) {
+    guarded.fitScale = Math.max(0.01, Math.min(10, photoSpace.fitScale)); // Clamp to reasonable range
+  }
+  
   return guarded;
 }
 
@@ -197,7 +201,8 @@ const initialState: EditorState = {
     panY: 0,
     imgW: 0,
     imgH: 0,
-    dpr: window.devicePixelRatio || 1
+    dpr: window.devicePixelRatio || 1,
+    fitScale: undefined // Will be set when image first loads
   },
   imageUrl: undefined,
   variants: [],
@@ -342,10 +347,11 @@ export const useEditorStore = create<EditorState & {
                 panY: 0,
                 imgW: width,
                 imgH: height,
-                dpr: currentPhotoSpace.dpr
+                dpr: currentPhotoSpace.dpr,
+                fitScale: undefined // Will be set when Canvas calculates fit
               }
             : {
-                // Same image - preserve zoom/pan (user has already adjusted it)
+                // Same image - preserve zoom/pan and fitScale (user has already adjusted it)
                 ...currentPhotoSpace,
                 imgW: width,
                 imgH: height

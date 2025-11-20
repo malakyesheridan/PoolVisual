@@ -169,13 +169,21 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   }, [effectivePhotoId]);
 
   // Update zoom label when photoSpace scale changes
+  // Calculate percentage relative to fitScale (baseline for 100% zoom)
   useEffect(() => {
-    const percentage = Math.round(photoSpace.scale * 100);
+    let percentage: number;
+    if (photoSpace.fitScale && photoSpace.fitScale > 0) {
+      // Calculate relative to fitScale: if scale === fitScale, that's 100%
+      percentage = Math.round((photoSpace.scale / photoSpace.fitScale) * 100);
+    } else {
+      // Fallback for backward compatibility: use absolute scale
+      percentage = Math.round(photoSpace.scale * 100);
+    }
     dispatch({
       type: 'SET_ZOOM_LABEL',
       payload: `${percentage}%`
     });
-  }, [photoSpace.scale, dispatch]);
+  }, [photoSpace.scale, photoSpace.fitScale, dispatch]);
 
   // Handle paste events
   useEffect(() => {
@@ -340,13 +348,14 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     
     dispatch({
       type: 'SET_PHOTO_SPACE',
-      payload: { scale: fitScale, panX, panY }
+      payload: { scale: fitScale, panX, panY, fitScale: fitScale } // Update fitScale when fitting
     });
   };
 
   const handleZoomIn = () => {
-    // Use 10% increments instead of exponential scaling
-    const currentPercentage = Math.round(photoSpace.scale * 100);
+    // Calculate current relative percentage (based on fitScale for 100% baseline)
+    const fitScale = photoSpace.fitScale || 1;
+    const currentPercentage = Math.round((photoSpace.scale / fitScale) * 100);
     let nextPercentage = Math.min(500, currentPercentage + 10); // Max 500%
     
     // Snap to 100% if we're close (within 5%)
@@ -354,7 +363,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       nextPercentage = 100;
     }
     
-    const newScale = nextPercentage / 100;
+    // Convert relative percentage back to absolute scale
+    const newScale = (nextPercentage / 100) * fitScale;
     
     // Center zoom on the middle of the canvas
     const centerX = containerSize.width / 2;
@@ -375,8 +385,9 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   };
 
   const handleZoomOut = () => {
-    // Use 10% increments instead of exponential scaling
-    const currentPercentage = Math.round(photoSpace.scale * 100);
+    // Calculate current relative percentage (based on fitScale for 100% baseline)
+    const fitScale = photoSpace.fitScale || 1;
+    const currentPercentage = Math.round((photoSpace.scale / fitScale) * 100);
     let nextPercentage = Math.max(10, currentPercentage - 10); // Min 10%
     
     // Snap to 100% if we're close (within 5%)
@@ -384,7 +395,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       nextPercentage = 100;
     }
     
-    const newScale = nextPercentage / 100;
+    // Convert relative percentage back to absolute scale
+    const newScale = (nextPercentage / 100) * fitScale;
     
     // Center zoom on the middle of the canvas
     const centerX = containerSize.width / 2;

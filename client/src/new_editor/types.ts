@@ -7,6 +7,7 @@ export interface PhotoSpace {
   imgW: number;
   imgH: number;
   dpr: number;
+  fitScale?: number; // Baseline scale for "100% zoom" (the fit-to-canvas scale)
 }
 
 export interface Point {

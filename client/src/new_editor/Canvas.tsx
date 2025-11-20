@@ -150,7 +150,8 @@ export function Canvas({ width, height }: CanvasProps) {
                 panX: persistedState.panX!,
                 panY: persistedState.panY!,
                 imgW,
-                imgH
+                imgH,
+                fitScale: persistedState.fitScale // Preserve fitScale if available, otherwise will be set on next fit
               }
             });
           } else if (!isPhotoSpaceInitialized) {
@@ -187,7 +188,8 @@ export function Canvas({ width, height }: CanvasProps) {
                 panX,
                 panY,
                 imgW,
-                imgH
+                imgH,
+                fitScale: finalScale // Set fitScale as the baseline for 100% zoom
               }
             });
           } else {
@@ -280,7 +282,8 @@ export function Canvas({ width, height }: CanvasProps) {
             panX,
             panY,
             imgW,
-            imgH
+            imgH,
+            fitScale: finalScale // Set fitScale as the baseline for 100% zoom
           }
         });
       }
@@ -334,8 +337,9 @@ export function Canvas({ width, height }: CanvasProps) {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
     
-    // Use 10% increments instead of exponential scaling
-    const currentPercentage = Math.round(photoSpace.scale * 100);
+    // Calculate current relative percentage (based on fitScale for 100% baseline)
+    const fitScale = photoSpace.fitScale || 1;
+    const currentPercentage = Math.round((photoSpace.scale / fitScale) * 100);
     const deltaY = e.deltaY;
     const increment = Math.abs(deltaY) > 50 ? 20 : 10; // Larger increment for faster scrolling
     
@@ -348,7 +352,8 @@ export function Canvas({ width, height }: CanvasProps) {
       nextPercentage = Math.max(10, currentPercentage - increment);
     }
     
-    const newScale = nextPercentage / 100;
+    // Convert relative percentage back to absolute scale
+    const newScale = (nextPercentage / 100) * fitScale;
     
     // Calculate image coordinates at mouse position
     const imageX = (mouseX - photoSpace.panX) / photoSpace.scale;

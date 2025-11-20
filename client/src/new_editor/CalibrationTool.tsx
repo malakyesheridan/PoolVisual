@@ -282,12 +282,24 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium text-gray-700">Current Zoom:</span>
               <span className={`text-sm font-bold ${
-                Math.abs((photoSpace?.scale || 1) - 1.0) < 0.01 ? 'text-green-600' : 'text-red-600'
+                (() => {
+                  const fitScale = photoSpace?.fitScale || 1;
+                  const currentScale = photoSpace?.scale || 1;
+                  return Math.abs(currentScale - fitScale) < 0.01 ? 'text-green-600' : 'text-red-600';
+                })()
               }`}>
-                {Math.round((photoSpace?.scale || 1) * 100)}%
+                {(() => {
+                  const fitScale = photoSpace?.fitScale || 1;
+                  const currentScale = photoSpace?.scale || 1;
+                  return Math.round((currentScale / fitScale) * 100);
+                })()}%
               </span>
             </div>
-            {Math.abs((photoSpace?.scale || 1) - 1.0) >= 0.01 && (
+            {(() => {
+              const fitScale = photoSpace?.fitScale || 1;
+              const currentScale = photoSpace?.scale || 1;
+              return Math.abs(currentScale - fitScale) >= 0.01;
+            })() && (
               <p className="text-xs text-red-600 mt-1">
                 ⚠️ Calibration requires 100% zoom
               </p>
