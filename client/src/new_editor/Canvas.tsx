@@ -6,7 +6,7 @@ import { Masking } from './Masking';
 import { MaskCanvasKonva } from '../canvas/konva-stage/MaskCanvasKonva';
 import { calculateImageFit } from '../maskcore/photoFit';
 import { calculateCenterPan, calculateFitScale } from './utils';
-import { loadPhotoSpace, isPhotoSpaceValid } from './photoSpacePersistence';
+import { loadPhotoSpace, isPhotoSpaceValid, clearPhotoSpace } from './photoSpacePersistence';
 
 interface CanvasProps {
   width: number;
@@ -114,12 +114,30 @@ export function Canvas({ width, height }: CanvasProps) {
           }
           
           // Check if photo space is already initialized (user has zoomed/panned)
-          const isPhotoSpaceInitialized = currentPhotoSpace.scale > 0 && 
+          // Must have valid dimensions AND a calculated scale (not default 0 or 1)
+          // Scale of 0 means not initialized, scale of 1 might be default or actual 100% zoom
+          // So we check if scale is > 0 AND dimensions are set AND it's not the default state
+          const isPhotoSpaceInitialized = currentPhotoSpace.imgW > 0 && 
+                                         currentPhotoSpace.imgH > 0 &&
+                                         currentPhotoSpace.scale > 0 &&
+                                         currentPhotoSpace.scale !== 1 && // Default scale is 1, so 1 means not initialized unless dimensions match
+                                         (currentPhotoSpace.imgW === imgW && currentPhotoSpace.imgH === imgH) && // Dimensions must match
                                          currentPhotoSpace.panX !== undefined && 
                                          currentPhotoSpace.panY !== undefined;
           
           // Try to load persisted photo space state
-          const persistedState = loadPhotoSpace(photoId);
+          let persistedState = loadPhotoSpace(photoId);
+          
+          // Clear persisted state if dimensions don't match (invalid for this image)
+          if (persistedState && (persistedState.imgW !== imgW || persistedState.imgH !== imgH)) {
+            console.log('[Canvas] Clearing invalid persisted state due to dimension mismatch:', {
+              persisted: `${persistedState.imgW}x${persistedState.imgH}`,
+              natural: `${imgW}x${imgH}`
+            });
+            clearPhotoSpace(photoId);
+            persistedState = null;
+          }
+          
           const isValidPersistedState = isPhotoSpaceValid(persistedState, imgW, imgH);
           
           if (isValidPersistedState && persistedState) {
@@ -173,15 +191,22 @@ export function Canvas({ width, height }: CanvasProps) {
               }
             });
           } else {
-            // Photo space is already initialized, update dimensions to match natural
-            console.log('[Canvas] Photo space already initialized, updating dimensions to natural size');
-            dispatch({
-              type: 'SET_PHOTO_SPACE',
-              payload: {
-                imgW,
-                imgH
-              }
-            });
+            // Photo space is already initialized, but ensure dimensions match natural
+            // This handles cases where database dimensions differ from natural dimensions
+            if (currentPhotoSpace.imgW !== imgW || currentPhotoSpace.imgH !== imgH) {
+              console.log('[Canvas] Photo space initialized but dimensions mismatch, updating to natural:', {
+                old: `${currentPhotoSpace.imgW}x${currentPhotoSpace.imgH}`,
+                new: `${imgW}x${imgH}`
+              });
+              // Update dimensions but preserve scale/pan (user has already adjusted)
+              dispatch({
+                type: 'SET_PHOTO_SPACE',
+                payload: {
+                  imgW,
+                  imgH
+                }
+              });
+            }
           }
         } else {
           console.warn('[Canvas] Cannot initialize photo space - missing image or container dimensions', { 
@@ -217,7 +242,11 @@ export function Canvas({ width, height }: CanvasProps) {
       const currentPhotoSpace = currentState.photoSpace;
       
       // Only recalculate if photo space scale is 0 or invalid (not yet initialized)
-      const needsInitialization = !currentPhotoSpace.scale || currentPhotoSpace.scale <= 0;
+      // Also check if dimensions don't match (might be database vs natural mismatch)
+      const needsInitialization = !currentPhotoSpace.scale || 
+                                 currentPhotoSpace.scale <= 0 ||
+                                 currentPhotoSpace.imgW !== img.naturalWidth ||
+                                 currentPhotoSpace.imgH !== img.naturalHeight;
       
       if (needsInitialization && state === 'ready') {
         const imgW = img.naturalWidth;

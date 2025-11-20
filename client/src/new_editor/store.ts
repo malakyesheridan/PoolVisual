@@ -323,15 +323,33 @@ export const useEditorStore = create<EditorState & {
         }
         
         set(state => {
-          // CRITICAL: Preserve existing zoom/pan when setting image
-          // Only update dimensions, don't reset scale/panX/panY
           const currentPhotoSpace = state.photoSpace;
-          const newPhotoSpace = {
-            ...currentPhotoSpace,
-            imgW: width,
-            imgH: height
-            // Preserve scale, panX, panY from current state
-          };
+          
+          // Check if this is a new image (URL changed or dimensions changed significantly)
+          // This ensures we reset scale/pan for new images so Canvas can calculate fit
+          const isNewImage = state.imageUrl !== url || 
+                            !state.imageUrl ||
+                            Math.abs(currentPhotoSpace.imgW - width) > 10 || 
+                            Math.abs(currentPhotoSpace.imgH - height) > 10 ||
+                            currentPhotoSpace.imgW === 0 ||
+                            currentPhotoSpace.imgH === 0;
+          
+          const newPhotoSpace = isNewImage
+            ? {
+                // New image - reset to uninitialized state so Canvas can calculate fit
+                scale: 0,  // 0 = not initialized, will trigger fit calculation
+                panX: 0,
+                panY: 0,
+                imgW: width,
+                imgH: height,
+                dpr: currentPhotoSpace.dpr
+              }
+            : {
+                // Same image - preserve zoom/pan (user has already adjusted it)
+                ...currentPhotoSpace,
+                imgW: width,
+                imgH: height
+              };
           
           // Initialize variants with Original if this is the first image load
           const originalVariantId = 'original';
