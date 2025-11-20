@@ -89,11 +89,14 @@ router.post('/upload-composite', authenticateSession, getUpload().single('compos
     }
     
     // Upload to cloud storage
-    const path = `ai-enhancements/composite/${jobId}-${Date.now()}.png`;
+    // Determine file extension based on mimetype
+    const mimeType = req.file.mimetype || 'image/png';
+    const extension = mimeType === 'image/jpeg' ? 'jpg' : mimeType === 'image/webp' ? 'webp' : 'png';
+    const path = `ai-enhancements/composite/${jobId}-${Date.now()}.${extension}`;
     const url = await storageService.put(
       path,
       imageBuffer,
-      req.file.mimetype || 'image/png'
+      mimeType
     );
     
     console.log(`[UploadComposite] Uploaded composite image for job ${jobId}: ${url}`);

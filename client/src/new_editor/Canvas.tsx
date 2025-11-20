@@ -114,13 +114,12 @@ export function Canvas({ width, height }: CanvasProps) {
           }
           
           // Check if photo space is already initialized (user has zoomed/panned)
-          // Must have valid dimensions AND a calculated scale (not default 0 or 1)
-          // Scale of 0 means not initialized, scale of 1 might be default or actual 100% zoom
-          // So we check if scale is > 0 AND dimensions are set AND it's not the default state
+          // CRITICAL FIX: scale > 0 means initialized (scale = 0 is the uninitialized state)
+          // Don't check scale !== 1 because scale = 1 is a valid zoom level (100% zoom)
+          // If scale > 0, dimensions match, and pan values are defined, it's initialized
           const isPhotoSpaceInitialized = currentPhotoSpace.imgW > 0 && 
                                          currentPhotoSpace.imgH > 0 &&
-                                         currentPhotoSpace.scale > 0 &&
-                                         currentPhotoSpace.scale !== 1 && // Default scale is 1, so 1 means not initialized unless dimensions match
+                                         currentPhotoSpace.scale > 0 && // scale = 0 means not initialized, any value > 0 means initialized
                                          (currentPhotoSpace.imgW === imgW && currentPhotoSpace.imgH === imgH) && // Dimensions must match
                                          currentPhotoSpace.panX !== undefined && 
                                          currentPhotoSpace.panY !== undefined;
@@ -142,13 +141,63 @@ export function Canvas({ width, height }: CanvasProps) {
           
           if (isValidPersistedState && persistedState) {
             // Restore persisted state (user's previous zoom/pan)
-            console.log('[Canvas] Restoring persisted photo space:', persistedState);
+            // CRITICAL FIX: Recalculate panX/panY based on current container size
+            // This prevents image shift when container size changes or after save/reload
+            const restoredScale = persistedState.scale!;
+            
+            // Calculate what the center pan should be for current container size
+            const centerPan = calculateCenterPan(imgW, imgH, containerW, containerH, restoredScale);
+            
+            // If persisted panX/panY are close to center (within 5px), use center pan
+            // Otherwise, adjust the persisted pan proportionally to container size change
+            // This preserves user's pan offset while accounting for container size changes
+            const persistedPanX = persistedState.panX!;
+            const persistedPanY = persistedState.panY!;
+            
+            // Check if persisted pan was centered (or very close to center)
+            const wasCentered = Math.abs(persistedPanX - centerPan.panX) < 5 && 
+                               Math.abs(persistedPanY - centerPan.panY) < 5;
+            
+            let finalPanX: number;
+            let finalPanY: number;
+            
+            if (wasCentered) {
+              // Was centered, use current center pan
+              finalPanX = centerPan.panX;
+              finalPanY = centerPan.panY;
+            } else {
+              // User had panned - preserve relative offset but adjust for container size
+              // Calculate offset from center in the persisted state
+              // Note: We don't have the old container size, so we'll use a simpler approach:
+              // If the image dimensions match, preserve the pan offset
+              // Otherwise, center the image
+              if (persistedState.imgW === imgW && persistedState.imgH === imgH) {
+                // Same image dimensions - preserve pan offset relative to center
+                const offsetFromCenterX = persistedPanX - centerPan.panX;
+                const offsetFromCenterY = persistedPanY - centerPan.panY;
+                finalPanX = centerPan.panX + offsetFromCenterX;
+                finalPanY = centerPan.panY + offsetFromCenterY;
+              } else {
+                // Image dimensions changed - center the image
+                finalPanX = centerPan.panX;
+                finalPanY = centerPan.panY;
+              }
+            }
+            
+            console.log('[Canvas] Restoring persisted photo space with recalculated pan:', {
+              persisted: { panX: persistedPanX, panY: persistedPanY },
+              recalculated: { panX: finalPanX, panY: finalPanY },
+              containerSize: { containerW, containerH },
+              scale: restoredScale,
+              wasCentered
+            });
+            
             dispatch({
               type: 'SET_PHOTO_SPACE',
               payload: {
-                scale: persistedState.scale!,
-                panX: persistedState.panX!,
-                panY: persistedState.panY!,
+                scale: restoredScale,
+                panX: finalPanX,
+                panY: finalPanY,
                 imgW,
                 imgH,
                 fitScale: persistedState.fitScale // Preserve fitScale if available, otherwise will be set on next fit

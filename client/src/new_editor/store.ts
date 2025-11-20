@@ -330,14 +330,16 @@ export const useEditorStore = create<EditorState & {
         set(state => {
           const currentPhotoSpace = state.photoSpace;
           
-          // Check if this is a new image (URL changed or dimensions changed significantly)
-          // This ensures we reset scale/pan for new images so Canvas can calculate fit
-          const isNewImage = state.imageUrl !== url || 
-                            !state.imageUrl ||
-                            Math.abs(currentPhotoSpace.imgW - width) > 10 || 
-                            Math.abs(currentPhotoSpace.imgH - height) > 10 ||
-                            currentPhotoSpace.imgW === 0 ||
-                            currentPhotoSpace.imgH === 0;
+          // Check if this is a new image (dimensions changed significantly or no previous image)
+          // CRITICAL FIX: Don't treat URL change as "new image" if dimensions match
+          // This prevents photoSpace reset after save (which changes URL but same image)
+          // Only reset if dimensions changed significantly or no previous image
+          const dimensionsChanged = Math.abs(currentPhotoSpace.imgW - width) > 10 || 
+                                   Math.abs(currentPhotoSpace.imgH - height) > 10;
+          const isNewImage = !state.imageUrl || // No previous image
+                            currentPhotoSpace.imgW === 0 || // PhotoSpace not initialized
+                            currentPhotoSpace.imgH === 0 ||
+                            dimensionsChanged; // Dimensions changed significantly
           
           const newPhotoSpace = isNewImage
             ? {

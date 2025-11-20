@@ -468,14 +468,17 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
             compositeDataURL = compositeCanvas.toDataURL('image/png');
             
             // Also create blob for upload on confirm
+            // Use JPEG with quality 0.85 to reduce file size and prevent 413 errors
+            // JPEG is much smaller than PNG for photos while maintaining good quality
             compositeBlob = await new Promise<Blob>((resolve, reject) => {
               compositeCanvas.toBlob((blob) => {
                 if (blob) {
+                  console.log(`[JobsDrawer] Composite blob size: ${(blob.size / 1024 / 1024).toFixed(2)} MB`);
                   resolve(blob);
                 } else {
                   reject(new Error('Failed to convert canvas to blob'));
                 }
-              }, 'image/png');
+              }, 'image/jpeg', 0.85); // JPEG with 85% quality for good compression
             });
             
             console.log('[JobsDrawer] ✅ Composite exported successfully (data URL ready for preview)');
@@ -547,8 +550,12 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         try {
           const tempJobId = `temp-${Date.now()}`;
           const formData = new FormData();
-          formData.append('composite', previewData.compositeBlob, 'composite.png');
+          // Use .jpg extension since we're uploading JPEG format
+          formData.append('composite', previewData.compositeBlob, 'composite.jpg');
           formData.append('jobId', tempJobId);
+          
+          const blobSizeMB = (previewData.compositeBlob.size / 1024 / 1024).toFixed(2);
+          console.log(`[JobsDrawer] Uploading composite image (${blobSizeMB} MB)...`);
           
           console.log('[JobsDrawer] Uploading composite image on confirm...');
           const uploadRes = await fetch('/api/ai/enhancement/upload-composite', {
@@ -562,29 +569,49 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
             console.log('[JobsDrawer] ✅ Composite uploaded on confirm:', compositeImageUrl);
           } else {
             const errorText = await uploadRes.text();
-            console.warn('[JobsDrawer] ⚠️ Upload failed on confirm, using data URL:', errorText);
-            // Fallback to data URL if upload fails
-            compositeImageUrl = previewData.compositeImageUrl;
+            console.warn('[JobsDrawer] ⚠️ Upload failed on confirm:', errorText);
+            // CRITICAL: Never use data URL in payload - it causes 413 errors
+            // If upload fails, use original image URL and let server generate composite
+            console.log('[JobsDrawer] Using original image URL - server will generate composite');
+            compositeImageUrl = null; // Will fall back to original image
           }
         } catch (uploadError: any) {
           console.error('[JobsDrawer] ❌ Upload error on confirm:', uploadError);
-          // Fallback to data URL if upload fails
-          compositeImageUrl = previewData.compositeImageUrl;
+          // CRITICAL: Never use data URL in payload - it causes 413 errors
+          // If upload fails, use original image URL and let server generate composite
+          console.log('[JobsDrawer] Using original image URL - server will generate composite');
+          compositeImageUrl = null; // Will fall back to original image
         }
       } else {
-        // No blob available, use data URL or original image
-        compositeImageUrl = previewData.compositeImageUrl || previewData.currentImageUrl;
+        // No blob available, use original image (server will generate composite)
+        compositeImageUrl = null;
       }
       
-      // Ensure compositeImageUrl is always a string (fallback to original image if null)
-      const finalCompositeImageUrl = compositeImageUrl || previewData.currentImageUrl;
+      // CRITICAL: Never include data URLs in payload - they cause 413 errors
+      // Only include compositeImageUrl if we successfully uploaded it
+      // If upload failed, omit it and let the server generate the composite from masks
+      let finalCompositeImageUrl: string | undefined = undefined;
       
-      // Create payload with uploaded URL (or data URL as fallback)
-      const payload = {
+      if (compositeImageUrl) {
+        // Verify we're not sending a data URL (safety check)
+        if (compositeImageUrl.startsWith('data:')) {
+          console.error('[JobsDrawer] ❌ ERROR: Upload returned data URL! This should not happen. Server will generate composite.');
+          finalCompositeImageUrl = undefined; // Server will generate composite
+        } else {
+          // Only use successfully uploaded URLs (not data URLs, not original image URL)
+          finalCompositeImageUrl = compositeImageUrl;
+        }
+      } else {
+        // Upload failed or no blob - don't send compositeImageUrl, server will generate it from masks
+        console.log('[JobsDrawer] No composite URL available - server will generate composite from masks');
+        finalCompositeImageUrl = undefined; // Server will generate composite
+      }
+      
+      // Create payload - only include compositeImageUrl if we successfully uploaded it
+      const payload: any = {
         tenantId: '123e4567-e89b-12d3-a456-426614174000',
         photoId: previewData.effectivePhotoId,
         imageUrl: previewData.currentImageUrl, // Original image (for reference)
-        compositeImageUrl: finalCompositeImageUrl, // ✅ Client-exported canvas (uploaded or data URL)
         inputHash: `enhancement-${Date.now()}`,
         masks: previewData.masks,
         options: {
@@ -596,9 +623,15 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         height: previewData.photoSpace.imgH || 1500,
         idempotencyKey: `enhancement-${Date.now()}`
       };
+      
+      // Only include compositeImageUrl if it's a successfully uploaded URL (never data URLs, never original image URL)
+      if (finalCompositeImageUrl && !finalCompositeImageUrl.startsWith('data:')) {
+        payload.compositeImageUrl = finalCompositeImageUrl;
+      }
 
       // CRITICAL: Log the actual payload being sent to verify materialSettings are included
-      console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify({
+      // Note: Never log full data URLs as they can be huge
+      const logPayload: any = {
         masksCount: payload.masks.length,
         masks: payload.masks.map(m => ({
           id: m.id,
@@ -608,9 +641,19 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           materialSettings: m.materialSettings
         })),
         imageUrl: payload.imageUrl.substring(0, 80) + '...',
-        compositeImageUrl: payload.compositeImageUrl?.substring(0, 80) + '...',
         mode: payload.options.mode
-      }, null, 2));
+      };
+      
+      if (payload.compositeImageUrl) {
+        // Only log first 80 chars to avoid logging huge data URLs
+        logPayload.compositeImageUrl = payload.compositeImageUrl.startsWith('data:') 
+          ? 'data:image/... (data URL - should not be in payload!)'
+          : payload.compositeImageUrl.substring(0, 80) + '...';
+      } else {
+        logPayload.compositeImageUrl = 'undefined (server will generate)';
+      }
+      
+      console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify(logPayload, null, 2));
       
       const { jobId } = await createJob(payload);
       
