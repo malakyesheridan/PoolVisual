@@ -891,6 +891,20 @@ router.post('/:id/callback', async (req, res) => {
       // Now save variants and set completed_at (status is already "completed" from transition)
       // Save variants if provided and status is completed
       // Handle both formats: variants array OR urls array (from n8n workflow)
+      
+      // DEBUG: Log what we received
+      console.log(`[Callback] Processing completed status for job ${jobId}`);
+      console.log(`[Callback] Request body keys:`, Object.keys(req.body));
+      console.log(`[Callback] Has variants:`, !!req.body.variants, 'Count:', req.body.variants?.length);
+      console.log(`[Callback] Has urls:`, !!req.body.urls, 'Count:', req.body.urls?.length);
+      console.log(`[Callback] Has enhancedImageUrl:`, !!req.body.enhancedImageUrl);
+      if (req.body.variants) {
+        console.log(`[Callback] Variants preview:`, req.body.variants.slice(0, 2));
+      }
+      if (req.body.urls) {
+        console.log(`[Callback] URLs preview:`, req.body.urls.slice(0, 2));
+      }
+      
       let variantsToSave: Array<{ url: string; rank: number }> = [];
       
       // Check for variants array format: [{ url, rank }]
@@ -914,6 +928,7 @@ router.post('/:id/callback', async (req, res) => {
 
       // Save variants to database
       if (variantsToSave.length > 0) {
+        console.log(`[Callback] About to save ${variantsToSave.length} variant(s) for job ${jobId}`);
         for (const variant of variantsToSave) {
           try {
             await executeQuery(
@@ -921,12 +936,15 @@ router.post('/:id/callback', async (req, res) => {
                VALUES ($1, $2, $3)`,
               [jobId, variant.url, variant.rank]
             );
+            console.log(`[Callback] ✅ Successfully saved variant: ${variant.url.substring(0, 80)}... (rank: ${variant.rank})`);
           } catch (variantError: any) {
-            console.error(`[Callback] Failed to save variant for job ${jobId}:`, variantError.message);
+            console.error(`[Callback] ❌ Failed to save variant for job ${jobId}:`, variantError.message);
             // Continue with other variants even if one fails
           }
         }
-        console.log(`[Callback] Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+        console.log(`[Callback] ✅ Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+      } else {
+        console.warn(`[Callback] ⚠️ No variants to save for job ${jobId}! Check request body.`);
       }
       
       // Update completed_at
@@ -952,6 +970,19 @@ router.post('/:id/callback', async (req, res) => {
     // Save variants if provided and status is completed
     // Handle both formats: variants array OR urls array (from n8n workflow)
     if (nextStatus === 'completed') {
+      // DEBUG: Log what we received
+      console.log(`[Callback] Processing completed status for job ${jobId} (normal path)`);
+      console.log(`[Callback] Request body keys:`, Object.keys(req.body));
+      console.log(`[Callback] Has variants:`, !!req.body.variants, 'Count:', req.body.variants?.length);
+      console.log(`[Callback] Has urls:`, !!req.body.urls, 'Count:', req.body.urls?.length);
+      console.log(`[Callback] Has enhancedImageUrl:`, !!req.body.enhancedImageUrl);
+      if (req.body.variants) {
+        console.log(`[Callback] Variants preview:`, req.body.variants.slice(0, 2));
+      }
+      if (req.body.urls) {
+        console.log(`[Callback] URLs preview:`, req.body.urls.slice(0, 2));
+      }
+      
       let variantsToSave: Array<{ url: string; rank: number }> = [];
       
       // Check for variants array format: [{ url, rank }]
@@ -975,6 +1006,7 @@ router.post('/:id/callback', async (req, res) => {
 
       // Save variants to database
       if (variantsToSave.length > 0) {
+        console.log(`[Callback] About to save ${variantsToSave.length} variant(s) for job ${jobId}`);
         for (const variant of variantsToSave) {
           try {
             await executeQuery(
@@ -982,12 +1014,15 @@ router.post('/:id/callback', async (req, res) => {
                VALUES ($1, $2, $3)`,
               [jobId, variant.url, variant.rank]
             );
+            console.log(`[Callback] ✅ Successfully saved variant: ${variant.url.substring(0, 80)}... (rank: ${variant.rank})`);
           } catch (variantError: any) {
-            console.error(`[Callback] Failed to save variant for job ${jobId}:`, variantError.message);
+            console.error(`[Callback] ❌ Failed to save variant for job ${jobId}:`, variantError.message);
             // Continue with other variants even if one fails
           }
         }
-        console.log(`[Callback] Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+        console.log(`[Callback] ✅ Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+      } else {
+        console.warn(`[Callback] ⚠️ No variants to save for job ${jobId}! Check request body.`);
       }
       
       // Update completed_at if status is completed
