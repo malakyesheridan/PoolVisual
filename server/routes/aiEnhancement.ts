@@ -953,7 +953,17 @@ router.post('/:id/callback', async (req, res) => {
         [jobId]
       );
       
-      SSEManager.emit(jobId, { status: 'completed', progress: 100 });
+      // Fetch saved variants to include in SSE event
+      const savedVariants = await executeQuery(
+        `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
+        [jobId]
+      );
+      
+      SSEManager.emit(jobId, { 
+        status: 'completed', 
+        progress: 100,
+        variants: savedVariants 
+      });
       
       return res.json({ ok: true });
     }
@@ -1030,9 +1040,21 @@ router.post('/:id/callback', async (req, res) => {
         `UPDATE ai_enhancement_jobs SET completed_at = NOW() WHERE id = $1`,
         [jobId]
       );
+      
+      // Fetch saved variants to include in SSE event
+      const savedVariants = await executeQuery(
+        `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
+        [jobId]
+      );
+      
+      SSEManager.emit(jobId, { 
+        status: 'completed', 
+        progress: 100,
+        variants: savedVariants 
+      });
+    } else {
+      SSEManager.emit(jobId, { status: nextStatus, progress: nextProgress });
     }
-    
-    SSEManager.emit(jobId, { status: nextStatus, progress: nextProgress });
 
     return res.json({ ok: true });
   } catch (error: any) {
