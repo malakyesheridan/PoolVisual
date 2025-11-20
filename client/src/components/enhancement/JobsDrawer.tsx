@@ -168,6 +168,17 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       return;
     }
     
+    // Validate image aspect ratio - square images are not supported
+    const imgW = photoSpace.imgW || 0;
+    const imgH = photoSpace.imgH || 0;
+    if (imgW > 0 && imgH > 0 && Math.abs(imgW - imgH) < 1) {
+      // Image is square (width === height within 1px tolerance)
+      toast.error('Square images not supported', {
+        description: 'AI enhancement requires landscape or portrait images. Please use an image with a different aspect ratio.'
+      });
+      return;
+    }
+    
     if (isCreating) return;
     
     setIsCreating(true);

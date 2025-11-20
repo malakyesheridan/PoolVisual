@@ -183,6 +183,14 @@ router.post('/', authenticateSession, async (req, res) => {
       if (mp > MAX_MP) {
         return res.status(413).json({ message: `Image too large. Max ${MAX_MP} MP`, currentMP: mp });
       }
+      
+      // Validate aspect ratio - square images are not supported by kie.ai seedream model
+      if (Math.abs(width - height) < 1) {
+        return res.status(400).json({ 
+          message: 'Square images are not supported for AI enhancement. Please use a landscape or portrait image.',
+          code: 'SQUARE_IMAGE_NOT_SUPPORTED'
+        });
+      }
     }
 
     // Normalized cache key (provider + model are fixed here)
