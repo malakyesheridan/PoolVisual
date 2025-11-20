@@ -832,14 +832,116 @@ router.post('/:id/callback', async (req, res) => {
       return res.json({ ok: true, ignored: true });
     }
 
-    // Process update
+    const currentStatus = cur[0].status;
     const nextStatus = req.body.status || 'rendering';
-    // Default progress to 100 if completed, otherwise use provided value or 50
-    const nextProgress = nextStatus === 'completed' ? 100 : (req.body.progress ?? 50);
     
     // Handle error messages
     const errorMessage = req.body.error || req.body.errorMessage || req.body.error_message || null;
     const errorCode = req.body.error_code || req.body.errorCode || null;
+    
+    // CRITICAL FIX: If trying to set "completed" but current status doesn't allow it,
+    // automatically transition through required intermediate states
+    // This allows n8n to send "completed" directly without needing multiple HTTP requests
+    if (nextStatus === 'completed' && currentStatus !== 'uploading') {
+      // Define the transition path based on current status
+      const transitionPath: string[] = [];
+      
+      if (currentStatus === 'queued') {
+        transitionPath.push('rendering', 'postprocessing', 'uploading', 'completed');
+      } else if (currentStatus === 'downloading') {
+        transitionPath.push('preprocessing', 'rendering', 'postprocessing', 'uploading', 'completed');
+      } else if (currentStatus === 'preprocessing') {
+        transitionPath.push('rendering', 'postprocessing', 'uploading', 'completed');
+      } else if (currentStatus === 'rendering') {
+        transitionPath.push('postprocessing', 'uploading', 'completed');
+      } else if (currentStatus === 'postprocessing') {
+        transitionPath.push('uploading', 'completed');
+      } else {
+        // For any other status, use the standard path
+        transitionPath.push('rendering', 'postprocessing', 'uploading', 'completed');
+      }
+      
+      // Execute all transitions in sequence
+      for (const status of transitionPath) {
+        try {
+          const progress = status === 'completed' ? 100 : 
+                          status === 'uploading' ? 90 :
+                          status === 'postprocessing' ? 75 :
+                          status === 'rendering' ? 50 : 30;
+          
+          await executeQuery(
+            `UPDATE ai_enhancement_jobs SET status = $2, progress_stage = $2, progress_percent = $3, updated_at = NOW() WHERE id = $1`,
+            [jobId, status, progress]
+          );
+          
+          // Small delay to ensure state machine processes each transition
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } catch (transitionError: any) {
+          // If transition fails due to state machine, that's expected for some paths
+          // Log but continue - the state machine will enforce valid transitions
+          if (transitionError.message?.includes('Invalid status transition')) {
+            console.log(`[Callback] Skipping transition ${status} (already in valid state or invalid path)`);
+          } else {
+            console.error(`[Callback] Error transitioning to ${status}:`, transitionError.message);
+            throw transitionError;
+          }
+        }
+      }
+      
+      // Now save variants and set completed_at (status is already "completed" from transition)
+      // Save variants if provided and status is completed
+      // Handle both formats: variants array OR urls array (from n8n workflow)
+      let variantsToSave: Array<{ url: string; rank: number }> = [];
+      
+      // Check for variants array format: [{ url, rank }]
+      if (req.body.variants && Array.isArray(req.body.variants) && req.body.variants.length > 0) {
+        variantsToSave = req.body.variants.map((v: any, index: number) => ({
+          url: v.url || v,
+          rank: v.rank !== undefined ? v.rank : index
+        }));
+      } 
+      // Check for urls array format: ["url1", "url2"] (from n8n workflow)
+      else if (req.body.urls && Array.isArray(req.body.urls) && req.body.urls.length > 0) {
+        variantsToSave = req.body.urls.map((url: string, index: number) => ({
+          url: url,
+          rank: index
+        }));
+      }
+      // Check for enhancedImageUrl (single URL)
+      else if (req.body.enhancedImageUrl) {
+        variantsToSave = [{ url: req.body.enhancedImageUrl, rank: 0 }];
+      }
+
+      // Save variants to database
+      if (variantsToSave.length > 0) {
+        for (const variant of variantsToSave) {
+          try {
+            await executeQuery(
+              `INSERT INTO ai_enhancement_variants (job_id, output_url, rank) 
+               VALUES ($1, $2, $3)`,
+              [jobId, variant.url, variant.rank]
+            );
+          } catch (variantError: any) {
+            console.error(`[Callback] Failed to save variant for job ${jobId}:`, variantError.message);
+            // Continue with other variants even if one fails
+          }
+        }
+        console.log(`[Callback] Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+      }
+      
+      // Update completed_at
+      await executeQuery(
+        `UPDATE ai_enhancement_jobs SET completed_at = NOW() WHERE id = $1`,
+        [jobId]
+      );
+      
+      SSEManager.emit(jobId, { status: 'completed', progress: 100 });
+      
+      return res.json({ ok: true });
+    }
+    
+    // For non-completed statuses, or if already in "uploading" state, update normally
+    const nextProgress = nextStatus === 'completed' ? 100 : (req.body.progress ?? 50);
     
     await executeQuery(
       `UPDATE ai_enhancement_jobs SET status = $2, progress_stage = $2, progress_percent = $3, 
@@ -887,10 +989,8 @@ router.post('/:id/callback', async (req, res) => {
         }
         console.log(`[Callback] Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
       }
-    }
-
-    // Update completed_at if status is completed
-    if (nextStatus === 'completed') {
+      
+      // Update completed_at if status is completed
       await executeQuery(
         `UPDATE ai_enhancement_jobs SET completed_at = NOW() WHERE id = $1`,
         [jobId]
