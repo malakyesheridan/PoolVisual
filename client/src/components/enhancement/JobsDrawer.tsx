@@ -61,26 +61,6 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   // Stream updates for the active job
   useJobStream(activeJobId);
   
-  // Fetch full job details (including variants) when job completes
-  useEffect(() => {
-    if (activeEnhancement?.status === 'completed' && (!activeEnhancement.variants || activeEnhancement.variants.length === 0)) {
-      // Job is completed but has no variants - fetch full details from API
-      const fetchJobDetails = async () => {
-        try {
-          const { getJob } = await import('../../services/aiEnhancement');
-          const fullJob = await getJob(activeEnhancement.id);
-          if (fullJob.variants && fullJob.variants.length > 0) {
-            upsertJob(fullJob);
-            console.log(`[JobsDrawer] Fetched ${fullJob.variants.length} variant(s) for completed job ${activeEnhancement.id}`);
-          }
-        } catch (error) {
-          console.error(`[JobsDrawer] Failed to fetch job details for ${activeEnhancement.id}:`, error);
-        }
-      };
-      fetchJobDetails();
-    }
-  }, [activeEnhancement?.status, activeEnhancement?.id, activeEnhancement?.variants, upsertJob]);
-  
   // Find the most recent active enhancement (processing or just completed)
   // Use a selector that returns a stable string key to avoid infinite loops
   const jobsKeys = useEnhancementStore(s => Object.keys(s.jobs).sort().join(','));
@@ -110,6 +90,26 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       return isProcessing || isRecentlyCompleted;
     });
   }, [jobsKeys, jobsCount]);
+  
+  // Fetch full job details (including variants) when job completes
+  useEffect(() => {
+    if (activeEnhancement?.status === 'completed' && (!activeEnhancement.variants || activeEnhancement.variants.length === 0)) {
+      // Job is completed but has no variants - fetch full details from API
+      const fetchJobDetails = async () => {
+        try {
+          const { getJob } = await import('../../services/aiEnhancement');
+          const fullJob = await getJob(activeEnhancement.id);
+          if (fullJob.variants && fullJob.variants.length > 0) {
+            upsertJob(fullJob);
+            console.log(`[JobsDrawer] Fetched ${fullJob.variants.length} variant(s) for completed job ${activeEnhancement.id}`);
+          }
+        } catch (error) {
+          console.error(`[JobsDrawer] Failed to fetch job details for ${activeEnhancement.id}:`, error);
+        }
+      };
+      fetchJobDetails();
+    }
+  }, [activeEnhancement?.status, activeEnhancement?.id, activeEnhancement?.variants, upsertJob]);
   
   // History: jobs excluding the active one, limited to last 5
   const historyJobs = React.useMemo(() => {
