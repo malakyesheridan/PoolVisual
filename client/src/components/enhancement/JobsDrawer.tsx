@@ -80,34 +80,53 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     });
     
     const now = Date.now();
-    const fiveMinutesAgo = now - 5 * 60 * 1000;
+    const oneHourAgo = now - 60 * 60 * 1000; // Extended to 1 hour for better UX
     
     return sorted.find(job => {
       const isProcessing = ['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(job.status);
       const isRecentlyCompleted = job.status === 'completed' && 
         job.completed_at && 
-        new Date(job.completed_at).getTime() > fiveMinutesAgo;
+        new Date(job.completed_at).getTime() > oneHourAgo;
       return isProcessing || isRecentlyCompleted;
     });
   }, [jobsKeys, jobsCount]);
   
   // Fetch full job details (including variants) when job completes
   useEffect(() => {
-    if (activeEnhancement?.status === 'completed' && (!activeEnhancement.variants || activeEnhancement.variants.length === 0)) {
-      // Job is completed but has no variants - fetch full details from API
-      const fetchJobDetails = async () => {
-        try {
-          const { getJob } = await import('../../services/aiEnhancement');
-          const fullJob = await getJob(activeEnhancement.id);
-          if (fullJob.variants && fullJob.variants.length > 0) {
-            upsertJob(fullJob);
-            console.log(`[JobsDrawer] Fetched ${fullJob.variants.length} variant(s) for completed job ${activeEnhancement.id}`);
+    if (activeEnhancement?.status === 'completed') {
+      console.log(`[JobsDrawer] Active enhancement completed:`, {
+        id: activeEnhancement.id,
+        hasVariants: !!activeEnhancement.variants,
+        variantsCount: activeEnhancement.variants?.length || 0
+      });
+      
+      if (!activeEnhancement.variants || activeEnhancement.variants.length === 0) {
+        // Job is completed but has no variants - fetch full details from API
+        console.log(`[JobsDrawer] Fetching full job details for ${activeEnhancement.id} (no variants in store)`);
+        const fetchJobDetails = async () => {
+          try {
+            const { getJob } = await import('../../services/aiEnhancement');
+            const fullJob = await getJob(activeEnhancement.id);
+            console.log(`[JobsDrawer] Received job details:`, {
+              id: fullJob.id,
+              status: fullJob.status,
+              hasVariants: !!fullJob.variants,
+              variantsCount: fullJob.variants?.length || 0
+            });
+            if (fullJob.variants && fullJob.variants.length > 0) {
+              upsertJob(fullJob);
+              console.log(`[JobsDrawer] ✅ Fetched and saved ${fullJob.variants.length} variant(s) for completed job ${activeEnhancement.id}`);
+            } else {
+              console.warn(`[JobsDrawer] ⚠️ Job ${activeEnhancement.id} has no variants in API response`);
+            }
+          } catch (error) {
+            console.error(`[JobsDrawer] ❌ Failed to fetch job details for ${activeEnhancement.id}:`, error);
           }
-        } catch (error) {
-          console.error(`[JobsDrawer] Failed to fetch job details for ${activeEnhancement.id}:`, error);
-        }
-      };
-      fetchJobDetails();
+        };
+        fetchJobDetails();
+      } else {
+        console.log(`[JobsDrawer] Job ${activeEnhancement.id} already has ${activeEnhancement.variants.length} variant(s) in store`);
+      }
     }
   }, [activeEnhancement?.status, activeEnhancement?.id, activeEnhancement?.variants, upsertJob]);
   
@@ -142,6 +161,29 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     getRecentJobs(100) // Load more jobs for pagination
       .then(d => {
         setInitial(d.jobs);
+        console.log(`[JobsDrawer] Loaded ${d.jobs.length} jobs, checking for completed jobs without variants...`);
+        
+        // Check for completed jobs without variants and fetch them
+        const completedJobsWithoutVariants = d.jobs.filter(job => 
+          job.status === 'completed' && (!job.variants || job.variants.length === 0)
+        );
+        
+        if (completedJobsWithoutVariants.length > 0) {
+          console.log(`[JobsDrawer] Found ${completedJobsWithoutVariants.length} completed job(s) without variants, fetching...`);
+          completedJobsWithoutVariants.forEach(async (job) => {
+            try {
+              const { getJob } = await import('../../services/aiEnhancement');
+              const fullJob = await getJob(job.id);
+              if (fullJob.variants && fullJob.variants.length > 0) {
+                upsertJob(fullJob);
+                console.log(`[JobsDrawer] ✅ Fetched ${fullJob.variants.length} variant(s) for job ${job.id}`);
+              }
+            } catch (error) {
+              console.error(`[JobsDrawer] Failed to fetch variants for job ${job.id}:`, error);
+            }
+          });
+        }
+        
         toast.success('Enhancement jobs loaded', { description: `Loaded ${d.jobs.length} jobs` });
       })
       .catch((err) => {
@@ -149,7 +191,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         toast.error('Failed to load jobs', { description: err.message });
       })
       .finally(() => setIsLoading(false));
-  }, [setInitial]);
+  }, [setInitial, upsertJob]);
 
   // Keyboard shortcuts
   useEffect(() => {
