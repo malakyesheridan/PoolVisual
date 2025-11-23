@@ -10,6 +10,8 @@ import { enhancementQueue } from '../jobs/aiEnhancementQueue.js';
 import { CreditsManager } from '../lib/creditsManager.js';
 import { generateCacheKey } from '../lib/cacheNormalizer.js';
 import { verifyWebhookSignature } from '../middleware/hmacVerification.js';
+import { checkEnhancementUsage } from '../middleware/usageCheck.js';
+import { rateLimiters } from '../middleware/rateLimiter.js';
 import { SSEManager } from '../lib/sseManager.js';
 import { executeQuery, transaction } from '../lib/dbHelpers.js';
 import { randomUUID } from 'crypto';
@@ -143,7 +145,7 @@ router.post('/upload-url', authenticateSession, async (req, res) => {
 });
 
 // POST /api/ai/enhancement
-router.post('/', authenticateSession, async (req, res) => {
+router.post('/', authenticateSession, rateLimiters.enhancement, checkEnhancementUsage, async (req, res) => {
   try {
     const user = req.session.user;
     

@@ -24,12 +24,28 @@ const PORT = Number(process.env.PORT || 3000);
 
 console.log(`[Config] SAFE_MODE=${SAFE_MODE}, START_WORKER=${START_WORKER}`);
 
-// Add crash handlers
+// Initialize monitoring service
+import { monitoringService } from './lib/monitoringService.js';
+monitoringService.init().catch(err => {
+  console.error('[Server] Failed to initialize monitoring:', err);
+});
+
+// Add crash handlers with Sentry
 process.on('uncaughtException', (e) => {
   console.error('[fatal] uncaughtException', e);
+  monitoringService.captureError(e, {
+    level: 'fatal',
+    tags: { type: 'uncaughtException' }
+  });
+  process.exit(1);
 });
 process.on('unhandledRejection', (e) => {
   console.error('[fatal] unhandledRejection', e);
+  const error = e instanceof Error ? e : new Error(String(e));
+  monitoringService.captureError(error, {
+    level: 'fatal',
+    tags: { type: 'unhandledRejection' }
+  });
 });
 
 // Type augmentation for Express Request
@@ -209,7 +225,36 @@ app.post("/api/auth/logout", async (req, res) => {
 // This ensures routes exist when Vercel loads the module
 async function initializeServer() {
   // Healthz endpoint
-  app.get('/healthz', (_req, res) => res.status(200).json({ ok: true, mode: SAFE_MODE ? 'safe' : 'normal' }));
+  app.get('/healthz', async (_req, res) => {
+    const { checkDatabaseHealth } = await import('./lib/dbHealth.js');
+    const dbHealth = await checkDatabaseHealth();
+    
+    const overallStatus = dbHealth.status === 'down' ? 503 : 200;
+    
+    res.status(overallStatus).json({
+      ok: dbHealth.status !== 'down',
+      mode: SAFE_MODE ? 'safe' : 'normal',
+      database: {
+        status: dbHealth.status,
+        latency: `${dbHealth.latency}ms`,
+        timestamp: dbHealth.timestamp
+      }
+    });
+  });
+  
+  // Database health check endpoint
+  app.get('/api/health/db', async (_req, res) => {
+    const { checkDatabaseHealth, getPoolStats } = await import('./lib/dbHealth.js');
+    const dbHealth = await checkDatabaseHealth();
+    const poolStats = await getPoolStats();
+    
+    const statusCode = dbHealth.status === 'down' ? 503 : dbHealth.status === 'degraded' ? 200 : 200;
+    
+    res.status(statusCode).json({
+      ...dbHealth,
+      pool: poolStats
+    });
+  });
   
   // Metrics endpoint
   app.get('/metrics', metricsHandler);
@@ -234,18 +279,6 @@ async function initializeServer() {
       nodeEnv: process.env.NODE_ENV || 'development',
       hotReload: 'working!'
     });
-  });
-
-  app.get('/api/health/db', async (_req, res) => {
-    try {
-      await storage.getAllMaterials();
-      return res.json({ ok: true, mode: 'storage' });
-    } catch (error) {
-      return res.status(503).json({ 
-        ok: false, 
-        error: error instanceof Error ? error.message : 'Database connection failed' 
-      });
-    }
   });
 
   // Favicon route to prevent 404 errors

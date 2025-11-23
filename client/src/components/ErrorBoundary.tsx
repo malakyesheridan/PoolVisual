@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { AppError, isAppError, parseError } from '@/lib/errors';
 import { logger } from '@/lib/logger';
+import { captureError } from '@/lib/sentry';
 
 interface ErrorFallbackProps {
   error: Error;
@@ -213,6 +214,17 @@ export function AppErrorBoundary({
       meta: {
         componentStack: errorInfo.componentStack,
         errorBoundary: true
+      }
+    });
+
+    // Send to Sentry
+    captureError(error, {
+      tags: {
+        errorBoundary: 'true',
+        component: errorInfo.componentStack?.split('\n')[1]?.trim() || 'unknown'
+      },
+      extra: {
+        componentStack: errorInfo.componentStack
       }
     });
 

@@ -756,7 +756,24 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       getRecentJobs(100).then(d => setInitial(d.jobs)).catch(() => {});
     } catch (error: any) {
       console.error('Failed to create enhancement:', error);
-      toast.error('Failed to create enhancement', { description: error.message });
+      
+      // Handle usage limit exceeded (402)
+      if (error.code === 'USAGE_LIMIT_EXCEEDED' || error.details) {
+        const details = error.details || {};
+        toast.error('Usage Limit Exceeded', {
+          description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining.`,
+          action: details.upgradeRequired ? {
+            label: 'Upgrade Plan',
+            onClick: () => {
+              // TODO: Navigate to billing/upgrade page
+              window.location.href = '/settings/billing';
+            }
+          } : undefined,
+          duration: 10000
+        });
+      } else {
+        toast.error('Failed to create enhancement', { description: error.message });
+      }
     } finally {
       setIsCreating(false);
       setPreviewData(null);
@@ -808,8 +825,8 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
   };
   
-  // Handle Apply to Canvas
-  const handleApplyToCanvas = (job: typeof activeEnhancement) => {
+  // Handle Apply to Canvas with preloading
+  const handleApplyToCanvas = async (job: typeof activeEnhancement) => {
     if (!job || !onApplyEnhancedImage) return;
     
     // Get the first variant URL (or fallback)
@@ -827,12 +844,43 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     const enhancedCount = currentState.variants.filter(v => v.id !== 'original').length;
     const label = `AI Enhanced ${enhancedCount + 1}`;
     
-    onApplyEnhancedImage({
-      imageUrl: enhancedImageUrl,
-      label
-    });
+    // Preload image before applying
+    const { preloadImage } = await import('../../lib/imagePreloader');
+    const loadingToast = toast.loading('Loading enhanced image...', { description: 'Preparing image for canvas' });
     
-    toast.success('Applied to Canvas', { description: `${label} is now active on the canvas.` });
+    try {
+      const result = await preloadImage(enhancedImageUrl, {
+        maxRetries: 3,
+        timeout: 30000
+      });
+      
+      if (result.success && result.image) {
+        toast.dismiss(loadingToast);
+        onApplyEnhancedImage({
+          imageUrl: enhancedImageUrl,
+          label
+        });
+        toast.success('Applied to Canvas', { description: `${label} is now active on the canvas.` });
+      } else {
+        toast.dismiss(loadingToast);
+        toast.error('Failed to load image', { 
+          description: result.error?.message || 'Image failed to load after retries. Please try again.',
+          action: {
+            label: 'Retry',
+            onClick: () => handleApplyToCanvas(job)
+          }
+        });
+      }
+    } catch (error) {
+      toast.dismiss(loadingToast);
+      toast.error('Failed to load image', { 
+        description: error instanceof Error ? error.message : 'An unexpected error occurred',
+        action: {
+          label: 'Retry',
+          onClick: () => handleApplyToCanvas(job)
+        }
+      });
+    }
   };
   
   // Handle Re-run enhancement

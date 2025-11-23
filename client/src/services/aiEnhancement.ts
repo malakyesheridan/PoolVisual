@@ -34,7 +34,19 @@ export async function createJob(payload: CreateJobPayload) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(await res.text());
+  
+  if (!res.ok) {
+    // Handle usage limit exceeded (402)
+    if (res.status === 402) {
+      const errorData = await res.json();
+      const error = new Error(errorData.message || 'Usage limit exceeded');
+      (error as any).code = errorData.code || 'USAGE_LIMIT_EXCEEDED';
+      (error as any).details = errorData.details;
+      throw error;
+    }
+    throw new Error(await res.text());
+  }
+  
   return res.json() as Promise<{ jobId: string; status: string }>;
 }
 

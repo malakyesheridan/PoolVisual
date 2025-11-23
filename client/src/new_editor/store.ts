@@ -895,12 +895,50 @@ export const useEditorStore = create<EditorState & {
             console.warn('[EditorStore] Variant with ID already exists:', variant.id);
             return state;
           }
+          // Initialize with loading state
+          const variantWithState = {
+            ...variant,
+            loadingState: 'loading' as const,
+            retryCount: 0
+          };
           return {
             ...state,
-            variants: [...state.variants, variant],
+            variants: [...state.variants, variantWithState],
             activeVariantId: variant.id
           };
         });
+        break;
+      }
+      
+      case 'UPDATE_VARIANT_LOADING_STATE': {
+        const { variantId, loadingState, errorMessage, loadedAt } = action.payload;
+        set(state => ({
+          ...state,
+          variants: state.variants.map(v => 
+            v.id === variantId 
+              ? { 
+                  ...v, 
+                  loadingState, 
+                  errorMessage,
+                  loadedAt,
+                  retryCount: v.retryCount || 0
+                }
+              : v
+          )
+        }));
+        break;
+      }
+      
+      case 'INCREMENT_VARIANT_RETRY': {
+        const { variantId } = action.payload;
+        set(state => ({
+          ...state,
+          variants: state.variants.map(v => 
+            v.id === variantId 
+              ? { ...v, retryCount: (v.retryCount || 0) + 1 }
+              : v
+          )
+        }));
         break;
       }
       

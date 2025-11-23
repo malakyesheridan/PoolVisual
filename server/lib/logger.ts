@@ -3,6 +3,7 @@
  */
 
 import { isAppError } from './errors.js';
+import { monitoringService } from './monitoringService.js';
 
 // Log levels
 export const LOG_LEVELS = {
@@ -130,6 +131,21 @@ class ServerLogger {
     organizationId?: string;
   }): void {
     this.log('error', params);
+    
+    // Send to Sentry if error object provided
+    if (params.err) {
+      const error = params.err instanceof Error 
+        ? params.err 
+        : new Error(String(params.err));
+      monitoringService.captureError(error, {
+        tags: {
+          ...(params.code && { code: params.code }),
+          ...(params.requestId && { requestId: params.requestId })
+        },
+        extra: params.meta,
+        user: params.userId ? { id: params.userId } : undefined
+      });
+    }
   }
 
   warn(params: {

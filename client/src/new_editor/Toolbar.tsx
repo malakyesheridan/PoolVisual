@@ -2062,17 +2062,72 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       {showEnhancementDrawer && (
         <JobsDrawer 
           onClose={() => setShowEnhancementDrawer(false)}
-          onApplyEnhancedImage={(data) => {
-            // Create new variant and set as active
+          onApplyEnhancedImage={async (data) => {
+            // Preload image before adding variant
+            const { preloadImage } = await import('../lib/imagePreloader');
+            
+            // Create new variant and set as active (will start in loading state)
             const variantId = `enhanced-${Date.now()}`;
             dispatch({
               type: 'ADD_VARIANT',
               payload: {
                 id: variantId,
                 label: data.label,
-                imageUrl: data.imageUrl
+                imageUrl: data.imageUrl,
+                loadingState: 'loading'
               }
             });
+            
+            // Preload image in background
+            const result = await preloadImage(data.imageUrl, {
+              maxRetries: 3,
+              timeout: 30000
+            });
+            
+            if (result.success) {
+              dispatch({
+                type: 'UPDATE_VARIANT_LOADING_STATE',
+                payload: {
+                  variantId,
+                  loadingState: 'loaded',
+                  loadedAt: Date.now()
+                }
+              });
+              // Update canvas image
+              dispatch({
+                type: 'SET_IMAGE',
+                payload: {
+                  url: data.imageUrl,
+                  width: result.image?.width || 0,
+                  height: result.image?.height || 0,
+                  naturalWidth: result.image?.naturalWidth,
+                  naturalHeight: result.image?.naturalHeight
+                }
+              });
+            } else {
+              dispatch({
+                type: 'UPDATE_VARIANT_LOADING_STATE',
+                payload: {
+                  variantId,
+                  loadingState: 'error',
+                  errorMessage: result.error?.message || 'Failed to load image'
+                }
+              });
+              toast.error('Failed to load enhanced image', {
+                description: result.error?.message || 'Please try again',
+                action: {
+                  label: 'Retry',
+                  onClick: () => {
+                    dispatch({
+                      type: 'INCREMENT_VARIANT_RETRY',
+                      payload: { variantId }
+                    });
+                    // Retry loading
+                    onApplyEnhancedImage(data);
+                  }
+                }
+              });
+            }
           }}
         />
       )}

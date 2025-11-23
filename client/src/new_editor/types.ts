@@ -128,6 +128,10 @@ export interface CanvasVariant {
   id: string;
   label: string; // e.g. "Original", "AI Enhanced 1"
   imageUrl: string;
+  loadingState?: 'idle' | 'loading' | 'loaded' | 'error';
+  errorMessage?: string;
+  retryCount?: number;
+  loadedAt?: number;
 }
 
 export interface EditorState {
@@ -256,6 +260,11 @@ export type EditorAction =
   | { type: 'RESET_CALIBRATION' }
   | { type: 'SET_MEASUREMENT_SETTINGS'; payload: Partial<MeasurementSettings> }
   | { type: 'SET_CALIBRATION_MODE'; payload: boolean }
+  // Canvas variant actions
+  | { type: 'ADD_VARIANT'; payload: CanvasVariant }
+  | { type: 'SET_ACTIVE_VARIANT'; payload: string | null }
+  | { type: 'UPDATE_VARIANT_LOADING_STATE'; payload: { variantId: string; loadingState: 'idle' | 'loading' | 'loaded' | 'error'; errorMessage?: string; loadedAt?: number } }
+  | { type: 'INCREMENT_VARIANT_RETRY'; payload: { variantId: string } }
   // NEW: Point editing actions
   | { type: 'SET_POINT_EDITING_SETTINGS'; payload: Partial<EditorState['pointEditing']> }
   | { type: 'TOGGLE_GRID_VISIBILITY' }
