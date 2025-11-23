@@ -94,10 +94,11 @@ async function generateMaskImage(
 
 export async function processOutboxEvents() {
   try {
-    console.log('[Outbox] ========================================');
-    console.log('[Outbox] processOutboxEvents() called');
-    console.log('[Outbox] Timestamp:', new Date().toISOString());
-    console.log('[Outbox] ========================================');
+    // Always log when processor runs (for debugging)
+    const timestamp = new Date().toISOString();
+    console.log(`[Outbox] ========================================`);
+    console.log(`[Outbox] processOutboxEvents() called at ${timestamp}`);
+    console.log(`[Outbox] ========================================`);
     
     // Check if we have N8N_WEBHOOK_URL configured
     const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
@@ -106,6 +107,20 @@ export async function processOutboxEvents() {
       return;
     }
     console.log('[Outbox] ✅ N8N_WEBHOOK_URL is set');
+    
+    // First, reset stuck "processing" events that are older than 5 minutes back to "pending"
+    const stuckThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
+    const resetStuck = await executeQuery(`
+      UPDATE outbox
+      SET status = 'pending', next_retry_at = NOW()
+      WHERE status = 'processing' 
+        AND created_at < NOW() - INTERVAL '5 minutes'
+      RETURNING id
+    `);
+    
+    if (resetStuck.length > 0) {
+      console.log(`[Outbox] 🔄 Reset ${resetStuck.length} stuck "processing" events back to "pending"`);
+    }
     
     const events = await executeQuery(`
       WITH next_batch AS (
@@ -126,8 +141,10 @@ export async function processOutboxEvents() {
     if (events.length === 0) {
       // No events to process - this is normal, don't log every time
       // Only log occasionally to confirm processor is running
-      if (Math.random() < 0.01) { // Log ~1% of the time
-        console.log('[Outbox] No pending events to process (processor is running)');
+      // But always log if there are stuck processing events
+      const stuckCount = resetStuck.length;
+      if (stuckCount > 0 || Math.random() < 0.05) { // Log ~5% of the time or if we reset stuck events (increased for debugging)
+        console.log(`[Outbox] No pending events to process (processor is running${stuckCount > 0 ? `, reset ${stuckCount} stuck events` : ''})`);
       }
       return;
     }
@@ -283,7 +300,7 @@ export async function processOutboxEvents() {
                 // Fallback to regular storage method
                 try {
                   dbMasks = await storage.getMasksByPhoto(effectivePhotoId);
-                console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
+                  console.log(`[Outbox] 🔄 Fallback found ${dbMasks.length} masks`);
                 } catch (fallbackError: any) {
                   console.error(`[Outbox] ❌ Fallback also failed:`, fallbackError);
                 }
@@ -524,19 +541,39 @@ export async function processOutboxEvents() {
         [ev.id]
       );
       metrics.outboxProcessedSuccess.inc({ event_type: ev.event_type });
-    } catch (e) {
+    } catch (e: any) {
       const attempt = Number(ev.attempts || 0);
+      const errorMessage = e?.message || String(e);
+      const errorStack = e?.stack || 'No stack trace';
+      
+      // Log the actual error for debugging
+      console.error(`[Outbox] ❌ Error processing event ${ev.id} (attempt ${attempt + 1}):`, errorMessage);
+      console.error(`[Outbox] Error details:`, {
+        eventId: ev.id,
+        jobId: ev.job_id,
+        eventType: ev.event_type,
+        attempt: attempt + 1,
+        error: errorMessage,
+        errorCode: e?.code,
+        errorName: e?.name
+      });
+      if (attempt < 2) { // Only log stack trace for first 2 attempts to avoid spam
+        console.error(`[Outbox] Error stack:`, errorStack);
+      }
       
       if (attempt >= 3) {
-        // Terminal failure
+        // Terminal failure - log the actual error message
+        const finalErrorMessage = `Outbox processing failed after 3 attempts: ${errorMessage}`;
+        console.error(`[Outbox] ❌❌❌ TERMINAL FAILURE for event ${ev.id}:`, finalErrorMessage);
+        
         await executeQuery(`UPDATE outbox SET status = 'failed' WHERE id = $1`, [ev.id]);
         
         const rows = await executeQuery(`
           UPDATE ai_enhancement_jobs 
-          SET status = 'failed', error_message = 'Outbox processing failed after 3 attempts', error_code = 'OUTBOX_FAILED'
+          SET status = 'failed', error_message = $2, error_code = 'OUTBOX_FAILED'
           WHERE id = $1
           RETURNING tenant_id, reserved_cost_micros
-        `, [ev.job_id]);
+        `, [ev.job_id, finalErrorMessage]);
         
         if (rows.length && rows[0].reserved_cost_micros > 0) {
           // TODO: Implement actual credit refund
@@ -547,6 +584,7 @@ export async function processOutboxEvents() {
       } else {
         // Retry with backoff
         const delay = calcBackoff(attempt);
+        console.log(`[Outbox] ⏳ Retrying event ${ev.id} in ${delay}ms (attempt ${attempt + 1}/3)`);
         await executeQuery(
           `UPDATE outbox SET status = 'pending', next_retry_at = NOW() + INTERVAL '${delay} milliseconds' WHERE id = $1`,
           [ev.id]
