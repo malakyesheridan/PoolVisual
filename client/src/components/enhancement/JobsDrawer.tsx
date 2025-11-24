@@ -91,6 +91,17 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     });
   }, [jobsKeys, jobsCount]);
   
+  // Set activeJobId when activeEnhancement changes to enable SSE streaming
+  useEffect(() => {
+    if (activeEnhancement?.id) {
+      console.log(`[JobsDrawer] 🎯 Setting activeJobId to: ${activeEnhancement.id} (status: ${activeEnhancement.status})`);
+      setActiveJobId(activeEnhancement.id);
+    } else {
+      console.log(`[JobsDrawer] 🎯 Clearing activeJobId (no active enhancement)`);
+      setActiveJobId(undefined);
+    }
+  }, [activeEnhancement?.id, activeEnhancement?.status]);
+  
   // Fetch full job details (including variants) when job completes
   useEffect(() => {
     if (activeEnhancement?.status === 'completed') {
