@@ -69,13 +69,30 @@ export class SSEManager {
     const payload = `data: ${JSON.stringify(data)}\n\n`;
     const list = this.streams.get(jobId);
     
-    if (!list) return;
+    if (!list || list.length === 0) {
+      // CRITICAL: Log when no clients are connected - variants will be lost unless polling catches them
+      console.warn(`[SSEManager] ⚠️ No SSE clients connected for job ${jobId}. Event will be lost unless client polls.`);
+      console.warn(`[SSEManager] Event data:`, JSON.stringify({
+        status: data?.status,
+        progress: data?.progress,
+        variantsCount: data?.variants?.length || 0,
+        hasVariants: !!data?.variants
+      }, null, 2));
+      return;
+    }
+    
+    console.log(`[SSEManager] 📤 Emitting to ${list.length} client(s) for job ${jobId}:`, {
+      status: data?.status,
+      progress: data?.progress,
+      variantsCount: data?.variants?.length || 0,
+      hasVariants: !!data?.variants
+    });
     
     for (const { stream } of list) {
       try {
         stream.write(payload);
       } catch (error) {
-        // Ignore write failures
+        console.error(`[SSEManager] ❌ Failed to write to SSE stream for job ${jobId}:`, error);
       }
     }
   }

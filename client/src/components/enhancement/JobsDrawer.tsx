@@ -105,7 +105,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   // BULLETPROOF: Aggressive polling for completed jobs without variants
   // This ensures variants are fetched even if SSE fails or callback doesn't work
   useEffect(() => {
-    if (!activeEnhancement || activeEnhancement.status !== 'completed') {
+    if (!activeEnhancement) {
       return;
     }
 
@@ -119,7 +119,16 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       return;
     }
 
-    console.log(`[JobsDrawer] 🔄 Starting aggressive polling for job ${jobId} (no variants yet)`);
+    // CRITICAL FIX: Poll for ANY active job without variants
+    // The first poll will update the status from the server, so we don't need to check
+    // status or age - just poll immediately if variants are missing.
+    // This handles:
+    // 1. Jobs that completed quickly (< 2 min) but status is stale
+    // 2. Jobs that completed but SSE failed
+    // 3. Jobs that are still processing but variants might be ready
+    // The first poll will tell us the real status and fetch variants if available
+
+    console.log(`[JobsDrawer] 🔄 Starting aggressive polling for job ${jobId} (status: ${activeEnhancement.status}, no variants yet)`);
     
     let pollCount = 0;
     const maxPolls = 20; // Poll for up to 2 minutes (20 * 6 seconds)
@@ -133,9 +142,11 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         const { getJob } = await import('../../services/aiEnhancement');
         const fullJob = await getJob(jobId);
         
+        // Update the job in store with latest status (in case status changed)
+        upsertJob(fullJob);
+        
         if (fullJob.variants && fullJob.variants.length > 0) {
           console.log(`[JobsDrawer] ✅ SUCCESS! Found ${fullJob.variants.length} variant(s) for job ${jobId} on attempt ${pollCount}`);
-          upsertJob(fullJob);
           
           // Stop polling - we found variants
           if (pollInterval) {
@@ -147,7 +158,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         
         // Still no variants - continue polling
         if (pollCount < maxPolls) {
-          console.log(`[JobsDrawer] ⏳ No variants yet for job ${jobId}, will retry in 6 seconds...`);
+          console.log(`[JobsDrawer] ⏳ No variants yet for job ${jobId} (status: ${fullJob.status}), will retry in 6 seconds...`);
         } else {
           console.error(`[JobsDrawer] ❌ GAVE UP: No variants found after ${maxPolls} polling attempts for job ${jobId}`);
           if (pollInterval) {
@@ -178,7 +189,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         clearInterval(pollInterval);
       }
     };
-  }, [activeEnhancement?.id, activeEnhancement?.status, activeEnhancement?.variants, upsertJob]);
+  }, [activeEnhancement?.id, activeEnhancement?.status, activeEnhancement?.variants, activeEnhancement?.created_at, upsertJob]);
   
   // History: jobs excluding the active one, limited to last 5
   const historyJobs = React.useMemo(() => {

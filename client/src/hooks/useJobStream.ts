@@ -21,7 +21,7 @@ export function useJobStream(jobId?: string) {
         hasVariants: !!evt.variants
       });
       
-      const { status, progress, variants, errorMessage, error_code } = evt;
+      const { status, progress, variants, errorMessage, error_code, completed_at } = evt;
       const partial: any = { id: jobId };
       if (status) partial.status = status;
       if (typeof progress === 'number') partial.progress_percent = progress;
@@ -31,6 +31,7 @@ export function useJobStream(jobId?: string) {
       }
       if (errorMessage) partial.error_message = errorMessage;
       if (error_code) partial.error_code = error_code;
+      if (completed_at) partial.completed_at = completed_at;
       // Update updated_at when receiving stream updates
       partial.updated_at = new Date().toISOString();
       

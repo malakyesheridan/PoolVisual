@@ -300,7 +300,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       const jobId = insert[0].id;
 
       // Construct callback URL for n8n webhook
-      const appUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+      const appUrl = (process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
       const callbackUrl = `${appUrl}/api/ai/enhancement/${jobId}/callback`;
       const callbackSecret = process.env.N8N_WEBHOOK_SECRET || 'secret';
 
@@ -1030,6 +1030,13 @@ router.post('/:id/callback', async (req, res) => {
         [jobId]
       );
       
+      // Fetch completed_at for SSE payload
+      const jobRow = await executeQuery(
+        `SELECT completed_at FROM ai_enhancement_jobs WHERE id = $1`,
+        [jobId]
+      );
+      const completedAt = jobRow[0]?.completed_at || new Date().toISOString();
+      
       console.log(`[Callback] 🔍 VERIFICATION: Found ${savedVariants.length} variant(s) in database for job ${jobId}`);
       
       if (savedVariants.length === 0 && variantsToSave.length > 0) {
@@ -1062,7 +1069,8 @@ router.post('/:id/callback', async (req, res) => {
           SSEManager.emit(jobId, { 
             status: 'completed', 
             progress: 100,
-            variants: recheckVariants 
+            variants: recheckVariants,
+            completed_at: completedAt
           });
         } else {
           // Even emergency save failed - emit without variants, client will poll
@@ -1070,7 +1078,8 @@ router.post('/:id/callback', async (req, res) => {
           SSEManager.emit(jobId, { 
             status: 'completed', 
             progress: 100,
-            variants: [] 
+            variants: [],
+            completed_at: completedAt
           });
         }
       } else {
@@ -1079,7 +1088,8 @@ router.post('/:id/callback', async (req, res) => {
         SSEManager.emit(jobId, { 
           status: 'completed', 
           progress: 100,
-          variants: savedVariants 
+          variants: savedVariants,
+          completed_at: completedAt
         });
       }
       
@@ -1222,16 +1232,32 @@ router.post('/:id/callback', async (req, res) => {
           [jobId]
         );
         
+        // Fetch completed_at for SSE payload
+        const jobRow2 = await executeQuery(
+          `SELECT completed_at FROM ai_enhancement_jobs WHERE id = $1`,
+          [jobId]
+        );
+        const completedAt2 = jobRow2[0]?.completed_at || new Date().toISOString();
+        
         SSEManager.emit(jobId, { 
           status: 'completed', 
           progress: 100,
-          variants: recheckVariants.length > 0 ? recheckVariants : []
+          variants: recheckVariants.length > 0 ? recheckVariants : [],
+          completed_at: completedAt2
         });
       } else {
+        // Fetch completed_at for SSE payload
+        const jobRow3 = await executeQuery(
+          `SELECT completed_at FROM ai_enhancement_jobs WHERE id = $1`,
+          [jobId]
+        );
+        const completedAt3 = jobRow3[0]?.completed_at || new Date().toISOString();
+        
         SSEManager.emit(jobId, { 
           status: 'completed', 
           progress: 100,
-          variants: savedVariants 
+          variants: savedVariants,
+          completed_at: completedAt3
         });
       }
       
