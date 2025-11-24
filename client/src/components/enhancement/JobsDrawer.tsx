@@ -110,11 +110,12 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
 
     const jobId = activeEnhancement.id;
-    const hasVariants = activeEnhancement.variants && activeEnhancement.variants.length > 0;
+    const variants = activeEnhancement.variants || [];
+    const hasVariants = variants.length > 0;
     
     // If we already have variants, no need to poll
     if (hasVariants) {
-      console.log(`[JobsDrawer] ✅ Job ${jobId} already has ${activeEnhancement.variants.length} variant(s)`);
+      console.log(`[JobsDrawer] ✅ Job ${jobId} already has ${variants.length} variant(s)`);
       return;
     }
 
