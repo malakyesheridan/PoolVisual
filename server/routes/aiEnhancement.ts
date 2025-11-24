@@ -145,7 +145,9 @@ router.post('/upload-url', authenticateSession, async (req, res) => {
 });
 
 // POST /api/ai/enhancement
-router.post('/', authenticateSession, rateLimiters.enhancement, checkEnhancementUsage, async (req, res) => {
+// NOTE: Usage check middleware is temporarily removed - re-add when ready for production
+// router.post('/', authenticateSession, rateLimiters.enhancement, checkEnhancementUsage, async (req, res) => {
+router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res) => {
   try {
     const user = req.session.user;
     
