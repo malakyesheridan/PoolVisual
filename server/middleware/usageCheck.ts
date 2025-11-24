@@ -8,18 +8,25 @@ import { checkEnhancementLimit } from '../lib/usageService.js';
 
 /**
  * Middleware to check enhancement usage limits
- * Can be disabled by setting DISABLE_USAGE_CHECK=1 environment variable
+ * DISABLED BY DEFAULT - Set ENABLE_USAGE_CHECK=1 to enable
+ * This feature is disabled until ready for production
  */
 export async function checkEnhancementUsage(
   req: Request,
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  // Check if usage checking is disabled
-  if (process.env.DISABLE_USAGE_CHECK === '1' || process.env.DISABLE_USAGE_CHECK === 'true') {
-    console.log('[UsageCheck] ⚠️ Usage checking is disabled (DISABLE_USAGE_CHECK=1)');
+  // By default, usage checking is DISABLED
+  // Only enable if explicitly set to '1' or 'true'
+  const isEnabled = process.env.ENABLE_USAGE_CHECK === '1' || process.env.ENABLE_USAGE_CHECK === 'true';
+  
+  if (!isEnabled) {
+    // Usage checking is disabled - allow all requests
     return next();
   }
+  
+  // Usage checking is enabled - proceed with validation
+  console.log('[UsageCheck] ✅ Usage checking is enabled');
   
   try {
     const tenantId = req.body?.tenantId || req.query?.tenantId;
