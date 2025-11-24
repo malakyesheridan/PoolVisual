@@ -147,6 +147,39 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         
         if (fullJob.variants && fullJob.variants.length > 0) {
           console.log(`[JobsDrawer] ✅ SUCCESS! Found ${fullJob.variants.length} variant(s) for job ${jobId} on attempt ${pollCount}`);
+          console.log(`[JobsDrawer] Job status after polling: ${fullJob.status}, variants: ${fullJob.variants.length}`);
+          
+          // CRITICAL: If job is completed and we have variants, auto-apply to canvas if callback is available
+          if (fullJob.status === 'completed' && onApplyEnhancedImage && fullJob.variants[0]?.url) {
+            console.log(`[JobsDrawer] 🎨 Auto-applying enhanced image to canvas...`);
+            const enhancedImageUrl = fullJob.variants[0].url;
+            const currentState = useEditorStore.getState();
+            const enhancedCount = currentState.variants.filter(v => v.id !== 'original').length;
+            const label = `AI Enhanced ${enhancedCount + 1}`;
+            
+            // Preload and apply
+            try {
+              const { preloadImage } = await import('../../lib/imagePreloader');
+              const result = await preloadImage(enhancedImageUrl, {
+                maxRetries: 3,
+                timeout: 30000
+              });
+              
+              if (result.success && result.image) {
+                console.log(`[JobsDrawer] ✅ Image preloaded successfully, applying to canvas...`);
+                onApplyEnhancedImage({
+                  imageUrl: enhancedImageUrl,
+                  label
+                });
+                toast.success('Enhanced image applied', { description: `${label} is now active on the canvas.` });
+              } else {
+                console.warn(`[JobsDrawer] ⚠️ Image preload failed, user can manually apply`);
+              }
+            } catch (error) {
+              console.error(`[JobsDrawer] ❌ Error auto-applying image:`, error);
+              // Don't show error toast - user can manually apply
+            }
+          }
           
           // Stop polling - we found variants
           if (pollInterval) {
