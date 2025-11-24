@@ -32,6 +32,35 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const { dispatch, getState, jobContext, variants, activeVariantId } = useEditorStore();
   const [activeTab, setActiveTab] = React.useState<'materials' | 'variants' | 'masks'>('materials');
   
+  // Phase 3: Listen for navigation to variants tab
+  useEffect(() => {
+    const handleNavigateToVariant = (event: CustomEvent<{ variantId: string }>) => {
+      const { variantId } = event.detail;
+      
+      // Switch to variants tab
+      setActiveTab('variants');
+      
+      // Scroll to variant after a short delay (to allow tab to render)
+      setTimeout(() => {
+        // Find the variant element and scroll to it
+        const variantElement = document.querySelector(`[data-variant-id="${variantId}"]`);
+        if (variantElement) {
+          variantElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // Add temporary highlight
+          variantElement.classList.add('ring-2', 'ring-blue-500', 'ring-offset-2');
+          setTimeout(() => {
+            variantElement.classList.remove('ring-2', 'ring-blue-500', 'ring-offset-2');
+          }, 2000);
+        }
+      }, 100);
+    };
+    
+    window.addEventListener('navigateToVariant', handleNavigateToVariant as EventListener);
+    return () => {
+      window.removeEventListener('navigateToVariant', handleNavigateToVariant as EventListener);
+    };
+  }, []);
+  
   // Handle variant navigation
   const handlePreviousVariant = () => {
     if (variants.length <= 1) return;

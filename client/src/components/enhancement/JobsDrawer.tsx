@@ -3,10 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { X, Sparkles, Loader2, Waves, Sparkles as SparklesIcon, Search, Filter, ArrowUpDown, Palette, CheckSquare, Square, ChevronDown, ChevronUp, Layers2, CheckCircle, XCircle, Clock, RefreshCw } from 'lucide-react';
 import { useEnhancementStore, type SortOption, type StatusFilter, type TypeFilter, type DateFilter, type GroupBy } from '../../state/useEnhancementStore';
-import { getRecentJobs, createJob } from '../../services/aiEnhancement';
+import { getRecentJobs, createJob, type Job } from '../../services/aiEnhancement';
 import { useJobStream } from '../../hooks/useJobStream';
 import { PreviewModal } from './PreviewModal';
 import { BulkActionToolbar } from './BulkActionToolbar';
+import { JobCard } from './JobCard';
 import { useEditorStore } from '../../new_editor/store';
 import { useMaskStore } from '../../maskcore/store';
 import { toast } from '../../lib/toast';
@@ -102,7 +103,11 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const jobsKeys = useEnhancementStore(s => Object.keys(s.jobs).sort().join(','));
   const jobsCount = useEnhancementStore(s => Object.keys(s.jobs).length);
   
+  // Phase 1: Auto-archive threshold (5 minutes)
+  const ARCHIVE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
+  
   // Compute activeEnhancement when jobs actually change (using keys as dependency)
+  // Phase 1: Updated to use 5-minute threshold instead of 1 hour
   const activeEnhancement = React.useMemo(() => {
     const store = useEnhancementStore.getState();
     const allJobs = Object.values(store.jobs);
@@ -116,16 +121,38 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     });
     
     const now = Date.now();
-    const oneHourAgo = now - 60 * 60 * 1000; // Extended to 1 hour for better UX
+    const archiveThreshold = now - ARCHIVE_THRESHOLD_MS;
     
     return sorted.find(job => {
       const isProcessing = ['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(job.status);
       const isRecentlyCompleted = job.status === 'completed' && 
         job.completed_at && 
-        new Date(job.completed_at).getTime() > oneHourAgo;
+        new Date(job.completed_at).getTime() > archiveThreshold;
       return isProcessing || isRecentlyCompleted;
     });
   }, [jobsKeys, jobsCount]);
+  
+  // Phase 1: Recently completed jobs (completed within 5 min, but not active)
+  const recentlyCompletedJobs = React.useMemo(() => {
+    const store = useEnhancementStore.getState();
+    const allJobs = Object.values(store.jobs);
+    const now = Date.now();
+    const archiveThreshold = now - ARCHIVE_THRESHOLD_MS;
+    
+    return allJobs
+      .filter(job => {
+        const isCompleted = job.status === 'completed';
+        const completedTime = job.completed_at ? new Date(job.completed_at).getTime() : 0;
+        const isRecent = completedTime > archiveThreshold;
+        const isNotActive = job.id !== activeEnhancement?.id;
+        return isCompleted && isRecent && isNotActive;
+      })
+      .sort((a, b) => {
+        const aTime = new Date(a.completed_at || 0).getTime();
+        const bTime = new Date(b.completed_at || 0).getTime();
+        return bTime - aTime;
+      });
+  }, [jobsKeys, jobsCount, activeEnhancement?.id]);
   
   // Set activeJobId when activeEnhancement changes to enable SSE streaming
   useEffect(() => {
@@ -142,19 +169,35 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   // This ensures parallel SSE + polling for maximum reliability
   // No duplicate polling needed here - useJobStream handles it all
   
-  // History: jobs excluding the active one, limited to last 5
+  // Phase 1: History jobs (exclude active and recently completed)
   const historyJobs = React.useMemo(() => {
     const store = useEnhancementStore.getState();
     const allJobs = Object.values(store.jobs);
+    const activeId = activeEnhancement?.id;
+    const recentIds = new Set(recentlyCompletedJobs.map(j => j.id));
+    
     return allJobs
-      .filter(job => job.id !== activeEnhancement?.id)
+      .filter(job => job.id !== activeId && !recentIds.has(job.id))
       .sort((a, b) => {
         const aTime = new Date(a.created_at || 0).getTime();
         const bTime = new Date(b.created_at || 0).getTime();
         return bTime - aTime;
       })
-      .slice(0, 5);
-  }, [jobsKeys, jobsCount, activeEnhancement?.id]);
+      .slice(0, 10); // Limit to last 10
+  }, [jobsKeys, jobsCount, activeEnhancement?.id, recentlyCompletedJobs]);
+  
+  // Phase 1: Auto-archive timer to periodically check and update job categorization
+  useEffect(() => {
+    // Re-check job categorization every 30 seconds
+    // This ensures jobs auto-archive when they cross the 5-minute threshold
+    const interval = setInterval(() => {
+      // Force re-computation by updating a dummy state
+      // The useMemo dependencies will trigger re-computation
+      setActiveJobId(prev => prev); // Trigger re-render
+    }, 30000); // Every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
   
   const [historyExpanded, setHistoryExpanded] = React.useState(false);
 
@@ -864,7 +907,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   };
   
   // Handle Apply to Canvas with preloading
-  const handleApplyToCanvas = async (job: typeof activeEnhancement) => {
+  const handleApplyToCanvas = async (job: Job) => {
     if (!job || !onApplyEnhancedImage) return;
     
     // Get the first variant URL (or fallback)
@@ -922,15 +965,28 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   };
   
   // Handle Re-run enhancement
-  const handleRerunEnhancement = async (job: typeof activeEnhancement) => {
+  const handleRerunEnhancement = async (job: Job) => {
     if (!job || !job.mode) return;
     await handleCreateEnhancement(job.mode);
   };
   
   // Handle Retry failed job
-  const handleRetryFailed = async (job: typeof activeEnhancement) => {
+  const handleRetryFailed = async (job: Job) => {
     if (!job || !job.mode) return;
     await handleCreateEnhancement(job.mode);
+  };
+  
+  // Phase 3: Handler to navigate to variants tab and highlight specific variant
+  const handleViewInVariants = (variantId: string) => {
+    // Emit a custom event that NewEditor can listen to
+    // This will switch to variants tab and scroll to/highlight the variant
+    window.dispatchEvent(new CustomEvent('navigateToVariant', {
+      detail: { variantId }
+    }));
+    
+    toast.success('Opening variants tab', { 
+      description: 'The variant will be highlighted in the sidebar.' 
+    });
   };
 
   return (
@@ -1160,7 +1216,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         </div>
       </div>
 
-      {/* Section 2: Active Enhancement */}
+      {/* Section 2: Active Enhancement - Phase 2: Using JobCard */}
       <div className="px-6 py-4 border-b border-gray-100 bg-white">
         {isLoading ? (
           <div className="rounded-lg border border-gray-200 bg-white p-4 animate-pulse">
@@ -1168,119 +1224,17 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
             <div className="h-3 bg-gray-200 rounded w-1/2"></div>
           </div>
         ) : activeEnhancement ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {(() => {
-                  const TypeIcon = getEnhancementTypeIcon(activeEnhancement.mode);
-                  return <TypeIcon className="w-4 h-4 text-gray-600" />;
-                })()}
-                <span className="text-sm font-semibold text-gray-900">
-                  {getEnhancementTypeLabel(activeEnhancement.mode)}
-                </span>
-              </div>
-              {(() => {
-                const isProcessing = ['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(activeEnhancement.status);
-                const isCompleted = activeEnhancement.status === 'completed';
-                const isFailed = activeEnhancement.status === 'failed';
-                
-                let StatusIcon = Clock;
-                let statusColor = 'bg-blue-100 text-blue-700 border-blue-200';
-                let statusLabel = 'Processing';
-                
-                if (isCompleted) {
-                  StatusIcon = CheckCircle;
-                  statusColor = 'bg-green-100 text-green-700 border-green-200';
-                  statusLabel = 'Complete';
-                } else if (isFailed) {
-                  StatusIcon = XCircle;
-                  statusColor = 'bg-red-100 text-red-700 border-red-200';
-                  statusLabel = 'Failed';
-                }
-                
-                return (
-                  <div className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium border ${statusColor}`}>
-                    {isProcessing && <Loader2 className="w-3 h-3 animate-spin" />}
-                    {!isProcessing && <StatusIcon className="w-3 h-3" />}
-                    <span>{statusLabel}</span>
-                  </div>
-                );
-              })()}
-            </div>
-            
-            {/* Progress indicator for processing */}
-            {['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(activeEnhancement.status) && (
-              <div className="space-y-2">
-                <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-blue-600 rounded-full transition-all duration-300"
-                    style={{ width: `${Math.max(0, Math.min(100, activeEnhancement.progress_percent || 0))}%` }}
-                  />
-                </div>
-                <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Processing... {Math.round(activeEnhancement.progress_percent || 0)}%</span>
-                </div>
-              </div>
-            )}
-            
-            {/* Thumbnail and actions for completed */}
-            {activeEnhancement.status === 'completed' && activeEnhancement.variants && activeEnhancement.variants.length > 0 && (
-              <div className="flex items-center gap-3">
-                <img
-                  src={activeEnhancement.variants?.[0]?.url || ''}
-                  alt="Enhanced preview"
-                  className="w-16 h-16 rounded-lg border border-gray-200 object-cover"
-                />
-                <div className="flex-1 space-y-2">
-                  <button
-                    onClick={() => handleApplyToCanvas(activeEnhancement)}
-                    disabled={!onApplyEnhancedImage}
-                    className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Apply to Canvas
-                  </button>
-                  <button
-                    onClick={() => handleRerunEnhancement(activeEnhancement)}
-                    disabled={isCreating}
-                    className="w-full px-4 py-2 bg-white border border-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Re-run
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {/* Error and retry for failed */}
-            {activeEnhancement.status === 'failed' && (
-              <div className="space-y-2">
-                {activeEnhancement.error_message && (
-                  <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">
-                    {activeEnhancement.error_message.length > 100 
-                      ? `${activeEnhancement.error_message.substring(0, 100)}...`
-                      : activeEnhancement.error_message}
-                  </div>
-                )}
-                <button
-                  onClick={() => handleRetryFailed(activeEnhancement)}
-                  disabled={isCreating}
-                  className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
-                >
-                  {isCreating ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Retrying...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="w-4 h-4" />
-                      Retry
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
+          <JobCard
+            job={activeEnhancement}
+            isActive={true}
+            onApply={onApplyEnhancedImage ? () => handleApplyToCanvas(activeEnhancement) : undefined}
+            onViewInVariants={handleViewInVariants}
+            onRerun={handleRerunEnhancement}
+            onRetry={handleRetryFailed}
+            getEnhancementTypeIcon={getEnhancementTypeIcon}
+            getEnhancementTypeLabel={getEnhancementTypeLabel}
+            formatRelativeTime={formatRelativeTime}
+          />
         ) : (
           <div className="text-center py-6 text-sm text-gray-500">
             No active enhancement
@@ -1288,7 +1242,29 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         )}
       </div>
       
-      {/* Section 3: History (Collapsible) */}
+      {/* Phase 1 & 2: Recently Completed Jobs Section */}
+      {recentlyCompletedJobs.length > 0 && (
+        <div className="px-6 py-4 border-b border-gray-100 bg-white">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Just Completed</h3>
+          <div className="space-y-3">
+            {recentlyCompletedJobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+                isActive={false}
+                onApply={onApplyEnhancedImage ? () => handleApplyToCanvas(job) : undefined}
+                onViewInVariants={handleViewInVariants}
+                onRerun={handleRerunEnhancement}
+                getEnhancementTypeIcon={getEnhancementTypeIcon}
+                getEnhancementTypeLabel={getEnhancementTypeLabel}
+                formatRelativeTime={formatRelativeTime}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Section 3: History (Collapsible) - Phase 2: Using JobCard */}
       {historyJobs.length > 0 && (
         <div className="flex-1 overflow-auto px-6 py-4 border-t border-gray-100">
           <button
@@ -1304,52 +1280,20 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           </button>
           
           {historyExpanded && (
-            <div className="mt-3 space-y-2">
-              {historyJobs.map((job) => {
-                const TypeIcon = getEnhancementTypeIcon(job.mode);
-                const isCompleted = job.status === 'completed';
-                const isFailed = job.status === 'failed';
-                const isCanceled = job.status === 'canceled';
-                
-                let StatusIcon = Clock;
-                let statusColor = 'text-blue-600';
-                let statusLabel = 'Processing';
-                
-                if (isCompleted) {
-                  StatusIcon = CheckCircle;
-                  statusColor = 'text-green-600';
-                  statusLabel = 'Complete';
-                } else if (isFailed) {
-                  StatusIcon = XCircle;
-                  statusColor = 'text-red-600';
-                  statusLabel = 'Failed';
-                } else if (isCanceled) {
-                  StatusIcon = XCircle;
-                  statusColor = 'text-gray-600';
-                  statusLabel = 'Canceled';
-                }
-                
-                return (
-                  <div
-                    key={job.id}
-                    className="flex items-center justify-between p-2 rounded-lg border border-gray-100 hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <TypeIcon className="w-4 h-4 text-gray-500 flex-shrink-0" />
-                      <span className="text-xs font-medium text-gray-900 truncate">
-                        {getEnhancementTypeLabel(job.mode)}
-                      </span>
-                      <div className={`flex items-center gap-1 ${statusColor}`}>
-                        <StatusIcon className="w-3 h-3" />
-                        <span className="text-xs">{statusLabel}</span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-gray-500 flex-shrink-0 ml-2">
-                      {formatRelativeTime(job.created_at || job.updated_at)}
-                    </span>
-                  </div>
-                );
-              })}
+            <div className="mt-3 space-y-3">
+              {historyJobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                  isActive={false}
+                  onApply={onApplyEnhancedImage ? () => handleApplyToCanvas(job) : undefined}
+                  onViewInVariants={handleViewInVariants}
+                  onRerun={handleRerunEnhancement}
+                  getEnhancementTypeIcon={getEnhancementTypeIcon}
+                  getEnhancementTypeLabel={getEnhancementTypeLabel}
+                  formatRelativeTime={formatRelativeTime}
+                />
+              ))}
             </div>
           )}
         </div>

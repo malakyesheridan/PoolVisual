@@ -186,8 +186,8 @@ export function VariantsPanel() {
   
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-100">
+      {/* Header - Fixed */}
+      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-gray-900">Variants</h3>
@@ -198,8 +198,8 @@ export function VariantsPanel() {
         </div>
       </div>
       
-      {/* Variants List */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+      {/* Variants List - Scrollable */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3 min-h-0 overscroll-contain">
         {variants.map((variant) => {
           const isActive = activeVariantId === variant.id;
           const isDeleting = deleting === variant.id;
@@ -207,6 +207,7 @@ export function VariantsPanel() {
           return (
             <div
               key={variant.id}
+              data-variant-id={variant.id}
               className={`group relative rounded-lg border-2 transition-all ${
                 isActive
                   ? 'border-blue-500 bg-blue-50'
