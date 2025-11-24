@@ -102,44 +102,82 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
   }, [activeEnhancement?.id, activeEnhancement?.status]);
   
-  // Fetch full job details (including variants) when job completes
+  // BULLETPROOF: Aggressive polling for completed jobs without variants
+  // This ensures variants are fetched even if SSE fails or callback doesn't work
   useEffect(() => {
-    if (activeEnhancement?.status === 'completed') {
-      console.log(`[JobsDrawer] Active enhancement completed:`, {
-        id: activeEnhancement.id,
-        hasVariants: !!activeEnhancement.variants,
-        variantsCount: activeEnhancement.variants?.length || 0
-      });
-      
-      if (!activeEnhancement.variants || activeEnhancement.variants.length === 0) {
-        // Job is completed but has no variants - fetch full details from API
-        console.log(`[JobsDrawer] Fetching full job details for ${activeEnhancement.id} (no variants in store)`);
-        const fetchJobDetails = async () => {
-          try {
-            const { getJob } = await import('../../services/aiEnhancement');
-            const fullJob = await getJob(activeEnhancement.id);
-            console.log(`[JobsDrawer] Received job details:`, {
-              id: fullJob.id,
-              status: fullJob.status,
-              hasVariants: !!fullJob.variants,
-              variantsCount: fullJob.variants?.length || 0
-            });
-            if (fullJob.variants && fullJob.variants.length > 0) {
-              upsertJob(fullJob);
-              console.log(`[JobsDrawer] ✅ Fetched and saved ${fullJob.variants.length} variant(s) for completed job ${activeEnhancement.id}`);
-            } else {
-              console.warn(`[JobsDrawer] ⚠️ Job ${activeEnhancement.id} has no variants in API response`);
-            }
-          } catch (error) {
-            console.error(`[JobsDrawer] ❌ Failed to fetch job details for ${activeEnhancement.id}:`, error);
-          }
-        };
-        fetchJobDetails();
-      } else {
-        console.log(`[JobsDrawer] Job ${activeEnhancement.id} already has ${activeEnhancement.variants.length} variant(s) in store`);
-      }
+    if (!activeEnhancement || activeEnhancement.status !== 'completed') {
+      return;
     }
-  }, [activeEnhancement?.status, activeEnhancement?.id, activeEnhancement?.variants, upsertJob]);
+
+    const jobId = activeEnhancement.id;
+    const hasVariants = activeEnhancement.variants && activeEnhancement.variants.length > 0;
+    
+    // If we already have variants, no need to poll
+    if (hasVariants) {
+      console.log(`[JobsDrawer] ✅ Job ${jobId} already has ${activeEnhancement.variants.length} variant(s)`);
+      return;
+    }
+
+    console.log(`[JobsDrawer] 🔄 Starting aggressive polling for job ${jobId} (no variants yet)`);
+    
+    let pollCount = 0;
+    const maxPolls = 20; // Poll for up to 2 minutes (20 * 6 seconds)
+    let pollInterval: NodeJS.Timeout | null = null;
+    
+    const pollForVariants = async () => {
+      pollCount++;
+      console.log(`[JobsDrawer] 🔍 Polling attempt ${pollCount}/${maxPolls} for job ${jobId}`);
+      
+      try {
+        const { getJob } = await import('../../services/aiEnhancement');
+        const fullJob = await getJob(jobId);
+        
+        if (fullJob.variants && fullJob.variants.length > 0) {
+          console.log(`[JobsDrawer] ✅ SUCCESS! Found ${fullJob.variants.length} variant(s) for job ${jobId} on attempt ${pollCount}`);
+          upsertJob(fullJob);
+          
+          // Stop polling - we found variants
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+          return;
+        }
+        
+        // Still no variants - continue polling
+        if (pollCount < maxPolls) {
+          console.log(`[JobsDrawer] ⏳ No variants yet for job ${jobId}, will retry in 6 seconds...`);
+        } else {
+          console.error(`[JobsDrawer] ❌ GAVE UP: No variants found after ${maxPolls} polling attempts for job ${jobId}`);
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      } catch (error) {
+        console.error(`[JobsDrawer] ❌ Polling error for job ${jobId} (attempt ${pollCount}):`, error);
+        // Continue polling on error (up to max attempts)
+        if (pollCount >= maxPolls) {
+          if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+          }
+        }
+      }
+    };
+    
+    // Poll immediately, then every 6 seconds
+    pollForVariants();
+    pollInterval = setInterval(pollForVariants, 6000);
+    
+    // Cleanup on unmount or when job changes
+    return () => {
+      if (pollInterval) {
+        console.log(`[JobsDrawer] 🛑 Stopping polling for job ${jobId}`);
+        clearInterval(pollInterval);
+      }
+    };
+  }, [activeEnhancement?.id, activeEnhancement?.status, activeEnhancement?.variants, upsertJob]);
   
   // History: jobs excluding the active one, limited to last 5
   const historyJobs = React.useMemo(() => {
@@ -174,24 +212,50 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         setInitial(d.jobs);
         console.log(`[JobsDrawer] Loaded ${d.jobs.length} jobs, checking for completed jobs without variants...`);
         
-        // Check for completed jobs without variants and fetch them
+        // BULLETPROOF: Aggressively fetch variants for any completed jobs without them
         const completedJobsWithoutVariants = d.jobs.filter(job => 
           job.status === 'completed' && (!job.variants || job.variants.length === 0)
         );
         
         if (completedJobsWithoutVariants.length > 0) {
-          console.log(`[JobsDrawer] Found ${completedJobsWithoutVariants.length} completed job(s) without variants, fetching...`);
+          console.log(`[JobsDrawer] 🔄 Found ${completedJobsWithoutVariants.length} completed job(s) without variants, fetching with retries...`);
+          
+          // Fetch with retry logic for each job
           completedJobsWithoutVariants.forEach(async (job) => {
-            try {
-              const { getJob } = await import('../../services/aiEnhancement');
-              const fullJob = await getJob(job.id);
-              if (fullJob.variants && fullJob.variants.length > 0) {
-                upsertJob(fullJob);
-                console.log(`[JobsDrawer] ✅ Fetched ${fullJob.variants.length} variant(s) for job ${job.id}`);
+            let retries = 0;
+            const maxRetries = 5;
+            
+            const fetchWithRetry = async (): Promise<void> => {
+              try {
+                const { getJob } = await import('../../services/aiEnhancement');
+                const fullJob = await getJob(job.id);
+                
+                if (fullJob.variants && fullJob.variants.length > 0) {
+                  upsertJob(fullJob);
+                  console.log(`[JobsDrawer] ✅ Fetched ${fullJob.variants.length} variant(s) for job ${job.id} (attempt ${retries + 1})`);
+                } else if (retries < maxRetries) {
+                  // No variants yet, retry with exponential backoff
+                  retries++;
+                  const delay = Math.min(1000 * Math.pow(2, retries), 10000); // Max 10 seconds
+                  console.log(`[JobsDrawer] ⏳ No variants for job ${job.id}, retrying in ${delay}ms (attempt ${retries}/${maxRetries})`);
+                  setTimeout(fetchWithRetry, delay);
+                } else {
+                  console.error(`[JobsDrawer] ❌ Gave up fetching variants for job ${job.id} after ${maxRetries} attempts`);
+                }
+              } catch (error) {
+                if (retries < maxRetries) {
+                  retries++;
+                  const delay = Math.min(1000 * Math.pow(2, retries), 10000);
+                  console.error(`[JobsDrawer] ❌ Error fetching variants for job ${job.id} (attempt ${retries}), retrying in ${delay}ms:`, error);
+                  setTimeout(fetchWithRetry, delay);
+                } else {
+                  console.error(`[JobsDrawer] ❌ Failed to fetch variants for job ${job.id} after ${maxRetries} attempts:`, error);
+                }
               }
-            } catch (error) {
-              console.error(`[JobsDrawer] Failed to fetch variants for job ${job.id}:`, error);
-            }
+            };
+            
+            // Start fetching
+            fetchWithRetry();
           });
         }
         

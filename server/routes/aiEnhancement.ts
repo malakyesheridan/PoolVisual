@@ -1024,18 +1024,66 @@ router.post('/:id/callback', async (req, res) => {
         [jobId]
       );
       
-      // Fetch saved variants to include in SSE event
+      // BULLETPROOF: Verify variants were actually saved before emitting SSE
       const savedVariants = await executeQuery(
         `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
         [jobId]
       );
       
-      SSEManager.emit(jobId, { 
-        status: 'completed', 
-        progress: 100,
-        variants: savedVariants 
-      });
+      console.log(`[Callback] 🔍 VERIFICATION: Found ${savedVariants.length} variant(s) in database for job ${jobId}`);
       
+      if (savedVariants.length === 0 && variantsToSave.length > 0) {
+        // CRITICAL: Variants should have been saved but weren't - this is a failure
+        console.error(`[Callback] ❌ CRITICAL ERROR: ${variantsToSave.length} variant(s) should have been saved but 0 found in database!`);
+        console.error(`[Callback] This indicates a database write failure. Job ${jobId} completed but has no variants.`);
+        
+        // Try to save again as emergency fallback
+        console.log(`[Callback] 🚨 EMERGENCY: Attempting to re-save variants...`);
+        for (const variant of variantsToSave) {
+          try {
+            await executeQuery(
+              `INSERT INTO ai_enhancement_variants (job_id, output_url, rank) 
+               VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+              [jobId, variant.url, variant.rank]
+            );
+          } catch (retryError: any) {
+            console.error(`[Callback] ❌ Emergency re-save also failed:`, retryError.message);
+          }
+        }
+        
+        // Re-fetch after emergency save
+        const recheckVariants = await executeQuery(
+          `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
+          [jobId]
+        );
+        console.log(`[Callback] 🔍 After emergency save: ${recheckVariants.length} variant(s) found`);
+        
+        if (recheckVariants.length > 0) {
+          SSEManager.emit(jobId, { 
+            status: 'completed', 
+            progress: 100,
+            variants: recheckVariants 
+          });
+        } else {
+          // Even emergency save failed - emit without variants, client will poll
+          console.error(`[Callback] ❌ FATAL: Could not save variants even after emergency retry`);
+          SSEManager.emit(jobId, { 
+            status: 'completed', 
+            progress: 100,
+            variants: [] 
+          });
+        }
+      } else {
+        // Normal path - variants were saved successfully
+        console.log(`[Callback] ✅ Variants verified: ${savedVariants.length} variant(s) ready for SSE`);
+        SSEManager.emit(jobId, { 
+          status: 'completed', 
+          progress: 100,
+          variants: savedVariants 
+        });
+      }
+      
+      console.log(`[Callback] ✅ SSE event emitted successfully`);
       return res.json({ ok: true });
     }
     
@@ -1147,19 +1195,47 @@ router.post('/:id/callback', async (req, res) => {
         [jobId]
       );
       
-      // Fetch saved variants to include in SSE event
+      // BULLETPROOF: Verify variants were actually saved
       const savedVariants = await executeQuery(
         `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
         [jobId]
       );
       
-      console.log(`[Callback] 📤 Emitting SSE event with ${savedVariants.length} variant(s) (normal path)`);
-      SSEManager.emit(jobId, { 
-        status: 'completed', 
-        progress: 100,
-        variants: savedVariants 
-      });
-      console.log(`[Callback] ✅ SSE event emitted successfully (normal path)`);
+      console.log(`[Callback] 🔍 VERIFICATION (normal path): Found ${savedVariants.length} variant(s) in database for job ${jobId}`);
+      
+      if (savedVariants.length === 0 && variantsToSave.length > 0) {
+        console.error(`[Callback] ❌ CRITICAL: Variants should have been saved but weren't! Emergency re-save...`);
+        for (const variant of variantsToSave) {
+          try {
+            await executeQuery(
+              `INSERT INTO ai_enhancement_variants (job_id, output_url, rank) 
+               VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+              [jobId, variant.url, variant.rank]
+            );
+          } catch (retryError: any) {
+            console.error(`[Callback] ❌ Emergency re-save failed:`, retryError.message);
+          }
+        }
+        
+        const recheckVariants = await executeQuery(
+          `SELECT id, output_url as url, rank FROM ai_enhancement_variants WHERE job_id = $1 ORDER BY rank`,
+          [jobId]
+        );
+        
+        SSEManager.emit(jobId, { 
+          status: 'completed', 
+          progress: 100,
+          variants: recheckVariants.length > 0 ? recheckVariants : []
+        });
+      } else {
+        SSEManager.emit(jobId, { 
+          status: 'completed', 
+          progress: 100,
+          variants: savedVariants 
+        });
+      }
+      
+      console.log(`[Callback] ✅ SSE event emitted (normal path)`);
     } else {
       SSEManager.emit(jobId, { status: nextStatus, progress: nextProgress });
     }
