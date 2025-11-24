@@ -18,21 +18,41 @@ async function mockProcessEnhance(data: any) {
 
   try {
     await executeQuery(`UPDATE ai_enhancement_jobs SET status='rendering', progress_stage='rendering', updated_at=NOW() WHERE id=$1`, [jobId]);
-    SSEManager.emit(jobId, { status: 'rendering', progress: 40 });
+    SSEManager.emit(jobId, { 
+      id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+      status: 'rendering', 
+      progress: 40,
+      timestamp: new Date().toISOString()
+    });
 
     const prov = getProvider(process.env.TEST_PROVIDER || 'mock:inpaint');
     const result = await prov.submit(data, {
-      onProgress: (p) => SSEManager.emit(jobId, { status: 'rendering', progress: Math.max(40, Math.min(95, p)) })
+      onProgress: (p) => SSEManager.emit(jobId, { 
+        id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+        status: 'rendering', 
+        progress: Math.max(40, Math.min(95, p)),
+        timestamp: new Date().toISOString()
+      })
     });
 
     await executeQuery(
       `UPDATE ai_enhancement_jobs SET status='completed', progress_percent=100, cost_micros=$2, completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
       [jobId, result.costMicros || 0]
     );
-    SSEManager.emit(jobId, { status: 'completed', progress: 100 });
+    SSEManager.emit(jobId, { 
+      id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+      status: 'completed', 
+      progress: 100,
+      timestamp: new Date().toISOString()
+    });
   } catch (err: any) {
     await executeQuery(`UPDATE ai_enhancement_jobs SET status='failed', error_message=$2, updated_at=NOW() WHERE id=$1`, [jobId, err?.message || 'mock_failed']);
-    SSEManager.emit(jobId, { status: 'failed', error: err?.message });
+    SSEManager.emit(jobId, { 
+      id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+      status: 'failed', 
+      error: err?.message,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 

@@ -131,7 +131,13 @@ async function startWorker() {
             `UPDATE ai_enhancement_jobs SET status = 'downloading', progress_stage = 'downloading', updated_at = NOW() WHERE id = $1`,
             [jobId]
           );
-          SSEManager.emit(jobId, { status: 'downloading', stage: 'downloading', progress: 5 });
+          SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+            status: 'downloading', 
+            stage: 'downloading', 
+            progress: 5,
+            timestamp: new Date().toISOString()
+          });
           
           // Publish to Redis
           if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'downloading', stage: 'downloading', progress: 5 }));
@@ -140,7 +146,13 @@ async function startWorker() {
             `UPDATE ai_enhancement_jobs SET status = 'preprocessing', progress_stage = 'preprocessing', updated_at = NOW() WHERE id = $1`,
             [jobId]
           );
-          SSEManager.emit(jobId, { status: 'preprocessing', stage: 'preprocessing', progress: 15 });
+          SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+            status: 'preprocessing', 
+            stage: 'preprocessing', 
+            progress: 15,
+            timestamp: new Date().toISOString()
+          });
           if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'preprocessing', stage: 'preprocessing', progress: 15 }));
 
           // Build provider payload
@@ -151,14 +163,26 @@ async function startWorker() {
             `UPDATE ai_enhancement_jobs SET status = 'rendering', progress_stage = 'rendering', updated_at = NOW() WHERE id = $1`,
             [jobId]
           );
-          SSEManager.emit(jobId, { status: 'rendering', stage: 'rendering', progress: 40 });
+          SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+            status: 'rendering', 
+            stage: 'rendering', 
+            progress: 40,
+            timestamp: new Date().toISOString()
+          });
           if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'rendering', stage: 'rendering', progress: 40 }));
 
           // Submit to provider
           const result = await prov.submit(payload, {
             onProgress: (percent) => {
               const p = Math.max(40, Math.min(95, Math.round(40 + (percent * 0.6))));
-              SSEManager.emit(jobId, { status: 'rendering', stage: 'rendering', progress: p });
+              SSEManager.emit(jobId, { 
+                id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+                status: 'rendering', 
+                stage: 'rendering', 
+                progress: p,
+                timestamp: new Date().toISOString()
+              });
               if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'rendering', stage: 'rendering', progress: p }));
             },
             timeout: 60000
@@ -176,7 +200,13 @@ async function startWorker() {
             `UPDATE ai_enhancement_jobs SET status = 'postprocessing', progress_stage = 'postprocessing', updated_at = NOW() WHERE id = $1`,
             [jobId]
           );
-          SSEManager.emit(jobId, { status: 'postprocessing', stage: 'postprocessing', progress: 96 });
+          SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+            status: 'postprocessing', 
+            stage: 'postprocessing', 
+            progress: 96,
+            timestamp: new Date().toISOString()
+          });
           if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'postprocessing', stage: 'postprocessing', progress: 96 }));
 
           // Persist variants
@@ -195,7 +225,13 @@ async function startWorker() {
               `UPDATE ai_enhancement_jobs SET status = 'uploading', progress_stage = 'uploading', updated_at = NOW() WHERE id = $1`,
               [jobId]
             );
-            SSEManager.emit(jobId, { status: 'uploading', stage: 'uploading', progress: 98 });
+            SSEManager.emit(jobId, { 
+              id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+              status: 'uploading', 
+              stage: 'uploading', 
+              progress: 98,
+              timestamp: new Date().toISOString()
+            });
             if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'uploading', stage: 'uploading', progress: 98 }));
 
             // Small delay to ensure state machine processes the transition
@@ -208,7 +244,13 @@ async function startWorker() {
                WHERE id = $1`,
               [jobId, result.costMicros]
             );
-            SSEManager.emit(jobId, { status: 'completed', stage: 'completed', progress: 100 });
+            SSEManager.emit(jobId, { 
+              id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+              status: 'completed', 
+              stage: 'completed', 
+              progress: 100,
+              timestamp: new Date().toISOString()
+            });
             if (redis) redis.publish(`enhancement:${jobId}`, JSON.stringify({ status: 'completed', stage: 'completed', progress: 100 }));
           } catch (transitionErr: any) {
             // If state transition fails, log and mark as failed
@@ -218,7 +260,12 @@ async function startWorker() {
                 `UPDATE ai_enhancement_jobs SET status = 'failed', error_message = $2, updated_at = NOW() WHERE id = $1`,
                 [jobId, `State transition error: ${transitionErr.message}`]
               );
-              SSEManager.emit(jobId, { status: 'failed', error: transitionErr.message });
+              SSEManager.emit(jobId, { 
+                id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+                status: 'failed', 
+                error: transitionErr.message,
+                timestamp: new Date().toISOString()
+              });
               throw transitionErr;
             }
             throw transitionErr;
@@ -247,7 +294,12 @@ async function startWorker() {
           `UPDATE ai_enhancement_jobs SET status = 'failed', progress_stage = 'failed', error_message = $2, updated_at = NOW() WHERE id = $1`,
           [job.data.jobId, err?.message || 'worker_failed']
         );
-        SSEManager.emit(job.data.jobId, { status: 'failed', error: err?.message });
+        SSEManager.emit(job.data.jobId, { 
+          id: `event-${job.data.jobId}-${Date.now()}-${Math.random()}`,
+          status: 'failed', 
+          error: err?.message,
+          timestamp: new Date().toISOString()
+        });
         if (redis) redis.publish(`enhancement:${job.data.jobId}`, JSON.stringify({ status: 'failed', error: err?.message }));
       } catch (error) {
         console.error('[Worker] Failed to update failed job:', error);

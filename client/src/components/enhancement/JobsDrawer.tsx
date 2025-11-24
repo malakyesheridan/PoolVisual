@@ -58,8 +58,44 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     jobContext: any;
   } | null>(null);
 
-  // Stream updates for the active job
-  useJobStream(activeJobId);
+  // Stream updates for the active job with auto-apply callback
+  useJobStream(activeJobId, async (job) => {
+    // Auto-apply enhanced image when variants are ready
+    if (job.status === 'completed' && 
+        job.variants && 
+        job.variants.length > 0 && 
+        onApplyEnhancedImage && 
+        job.variants[0]?.url) {
+      console.log(`[JobsDrawer] 🎨 Auto-applying enhanced image to canvas...`);
+      const enhancedImageUrl = job.variants[0].url;
+      const currentState = useEditorStore.getState();
+      const enhancedCount = currentState.variants.filter(v => v.id !== 'original').length;
+      const label = `AI Enhanced ${enhancedCount + 1}`;
+      
+      // Preload and apply
+      try {
+        const { preloadImage } = await import('../../lib/imagePreloader');
+        const result = await preloadImage(enhancedImageUrl, {
+          maxRetries: 3,
+          timeout: 30000
+        });
+        
+        if (result.success && result.image) {
+          console.log(`[JobsDrawer] ✅ Image preloaded successfully, applying to canvas...`);
+          onApplyEnhancedImage({
+            imageUrl: enhancedImageUrl,
+            label
+          });
+          toast.success('Enhanced image applied', { description: `${label} is now active on the canvas.` });
+        } else {
+          console.warn(`[JobsDrawer] ⚠️ Image preload failed, user can manually apply`);
+        }
+      } catch (error) {
+        console.error(`[JobsDrawer] ❌ Error auto-applying image:`, error);
+        // Don't show error toast - user can manually apply
+      }
+    }
+  });
   
   // Find the most recent active enhancement (processing or just completed)
   // Use a selector that returns a stable string key to avoid infinite loops
@@ -102,127 +138,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
   }, [activeEnhancement?.id, activeEnhancement?.status]);
   
-  // BULLETPROOF: Aggressive polling for completed jobs without variants
-  // This ensures variants are fetched even if SSE fails or callback doesn't work
-  useEffect(() => {
-    if (!activeEnhancement) {
-      return;
-    }
-
-    const jobId = activeEnhancement.id;
-    const variants = activeEnhancement.variants || [];
-    const hasVariants = variants.length > 0;
-    
-    // If we already have variants, no need to poll
-    if (hasVariants) {
-      console.log(`[JobsDrawer] ✅ Job ${jobId} already has ${variants.length} variant(s)`);
-      return;
-    }
-
-    // CRITICAL FIX: Poll for ANY active job without variants
-    // The first poll will update the status from the server, so we don't need to check
-    // status or age - just poll immediately if variants are missing.
-    // This handles:
-    // 1. Jobs that completed quickly (< 2 min) but status is stale
-    // 2. Jobs that completed but SSE failed
-    // 3. Jobs that are still processing but variants might be ready
-    // The first poll will tell us the real status and fetch variants if available
-
-    console.log(`[JobsDrawer] 🔄 Starting aggressive polling for job ${jobId} (status: ${activeEnhancement.status}, no variants yet)`);
-    
-    let pollCount = 0;
-    const maxPolls = 20; // Poll for up to 2 minutes (20 * 6 seconds)
-    let pollInterval: NodeJS.Timeout | null = null;
-    
-    const pollForVariants = async () => {
-      pollCount++;
-      console.log(`[JobsDrawer] 🔍 Polling attempt ${pollCount}/${maxPolls} for job ${jobId}`);
-      
-      try {
-        const { getJob } = await import('../../services/aiEnhancement');
-        const fullJob = await getJob(jobId);
-        
-        // Update the job in store with latest status (in case status changed)
-        upsertJob(fullJob);
-        
-        if (fullJob.variants && fullJob.variants.length > 0) {
-          console.log(`[JobsDrawer] ✅ SUCCESS! Found ${fullJob.variants.length} variant(s) for job ${jobId} on attempt ${pollCount}`);
-          console.log(`[JobsDrawer] Job status after polling: ${fullJob.status}, variants: ${fullJob.variants.length}`);
-          
-          // CRITICAL: If job is completed and we have variants, auto-apply to canvas if callback is available
-          if (fullJob.status === 'completed' && onApplyEnhancedImage && fullJob.variants[0]?.url) {
-            console.log(`[JobsDrawer] 🎨 Auto-applying enhanced image to canvas...`);
-            const enhancedImageUrl = fullJob.variants[0].url;
-            const currentState = useEditorStore.getState();
-            const enhancedCount = currentState.variants.filter(v => v.id !== 'original').length;
-            const label = `AI Enhanced ${enhancedCount + 1}`;
-            
-            // Preload and apply
-            try {
-              const { preloadImage } = await import('../../lib/imagePreloader');
-              const result = await preloadImage(enhancedImageUrl, {
-                maxRetries: 3,
-                timeout: 30000
-              });
-              
-              if (result.success && result.image) {
-                console.log(`[JobsDrawer] ✅ Image preloaded successfully, applying to canvas...`);
-                onApplyEnhancedImage({
-                  imageUrl: enhancedImageUrl,
-                  label
-                });
-                toast.success('Enhanced image applied', { description: `${label} is now active on the canvas.` });
-              } else {
-                console.warn(`[JobsDrawer] ⚠️ Image preload failed, user can manually apply`);
-              }
-            } catch (error) {
-              console.error(`[JobsDrawer] ❌ Error auto-applying image:`, error);
-              // Don't show error toast - user can manually apply
-            }
-          }
-          
-          // Stop polling - we found variants
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
-          return;
-        }
-        
-        // Still no variants - continue polling
-        if (pollCount < maxPolls) {
-          console.log(`[JobsDrawer] ⏳ No variants yet for job ${jobId} (status: ${fullJob.status}), will retry in 6 seconds...`);
-        } else {
-          console.error(`[JobsDrawer] ❌ GAVE UP: No variants found after ${maxPolls} polling attempts for job ${jobId}`);
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
-        }
-      } catch (error) {
-        console.error(`[JobsDrawer] ❌ Polling error for job ${jobId} (attempt ${pollCount}):`, error);
-        // Continue polling on error (up to max attempts)
-        if (pollCount >= maxPolls) {
-          if (pollInterval) {
-            clearInterval(pollInterval);
-            pollInterval = null;
-          }
-        }
-      }
-    };
-    
-    // Poll immediately, then every 6 seconds
-    pollForVariants();
-    pollInterval = setInterval(pollForVariants, 6000);
-    
-    // Cleanup on unmount or when job changes
-    return () => {
-      if (pollInterval) {
-        console.log(`[JobsDrawer] 🛑 Stopping polling for job ${jobId}`);
-        clearInterval(pollInterval);
-      }
-    };
-  }, [activeEnhancement?.id, activeEnhancement?.status, activeEnhancement?.variants, activeEnhancement?.created_at, upsertJob]);
+  // NOTE: Polling is now handled by useJobStream hook (dual-channel pattern)
+  // This ensures parallel SSE + polling for maximum reliability
+  // No duplicate polling needed here - useJobStream handles it all
   
   // History: jobs excluding the active one, limited to last 5
   const historyJobs = React.useMemo(() => {

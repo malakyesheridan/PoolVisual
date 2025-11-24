@@ -590,7 +590,12 @@ router.post('/:id/cancel', authenticateSession, async (req, res) => {
       );
     }
 
-    SSEManager.emit(jobId, { status: 'canceled', progress: 0 });
+    SSEManager.emit(jobId, { 
+      id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+      status: 'canceled', 
+      progress: 0,
+      timestamp: new Date().toISOString()
+    });
     return res.json({ ok: true, status: 'canceled' });
   } catch (error: any) {
     return res.status(500).json({ message: error.message });
@@ -686,7 +691,12 @@ router.post('/bulk-cancel', authenticateSession, async (req, res) => {
           );
         }
         
-        SSEManager.emit(row.id, { status: 'canceled', progress: 0 });
+        SSEManager.emit(row.id, { 
+          id: `event-${row.id}-${Date.now()}-${Math.random()}`,
+          status: 'canceled', 
+          progress: 0,
+          timestamp: new Date().toISOString()
+        });
         canceled++;
       } catch (error) {
         console.error(`[BulkCancel] Failed to cancel job ${row.id}:`, error);
@@ -1067,29 +1077,35 @@ router.post('/:id/callback', async (req, res) => {
         
         if (recheckVariants.length > 0) {
           SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
             status: 'completed', 
             progress: 100,
             variants: recheckVariants,
-            completed_at: completedAt
+            completed_at: completedAt,
+            timestamp: new Date().toISOString()
           });
         } else {
           // Even emergency save failed - emit without variants, client will poll
           console.error(`[Callback] ❌ FATAL: Could not save variants even after emergency retry`);
           SSEManager.emit(jobId, { 
+            id: `event-${jobId}-${Date.now()}-${Math.random()}`,
             status: 'completed', 
             progress: 100,
             variants: [],
-            completed_at: completedAt
+            completed_at: completedAt,
+            timestamp: new Date().toISOString()
           });
         }
       } else {
         // Normal path - variants were saved successfully
         console.log(`[Callback] ✅ Variants verified: ${savedVariants.length} variant(s) ready for SSE`);
         SSEManager.emit(jobId, { 
+          id: `event-${jobId}-${Date.now()}-${Math.random()}`,
           status: 'completed', 
           progress: 100,
           variants: savedVariants,
-          completed_at: completedAt
+          completed_at: completedAt,
+          timestamp: new Date().toISOString()
         });
       }
       
@@ -1240,10 +1256,12 @@ router.post('/:id/callback', async (req, res) => {
         const completedAt2 = jobRow2[0]?.completed_at || new Date().toISOString();
         
         SSEManager.emit(jobId, { 
+          id: `event-${jobId}-${Date.now()}-${Math.random()}`,
           status: 'completed', 
           progress: 100,
           variants: recheckVariants.length > 0 ? recheckVariants : [],
-          completed_at: completedAt2
+          completed_at: completedAt2,
+          timestamp: new Date().toISOString()
         });
       } else {
         // Fetch completed_at for SSE payload
@@ -1254,16 +1272,23 @@ router.post('/:id/callback', async (req, res) => {
         const completedAt3 = jobRow3[0]?.completed_at || new Date().toISOString();
         
         SSEManager.emit(jobId, { 
+          id: `event-${jobId}-${Date.now()}-${Math.random()}`,
           status: 'completed', 
           progress: 100,
           variants: savedVariants,
-          completed_at: completedAt3
+          completed_at: completedAt3,
+          timestamp: new Date().toISOString()
         });
       }
       
       console.log(`[Callback] ✅ SSE event emitted (normal path)`);
     } else {
-      SSEManager.emit(jobId, { status: nextStatus, progress: nextProgress });
+      SSEManager.emit(jobId, { 
+        id: `event-${jobId}-${Date.now()}-${Math.random()}`,
+        status: nextStatus, 
+        progress: nextProgress,
+        timestamp: new Date().toISOString()
+      });
     }
 
     return res.json({ ok: true });
