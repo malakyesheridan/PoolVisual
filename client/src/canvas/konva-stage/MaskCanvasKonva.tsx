@@ -28,8 +28,11 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const { masks, selectedId } = useMaskStore();
-  const { assets, selectedAssetId, dispatch, assetPlaceMode, calibrationMode, photoSpace } = useEditorStore();
+  const { assets, selectedAssetId, dispatch, assetPlaceMode, calibrationMode, photoSpace, activeVariantId } = useEditorStore();
   const { draft, begin, append, updateLast, pop, cancel, canFinalize, finalize } = useDraft();
+  
+  // Check if an enhanced variant is active - if so, hide masks (enhanced images are final results)
+  const isEnhancedVariantActive = activeVariantId && activeVariantId !== 'original';
   
   // Guard against duplicate mask finalization - prevents duplicate masks when Enter is pressed multiple times
   // or when multiple handlers try to finalize the same draft
@@ -1223,19 +1226,21 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
         <Layer name="world">
           <WorldGroup camera={camera} imgFit={imgFit}>
             <MaskDraftLayer draft={draft} imgFit={imgFit} />
-            {/* Regular Masks */}
-            <MaskPolygonsLayer
-              masks={regularMasks.reduce((acc, mask) => {
-                acc[mask.id] = mask;
-                return acc;
-              }, {} as Record<string, any>)}
-              selectedId={selectedId}
-              onSelect={handleUnifiedSelect}
-              imgFit={imgFit}
-            />
+            {/* Regular Masks - Hide when enhanced variant is active */}
+            {!isEnhancedVariantActive && (
+              <MaskPolygonsLayer
+                masks={regularMasks.reduce((acc, mask) => {
+                  acc[mask.id] = mask;
+                  return acc;
+                }, {} as Record<string, any>)}
+                selectedId={selectedId}
+                onSelect={handleUnifiedSelect}
+                imgFit={imgFit}
+              />
+            )}
 
-            {/* Control Points for Point Editing */}
-            {regularMasks.map(mask => (
+            {/* Control Points for Point Editing - Hide when enhanced variant is active */}
+            {!isEnhancedVariantActive && regularMasks.map(mask => (
               <MaskControlPoints
                 key={`control-points-${mask.id}`}
                 mask={mask}
@@ -1320,8 +1325,8 @@ export function MaskCanvasKonva({ camera, imgFit, dpr = 1, activeTool }: Props) 
                 dispatch({ type: 'SET_SELECTED_ASSET', payload: assetId });
               }}
             />
-            {/* Asset Masks - rendered as masks */}
-            {isAssetsEnabled() && (
+            {/* Asset Masks - rendered as masks - Hide when enhanced variant is active */}
+            {!isEnhancedVariantActive && isAssetsEnabled() && (
             <AssetMasksLayer
               assetMasks={assetMasks}
               selectedId={selectedId}

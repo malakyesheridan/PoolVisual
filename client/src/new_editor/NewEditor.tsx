@@ -5,12 +5,12 @@ import { Toolbar } from './Toolbar';
 import { MaterialsPanel } from './MaterialsPanel';
 import { MeasurementOverlay } from './MeasurementOverlay';
 import { MaskManagementPanel } from '../components/mask/MaskManagementPanel';
-import { UnifiedTemplatesPanel } from './UnifiedTemplatesPanel';
+import { VariantsPanel } from './VariantsPanel';
 import { useEditorStore } from './store';
 import { useMaskStore } from '../maskcore/store';
 import { apiClient } from '../lib/api-client';
 import { shouldIgnoreShortcut } from '../editor/keyboard/shortcuts';
-import { Package, Square, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Square, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import { 
   Tooltip, 
   TooltipContent, 
@@ -30,7 +30,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const lastLoadedPhotoIdRef = useRef<string | null>(null);
   const justSavedRef = useRef<{ photoId: string; timestamp: number } | null>(null);
   const { dispatch, getState, jobContext, variants, activeVariantId } = useEditorStore();
-  const [activeTab, setActiveTab] = React.useState<'materials' | 'templates' | 'masks'>('materials');
+  const [activeTab, setActiveTab] = React.useState<'materials' | 'variants' | 'masks'>('materials');
   
   // Handle variant navigation
   const handlePreviousVariant = () => {
@@ -946,16 +946,16 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
                 <TooltipTrigger asChild>
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
-                      activeTab === 'templates'
+                      activeTab === 'variants'
                         ? 'text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
-                    onClick={() => setActiveTab('templates')}
+                    onClick={() => setActiveTab('variants')}
                   >
-                    <FileText size={16} />
+                    <Sparkles size={16} />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent>Templates</TooltipContent>
+                <TooltipContent>Variants</TooltipContent>
               </Tooltip>
 
               <Tooltip>
@@ -979,7 +979,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           {/* Tab Content */}
           <div className="flex-1 min-h-0 relative overflow-hidden">
             {activeTab === 'materials' && <MaterialsPanel />}
-            {activeTab === 'templates' && <UnifiedTemplatesPanel />}
+            {activeTab === 'variants' && <VariantsPanel />}
             {activeTab === 'masks' && <MaskManagementPanel />}
           </div>
         </div>

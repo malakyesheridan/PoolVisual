@@ -837,25 +837,25 @@ router.post('/:id/callback', async (req, res) => {
     const skipSignatureCheck = process.env.NODE_ENV === 'development' || process.env.SKIP_WEBHOOK_SIGNATURE === '1';
     
     if (!skipSignatureCheck) {
-      if (!sig || !ts) {
+    if (!sig || !ts) {
         console.warn(`[Callback] ⚠️ Missing signature or timestamp (skipping in dev mode)`);
         // In development, allow callbacks without signature for easier testing
         if (process.env.NODE_ENV === 'production') {
-          return res.status(400).json({ message: 'Missing signature or timestamp' });
-        }
+      return res.status(400).json({ message: 'Missing signature or timestamp' });
+    }
       } else {
-        const payload = JSON.stringify(req.body || {});
-        const { valid } = verifyWebhookSignature(
-          payload, 
-          sig, 
-          ts, 
-          process.env.N8N_WEBHOOK_SECRET || 'secret'
-        );
-        
-        if (!valid) {
+    const payload = JSON.stringify(req.body || {});
+    const { valid } = verifyWebhookSignature(
+      payload, 
+      sig, 
+      ts, 
+      process.env.N8N_WEBHOOK_SECRET || 'secret'
+    );
+    
+    if (!valid) {
           console.error(`[Callback] ❌ Invalid signature`);
           if (process.env.NODE_ENV === 'production') {
-            return res.status(401).json({ message: 'Invalid signature' });
+      return res.status(401).json({ message: 'Invalid signature' });
           } else {
             console.warn(`[Callback] ⚠️ Invalid signature but allowing in dev mode`);
           }
@@ -1076,10 +1076,10 @@ router.post('/:id/callback', async (req, res) => {
         console.log(`[Callback] 🔍 After emergency save: ${recheckVariants.length} variant(s) found`);
         
         if (recheckVariants.length > 0) {
-          SSEManager.emit(jobId, { 
+      SSEManager.emit(jobId, { 
             id: `event-${jobId}-${Date.now()}-${Math.random()}`,
-            status: 'completed', 
-            progress: 100,
+        status: 'completed', 
+        progress: 100,
             variants: recheckVariants,
             completed_at: completedAt,
             timestamp: new Date().toISOString()
@@ -1254,16 +1254,16 @@ router.post('/:id/callback', async (req, res) => {
           [jobId]
         );
         const completedAt2 = jobRow2[0]?.completed_at || new Date().toISOString();
-        
-        SSEManager.emit(jobId, { 
+      
+      SSEManager.emit(jobId, { 
           id: `event-${jobId}-${Date.now()}-${Math.random()}`,
-          status: 'completed', 
-          progress: 100,
+        status: 'completed', 
+        progress: 100,
           variants: recheckVariants.length > 0 ? recheckVariants : [],
           completed_at: completedAt2,
           timestamp: new Date().toISOString()
-        });
-      } else {
+      });
+    } else {
         // Fetch completed_at for SSE payload
         const jobRow3 = await executeQuery(
           `SELECT completed_at FROM ai_enhancement_jobs WHERE id = $1`,
@@ -1295,6 +1295,114 @@ router.post('/:id/callback', async (req, res) => {
   } catch (error: any) {
     console.error('[Callback] Error processing callback:', error);
     return res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/ai/enhancement/photo/:photoId/variants - Get all variants for a photo
+router.get('/photo/:photoId/variants', authenticateSession, async (req, res) => {
+  try {
+    const photoId = req.params.photoId;
+    const user = req.session.user;
+    
+    // Get all completed jobs for this photo
+    const jobs = await executeQuery(
+      `SELECT id, status, created_at, completed_at, options
+       FROM ai_enhancement_jobs 
+       WHERE photo_id = $1 AND user_id = $2 AND status = 'completed'
+       ORDER BY created_at DESC`,
+      [photoId, user.id]
+    );
+    
+    // Get all variants for these jobs
+    const allVariants = [];
+    for (const job of jobs) {
+      const variants = await executeQuery(
+        `SELECT 
+          v.id, 
+          v.output_url as url, 
+          v.rank, 
+          v.created_at,
+          j.id as job_id,
+          j.created_at as job_created_at
+        FROM ai_enhancement_variants v
+        JOIN ai_enhancement_jobs j ON j.id = v.job_id
+        WHERE v.job_id = $1
+        ORDER BY v.rank, v.created_at`,
+        [job.id]
+      );
+      
+      // Extract mode from job options
+      let mode: 'add_pool' | 'add_decoration' | 'blend_materials' | undefined;
+      if (job.options) {
+        try {
+          const options = typeof job.options === 'string' ? JSON.parse(job.options) : job.options;
+          mode = options.mode;
+        } catch (e) {
+          // Ignore parse errors
+        }
+      }
+      
+      // Add job context to each variant
+      variants.forEach((variant: any) => {
+        allVariants.push({
+          ...variant,
+          job_id: job.id,
+          job_created_at: job.created_at,
+          mode
+        });
+      });
+    }
+    
+    // Sort by job creation date (newest first), then by rank
+    allVariants.sort((a, b) => {
+      const jobDateDiff = new Date(b.job_created_at).getTime() - new Date(a.job_created_at).getTime();
+      if (jobDateDiff !== 0) return jobDateDiff;
+      return a.rank - b.rank;
+    });
+    
+    return res.json({ variants: allVariants });
+  } catch (err: any) {
+    console.error('[Variants] Error fetching variants for photo:', err);
+    return res.status(500).json({ message: err?.message || 'Failed to fetch variants' });
+  }
+});
+
+// DELETE /api/ai/enhancement/variants/:id - Delete a variant
+router.delete('/variants/:id', authenticateSession, async (req, res) => {
+  try {
+    const variantId = req.params.id;
+    const user = req.session.user;
+    
+    // Verify variant belongs to user's job
+    const variantCheck = await executeQuery(
+      `SELECT v.id, v.job_id, j.user_id, j.photo_id
+       FROM ai_enhancement_variants v
+       JOIN ai_enhancement_jobs j ON j.id = v.job_id
+       WHERE v.id = $1`,
+      [variantId]
+    );
+    
+    if (!variantCheck.length) {
+      return res.status(404).json({ message: 'Variant not found' });
+    }
+    
+    const variant = variantCheck[0];
+    if (variant.user_id !== user.id) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // Delete the variant
+    await executeQuery(
+      `DELETE FROM ai_enhancement_variants WHERE id = $1`,
+      [variantId]
+    );
+    
+    console.log(`[Variants] ✅ Deleted variant ${variantId} from job ${variant.job_id}`);
+    
+    return res.json({ ok: true, message: 'Variant deleted successfully' });
+  } catch (err: any) {
+    console.error('[Variants] Error deleting variant:', err);
+    return res.status(500).json({ message: err?.message || 'Failed to delete variant' });
   }
 });
 

@@ -4,6 +4,7 @@ import Konva from 'konva';
 import { MaskTexture } from './MaskTexture';
 import { useMaskStore } from '../../maskcore/store';
 import { ensureLoaded, getById } from '../../materials/registry';
+import { useEditorStore } from '../../new_editor/store';
 
 interface Props {
   stageScale: number;
@@ -17,6 +18,10 @@ export function MaskTextureLayer({ stageScale, imgFit, onSelect }: Props) {
   const pointEditingMode = useMaskStore(state => state.pointEditingMode);
   const editingMaskId = useMaskStore(state => state.editingMaskId);
   const [materialsLoaded, setMaterialsLoaded] = useState(false);
+  
+  // Check if an enhanced variant is active - if so, hide masks (enhanced images are final results)
+  const { activeVariantId } = useEditorStore();
+  const isEnhancedVariantActive = activeVariantId && activeVariantId !== 'original';
 
   // Load materials once
   useEffect(() => {
@@ -53,6 +58,13 @@ export function MaskTextureLayer({ stageScale, imgFit, onSelect }: Props) {
   // Don't render if imgFit is missing - masks need proper image fit to render correctly
   if (!imgFit) {
     console.warn('[MaskTextureLayer] Missing imgFit, skipping render');
+    return null;
+  }
+  
+  // CRITICAL: Don't render masks when an enhanced variant is active
+  // Enhanced images are final results with materials already applied - no mask overlay needed
+  if (isEnhancedVariantActive) {
+    console.log('[MaskTextureLayer] Enhanced variant active, hiding masks:', activeVariantId);
     return null;
   }
 
