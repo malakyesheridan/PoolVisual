@@ -43,14 +43,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('PDF generation did not return a valid buffer');
     }
 
-    // Set headers for PDF download
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="quote-${id.substring(0, 8)}.pdf"`);
-    res.setHeader('Content-Length', pdfBuffer.length.toString());
-    res.setHeader('Cache-Control', 'no-cache');
+    // Validate PDF buffer (PDF files start with %PDF)
+    if (pdfBuffer.length < 4 || pdfBuffer.toString('ascii', 0, 4) !== '%PDF') {
+      throw new Error('Generated PDF buffer is not a valid PDF file');
+    }
+
+    // Set headers for PDF download - use set() for multiple headers
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="quote-${id.substring(0, 8)}.pdf"`,
+      'Content-Length': pdfBuffer.length.toString(),
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    });
     
-    // Send PDF buffer - use end() for Vercel serverless functions
-    res.end(pdfBuffer);
+    // Send PDF buffer - use send() for binary data in Vercel (works better than end())
+    res.send(pdfBuffer);
   } catch (error) {
     console.error('[PDF API] Error generating PDF:', error);
     
