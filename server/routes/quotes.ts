@@ -8,7 +8,8 @@
 import type { Express, Request } from "express";
 import { storage } from '../storage.js';
 import { quoteCalculator } from '../lib/quoteCalculator.js';
-import { pdfGenerator } from '../lib/pdfGenerator.js';
+// pdfGenerator is dynamically imported to avoid bundling chromium
+// import { pdfGenerator } from '../lib/pdfGenerator.js';
 import { emailService } from '../lib/emailService.js';
 import { paymentService } from '../lib/paymentService.js';
 import { insertQuoteSchema, insertQuoteItemSchema, quoteItems } from '../../shared/schema.js';
@@ -538,6 +539,9 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Dynamically import PDF generator to avoid bundling chromium
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      
       // Generate PDF
       const pdfBuffer = await pdfGenerator.generateQuotePDF({
         quoteId: id,
@@ -585,6 +589,9 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Dynamically import PDF generator to avoid bundling chromium
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      
       // Generate PDF with watermark for preview
       const pdfBuffer = await pdfGenerator.generateQuotePDF({
         quoteId: id,

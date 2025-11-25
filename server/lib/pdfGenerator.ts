@@ -49,7 +49,10 @@ export class PDFGenerator {
           const chromium = await import('@sparticuz/chromium');
           
           // Set graphics mode to false for serverless (reduces size significantly)
-          chromium.default.setGraphicsMode(false);
+          // Check if setGraphicsMode exists before calling
+          if (chromium.default && typeof (chromium.default as any).setGraphicsMode === 'function') {
+            (chromium.default as any).setGraphicsMode(false);
+          }
           
           const executablePath = await chromium.default.executablePath();
           
