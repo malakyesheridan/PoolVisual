@@ -186,10 +186,7 @@ app.post("/api/auth/register", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
-    if (!email || !password) {
-      return res.status(400).json({ ok: false, error: "Email and password required" });
-    }
-
+    
     // In no-DB mode, return a mock user for development
     if (process.env.NO_DB_MODE === 'true') {
       req.session.user = { id: 'dev-user', email: email, username: 'dev-user' };
@@ -197,15 +194,39 @@ app.post("/api/auth/login", async (req, res) => {
       return res.json({ ok: true, user: req.session.user });
     }
 
-    const user = await storage.getUserByEmail(email);
-    if (!user || !await bcrypt.compare(password, user.password)) {
-      return res.status(401).json({ ok: false, error: "Invalid email or password" });
+    // Use enhanced authentication service
+    const { EnhancedAuthService } = await import('./lib/enhancedAuthService.js');
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'];
+    
+    const result = await EnhancedAuthService.login(
+      email,
+      password,
+      typeof ipAddress === 'string' ? ipAddress : undefined,
+      userAgent
+    );
+
+    if (!result.success) {
+      const statusCode = result.lockedUntil ? 423 : 401; // 423 = Locked
+      return res.status(statusCode).json({
+        ok: false,
+        error: result.error,
+        lockedUntil: result.lockedUntil,
+        remainingAttempts: result.remainingAttempts,
+      });
     }
 
-    req.session.user = { id: user.id, email: user.email, username: user.username };
+    // Set session
+    req.session.user = {
+      id: result.user!.id,
+      email: result.user!.email,
+      username: result.user!.username,
+    };
     await req.session.save();
+
     return res.json({ ok: true, user: req.session.user });
   } catch (e: any) {
+    console.error('[Auth/Login] Error:', e);
     return res.status(500).json({ ok: false, error: e?.message || "Login failed" });
   }
 });

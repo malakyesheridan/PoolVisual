@@ -24,8 +24,8 @@ export class PasswordService {
       throw new Error('Password cannot be empty');
     }
     
-    if (password.length < 8) {
-      throw new Error('Password must be at least 8 characters long');
+    if (password.length < 12) {
+      throw new Error('Password must be at least 12 characters long');
     }
 
     return bcrypt.hash(password, this.ROUNDS);
@@ -74,7 +74,7 @@ export class PasswordValidator {
    * @param password Plain text password
    * @returns { valid: boolean; errors: string[] }
    */
-  static validate(password: string): { valid: boolean; errors: string[] } {
+  static validate(password: string): { valid: boolean; errors: string[]; strength?: 'weak' | 'medium' | 'strong' } {
     const errors: string[] = [];
 
     if (!password) {
@@ -82,8 +82,9 @@ export class PasswordValidator {
       return { valid: false, errors };
     }
 
-    if (password.length < 8) {
-      errors.push('Password must be at least 8 characters long');
+    // Minimum 12 characters (industry standard)
+    if (password.length < 12) {
+      errors.push('Password must be at least 12 characters long');
     }
 
     if (password.length > 128) {
@@ -106,9 +107,25 @@ export class PasswordValidator {
       errors.push('Password must contain at least one special character');
     }
 
+    // Check for common/weak passwords
+    if (this.isWeakPassword(password)) {
+      errors.push('Password is too common or weak. Please choose a stronger password.');
+    }
+
+    // Calculate strength
+    let strength: 'weak' | 'medium' | 'strong' = 'weak';
+    if (errors.length === 0) {
+      if (password.length >= 16 && /[^a-zA-Z0-9]/.test(password)) {
+        strength = 'strong';
+      } else if (password.length >= 12) {
+        strength = 'medium';
+      }
+    }
+
     return {
       valid: errors.length === 0,
-      errors
+      errors,
+      strength
     };
   }
 

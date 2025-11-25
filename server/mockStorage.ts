@@ -466,6 +466,49 @@ export class MockStorage {
     };
   }
 
+  // Authentication & Security methods (mock implementations)
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const userIndex = this.users.findIndex(u => u.id === id);
+    if (userIndex === -1) {
+      throw new Error('User not found');
+    }
+    this.users[userIndex] = { ...this.users[userIndex], ...updates };
+    return this.users[userIndex];
+  }
+
+  async createLoginAttempt(data: { email: string; ipAddress?: string; userAgent?: string; success: boolean; reason?: string }): Promise<void> {
+    // Mock: just log to console
+    console.log('[MockStorage] Login attempt:', data);
+  }
+
+  async createSecurityEvent(data: { userId?: string; eventType: string; ipAddress?: string; userAgent?: string; details?: Record<string, any> }): Promise<void> {
+    // Mock: just log to console
+    console.log('[MockStorage] Security event:', data);
+  }
+
+  async getRecentFailedLoginAttempts(email: string, windowMinutes: number): Promise<number> {
+    // Mock: return 0 (no failed attempts in mock mode)
+    return 0;
+  }
+
+  async createVerificationToken(data: { identifier: string; token: string; expires: Date }): Promise<void> {
+    // Mock: just log to console
+    console.log('[MockStorage] Verification token created:', data.identifier);
+  }
+
+  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null> {
+    // Mock: return null (tokens not stored in mock mode)
+    return null;
+  }
+
+  async deleteVerificationToken(token: string): Promise<void> {
+    // Mock: no-op
+  }
+
+  async deleteVerificationTokensForIdentifier(identifier: string): Promise<void> {
+    // Mock: no-op
+  }
+
   // Initialize with some mock data
   async initializeMockData() {
     // Create a mock user with properly hashed password

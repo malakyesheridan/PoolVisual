@@ -29,9 +29,15 @@ import {
   materials,
   masks,
   quotes,
-  quoteItems
+  quoteItems,
+  loginAttempts,
+  securityEvents,
+  verificationTokens,
+  type LoginAttempt,
+  type SecurityEvent,
+  type VerificationToken
 } from "../shared/schema.js";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, gte } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
@@ -125,6 +131,16 @@ export interface IStorage {
   // Settings
   getOrgSettings(orgId: string): Promise<Settings | undefined>;
   updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings>;
+  
+  // Authentication & Security
+  updateUser(id: string, updates: Partial<User>): Promise<User>;
+  createLoginAttempt(data: { email: string; ipAddress?: string; userAgent?: string; success: boolean; reason?: string }): Promise<void>;
+  createSecurityEvent(data: { userId?: string; eventType: string; ipAddress?: string; userAgent?: string; details?: Record<string, any> }): Promise<void>;
+  getRecentFailedLoginAttempts(email: string, windowMinutes: number): Promise<number>;
+  createVerificationToken(data: { identifier: string; token: string; expires: Date }): Promise<void>;
+  getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null>;
+  deleteVerificationToken(token: string): Promise<void>;
+  deleteVerificationTokensForIdentifier(identifier: string): Promise<void>;
 }
 
 export class PostgresStorage implements IStorage {

@@ -20,6 +20,17 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Security fields
+  lockedUntil: timestamp("locked_until"),
+  failedLoginAttempts: integer("failed_login_attempts").default(0),
+  lastLoginAt: timestamp("last_login_at"),
+  loginCount: integer("login_count").default(0),
+  isActive: boolean("is_active").default(true),
+  emailVerifiedAt: timestamp("email_verified_at"),
+  // Email verification (from migration 004)
+  emailVerified: boolean("email_verified").default(false),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetExpires: timestamp("password_reset_expires"),
 });
 
 // Organizations
@@ -480,8 +491,42 @@ export const EditorStateSchema = z.object({
 });
 
 // Types
+// Login attempts audit table
+export const loginAttempts = pgTable("login_attempts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  success: boolean("success").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Security events audit table
+export const securityEvents = pgTable("security_events", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id),
+  eventType: text("event_type").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Verification tokens table
+export const verificationTokens = pgTable("verification_tokens", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  identifier: text("identifier").notNull(), // Email address
+  token: text("token").notNull().unique(), // 64-char hex token
+  expires: timestamp("expires").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type LoginAttempt = typeof loginAttempts.$inferSelect;
+export type SecurityEvent = typeof securityEvents.$inferSelect;
+export type VerificationToken = typeof verificationTokens.$inferSelect;
 export type Org = typeof orgs.$inferSelect;
 export type InsertOrg = z.infer<typeof insertOrgSchema>;
 export type Job = typeof jobs.$inferSelect;

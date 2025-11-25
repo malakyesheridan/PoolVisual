@@ -24,7 +24,7 @@ import { registerMaterialRoutes } from './materialRoutes.js';
 import { registerMaterialRoutesV2 } from "./routes/materials.js";
 import { scenes } from "./routes/scenes.js";
 import sharp from "sharp";
-import { PasswordService } from "./lib/passwordService.js";
+import { PasswordService, PasswordValidator } from "./lib/passwordService.js";
 import { PasswordResetService } from "./lib/passwordResetService.js";
 import { createBruteForceMiddleware } from "./lib/bruteForceProtection.js";
 import { storageService } from "./lib/storageService.js";
@@ -200,16 +200,41 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.post("/api/auth/register", async (req: any, res: any) => {
     try {
       const userData = insertUserSchema.parse(req.body);
-      const existingUser = await storage.getUserByEmail(userData.email);
       
+      // Enhanced password validation
+      const passwordValidation = PasswordValidator.validate(userData.password);
+      if (!passwordValidation.valid) {
+        return res.status(400).json({
+          ok: false,
+          error: "Password validation failed",
+          details: passwordValidation.errors,
+          strength: passwordValidation.strength
+        });
+      }
+
+      const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(400).json({ ok: false, error: "User already exists with this email" });
       }
 
+      // Hash password with enhanced service
       const hashedPassword = await PasswordService.hashPassword(userData.password);
       const user = await storage.createUser({
         ...userData,
-        password: hashedPassword
+        password: hashedPassword,
+        isActive: true,
+        failedLoginAttempts: 0,
+        loginCount: 0,
+      });
+
+      // Log security event
+      const { AuthAuditService } = await import('./lib/authAuditService.js');
+      const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      await AuthAuditService.logSecurityEvent({
+        userId: user.id,
+        eventType: 'user_registered',
+        ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+        userAgent: req.headers['user-agent'],
       });
 
       res.json({ 
