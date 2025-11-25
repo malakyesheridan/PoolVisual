@@ -52,13 +52,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('Generated PDF buffer is not a valid PDF file');
     }
 
-    // Set headers for PDF download - use set() for multiple headers
+    // Determine if this is a preview (inline) or download (attachment)
+    const isPreview = req.query.preview === 'true';
+    const disposition = isPreview 
+      ? `inline; filename="quote-${id.substring(0, 8)}.pdf"`
+      : `attachment; filename="quote-${id.substring(0, 8)}.pdf"`;
+
+    // Set headers for PDF - use set() for multiple headers
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="quote-${id.substring(0, 8)}.pdf"`,
+      'Content-Disposition': disposition,
       'Content-Length': pdfBuffer.length.toString(),
       'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
-      'X-Content-Type-Options': 'nosniff'
+      'X-Content-Type-Options': 'nosniff',
+      'Accept-Ranges': 'bytes'
     });
     
     // Send PDF buffer - use send() for binary data in Vercel (works better than end())

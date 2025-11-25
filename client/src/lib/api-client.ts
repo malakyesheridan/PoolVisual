@@ -350,11 +350,12 @@ class ApiClient {
     });
   }
 
-  async generateQuotePDF(id: string, options?: { watermark?: boolean; terms?: boolean; message?: string }) {
+  async generateQuotePDF(id: string, options?: { watermark?: boolean; terms?: boolean; message?: string; preview?: boolean }) {
     const params = new URLSearchParams();
     if (options?.watermark) params.append('watermark', 'true');
     if (options?.terms) params.append('terms', 'true');
     if (options?.message) params.append('message', options.message);
+    if (options?.preview) params.append('preview', 'true');
     
     const queryString = params.toString();
     const url = `/quotes/${id}/pdf${queryString ? `?${queryString}` : ''}`;
