@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -12,6 +12,18 @@ import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Materials from "@/pages/materials";
 // Code splitting for better performance - lazy load heavy pages
+
+// Simple loading component for Suspense fallback
+function PageLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <div className="text-center">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <p className="mt-4 text-sm text-gray-600">Loading...</p>
+      </div>
+    </div>
+  );
+}
 const Jobs = React.lazy(() => import("@/pages/jobs"));
 const JobDetail = React.lazy(() => import("@/pages/job-detail"));
 const CanvasEditorPage = React.lazy(() => import("@/pages/CanvasEditorPage"));
