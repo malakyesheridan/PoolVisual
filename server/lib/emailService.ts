@@ -7,7 +7,8 @@
 
 import { Resend } from 'resend';
 import { storage } from '../storage.js';
-import { pdfGenerator } from './pdfGenerator.js';
+// pdfGenerator is dynamically imported to avoid bundling chromium
+// import { pdfGenerator } from './pdfGenerator.js';
 import { Quote, Org, Settings } from '../../shared/schema.js';
 
 export interface EmailOptions {
@@ -52,6 +53,9 @@ export class EmailService {
     try {
       // Gather email data
       const emailData = await this.gatherQuoteEmailData(quoteId);
+      
+      // Dynamically import PDF generator to avoid bundling chromium
+      const { pdfGenerator } = await import('./pdfGenerator.js');
       
       // Generate PDF attachment
       const pdfBuffer = await pdfGenerator.generateQuotePDF({
