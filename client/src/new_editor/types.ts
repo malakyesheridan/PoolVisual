@@ -216,7 +216,7 @@ export interface EditorState {
 
 export type EditorAction = 
   | { type: 'SET_PHOTO_SPACE'; payload: Partial<PhotoSpace> }
-  | { type: 'SET_IMAGE'; payload: { url: string; width: number; height: number; naturalWidth?: number; naturalHeight?: number } }
+  | { type: 'SET_IMAGE'; payload: { url: string; width: number; height: number; naturalWidth?: number; naturalHeight?: number; photoId?: string } }
   | { type: 'SET_STATE'; payload: EditorState['state'] }
   | { type: 'SET_JOB_CONTEXT'; payload: { jobId: string; photoId: string } }
   | { type: 'SET_ACTIVE_TOOL'; payload: EditorState['activeTool'] }
@@ -263,6 +263,7 @@ export type EditorAction =
   // Canvas variant actions
   | { type: 'ADD_VARIANT'; payload: CanvasVariant }
   | { type: 'SET_ACTIVE_VARIANT'; payload: string | null }
+  | { type: 'SET_VARIANTS'; payload: { variants: CanvasVariant[]; activeVariantId: string | null } }
   | { type: 'UPDATE_VARIANT_LOADING_STATE'; payload: { variantId: string; loadingState: 'idle' | 'loading' | 'loaded' | 'error'; errorMessage?: string; loadedAt?: number } }
   | { type: 'INCREMENT_VARIANT_RETRY'; payload: { variantId: string } }
   // NEW: Point editing actions
@@ -276,4 +277,5 @@ export type EditorAction =
   // NEW: Canvas variant actions
   | { type: 'ADD_VARIANT'; payload: CanvasVariant }
   | { type: 'SET_ACTIVE_VARIANT'; payload: string | null }
+  | { type: 'SET_VARIANTS'; payload: { variants: CanvasVariant[]; activeVariantId: string | null } }
   | { type: 'REMOVE_VARIANT'; payload: string }

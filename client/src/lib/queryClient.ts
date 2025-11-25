@@ -71,8 +71,10 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: 5 * 60 * 1000, // 5 minutes
-      gcTime: 10 * 60 * 1000, // 10 minutes
+      refetchOnMount: true, // Refetch on mount to ensure fresh data
+      refetchOnReconnect: true,
+      staleTime: 2 * 60 * 1000, // 2 minutes - reduced for better responsiveness
+      gcTime: 5 * 60 * 1000, // 5 minutes - reduced for memory efficiency
       retry: (failureCount, error) => {
         const appError = parseError(error);
         

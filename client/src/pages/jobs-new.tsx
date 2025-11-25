@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useLocation } from 'wouter';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { toast } from "@/lib/toast";
-import { ArrowLeft, User, MapPin, Phone, Mail } from "lucide-react";
+import { ArrowLeft, User, MapPin, Phone, Mail, Info, Building2 } from "lucide-react";
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { jobSchema, type JobFormData } from '@/lib/form-validation';
@@ -26,7 +26,6 @@ export default function JobsNew() {
       address: ''
     }
   });
-
 
   const createJobMutation = useMutation({
     mutationFn: (data: any) => apiClient.createJob(data),
@@ -64,9 +63,8 @@ export default function JobsNew() {
   };
 
   return (
-    <div className="bg-slate-50">
-      
-      <div className="max-w-2xl mx-auto px-6 py-8">
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-3xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button 
@@ -74,89 +72,130 @@ export default function JobsNew() {
             size="icon"
             onClick={() => navigate('/jobs')}
             data-testid="button-back"
+            className="hover:bg-slate-100"
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
           
           <div>
-            <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
+            <h1 className="text-3xl font-bold text-slate-900" data-testid="text-page-title">
               Create New Job
             </h1>
-            <p className="text-slate-600 mt-1">
-              Enter client details to start a new pool renovation project
+            <p className="text-slate-600 mt-1.5 text-sm">
+              Enter comprehensive client details to start a new pool renovation project
             </p>
           </div>
         </div>
 
-        {/* Form */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5" />
-              Client Information
-            </CardTitle>
+        {/* Form Card - Enhanced Design */}
+        <Card className="border-slate-200 shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+                <User className="w-5 h-5 text-blue-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl text-slate-900">Client Information</CardTitle>
+                <CardDescription className="text-sm text-slate-500 mt-0.5">
+                  All fields marked with * are required
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <Form {...form}>
               <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-                <FormField
-                  name="clientName"
-                  label="Client Name"
-                  placeholder="Mrs. Johnson"
-                  required
-                  disabled={isSubmitting || createJobMutation.isPending}
-                />
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Client Name - Primary Field */}
+                <div className="space-y-2">
                   <FormField
-                    name="clientPhone"
-                    label="Phone Number"
-                    type="tel"
-                    placeholder="+61 400 123 456"
-                    icon={<Phone className="w-4 h-4" />}
+                    name="clientName"
+                    label="Client Name"
+                    placeholder="e.g., Mrs. Johnson, John Smith"
+                    required
                     disabled={isSubmitting || createJobMutation.isPending}
                   />
-
-                  <FormField
-                    name="clientEmail"
-                    label="Email Address"
-                    type="email"
-                    placeholder="client@example.com"
-                    icon={<Mail className="w-4 h-4" />}
-                    disabled={isSubmitting || createJobMutation.isPending}
-                  />
+                  <p className="text-xs text-slate-500 ml-1">
+                    Full name of the client or primary contact person
+                  </p>
                 </div>
 
-                <FormField
-                  name="address"
-                  label="Property Address"
-                  type="textarea"
-                  placeholder="123 Ocean View Drive, Bondi Beach NSW 2026"
-                  icon={<MapPin className="w-4 h-4" />}
-                  rows={3}
-                  disabled={isSubmitting || createJobMutation.isPending}
-                />
+                {/* Contact Information Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <FormField
+                      name="clientPhone"
+                      label="Phone Number"
+                      type="tel"
+                      placeholder="+61 400 123 456"
+                      icon={<Phone className="w-4 h-4" />}
+                      disabled={isSubmitting || createJobMutation.isPending}
+                    />
+                    <p className="text-xs text-slate-500 ml-1">
+                      Include country code for international numbers
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <FormField
+                      name="clientEmail"
+                      label="Email Address"
+                      type="email"
+                      placeholder="client@example.com"
+                      icon={<Mail className="w-4 h-4" />}
+                      disabled={isSubmitting || createJobMutation.isPending}
+                    />
+                    <p className="text-xs text-slate-500 ml-1">
+                      Used for quote delivery and communications
+                    </p>
+                  </div>
+                </div>
+
+                {/* Property Address */}
+                <div className="space-y-2">
+                  <FormField
+                    name="address"
+                    label="Property Address"
+                    type="textarea"
+                    placeholder="123 Ocean View Drive, Bondi Beach NSW 2026, Australia"
+                    icon={<MapPin className="w-4 h-4" />}
+                    rows={3}
+                    disabled={isSubmitting || createJobMutation.isPending}
+                  />
+                  <p className="text-xs text-slate-500 ml-1">
+                    Full address including street, suburb, state, and postcode. Used for material delivery calculations and site visits.
+                  </p>
+                </div>
 
                 {/* Action Buttons */}
-                <div className="flex space-x-4 pt-6 border-t border-slate-200">
+                <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
                   <Button 
                     type="button"
                     variant="outline"
                     onClick={() => navigate('/jobs')}
-                    className="flex-1"
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-cancel"
+                    className="min-w-[100px]"
                   >
                     Cancel
                   </Button>
                   
                   <Button 
                     type="submit"
-                    className="flex-1"
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-create-job"
+                    className="min-w-[140px] bg-blue-600 hover:bg-blue-700 text-white"
                   >
-                    {isSubmitting || createJobMutation.isPending ? 'Creating...' : 'Create Job'}
+                    {isSubmitting || createJobMutation.isPending ? (
+                      <>
+                        <span className="animate-spin mr-2">⏳</span>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="w-4 h-4 mr-2" />
+                        Create Job
+                      </>
+                    )}
                   </Button>
                 </div>
               </form>
@@ -164,15 +203,31 @@ export default function JobsNew() {
           </CardContent>
         </Card>
 
-        {/* Tips */}
-        <Card className="mt-6 bg-blue-50 border-blue-200">
+        {/* Tips Card - Enhanced Design */}
+        <Card className="mt-6 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50 shadow-sm">
           <CardContent className="p-6">
-            <h3 className="font-medium text-blue-900 mb-2">Getting Started Tips</h3>
-            <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Ensure all client contact details are accurate for quote delivery</li>
-              <li>• The property address will be used for material delivery calculations</li>
-              <li>• You can upload photos and start creating estimates once the job is created</li>
-            </ul>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Info className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-blue-900 mb-3 text-sm">Getting Started Tips</h3>
+                <ul className="text-sm text-blue-800 space-y-2">
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>Ensure all client contact details are accurate for quote delivery and follow-up communications</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>The property address will be used for material delivery calculations and scheduling site visits</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span>You can upload photos and start creating estimates once the job is created</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

@@ -20,14 +20,21 @@ interface PDFPreviewProps {
 
 export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [pdfData, setPdfData] = useState<{ pdf: string; filename: string } | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadPDF = async () => {
     setIsLoading(true);
     try {
-      const data = await apiClient.previewQuotePDF(quoteId);
-      setPdfData(data);
+      // Get PDF as blob for better browser compatibility
+      const blob = await apiClient.generateQuotePDF(quoteId, {
+        watermark: false,
+        terms: true
+      });
+      
+      // Create blob URL for preview
+      const blobUrl = URL.createObjectURL(blob);
+      setPdfBlobUrl(blobUrl);
     } catch (error: any) {
       toast({
         title: "Error loading PDF",
@@ -72,8 +79,23 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
   useEffect(() => {
     if (isOpen) {
       loadPDF();
+    } else {
+      // Clear blob URL when modal closes
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+        setPdfBlobUrl(null);
+      }
     }
   }, [isOpen, quoteId]);
+
+  // Cleanup blob URL when component unmounts or blob URL changes
+  useEffect(() => {
+    return () => {
+      if (pdfBlobUrl) {
+        URL.revokeObjectURL(pdfBlobUrl);
+      }
+    };
+  }, [pdfBlobUrl]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -111,9 +133,9 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
                 <p className="text-slate-600">Loading PDF preview...</p>
               </div>
             </div>
-          ) : pdfData ? (
+          ) : pdfBlobUrl ? (
             <iframe
-              src={`data:application/pdf;base64,${pdfData.pdf}`}
+              src={pdfBlobUrl}
               className="w-full h-full min-h-[600px] border-0"
               title="PDF Preview"
             />

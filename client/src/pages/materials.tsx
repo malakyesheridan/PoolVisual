@@ -11,6 +11,7 @@ import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgs } from "@/hooks/useOrgs";
 import { 
   Plus, 
   Search, 
@@ -85,15 +86,14 @@ export default function Materials() {
 
   const { toast } = useToast();
 
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
+  // Use shared hook for orgs
+  const { data: orgs = [] } = useOrgs();
 
   const { data: materials = [], isLoading } = useQuery({
     queryKey: ['/api/materials', selectedOrgId, selectedCategory],
     queryFn: () => selectedOrgId ? apiClient.getMaterials(selectedOrgId, selectedCategory) : Promise.resolve([]),
     enabled: !!selectedOrgId,
+    staleTime: 2 * 60 * 1000, // 2 minutes - materials don't change frequently
   });
 
   const createMaterialMutation = useMutation({

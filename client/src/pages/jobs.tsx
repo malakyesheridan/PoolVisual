@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import React from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgs } from "@/hooks/useOrgs";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +39,7 @@ import {
   FolderOpen,
   Eye
 } from "lucide-react";
+import { ClientInfoModal } from "@/components/jobs/ClientInfoModal";
 import { EmptyState } from "@/components/common/EmptyState";
 import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
 import { formatDistanceToNow } from "date-fns";
@@ -48,104 +51,72 @@ export default function Jobs() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [clientInfoModalOpen, setClientInfoModalOpen] = useState(false);
+  const [selectedJobForClientInfo, setSelectedJobForClientInfo] = useState<any>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
+  const { data: orgs = [] } = useOrgs();
 
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['/api/jobs', selectedOrgId],
     queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
     enabled: !!selectedOrgId,
+    staleTime: 1 * 60 * 1000, // 1 minute - jobs list changes infrequently
   });
 
-  // Fetch photos and canvas work status for each job
-  const { data: jobsWithCanvasStatus = [], isLoading: isLoadingCanvasStatus } = useQuery({
-    queryKey: ['/api/jobs/canvas-status', selectedOrgId],
+  // Fetch canvas work status using optimized batch endpoint (replaces N+1 queries)
+  const { data: canvasStatusMap = {}, isLoading: isLoadingCanvasStatus } = useQuery({
+    queryKey: ['/api/jobs/canvas-status', selectedOrgId, jobs.map(j => j.id).sort().join(',')],
     queryFn: async () => {
-      if (!selectedOrgId) return [];
+      if (!selectedOrgId || jobs.length === 0) return {};
       
-      const jobsWithStatus = await Promise.all(
-        jobs.map(async (job) => {
-          try {
-            const photos = await apiClient.getJobPhotos(job.id);
-            
-            // Check for masks on each photo to determine canvas work
-            const photosWithCanvasWork = await Promise.all(
-              photos.map(async (photo) => {
-                try {
-                  const masks = await apiClient.getMasks(photo.id);
-                  return masks.length > 0 ? { ...photo, maskCount: masks.length } : null;
-                } catch (error) {
-                  console.warn(`Failed to fetch masks for photo ${photo.id}:`, error);
-                  return null;
-                }
-              })
-            );
-            
-            const validPhotosWithWork = photosWithCanvasWork.filter(p => p !== null);
-            
-            // Get the most recent mask creation date for lastCanvasWork
-            let lastCanvasWork: number | null = null;
-            for (const photo of validPhotosWithWork) {
-              try {
-                const masks = await apiClient.getMasks(photo!.id);
-                if (masks.length > 0) {
-                  const maxCreatedAt = Math.max(...masks.map(m => new Date(m.createdAt || 0).getTime()));
-                  if (maxCreatedAt > 0 && (!lastCanvasWork || maxCreatedAt > lastCanvasWork)) {
-                    lastCanvasWork = maxCreatedAt;
-                  }
-                }
-              } catch (error) {
-                // Ignore errors for individual photos
-              }
-            }
-            
-            return {
-              ...job,
-              photos,
-              photosWithCanvasWork: validPhotosWithWork,
-              canvasWorkProgress: {
-                totalPhotos: photos.length,
-                photosWithCanvasWork: validPhotosWithWork.length,
-                completionPercentage: photos.length > 0 ? Math.round((validPhotosWithWork.length / photos.length) * 100) : 0,
-                lastCanvasWork: lastCanvasWork
-              }
-            };
-          } catch (error) {
-            console.warn(`Failed to fetch canvas status for job ${job.id}:`, error);
-            return {
-              ...job,
-              photos: [],
-              photosWithCanvasWork: [],
-              canvasWorkProgress: {
-                totalPhotos: 0,
-                photosWithCanvasWork: 0,
-                completionPercentage: 0,
-                lastCanvasWork: null
-              }
-            };
-          }
-        })
+      // Use batch endpoint to fetch all canvas status in one request
+      const canvasStatus = await apiClient.getJobsCanvasStatus(
+        selectedOrgId,
+        jobs.map(j => j.id)
       );
       
-      return jobsWithStatus;
+      // Convert array to map for O(1) lookup
+      return canvasStatus.reduce((acc: Record<string, any>, status: any) => {
+        acc[status.jobId] = status.canvasWorkProgress;
+        return acc;
+      }, {});
     },
     enabled: !!selectedOrgId && jobs.length > 0,
+    staleTime: 2 * 60 * 1000, // 2 minutes - canvas status doesn't change frequently
   });
 
-  // Auto-select first org if available
-  if (!selectedOrgId && orgs.length > 0) {
-    setSelectedOrgId(orgs[0].id);
-  }
+  // Merge jobs with canvas status (memoized for performance)
+  const jobsWithCanvasStatus = useMemo(() => {
+    return jobs.map(job => ({
+      ...job,
+      canvasWorkProgress: canvasStatusMap[job.id] || {
+        totalPhotos: 0,
+        photosWithCanvasWork: 0,
+        completionPercentage: 0,
+        lastCanvasWork: null
+      }
+    }));
+  }, [jobs, canvasStatusMap]);
 
-  const filteredJobs = jobsWithCanvasStatus.filter(job =>
-    job.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    job.address?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Auto-select first org if available (use effect to avoid render issues)
+  useEffect(() => {
+    if (!selectedOrgId && orgs.length > 0) {
+      setSelectedOrgId(orgs[0].id);
+    }
+  }, [orgs.length, selectedOrgId]);
+
+  // Memoize filtered jobs to prevent unnecessary recalculations
+  const filteredJobs = useMemo(() => {
+    if (!searchTerm) return jobsWithCanvasStatus;
+    
+    const lowerSearch = searchTerm.toLowerCase();
+    return jobsWithCanvasStatus.filter(job =>
+      job.clientName.toLowerCase().includes(lowerSearch) ||
+      job.address?.toLowerCase().includes(lowerSearch)
+    );
+  }, [jobsWithCanvasStatus, searchTerm]);
 
   // Calculate job health indicator (green if no issues, yellow/red if there are)
   const hasOverdueJobs = filteredJobs.some(job => {
@@ -487,12 +458,27 @@ export default function Jobs() {
                               </div>
                       
                       {/* Right Side: Actions Cluster */}
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        {job.photos.length > 0 && job.photos.length > 1 && (
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {job.canvasWorkProgress.totalPhotos > 0 && job.canvasWorkProgress.totalPhotos > 1 && (
                           <span className="rounded-full bg-slate-100 text-slate-600 text-xs px-3 py-1">
-                            {job.photos.length} photos
+                            {job.canvasWorkProgress.totalPhotos} photos
                           </span>
                         )}
+                        
+                        {/* View Client Info Button */}
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedJobForClientInfo(job);
+                            setClientInfoModalOpen(true);
+                          }}
+                          data-testid={`button-view-client-info-${job.id}`}
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all duration-150"
+                          aria-label="View client information"
+                          title="View client information"
+                        >
+                          <User className="w-4 h-4" />
+                        </button>
                           
                         <button 
                             onClick={(e) => {
@@ -500,8 +486,9 @@ export default function Jobs() {
                               navigate(`/jobs/${job.id}`);
                             }}
                             data-testid={`button-view-job-${job.id}`}
-                          className="text-slate-400 hover:text-slate-700 transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-all duration-150"
                           aria-label="View job"
+                          title="View job"
                           >
                           <Eye className="w-4 h-4" />
                         </button>
@@ -562,6 +549,18 @@ export default function Jobs() {
           </div>
         </section>
       </div>
+
+      {/* Client Info Modal */}
+      {selectedJobForClientInfo && (
+        <ClientInfoModal
+          isOpen={clientInfoModalOpen}
+          onClose={() => {
+            setClientInfoModalOpen(false);
+            setSelectedJobForClientInfo(null);
+          }}
+          job={selectedJobForClientInfo}
+        />
+      )}
     </div>
   );
 }

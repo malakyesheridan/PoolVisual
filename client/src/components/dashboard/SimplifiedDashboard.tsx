@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api-client';
+import { useOrgs } from '../../hooks/useOrgs';
 import { MetricCards } from './MetricCards';
 import { ProjectList } from './ProjectList';
 import { QuickInsights } from './QuickInsights';
@@ -25,11 +26,8 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
 
-  // Fetch organizations
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
+  // Fetch organizations (using shared hook)
+  const { data: orgs = [] } = useOrgs();
 
   // Auto-select first org if available (matching Jobs page logic exactly)
   useEffect(() => {
@@ -38,27 +36,12 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
     }
   }, [selectedOrgId, orgs]);
 
-  // Fetch jobs for the selected organization (same query as Jobs page)
+  // Fetch jobs for the selected organization (optimized - no N+1 queries)
   const { data: jobs = [], isLoading: jobsLoading, error: jobsError } = useQuery({
     queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: async () => {
-      if (!selectedOrgId) return [];
-      const jobsList = await apiClient.getJobs(selectedOrgId);
-      // Fetch photos for each job
-      const jobsWithPhotos = await Promise.all(
-        jobsList.map(async (job) => {
-          try {
-            const photos = await apiClient.getJobPhotos(job.id);
-            return { ...job, photos };
-          } catch (error) {
-            console.warn(`Failed to fetch photos for job ${job.id}:`, error);
-            return { ...job, photos: [] };
-          }
-        })
-      );
-      return jobsWithPhotos;
-    },
+    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
     enabled: !!selectedOrgId,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
   // Fetch quotes for metrics calculation
@@ -66,17 +49,24 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
     queryKey: ['/api/quotes', selectedOrgId],
     queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
     enabled: !!selectedOrgId,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
-  const filteredJobs = jobs.filter(job => {
-    const matchesSearch = !searchTerm || 
-      job.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      job.address?.toLowerCase().includes(searchTerm.toLowerCase());
+  // Memoize filtered jobs for performance
+  const filteredJobs = React.useMemo(() => {
+    if (!searchTerm && filterStatus === 'all') return jobs;
     
-    const matchesStatus = filterStatus === 'all' || job.status === filterStatus;
-    
-    return matchesSearch && matchesStatus;
-  });
+    const lowerSearch = searchTerm?.toLowerCase() || '';
+    return jobs.filter(job => {
+      const matchesSearch = !searchTerm || 
+        job.clientName?.toLowerCase().includes(lowerSearch) ||
+        job.address?.toLowerCase().includes(lowerSearch);
+      
+      const matchesStatus = filterStatus === 'all' || job.status === filterStatus;
+      
+      return matchesSearch && matchesStatus;
+    });
+  }, [jobs, searchTerm, filterStatus]);
 
   if (jobsLoading) {
     return (

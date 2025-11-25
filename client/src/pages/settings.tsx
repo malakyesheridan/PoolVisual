@@ -10,6 +10,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgs } from "@/hooks/useOrgs";
 import { 
   Settings as SettingsIcon, 
   Palette, 
@@ -32,18 +33,16 @@ export default function Settings() {
 
   const { toast } = useToast();
 
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
+  const { data: orgs = [] } = useOrgs();
 
   const { data: settings } = useQuery({
     queryKey: ['/api/settings', selectedOrgId],
     queryFn: () => selectedOrgId ? apiClient.getSettings(selectedOrgId) : Promise.resolve(null),
     enabled: !!selectedOrgId,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
-  // Update form data when settings change
+  // Update form data when settings change (memoized)
   useEffect(() => {
     if (settings) {
       setFormData({
@@ -74,10 +73,12 @@ export default function Settings() {
     },
   });
 
-  // Auto-select first org if available
-  if (!selectedOrgId && orgs.length > 0) {
-    setSelectedOrgId(orgs[0].id);
-  }
+  // Auto-select first org if available (use effect to avoid render issues)
+  useEffect(() => {
+    if (!selectedOrgId && orgs.length > 0) {
+      setSelectedOrgId(orgs[0].id);
+    }
+  }, [selectedOrgId, orgs.length]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -539,6 +539,75 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Batch endpoint for canvas status - optimized to reduce N+1 queries
+  app.get("/api/jobs/canvas-status", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { orgId, jobIds } = req.query;
+      if (!orgId) {
+        return res.status(400).json({ message: "orgId parameter is required" });
+      }
+
+      // Verify org access
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied to this organization" });
+      }
+
+      // Parse jobIds if provided (comma-separated)
+      const jobIdArray = jobIds ? (jobIds as string).split(',').filter(Boolean) : null;
+
+      // Use optimized batch query to fetch all canvas status in one go
+      const { executeQuery } = await import('./lib/db.js');
+      
+      // Build query to get all canvas status efficiently
+      let query = `
+        SELECT 
+          j.id as job_id,
+          COUNT(DISTINCT p.id) as total_photos,
+          COUNT(DISTINCT CASE WHEN m.id IS NOT NULL THEN p.id END) as photos_with_canvas_work,
+          MAX(m.created_at) as last_canvas_work
+        FROM jobs j
+        LEFT JOIN photos p ON p.job_id = j.id
+        LEFT JOIN masks m ON m.photo_id = p.id
+        WHERE j.org_id = $1
+      `;
+      
+      const params: any[] = [orgId];
+      
+      if (jobIdArray && jobIdArray.length > 0) {
+        query += ` AND j.id = ANY($2::uuid[])`;
+        params.push(jobIdArray);
+      }
+      
+      query += `
+        GROUP BY j.id
+        ORDER BY j.created_at DESC
+      `;
+
+      const results = await executeQuery(query, params);
+
+      // Transform results to match expected format
+      const canvasStatus = results.map((row: any) => ({
+        jobId: row.job_id,
+        canvasWorkProgress: {
+          totalPhotos: parseInt(row.total_photos) || 0,
+          photosWithCanvasWork: parseInt(row.photos_with_canvas_work) || 0,
+          completionPercentage: row.total_photos > 0 
+            ? Math.round((parseInt(row.photos_with_canvas_work) / parseInt(row.total_photos)) * 100)
+            : 0,
+          lastCanvasWork: row.last_canvas_work ? new Date(row.last_canvas_work).getTime() : null
+        }
+      }));
+
+      res.json(canvasStatus);
+    } catch (error) {
+      console.error('[Canvas Status Batch] Error:', error);
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   app.get("/api/jobs/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const jobId = req.params.id;

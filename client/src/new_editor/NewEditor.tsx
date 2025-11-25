@@ -10,7 +10,7 @@ import { useEditorStore } from './store';
 import { useMaskStore } from '../maskcore/store';
 import { apiClient } from '../lib/api-client';
 import { shouldIgnoreShortcut } from '../editor/keyboard/shortcuts';
-import { Package, Square, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Package, Square, Sparkles, ChevronLeft, ChevronRight, PanelLeft, PanelRight } from 'lucide-react';
 import { 
   Tooltip, 
   TooltipContent, 
@@ -29,8 +29,84 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const resizeHandleRef = useRef<HTMLDivElement>(null);
   const lastLoadedPhotoIdRef = useRef<string | null>(null);
   const justSavedRef = useRef<{ photoId: string; timestamp: number } | null>(null);
-  const { dispatch, getState, jobContext, variants, activeVariantId } = useEditorStore();
+  const { dispatch, getState, jobContext, variants, activeVariantId, masks } = useEditorStore();
   const [activeTab, setActiveTab] = React.useState<'materials' | 'variants' | 'masks'>('materials');
+  
+  // Sidebar width state with localStorage persistence
+  const [sidebarWidth, setSidebarWidth] = React.useState(() => {
+    const saved = localStorage.getItem('poolVisual-sidebarWidth');
+    return saved ? parseInt(saved, 10) : 320;
+  });
+  
+  // Sidebar collapsed/expanded state with localStorage persistence
+  const [isSidebarOpen, setIsSidebarOpen] = React.useState(() => {
+    const saved = localStorage.getItem('poolVisual-sidebarOpen');
+    return saved ? saved === 'true' : false; // Default to closed for fresh images
+  });
+  
+  // Resize state
+  const [isResizing, setIsResizing] = React.useState(false);
+  
+  // Track if this is a fresh image upload (no masks exist yet)
+  const [isFreshImage, setIsFreshImage] = React.useState(true);
+  
+  // Track previous mask count to detect new mask creation
+  const prevMaskCountRef = useRef(masks.length);
+  const prevImageUrlRef = useRef(useEditorStore.getState().imageUrl);
+  
+  // Listen for mask creation to auto-open sidebar
+  useEffect(() => {
+    const currentMasks = masks;
+    const currentMaskCount = currentMasks.length;
+    const prevMaskCount = prevMaskCountRef.current;
+    
+    // Check if a new mask was just created
+    if (currentMaskCount > prevMaskCount && !isSidebarOpen) {
+      // New mask created and sidebar is closed - open it
+      setIsSidebarOpen(true);
+      setActiveTab('materials');
+      setIsFreshImage(false);
+      localStorage.setItem('poolVisual-sidebarOpen', 'true');
+      console.log('[NewEditor] Mask created, auto-opening sidebar');
+    }
+    
+    // Update ref
+    prevMaskCountRef.current = currentMaskCount;
+    
+    // If no masks, mark as fresh image
+    if (currentMaskCount === 0) {
+      setIsFreshImage(true);
+    }
+  }, [masks.length, isSidebarOpen]);
+  
+  // Close sidebar when fresh image is uploaded (SET_IMAGE action)
+  // Use selector to get imageUrl reactively instead of calling getState() in dependency array
+  const imageUrl = useEditorStore(state => state.imageUrl);
+  useEffect(() => {
+    const currentImageUrl = imageUrl;
+    const prevImageUrl = prevImageUrlRef.current;
+    
+    // If image URL changed and we have no masks, close sidebar
+    if (currentImageUrl && currentImageUrl !== prevImageUrl && prevImageUrl !== undefined) {
+      const currentMasks = useEditorStore.getState().masks;
+      if (currentMasks.length === 0) {
+        setIsSidebarOpen(false);
+        setIsFreshImage(true);
+        localStorage.setItem('poolVisual-sidebarOpen', 'false');
+        console.log('[NewEditor] Fresh image uploaded, closing sidebar');
+      }
+    }
+    
+    // Update ref
+    prevImageUrlRef.current = currentImageUrl;
+  }, [imageUrl]);
+  
+  // Toggle sidebar function
+  const toggleSidebar = () => {
+    const newState = !isSidebarOpen;
+    setIsSidebarOpen(newState);
+    localStorage.setItem('poolVisual-sidebarOpen', newState.toString());
+  };
   
   // Phase 3: Listen for navigation to variants tab
   useEffect(() => {
@@ -91,15 +167,6 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   console.log('[NewEditor] Component mounted. Props:', { jobId, photoId });
   console.log('[NewEditor] Job context:', jobContext);
   console.log('[NewEditor] Effective IDs:', { effectiveJobId, effectivePhotoId });
-  
-  // Sidebar width state with localStorage persistence
-  const [sidebarWidth, setSidebarWidth] = React.useState(() => {
-    const saved = localStorage.getItem('poolVisual-sidebarWidth');
-    return saved ? parseInt(saved, 10) : 320;
-  });
-  
-  // Resize state
-  const [isResizing, setIsResizing] = React.useState(false);
   
   // PHASE 0: Reality & Single Store - DEV Build Chip
   // const buildStamp = React.useMemo(() => Date.now(), []);
@@ -546,6 +613,60 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
       // Get fresh state directly (not from closure)
       const currentState = useEditorStore.getState();
       
+      // CRITICAL FIX: Check if we have persisted variants for this photo
+      // If we do, restore them first before loading the photo
+      if (photoIdToUse && typeof window !== 'undefined') {
+        try {
+          const { loadVariantState } = await import('./variantPersistence');
+          const restored = loadVariantState(photoIdToUse);
+          if (restored && restored.variants.length > 0 && restored.activeVariantId) {
+            const activeVariant = restored.variants.find(v => v.id === restored.activeVariantId);
+            if (activeVariant && activeVariant.imageUrl) {
+              // We have a persisted active variant - check if it's already loaded
+              if (currentState.imageUrl === activeVariant.imageUrl && 
+                  currentState.activeVariantId === restored.activeVariantId) {
+                console.log('[NewEditor] Active variant already loaded, skipping photo load:', {
+                  photoId: photoIdToUse,
+                  activeVariantId: restored.activeVariantId,
+                  imageUrl: activeVariant.imageUrl
+                });
+                return;
+              }
+              
+              // Restore variants to store
+              console.log('[NewEditor] Restoring persisted variants before loading photo:', {
+                variantsCount: restored.variants.length,
+                activeVariantId: restored.activeVariantId
+              });
+              
+              // Update Original variant URL if needed (will be set by SET_IMAGE)
+              const updatedVariants = restored.variants.map(v => 
+                v.id === 'original' ? { ...v, imageUrl: currentState.imageUrl || v.imageUrl } : v
+              );
+              
+              dispatch({
+                type: 'SET_VARIANTS',
+                payload: {
+                  variants: updatedVariants,
+                  activeVariantId: restored.activeVariantId
+                }
+              });
+              
+              // If we have an active variant that's not the original, use its image
+              if (restored.activeVariantId !== 'original' && activeVariant.imageUrl) {
+                console.log('[NewEditor] Restoring active variant image:', activeVariant.imageUrl);
+                // The image will be set when we load the photo, but we'll preserve the variant
+                // For now, just ensure the active variant is set
+                dispatch({ type: 'SET_ACTIVE_VARIANT', payload: restored.activeVariantId });
+                // Don't return - we still need to load the photo to get dimensions
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('[NewEditor] Failed to restore variant state:', error);
+        }
+      }
+      
       // CRITICAL FIX: If we have a photoId, we should always reload from API
       // The only exception is if we just loaded this exact photoId and the URL matches
       // This ensures that when returning to the editor, the image is always loaded
@@ -642,19 +763,46 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
               // For now, use database dimensions as source of truth
             }
             
-            // Always use database dimensions for photoSpace to ensure mask coordinates match
-            // Masks were saved relative to database dimensions, so we must use those
-            dispatch({
-              type: 'SET_IMAGE',
-              payload: {
-                url: imageUrl,
-                width: dbWidth,   // Use database dimensions (source of truth)
-                height: dbHeight, // Use database dimensions (source of truth)
-                // Include natural dimensions for reference (optional, for Layer 4)
-                naturalWidth: naturalWidth,
-                naturalHeight: naturalHeight
-              }
-            });
+            // CRITICAL: Before setting image, check if we have an active variant
+            // If we do, preserve it instead of overwriting with original photo
+            const stateBeforeSet = useEditorStore.getState();
+            const hasActiveVariant = stateBeforeSet.activeVariantId && 
+                                   stateBeforeSet.activeVariantId !== 'original' &&
+                                   stateBeforeSet.variants.some(v => v.id === stateBeforeSet.activeVariantId);
+            
+            if (hasActiveVariant) {
+              // We have an active variant - preserve it, just update photoSpace dimensions
+              const activeVariant = stateBeforeSet.variants.find(v => v.id === stateBeforeSet.activeVariantId);
+              console.log('[NewEditor] Preserving active variant during photo load:', {
+                activeVariantId: stateBeforeSet.activeVariantId,
+                imageUrl: activeVariant?.imageUrl
+              });
+              
+              // Update photoSpace without changing imageUrl or variants
+              dispatch({
+                type: 'SET_PHOTO_SPACE',
+                payload: {
+                  imgW: dbWidth,
+                  imgH: dbHeight
+                }
+              });
+            } else {
+              // No active variant (or original) - set image normally
+              // This will restore persisted variants if available
+              dispatch({
+                type: 'SET_IMAGE',
+                payload: {
+                  url: imageUrl,
+                  width: dbWidth,   // Use database dimensions (source of truth)
+                  height: dbHeight, // Use database dimensions (source of truth)
+                  // Include natural dimensions for reference (optional, for Layer 4)
+                  naturalWidth: naturalWidth,
+                  naturalHeight: naturalHeight,
+                  // CRITICAL FIX: Include photoId in payload to ensure correct variant restoration
+                  photoId: photoIdToUse
+                }
+              });
+            }
             lastLoadedPhotoIdRef.current = photoIdToUse;
           };
           img.onerror = () => {
@@ -935,26 +1083,55 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           )}
         </div>
         
-        {/* Resize Handle */}
-        <div
-          ref={resizeHandleRef}
-          className={`w-1 bg-gray-300 hover:bg-blue-400 cursor-col-resize transition-colors ${
-            isResizing ? 'bg-blue-500' : ''
-          }`}
-          style={{ minHeight: '100%' }}
-        />
+        {/* Sidebar Toggle Button */}
+        <button
+          onClick={toggleSidebar}
+          className="absolute top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
+          style={{ 
+            right: isSidebarOpen ? `${sidebarWidth + 16}px` : '16px',
+            transition: 'right 0.3s ease-in-out'
+          }}
+          aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+        >
+          {isSidebarOpen ? (
+            <PanelRight className="w-4 h-4 text-gray-600" />
+          ) : (
+            <PanelLeft className="w-4 h-4 text-gray-600" />
+          )}
+        </button>
         
-        {/* Sidebar - dynamic width */}
+        {/* Resize Handle - only show when sidebar is open */}
+        {isSidebarOpen && (
+          <div
+            ref={resizeHandleRef}
+            className={`w-1 bg-gray-300 hover:bg-blue-400 cursor-col-resize transition-colors ${
+              isResizing ? 'bg-blue-500' : ''
+            }`}
+            style={{ minHeight: '100%' }}
+          />
+        )}
+        
+        {/* Sidebar - dynamic width with smooth animation */}
         <div 
           ref={sidebarRef} 
-          style={{ width: `${sidebarWidth}px`, flex: '0 0 auto' }} 
-          className="h-full overflow-hidden flex flex-col bg-white shadow-sm border-l border-gray-100 rounded-xl"
+          style={{ 
+            width: isSidebarOpen ? `${sidebarWidth}px` : '0px',
+            flex: '0 0 auto',
+            transition: 'width 0.3s ease-in-out',
+            overflow: isSidebarOpen ? 'visible' : 'hidden'
+          }} 
+          className={`h-full flex flex-col bg-white shadow-sm border-l border-gray-100 rounded-xl ${
+            isSidebarOpen ? 'opacity-100' : 'opacity-0'
+          }`}
           role="complementary"
           aria-label="Editor Sidebar"
+          aria-hidden={!isSidebarOpen}
         >
-          {/* Tab Navigation */}
-          <TooltipProvider>
-            <div className="flex border-b border-gray-100 bg-white px-6 pt-6">
+          {/* Tab Navigation - only render when sidebar is open */}
+          {isSidebarOpen && (
+            <TooltipProvider>
+              <div className="flex border-b border-gray-100 bg-white px-6 pt-6">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -1004,13 +1181,16 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
               </Tooltip>
             </div>
           </TooltipProvider>
+          )}
           
-          {/* Tab Content */}
-          <div className="flex-1 min-h-0 relative overflow-hidden">
-            {activeTab === 'materials' && <MaterialsPanel />}
-            {activeTab === 'variants' && <VariantsPanel />}
-            {activeTab === 'masks' && <MaskManagementPanel />}
-          </div>
+          {/* Tab Content - only render when sidebar is open */}
+          {isSidebarOpen && (
+            <div className="flex-1 min-h-0 relative overflow-hidden">
+              {activeTab === 'materials' && <MaterialsPanel />}
+              {activeTab === 'variants' && <VariantsPanel />}
+              {activeTab === 'masks' && <MaskManagementPanel />}
+            </div>
+          )}
         </div>
       </div>
       

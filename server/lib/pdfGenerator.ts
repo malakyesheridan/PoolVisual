@@ -125,6 +125,17 @@ export class PDFGenerator {
   private generateHTML(data: PDFData, options: PDFGenerationOptions): string {
     const { quote, items, organization, settings, totals } = data;
     
+    // Extract branding colors from organization (with defaults)
+    const brandColors = organization.brandColors as { primary?: string; secondary?: string; accent?: string } | null || {};
+    const primaryColor = brandColors.primary || '#0ea5e9';
+    const secondaryColor = brandColors.secondary || '#1f2937';
+    const accentColor = brandColors.accent || '#10b981';
+    
+    // Generate logo HTML if available
+    const logoHtml = organization.logoUrl 
+      ? `<img src="${organization.logoUrl}" alt="${organization.name}" style="max-height: 60px; margin-bottom: 10px; display: block;" />`
+      : '';
+    
     return `
 <!DOCTYPE html>
 <html lang="en">
@@ -158,13 +169,17 @@ export class PDFGenerator {
             align-items: flex-start;
             margin-bottom: 40px;
             padding-bottom: 20px;
-            border-bottom: 2px solid #e5e7eb;
+            border-bottom: 3px solid ${primaryColor};
         }
         
         .company-info h1 {
             font-size: 28px;
-            color: #1f2937;
+            color: ${secondaryColor};
             margin-bottom: 8px;
+        }
+        
+        .company-logo {
+            margin-bottom: 12px;
         }
         
         .company-info p {
@@ -225,12 +240,12 @@ export class PDFGenerator {
         }
         
         .items-table th {
-            background-color: #f9fafb;
+            background-color: ${this.hexToRgba(primaryColor, 0.08)};
             padding: 12px;
             text-align: left;
             font-weight: 600;
-            color: #374151;
-            border-bottom: 1px solid #e5e7eb;
+            color: ${secondaryColor};
+            border-bottom: 2px solid ${primaryColor};
         }
         
         .items-table td {
@@ -253,7 +268,7 @@ export class PDFGenerator {
         .totals-section {
             margin-top: 30px;
             padding-top: 20px;
-            border-top: 2px solid #e5e7eb;
+            border-top: 2px solid ${primaryColor};
         }
         
         .totals-table {
@@ -270,25 +285,25 @@ export class PDFGenerator {
         .totals-table .total-row {
             font-weight: 600;
             font-size: 16px;
-            color: #1f2937;
-            border-top: 2px solid #e5e7eb;
+            color: ${secondaryColor};
+            border-top: 2px solid ${primaryColor};
             border-bottom: none;
         }
         
         .deposit-section {
             margin-top: 20px;
             padding: 15px;
-            background-color: #f0f9ff;
-            border-left: 4px solid #0ea5e9;
+            background-color: ${this.hexToRgba(primaryColor, 0.1)};
+            border-left: 4px solid ${primaryColor};
         }
         
         .deposit-section h4 {
-            color: #0c4a6e;
+            color: ${this.darkenColor(primaryColor, 0.2)};
             margin-bottom: 8px;
         }
         
         .deposit-section p {
-            color: #075985;
+            color: ${this.darkenColor(primaryColor, 0.15)};
             font-size: 14px;
         }
         
@@ -342,6 +357,7 @@ export class PDFGenerator {
     <div class="container">
         <div class="header">
             <div class="company-info">
+                ${logoHtml ? `<div class="company-logo">${logoHtml}</div>` : ''}
                 <h1>${organization.name}</h1>
                 <p>${organization.address || 'Professional Pool Services'}</p>
                 <p>${organization.phone || ''} ${organization.email || ''}</p>
@@ -449,6 +465,22 @@ export class PDFGenerator {
       style: 'currency',
       currency: currencyCode
     }).format(amount);
+  }
+
+  // Helper method to convert hex to rgba
+  private hexToRgba(hex: string, alpha: number): string {
+    const r = parseInt(hex.slice(1, 3), 16);
+    const g = parseInt(hex.slice(3, 5), 16);
+    const b = parseInt(hex.slice(5, 7), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  }
+
+  // Helper method to darken a color
+  private darkenColor(hex: string, amount: number): string {
+    const r = Math.max(0, parseInt(hex.slice(1, 3), 16) * (1 - amount));
+    const g = Math.max(0, parseInt(hex.slice(3, 5), 16) * (1 - amount));
+    const b = Math.max(0, parseInt(hex.slice(5, 7), 16) * (1 - amount));
+    return `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
   }
 }
 

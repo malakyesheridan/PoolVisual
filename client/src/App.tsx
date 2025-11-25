@@ -11,17 +11,18 @@ import NotFound from "@/pages/not-found";
 import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Materials from "@/pages/materials";
-import MaterialsNew from "@/pages/MaterialsNew";
-import Library from "@/pages/Library";
-import Jobs from "@/pages/jobs";
-import JobDetail from "@/pages/job-detail";
-import CanvasEditorPage from "@/pages/CanvasEditorPage";
-import CanvasEditorV2Page from "@/pages/CanvasEditorV2Page";
-import { NewEditor } from "@/new_editor/NewEditor";
-import JobsNew from "@/pages/jobs-new";
-import Quotes from "@/pages/quotes";
-import ShareQuote from "@/pages/share-quote";
-import Settings from "@/pages/settings";
+// Code splitting for better performance - lazy load heavy pages
+const Jobs = React.lazy(() => import("@/pages/jobs"));
+const JobDetail = React.lazy(() => import("@/pages/job-detail"));
+const CanvasEditorPage = React.lazy(() => import("@/pages/CanvasEditorPage"));
+const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page"));
+const NewEditor = React.lazy(() => import("@/new_editor/NewEditor").then(m => ({ default: m.NewEditor })));
+const JobsNew = React.lazy(() => import("@/pages/jobs-new"));
+const Quotes = React.lazy(() => import("@/pages/quotes"));
+const ShareQuote = React.lazy(() => import("@/pages/share-quote"));
+const Settings = React.lazy(() => import("@/pages/settings"));
+const MaterialsNew = React.lazy(() => import("@/pages/MaterialsNew"));
+const Library = React.lazy(() => import("@/pages/Library"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -77,37 +78,49 @@ function ProtectedRouter() {
           
           <Route path="/jobs">
             <ProtectedRoute>
-              <Jobs />
+              <Suspense fallback={<PageLoader />}>
+                <Jobs />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/jobs/new">
             <ProtectedRoute>
-              <JobsNew />
+              <Suspense fallback={<PageLoader />}>
+                <JobsNew />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/jobs/:jobId/photo/:photoId/edit">
             <ProtectedRoute>
-              <NewEditor />
+              <Suspense fallback={<PageLoader />}>
+                <NewEditor />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/jobs/:jobId/photo/:photoId/edit-canvas">
             <ProtectedRoute>
-              <NewEditor />
+              <Suspense fallback={<PageLoader />}>
+                <NewEditor />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/jobs/:jobId/photo/:photoId/view">
             <ProtectedRoute>
-              <CanvasEditorPage />
+              <Suspense fallback={<PageLoader />}>
+                <CanvasEditorPage />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/jobs/:id">
             <ProtectedRoute>
-              <JobDetail />
+              <Suspense fallback={<PageLoader />}>
+                <JobDetail />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
@@ -125,25 +138,33 @@ function ProtectedRouter() {
           
           <Route path="/new-editor">
             <ProtectedRoute>
-              <NewEditor />
+              <Suspense fallback={<PageLoader />}>
+                <NewEditor />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/quotes">
             <ProtectedRoute>
-              <Quotes />
+              <Suspense fallback={<PageLoader />}>
+                <Quotes />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/quotes/:id">
             <ProtectedRoute>
-              <Quotes />
+              <Suspense fallback={<PageLoader />}>
+                <Quotes />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/settings">
             <ProtectedRoute>
-              <Settings />
+              <Suspense fallback={<PageLoader />}>
+                <Settings />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           

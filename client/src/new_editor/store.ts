@@ -362,17 +362,97 @@ export const useEditorStore = create<EditorState & {
           // Initialize variants with Original if this is the first image load
           const originalVariantId = 'original';
           const hasOriginalVariant = state.variants.some(v => v.id === originalVariantId);
-          const newVariants = hasOriginalVariant 
-            ? state.variants 
-            : [{ id: originalVariantId, label: 'Original', imageUrl: url }, ...state.variants];
+          
+          // CRITICAL: Preserve existing variants if this is the same photo (dimensions match)
+          // Only reset variants if this is a truly new image (different dimensions)
+          const isNewImage = !state.imageUrl || 
+                            currentPhotoSpace.imgW === 0 || 
+                            currentPhotoSpace.imgH === 0 ||
+                            Math.abs(currentPhotoSpace.imgW - width) > 10 || 
+                            Math.abs(currentPhotoSpace.imgH - height) > 10;
+          
+          let newVariants: CanvasVariant[];
+          let finalActiveVariantId: string | null;
+          let finalImageUrl: string;
+          
+          if (isNewImage) {
+            // New image - try to restore persisted variants first (synchronously)
+            let restoredVariants: CanvasVariant[] | null = null;
+            let restoredActiveVariantId: string | null = null;
+            
+            // CRITICAL FIX: Use photoId from action payload if provided, otherwise fall back to jobContext
+            // This ensures we restore variants for the correct photo when loading a new photo
+            const photoIdToUse = action.payload.photoId || state.jobContext?.photoId;
+            
+            if (photoIdToUse && typeof window !== 'undefined') {
+              try {
+                // Load synchronously from localStorage (no async needed)
+                const key = `poolVisual-variants-${photoIdToUse}`;
+                const stored = localStorage.getItem(key);
+                if (stored) {
+                  const data = JSON.parse(stored);
+                  if (data.variants && Array.isArray(data.variants) && data.variants.length > 0) {
+                    const validVariants = data.variants.filter((v: any) => v.id && v.imageUrl);
+                    if (validVariants.length > 0) {
+                      restoredVariants = validVariants;
+                      restoredActiveVariantId = data.activeVariantId && validVariants.some((v: any) => v.id === data.activeVariantId)
+                        ? data.activeVariantId
+                        : validVariants[0]?.id || null;
+                      console.log('[EditorStore] Restored persisted variants synchronously:', {
+                        photoId: photoIdToUse,
+                        variantsCount: restoredVariants.length,
+                        activeVariantId: restoredActiveVariantId
+                      });
+                    }
+                  }
+                }
+              } catch (error) {
+                console.warn('[EditorStore] Failed to restore variant state:', error);
+              }
+            }
+            
+            // Use restored variants if available, otherwise initialize
+            if (restoredVariants && restoredVariants.length > 0) {
+              // Ensure Original variant has correct URL
+              newVariants = restoredVariants.map(v => 
+                v.id === 'original' ? { ...v, imageUrl: url } : v
+              );
+              finalActiveVariantId = restoredActiveVariantId || originalVariantId;
+              const activeVariant = newVariants.find(v => v.id === finalActiveVariantId);
+              finalImageUrl = activeVariant?.imageUrl || url;
+            } else {
+              // No restored variants - initialize with Original
+              const hasOriginalVariant = state.variants.some(v => v.id === originalVariantId);
+              newVariants = hasOriginalVariant 
+                ? state.variants 
+                : [{ id: originalVariantId, label: 'Original', imageUrl: url }, ...state.variants];
+              finalActiveVariantId = state.activeVariantId || originalVariantId;
+              finalImageUrl = url;
+            }
+          } else {
+            // Same image - preserve existing variants and active variant
+            // CRITICAL: Create a copy of the array to avoid mutating state directly
+            newVariants = state.variants.map(v => {
+              // Update Original variant URL if it changed
+              if (v.id === originalVariantId && v.imageUrl !== url) {
+                return { ...v, imageUrl: url };
+              }
+              return v;
+            });
+            
+            // Use existing active variant, or default to original
+            finalActiveVariantId = state.activeVariantId || originalVariantId;
+            const activeVariant = newVariants.find(v => v.id === finalActiveVariantId);
+            finalImageUrl = activeVariant?.imageUrl || url;
+          }
           
           return {
             ...state,
-            imageUrl: url,
+            imageUrl: finalImageUrl,
             photoSpace: newPhotoSpace,
             state: 'ready',
             variants: newVariants,
-            activeVariantId: state.activeVariantId || originalVariantId
+            activeVariantId: finalActiveVariantId
           };
         });
         break;
@@ -901,11 +981,54 @@ export const useEditorStore = create<EditorState & {
             loadingState: 'loading' as const,
             retryCount: 0
           };
-          return {
+          const newState = {
             ...state,
             variants: [...state.variants, variantWithState],
             activeVariantId: variant.id
           };
+          
+          // Persist variant state
+          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+            import('./variantPersistence').then(({ saveVariantState }) => {
+              saveVariantState(state.jobContext!.photoId!, {
+                variants: newState.variants,
+                activeVariantId: newState.activeVariantId
+              });
+            }).catch((error) => {
+              console.warn('[EditorStore] Failed to persist variant state:', error);
+            });
+          }
+          
+          return newState;
+        });
+        break;
+      }
+      
+      case 'SET_VARIANTS': {
+        const { variants, activeVariantId } = action.payload;
+        set(state => {
+          const activeVariant = variants.find(v => v.id === activeVariantId);
+          const newState = {
+            ...state,
+            variants,
+            activeVariantId,
+            // Update imageUrl to match active variant
+            imageUrl: activeVariant?.imageUrl || state.imageUrl
+          };
+          
+          // Persist variant state
+          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+            import('./variantPersistence').then(({ saveVariantState }) => {
+              saveVariantState(state.jobContext!.photoId!, {
+                variants: newState.variants,
+                activeVariantId: newState.activeVariantId
+              });
+            }).catch((error) => {
+              console.warn('[EditorStore] Failed to persist variant state:', error);
+            });
+          }
+          
+          return newState;
         });
         break;
       }
@@ -951,12 +1074,26 @@ export const useEditorStore = create<EditorState & {
             console.warn('[EditorStore] Variant not found:', variantId);
             return state;
           }
-          return {
+          const newState = {
             ...state,
             activeVariantId: variantId,
             // Update imageUrl to match active variant
             imageUrl: variant ? variant.imageUrl : state.imageUrl
           };
+          
+          // Persist variant state
+          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+            import('./variantPersistence').then(({ saveVariantState }) => {
+              saveVariantState(state.jobContext!.photoId!, {
+                variants: newState.variants,
+                activeVariantId: newState.activeVariantId
+              });
+            }).catch((error) => {
+              console.warn('[EditorStore] Failed to persist variant state:', error);
+            });
+          }
+          
+          return newState;
         });
         break;
       }
@@ -975,13 +1112,27 @@ export const useEditorStore = create<EditorState & {
             ? (newVariants.length > 0 ? newVariants[0].id : 'original')
             : state.activeVariantId;
           
-          return {
+          const newState = {
             ...state,
             variants: newVariants,
             activeVariantId: newActiveVariantId,
             // Update imageUrl to match new active variant
             imageUrl: newVariants.find(v => v.id === newActiveVariantId)?.imageUrl || state.imageUrl
           };
+          
+          // Persist variant state
+          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+            import('./variantPersistence').then(({ saveVariantState }) => {
+              saveVariantState(state.jobContext!.photoId!, {
+                variants: newState.variants,
+                activeVariantId: newState.activeVariantId
+              });
+            }).catch((error) => {
+              console.warn('[EditorStore] Failed to persist variant state:', error);
+            });
+          }
+          
+          return newState;
         });
         break;
       }

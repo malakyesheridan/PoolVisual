@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import React from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,13 +18,12 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgs } from "@/hooks/useOrgs";
 import { 
   ArrowLeft, 
   Search, 
   FileText, 
-  Send,
   Eye,
-  Share,
   DollarSign,
   Plus,
   Filter,
@@ -55,27 +55,31 @@ export default function Quotes() {
   const [deleteConfirmQuoteId, setDeleteConfirmQuoteId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
+  const { data: orgs = [] } = useOrgs();
 
   const { data: quote, isLoading: quoteLoading } = useQuery({
     queryKey: ['/api/quotes', quoteId],
     queryFn: () => quoteId ? apiClient.getQuote(quoteId) : Promise.resolve(null),
     enabled: !!quoteId,
+    staleTime: 30 * 1000, // 30 seconds
   });
 
   const { data: quotes = [], isLoading: quotesLoading } = useQuery({
     queryKey: ['/api/quotes', selectedOrgId],
     queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
     enabled: !!selectedOrgId,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
-  const filteredQuotes = quotes.filter(quote =>
-    quote.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    quote.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Memoize filtered quotes for performance
+  const filteredQuotes = React.useMemo(() => {
+    if (!searchTerm) return quotes;
+    const lowerSearch = searchTerm.toLowerCase();
+    return quotes.filter(quote =>
+      quote.clientName?.toLowerCase().includes(lowerSearch) ||
+      quote.id.toLowerCase().includes(lowerSearch)
+    );
+  }, [quotes, searchTerm]);
 
   const recalculateQuoteMutation = useMutation({
     mutationFn: (id: string) => apiClient.recalculateQuote(id),
@@ -595,31 +599,16 @@ export default function Quotes() {
                   Preview
                 </Button>
                 
-                {quote.publicToken && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    data-testid="button-share-quote"
-                    onClick={handleShareQuote}
-                    className="h-9 text-sm"
-                  >
-                    <Share className="w-4 h-4 mr-1.5" />
-                    Share
-                  </Button>
-                )}
-                
-                {quote.status === 'draft' && (
-                  <Button 
-                    size="sm"
-                    data-testid="button-send-quote"
-                    onClick={handleSendQuote}
-                    disabled={sendQuoteMutation.isPending}
-                    className="h-9 text-sm bg-blue-600 hover:bg-blue-700"
-                  >
-                    <Send className="w-4 h-4 mr-1.5" />
-                    {sendQuoteMutation.isPending ? 'Sending...' : 'Send'}
-                  </Button>
-                )}
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  data-testid="button-download-quote"
+                  onClick={() => handleDownloadPDF(quote.id)}
+                  className="h-9 text-sm"
+                >
+                  <Download className="w-4 h-4 mr-1.5" />
+                  Download
+                </Button>
               </div>
             </div>
           </div>

@@ -67,18 +67,21 @@ export default function JobDetail() {
     queryKey: ['/api/jobs', jobId],
     queryFn: () => jobId ? apiClient.getJob(jobId) : Promise.resolve(null),
     enabled: !!jobId,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
   const { data: quotes = [], isLoading: quotesLoading } = useQuery({
     queryKey: ['/api/quotes', jobId],
     queryFn: () => jobId ? apiClient.getQuotes(job?.orgId || '', { jobId }) : Promise.resolve([]),
     enabled: !!jobId && !!job?.orgId,
+    staleTime: 30 * 1000, // 30 seconds - quotes can change more frequently
   });
 
   const { data: photos = [], isLoading: photosLoading } = useQuery({
     queryKey: ['/api/jobs', jobId, 'photos'],
     queryFn: () => jobId ? apiClient.getJobPhotos(jobId) : Promise.resolve([]),
     enabled: !!jobId,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
   // Listen for photo refresh events from the editor

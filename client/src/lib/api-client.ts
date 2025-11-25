@@ -98,6 +98,14 @@ class ApiClient {
   }
 
   // Jobs
+  async getJobsCanvasStatus(orgId: string, jobIds?: string[]) {
+    const params = new URLSearchParams({ orgId });
+    if (jobIds && jobIds.length > 0) {
+      params.append('jobIds', jobIds.join(','));
+    }
+    return this.request<any[]>(`/jobs/canvas-status?${params.toString()}`);
+  }
+
   async getJobs(orgId: string, filters?: { status?: string; q?: string }) {
     const params = new URLSearchParams({ orgId });
     if (filters?.status) params.append('status', filters.status);
