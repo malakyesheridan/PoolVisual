@@ -365,11 +365,7 @@ export const useEditorStore = create<EditorState & {
           
           // CRITICAL: Preserve existing variants if this is the same photo (dimensions match)
           // Only reset variants if this is a truly new image (different dimensions)
-          const isNewImage = !state.imageUrl || 
-                            currentPhotoSpace.imgW === 0 || 
-                            currentPhotoSpace.imgH === 0 ||
-                            Math.abs(currentPhotoSpace.imgW - width) > 10 || 
-                            Math.abs(currentPhotoSpace.imgH - height) > 10;
+          // Reuse isNewImage from above (line 339) to avoid duplicate declaration
           
           let newVariants: CanvasVariant[];
           let finalActiveVariantId: string | null;
