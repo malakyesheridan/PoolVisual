@@ -3,8 +3,12 @@
  * 
  * Professional PDF generation for quotes using Puppeteer
  * Integrates with existing quote data and organization branding
+ * 
+ * Uses @sparticuz/chromium for Vercel serverless compatibility
  */
 
+// Use puppeteer-core for production (with @sparticuz/chromium) and regular puppeteer for development
+import puppeteerCore from 'puppeteer-core';
 import puppeteer from 'puppeteer';
 import { storage } from '../storage.js';
 import { Quote, QuoteItem, Org, Settings } from '../../shared/schema.js';
@@ -34,10 +38,32 @@ export class PDFGenerator {
 
   async initialize(): Promise<void> {
     if (!this.browser) {
-      this.browser = await puppeteer.launch({
-        headless: 'new',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-      });
+      // Configure for Vercel/serverless environment
+      const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+      
+      if (isProduction) {
+        // Production/Vercel: Use puppeteer-core with @sparticuz/chromium
+        try {
+          const chromium = await import('@sparticuz/chromium');
+          const executablePath = await chromium.default.executablePath();
+          
+          this.browser = await puppeteerCore.launch({
+            args: chromium.default.args,
+            defaultViewport: chromium.default.defaultViewport,
+            executablePath,
+            headless: chromium.default.headless,
+          });
+        } catch (error) {
+          console.error('[PDFGenerator] Failed to initialize with @sparticuz/chromium:', error);
+          throw new Error('Failed to initialize PDF generator: Chrome not available in serverless environment');
+        }
+      } else {
+        // Development: Use regular puppeteer (includes Chrome)
+        this.browser = await puppeteer.launch({
+          headless: 'new',
+          args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
+      }
     }
   }
 
