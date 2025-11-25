@@ -203,6 +203,13 @@ export function registerQuoteRoutes(app: Express): void {
       });
 
       const item = await storage.addQuoteItem(itemData);
+      
+      // Invalidate PDF cache after adding item
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      await pdfGenerator.invalidateCache(id).catch(err => {
+        console.warn('[QuoteRoutes] Failed to invalidate PDF cache:', err);
+      });
+      
       res.json(item);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -245,6 +252,13 @@ export function registerQuoteRoutes(app: Express): void {
 
       // Update quote item
       const updatedItem = await storage.updateQuoteItem(itemId, req.body);
+      
+      // Invalidate PDF cache after updating item
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      await pdfGenerator.invalidateCache(id).catch(err => {
+        console.warn('[QuoteRoutes] Failed to invalidate PDF cache:', err);
+      });
+      
       res.json(updatedItem);
     } catch (error) {
       console.error('[QuoteRoutes] Error updating quote item:', error);
@@ -281,6 +295,13 @@ export function registerQuoteRoutes(app: Express): void {
 
       // Delete quote item
       await storage.deleteQuoteItem(itemId);
+      
+      // Invalidate PDF cache after deleting item
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      await pdfGenerator.invalidateCache(id).catch(err => {
+        console.warn('[QuoteRoutes] Failed to invalidate PDF cache:', err);
+      });
+      
       res.json({ message: "Quote item deleted successfully" });
     } catch (error) {
       console.error('[QuoteRoutes] Error deleting quote item:', error);
@@ -357,6 +378,13 @@ export function registerQuoteRoutes(app: Express): void {
       console.log('[QuoteRoutes] Updating quote with:', req.body);
       const updatedQuote = await storage.updateQuote(id, req.body);
       console.log('[QuoteRoutes] Quote updated successfully:', updatedQuote);
+      
+      // Invalidate PDF cache after update
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      await pdfGenerator.invalidateCache(id).catch(err => {
+        console.warn('[QuoteRoutes] Failed to invalidate PDF cache:', err);
+      });
+      
       res.json(updatedQuote);
     } catch (error) {
       console.error('[QuoteRoutes] Error updating quote:', error);
@@ -414,6 +442,12 @@ export function registerQuoteRoutes(app: Express): void {
         subtotal: totals.subtotal.toString(),
         gst: totals.gst.toString(),
         total: totals.total.toString()
+      });
+
+      // Invalidate PDF cache after recalculation
+      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
+      await pdfGenerator.invalidateCache(id).catch(err => {
+        console.warn('[QuoteRoutes] Failed to invalidate PDF cache:', err);
       });
 
       res.json({

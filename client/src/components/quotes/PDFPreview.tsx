@@ -21,14 +21,18 @@ interface PDFPreviewProps {
 export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
   const loadPDF = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
       // Get PDF as blob for better browser compatibility
+      // Preview uses watermark to indicate it's a preview
       const blob = await apiClient.generateQuotePDF(quoteId, {
-        watermark: false,
+        watermark: true, // Preview has watermark
         terms: true
       });
       
@@ -36,9 +40,12 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
       const blobUrl = URL.createObjectURL(blob);
       setPdfBlobUrl(blobUrl);
     } catch (error: any) {
+      const errorMessage = error.message || "Failed to load PDF preview";
+      setError(errorMessage);
+      
       toast({
         title: "Error loading PDF",
-        description: error.message || "Failed to load PDF preview",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -85,6 +92,7 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
         URL.revokeObjectURL(pdfBlobUrl);
         setPdfBlobUrl(null);
       }
+      setError(null);
     }
   }, [isOpen, quoteId]);
 
@@ -126,7 +134,22 @@ export function PDFPreview({ quoteId, isOpen, onClose, filename }: PDFPreviewPro
         </DialogHeader>
         
         <div className="flex-1 overflow-hidden">
-          {isLoading ? (
+          {error ? (
+            <div className="flex items-center justify-center h-96">
+              <div className="text-center">
+                <FileText className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                <p className="text-red-600 font-medium mb-2">Failed to load PDF</p>
+                <p className="text-sm text-slate-600 mb-4 max-w-md mx-auto">{error}</p>
+                <Button
+                  onClick={loadPDF}
+                  variant="outline"
+                  className="mt-4"
+                >
+                  Retry
+                </Button>
+              </div>
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center h-96">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>

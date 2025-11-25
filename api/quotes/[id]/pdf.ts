@@ -19,19 +19,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Import dependencies dynamically
-    // Use absolute paths from project root
+    const { authenticateRequest, verifyQuoteAccess } = await import('../../../server/lib/authHelper.js');
     const { pdfGenerator } = await import('../../../server/lib/pdfGenerator.js');
-    const { storage } = await import('../../../server/storage.js');
     
-    // TODO: Add proper authentication check
-    // For now, we'll verify quote exists
-    const quote = await storage.getQuote(id);
-    if (!quote) {
-      return res.status(404).json({ message: 'Quote not found' });
+    // Authentication check
+    const auth = await authenticateRequest(req, res);
+    if (!auth) {
+      return res.status(401).json({ message: 'Authentication required' });
     }
 
-    // Generate PDF
-    const pdfBuffer = await pdfGenerator.generateQuotePDF({
+    // Verify quote access
+    const hasAccess = await verifyQuoteAccess(id, auth.userId);
+    if (!hasAccess) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Generate PDF with caching
+    const pdfBuffer = await pdfGenerator.generateQuotePDFWithCache({
       quoteId: id,
       includeWatermark: watermark === 'true',
       includeTerms: terms === 'true',
@@ -53,9 +57,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="quote-${id.substring(0, 8)}.pdf"`,
       'Content-Length': pdfBuffer.length.toString(),
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
+      'Cache-Control': 'private, max-age=3600', // Cache for 1 hour
+      'X-Content-Type-Options': 'nosniff'
     });
     
     // Send PDF buffer - use send() for binary data in Vercel (works better than end())
@@ -71,7 +74,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     
     res.status(500).json({ 
       message: (error as Error).message,
-      error: error instanceof Error ? error.stack : String(error)
+      error: process.env.NODE_ENV === 'development' 
+        ? (error instanceof Error ? error.stack : String(error)) 
+        : undefined
     });
   }
 }

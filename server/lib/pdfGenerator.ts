@@ -11,6 +11,10 @@
 // Import dynamically to avoid bundling chromium in serverless functions
 import { storage } from '../storage.js';
 import { Quote, QuoteItem, Org, Settings } from '../../shared/schema.js';
+import { CacheService } from './cacheService.js';
+import { browserPool } from './browserPool.js';
+import { withRetry } from '../utils/retry.js';
+import crypto from 'crypto';
 
 export interface PDFGenerationOptions {
   quoteId: string;
@@ -33,90 +37,216 @@ export interface PDFData {
 }
 
 export class PDFGenerator {
-  private browser: any = null; // puppeteer.Browser type
+  private cacheService: CacheService;
+  private readonly CACHE_TTL = 3600; // 1 hour
+  private readonly BROWSER_TIMEOUT = 30000; // 30 seconds
+  private metrics = {
+    cacheHits: 0,
+    cacheMisses: 0,
+    generationTime: [] as number[],
+    errors: 0
+  };
 
-  async initialize(): Promise<void> {
-    if (!this.browser) {
-      // Configure for Vercel/serverless environment
-      const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL;
+  constructor() {
+    this.cacheService = new CacheService({
+      defaultTTL: this.CACHE_TTL,
+      keyPrefix: 'pdf:quote:'
+    });
+  }
+
+  /**
+   * Generate cache key for PDF
+   */
+  private getCacheKey(quoteId: string, options: PDFGenerationOptions): string {
+    const optionsHash = crypto
+      .createHash('md5')
+      .update(JSON.stringify({
+        watermark: options.includeWatermark,
+        terms: options.includeTerms,
+        message: options.customMessage
+      }))
+      .digest('hex')
+      .substring(0, 8);
+    
+    return `${quoteId}:${optionsHash}`;
+  }
+
+  /**
+   * Get quote version for cache invalidation
+   */
+  private async getQuoteVersion(quoteId: string): Promise<string> {
+    const quote = await storage.getQuote(quoteId);
+    if (!quote) throw new Error('Quote not found');
+    
+    // Use updatedAt timestamp as version
+    return new Date(quote.updatedAt).getTime().toString();
+  }
+
+  /**
+   * Generate PDF with caching
+   */
+  async generateQuotePDFWithCache(options: PDFGenerationOptions): Promise<Buffer> {
+    const startTime = Date.now();
+    const cacheKey = this.getCacheKey(options.quoteId, options);
+    const versionKey = `version:${options.quoteId}`;
+    
+    try {
+      // Check cache
+      const cachedVersion = await this.cacheService.get<string>(versionKey);
+      const currentVersion = await this.getQuoteVersion(options.quoteId);
       
-      if (isProduction) {
-        // Production/Vercel: Use puppeteer-core with @sparticuz/chromium
-        // Dynamic imports to avoid bundling chromium into serverless function
-        try {
-          // Lazy load to prevent bundler from including in main bundle
-          const puppeteerCore = await import('puppeteer-core');
-          const chromium = await import('@sparticuz/chromium');
-          
-          // Set graphics mode to false for serverless (reduces size significantly)
-          // Check if setGraphicsMode exists before calling
-          if (chromium.default && typeof (chromium.default as any).setGraphicsMode === 'function') {
-            (chromium.default as any).setGraphicsMode(false);
-          }
-          
-          const executablePath = await chromium.default.executablePath();
-          
-          this.browser = await puppeteerCore.default.launch({
-            args: chromium.default.args,
-            defaultViewport: chromium.default.defaultViewport,
-            executablePath,
-            headless: chromium.default.headless,
-          });
-        } catch (error) {
-          console.error('[PDFGenerator] Failed to initialize with @sparticuz/chromium:', error);
-          throw new Error('Failed to initialize PDF generator: Chrome not available in serverless environment');
-        }
-      } else {
-        // Development: Use regular puppeteer (includes Chrome)
-        const puppeteer = await import('puppeteer');
-        this.browser = await puppeteer.default.launch({
-          headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox']
+      // If version matches, try to get cached PDF
+      if (cachedVersion === currentVersion) {
+        const cachedPDFBase64 = await this.cacheService.get<string>(cacheKey, {
+          serialize: false // PDF is stored as base64 string
         });
+        
+        if (cachedPDFBase64) {
+          console.log(`[PDFGenerator] Cache hit for quote ${options.quoteId}`);
+          this.metrics.cacheHits++;
+          const generationTime = Date.now() - startTime;
+          this.metrics.generationTime.push(generationTime);
+          return Buffer.from(cachedPDFBase64, 'base64');
+        }
       }
+      
+      // Cache miss or version mismatch - generate new PDF with retry
+      console.log(`[PDFGenerator] Cache miss for quote ${options.quoteId}, generating...`);
+      this.metrics.cacheMisses++;
+      const pdfBuffer = await withRetry(
+        () => this.generateQuotePDFWithTimeout(options),
+        {
+          maxRetries: 2,
+          delay: 1000, // 1 second initial delay
+          retryable: (error) => {
+            // Retry on timeout or connection errors
+            return error.message.includes('timeout') ||
+                   error.message.includes('ECONNREFUSED') ||
+                   error.message.includes('browser') ||
+                   error.message.includes('disconnected');
+          },
+          onRetry: (attempt, error) => {
+            console.warn(`[PDFGenerator] Retry attempt ${attempt} for quote ${options.quoteId}:`, error.message);
+          }
+        }
+      );
+      
+      // Cache the PDF as base64
+      const pdfBase64 = pdfBuffer.toString('base64');
+      await Promise.all([
+        this.cacheService.set(cacheKey, pdfBase64, {
+          ttl: this.CACHE_TTL,
+          serialize: false
+        }),
+        this.cacheService.set(versionKey, currentVersion, {
+          ttl: this.CACHE_TTL * 24 // Keep version for 24 hours
+        })
+      ]);
+      
+      const generationTime = Date.now() - startTime;
+      this.metrics.generationTime.push(generationTime);
+      
+      // Keep only last 100 measurements
+      if (this.metrics.generationTime.length > 100) {
+        this.metrics.generationTime.shift();
+      }
+      
+      return pdfBuffer;
+    } catch (error) {
+      this.metrics.errors++;
+      throw error;
     }
+  }
+
+  /**
+   * Generate PDF with timeout protection
+   */
+  private async generateQuotePDFWithTimeout(options: PDFGenerationOptions): Promise<Buffer> {
+    return Promise.race([
+      this.generateQuotePDF(options),
+      new Promise<Buffer>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('PDF generation timeout after 30 seconds'));
+        }, this.BROWSER_TIMEOUT);
+      })
+    ]);
+  }
+
+  /**
+   * Invalidate cache for a quote (call when quote is updated)
+   */
+  async invalidateCache(quoteId: string): Promise<void> {
+    // Delete version key to force cache miss on next request
+    await this.cacheService.delete(`version:${quoteId}`);
+    console.log(`[PDFGenerator] Cache invalidated for quote ${quoteId}`);
+  }
+
+  /**
+   * Get metrics for monitoring
+   */
+  getMetrics() {
+    const avgTime = this.metrics.generationTime.length > 0
+      ? this.metrics.generationTime.reduce((a, b) => a + b, 0) / this.metrics.generationTime.length
+      : 0;
+    
+    const total = this.metrics.cacheHits + this.metrics.cacheMisses;
+    const cacheHitRate = total > 0 ? this.metrics.cacheHits / total : 0;
+    
+    return {
+      ...this.metrics,
+      averageGenerationTime: avgTime,
+      cacheHitRate: cacheHitRate
+    };
+  }
+
+  // Legacy methods for backward compatibility (now use browser pool)
+  async initialize(): Promise<void> {
+    // Browser pool handles initialization automatically
+    // This method is kept for backward compatibility
   }
 
   async cleanup(): Promise<void> {
-    if (this.browser) {
-      await this.browser.close();
-      this.browser = null;
-    }
+    // Browser pool handles cleanup automatically
+    // This method is kept for backward compatibility
   }
 
   async generateQuotePDF(options: PDFGenerationOptions): Promise<Buffer> {
-    await this.initialize();
-    
-    if (!this.browser) {
-      throw new Error('Browser not initialized');
-    }
-
-    const page = await this.browser.newPage();
+    const browser = await browserPool.getBrowser();
     
     try {
-      // Gather all required data
-      const pdfData = await this.gatherPDFData(options.quoteId);
+      const page = await browser.newPage();
       
-      // Generate HTML content
-      const htmlContent = this.generateHTML(pdfData, options);
-      
-      // Set content and generate PDF
-      await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
-      
-      const pdfBuffer = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '15mm',
-          bottom: '20mm',
-          left: '15mm'
-        }
-      });
+      try {
+        // Gather all required data
+        const pdfData = await this.gatherPDFData(options.quoteId);
+        
+        // Generate HTML content
+        const htmlContent = this.generateHTML(pdfData, options);
+        
+        // Set content and generate PDF with timeout
+        await page.setContent(htmlContent, { 
+          waitUntil: 'networkidle0',
+          timeout: 20000 // 20 second timeout for page load
+        });
+        
+        const pdfBuffer = await page.pdf({
+          format: 'A4',
+          printBackground: true,
+          margin: {
+            top: '20mm',
+            right: '15mm',
+            bottom: '20mm',
+            left: '15mm'
+          },
+          timeout: 10000 // 10 second timeout for PDF generation
+        });
 
-      return pdfBuffer;
+        return pdfBuffer;
+      } finally {
+        await page.close();
+      }
     } finally {
-      await page.close();
+      await browserPool.releaseBrowser(browser);
     }
   }
 
