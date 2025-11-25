@@ -12,11 +12,12 @@ import { Download, FileText, X, ChevronLeft, ChevronRight, ZoomIn, ZoomOut } fro
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { Document, Page, pdfjs } from 'react-pdf';
-import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
-import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 // Configure PDF.js worker
 pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+
+// Note: CSS imports are optional and can cause Vite build issues
+// The PDF will still render correctly without them
 
 interface PDFPreviewProps {
   quoteId: string;
