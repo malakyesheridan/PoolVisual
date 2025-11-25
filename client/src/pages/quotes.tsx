@@ -325,8 +325,19 @@ export default function Quotes() {
         ? `quote-${quoteData.clientName?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'quote'}-${quoteId.substring(0, 8)}.pdf`
         : `quote-${quoteId.substring(0, 8)}.pdf`;
       
-      // Use direct download URL (no preview flag = attachment)
-      const url = `/api/quotes/${quoteId}/pdf?watermark=false&terms=true`;
+      // Get PDF blob (preview: false forces download)
+      const blob = await apiClient.generateQuotePDF(quoteId, {
+        watermark: false,
+        terms: true,
+        preview: false // Force download
+      });
+      
+      if (!blob || blob.size === 0) {
+        throw new Error('Received empty PDF blob');
+      }
+      
+      // Create blob URL for download
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
       link.download = filename;
@@ -337,6 +348,7 @@ export default function Quotes() {
       
       setTimeout(() => {
         document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
       }, 100);
       
       toast({
