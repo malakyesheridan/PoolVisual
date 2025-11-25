@@ -942,6 +942,31 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
     return () => window.removeEventListener('resize', handleResize);
   }, [dispatch]);
   
+  // Update container size when sidebar opens/closes to ensure canvas resizes correctly
+  // Use ResizeObserver for more accurate detection of container size changes
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          dispatch({
+            type: 'SET_CONTAINER_SIZE',
+            payload: { width, height }
+          });
+        }
+      }
+    });
+    
+    resizeObserver.observe(container);
+    
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [dispatch]);
+  
   // Initialize container size on mount
   React.useEffect(() => {
     if (containerRef.current) {
@@ -1117,9 +1142,12 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           ref={sidebarRef} 
           style={{ 
             width: isSidebarOpen ? `${sidebarWidth}px` : '0px',
-            flex: '0 0 auto',
-            transition: 'width 0.3s ease-in-out',
-            overflow: isSidebarOpen ? 'visible' : 'hidden'
+            flexShrink: 0,
+            flexGrow: 0,
+            flexBasis: isSidebarOpen ? `${sidebarWidth}px` : '0px',
+            transition: 'width 0.3s ease-in-out, flex-basis 0.3s ease-in-out',
+            overflow: isSidebarOpen ? 'visible' : 'hidden',
+            minWidth: 0
           }} 
           className={`h-full flex flex-col bg-white shadow-sm border-l border-gray-100 rounded-xl ${
             isSidebarOpen ? 'opacity-100' : 'opacity-0'
