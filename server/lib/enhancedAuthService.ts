@@ -136,7 +136,7 @@ export class EnhancedAuthService {
         });
 
         const remainingAttempts = user 
-          ? Math.max(0, this.MAX_FAILED_ATTEMPTS - (user.failedLoginAttempts || 0) - 1)
+          ? Math.max(0, this.MAX_FAILED_ATTEMPTS - newFailedAttempts)
           : undefined;
 
         return {

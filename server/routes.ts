@@ -229,11 +229,22 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // Log security event
       const { AuthAuditService } = await import('./lib/authAuditService.js');
-      const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      // Extract IP address (handle x-forwarded-for as string or array)
+      let ipAddress: string | undefined = req.ip;
+      if (!ipAddress) {
+        const forwardedFor = req.headers['x-forwarded-for'];
+        if (Array.isArray(forwardedFor)) {
+          ipAddress = forwardedFor[0];
+        } else if (typeof forwardedFor === 'string') {
+          ipAddress = forwardedFor.split(',')[0].trim();
+        } else {
+          ipAddress = req.socket.remoteAddress;
+        }
+      }
       await AuthAuditService.logSecurityEvent({
         userId: user.id,
         eventType: 'user_registered',
-        ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+        ipAddress,
         userAgent: req.headers['user-agent'],
       });
 

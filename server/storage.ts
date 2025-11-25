@@ -623,6 +623,86 @@ export class PostgresStorage implements IStorage {
       pdfTerms: setting.pdfTerms ?? undefined
     };
   }
+
+  // Authentication & Security methods
+  async updateUser(id: string, updates: Partial<User>): Promise<User> {
+    const [updated] = await ensureDb()
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    if (!updated) {
+      throw new Error('Failed to update user');
+    }
+    return updated;
+  }
+
+  async createLoginAttempt(data: { email: string; ipAddress?: string; userAgent?: string; success: boolean; reason?: string }): Promise<void> {
+    await ensureDb().insert(loginAttempts).values({
+      email: data.email,
+      ipAddress: data.ipAddress || null,
+      userAgent: data.userAgent || null,
+      success: data.success,
+      reason: data.reason || null,
+    });
+  }
+
+  async createSecurityEvent(data: { userId?: string; eventType: string; ipAddress?: string; userAgent?: string; details?: Record<string, any> }): Promise<void> {
+    await ensureDb().insert(securityEvents).values({
+      userId: data.userId || null,
+      eventType: data.eventType,
+      ipAddress: data.ipAddress || null,
+      userAgent: data.userAgent || null,
+      details: data.details || null,
+    });
+  }
+
+  async getRecentFailedLoginAttempts(email: string, windowMinutes: number): Promise<number> {
+    const windowStart = new Date(Date.now() - windowMinutes * 60 * 1000);
+    const result = await ensureDb()
+      .select({ count: sql<number>`count(*)` })
+      .from(loginAttempts)
+      .where(
+        and(
+          eq(loginAttempts.email, email),
+          eq(loginAttempts.success, false),
+          gte(loginAttempts.createdAt, windowStart)
+        )
+      );
+    return Number(result[0]?.count || 0);
+  }
+
+  async createVerificationToken(data: { identifier: string; token: string; expires: Date }): Promise<void> {
+    await ensureDb().insert(verificationTokens).values({
+      identifier: data.identifier,
+      token: data.token,
+      expires: data.expires,
+    });
+  }
+
+  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null> {
+    const [vt] = await ensureDb()
+      .select({ identifier: verificationTokens.identifier, expires: verificationTokens.expires })
+      .from(verificationTokens)
+      .where(eq(verificationTokens.token, token));
+    
+    if (!vt) return null;
+    if (vt.expires < new Date()) return null; // Expired
+    
+    return { identifier: vt.identifier, expires: vt.expires };
+  }
+
+  async deleteVerificationToken(token: string): Promise<void> {
+    await ensureDb()
+      .delete(verificationTokens)
+      .where(eq(verificationTokens.token, token));
+  }
+
+  async deleteVerificationTokensForIdentifier(identifier: string): Promise<void> {
+    await ensureDb()
+      .delete(verificationTokens)
+      .where(eq(verificationTokens.identifier, identifier));
+  }
 }
 
 // Use MockStorage in no-DB mode, PostgresStorage otherwise

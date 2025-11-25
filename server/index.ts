@@ -60,6 +60,9 @@ declare global {
 // Create Express app
 const app = express();
 
+// Trust proxy for accurate IP addresses (important for Vercel/behind proxies)
+app.set('trust proxy', true);
+
 // Add CORS middleware
 app.use(cors({ origin: true, credentials: true }));
 
@@ -196,7 +199,18 @@ app.post("/api/auth/login", async (req, res) => {
 
     // Use enhanced authentication service
     const { EnhancedAuthService } = await import('./lib/enhancedAuthService.js');
-    const ipAddress = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    // Extract IP address (handle x-forwarded-for as string or array)
+    let ipAddress: string | undefined = req.ip;
+    if (!ipAddress) {
+      const forwardedFor = req.headers['x-forwarded-for'];
+      if (Array.isArray(forwardedFor)) {
+        ipAddress = forwardedFor[0];
+      } else if (typeof forwardedFor === 'string') {
+        ipAddress = forwardedFor.split(',')[0].trim();
+      } else {
+        ipAddress = req.socket.remoteAddress;
+      }
+    }
     const userAgent = req.headers['user-agent'];
     
     const result = await EnhancedAuthService.login(
