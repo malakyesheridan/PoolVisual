@@ -30,6 +30,12 @@ export default function Settings() {
     validityDays: '30',
     pdfTerms: '',
   });
+  const [brandingData, setBrandingData] = useState({
+    primaryColor: '#0ea5e9',
+    secondaryColor: '#1f2937',
+    accentColor: '#10b981',
+    logoUrl: '',
+  });
 
   const { toast } = useToast();
 
@@ -42,7 +48,14 @@ export default function Settings() {
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
-  // Update form data when settings change (memoized)
+  const { data: organization } = useQuery({
+    queryKey: ['/api/orgs', selectedOrgId],
+    queryFn: () => selectedOrgId ? apiClient.getOrg(selectedOrgId) : Promise.resolve(null),
+    enabled: !!selectedOrgId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Update form data when settings change
   useEffect(() => {
     if (settings) {
       setFormData({
@@ -54,6 +67,19 @@ export default function Settings() {
       });
     }
   }, [settings]);
+
+  // Update branding data when organization changes
+  useEffect(() => {
+    if (organization) {
+      const brandColors = organization.brandColors as { primary?: string; secondary?: string; accent?: string } | null || {};
+      setBrandingData({
+        primaryColor: brandColors.primary || '#0ea5e9',
+        secondaryColor: brandColors.secondary || '#1f2937',
+        accentColor: brandColors.accent || '#10b981',
+        logoUrl: organization.logoUrl || '',
+      });
+    }
+  }, [organization]);
 
   const updateSettingsMutation = useMutation({
     mutationFn: (data: any) => selectedOrgId ? apiClient.updateSettings(selectedOrgId, data) : Promise.reject('No org selected'),
@@ -67,6 +93,24 @@ export default function Settings() {
     onError: (error) => {
       toast({
         title: "Error saving settings",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateOrgMutation = useMutation({
+    mutationFn: (data: any) => selectedOrgId ? apiClient.updateOrg(selectedOrgId, data) : Promise.reject('No org selected'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/orgs'] });
+      toast({
+        title: "Branding saved",
+        description: "Your organization branding has been updated.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error saving branding",
         description: error.message,
         variant: "destructive",
       });
@@ -91,6 +135,18 @@ export default function Settings() {
     };
 
     updateSettingsMutation.mutate(settingsData);
+
+    // Also save branding
+    const brandingPayload = {
+      brandColors: {
+        primary: brandingData.primaryColor,
+        secondary: brandingData.secondaryColor,
+        accent: brandingData.accentColor,
+      },
+      logoUrl: brandingData.logoUrl || null,
+    };
+
+    updateOrgMutation.mutate(brandingPayload);
   };
 
   const handleInputChange = (field: string, value: string) => {
@@ -234,43 +290,109 @@ export default function Settings() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* Logo Upload */}
+                  <div>
+                    <Label>Company Logo</Label>
+                    <div className="mt-2 flex items-center gap-4">
+                      {brandingData.logoUrl && (
+                        <img 
+                          src={brandingData.logoUrl} 
+                          alt="Company logo" 
+                          className="h-16 w-auto object-contain border border-slate-200 rounded"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <Input
+                          value={brandingData.logoUrl}
+                          onChange={(e) => setBrandingData(prev => ({ ...prev, logoUrl: e.target.value }))}
+                          placeholder="https://example.com/logo.png"
+                          className="font-mono text-sm"
+                          data-testid="input-logo-url"
+                        />
+                        <p className="text-xs text-slate-500 mt-1">
+                          Enter a URL to your company logo (will appear on PDF quotes)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Primary Color */}
                   <div>
                     <Label>Primary Brand Color</Label>
                     <div className="flex items-center gap-4 mt-2">
                       <input
                         type="color"
-                        value="#3b82f6"
-                        className="w-12 h-10 rounded border border-slate-300"
+                        value={brandingData.primaryColor}
+                        onChange={(e) => setBrandingData(prev => ({ ...prev, primaryColor: e.target.value }))}
+                        className="w-12 h-10 rounded border border-slate-300 cursor-pointer"
                         data-testid="input-primary-color"
                       />
                       <div className="flex-1">
                         <Input
-                          value="#3b82f6"
-                          placeholder="#3b82f6"
+                          value={brandingData.primaryColor}
+                          onChange={(e) => setBrandingData(prev => ({ ...prev, primaryColor: e.target.value }))}
+                          placeholder="#0ea5e9"
                           className="font-mono"
+                          data-testid="input-primary-color-text"
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for headers, borders, and accents in PDF quotes
+                    </p>
                   </div>
                   
+                  {/* Secondary Color */}
+                  <div>
+                    <Label>Secondary Color</Label>
+                    <div className="flex items-center gap-4 mt-2">
+                      <input
+                        type="color"
+                        value={brandingData.secondaryColor}
+                        onChange={(e) => setBrandingData(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                        className="w-12 h-10 rounded border border-slate-300 cursor-pointer"
+                        data-testid="input-secondary-color"
+                      />
+                      <div className="flex-1">
+                        <Input
+                          value={brandingData.secondaryColor}
+                          onChange={(e) => setBrandingData(prev => ({ ...prev, secondaryColor: e.target.value }))}
+                          placeholder="#1f2937"
+                          className="font-mono"
+                          data-testid="input-secondary-color-text"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for text and headings in PDF quotes
+                    </p>
+                  </div>
+
+                  {/* Accent Color */}
                   <div>
                     <Label>Accent Color</Label>
                     <div className="flex items-center gap-4 mt-2">
                       <input
                         type="color"
-                        value="#f59e0b"
-                        className="w-12 h-10 rounded border border-slate-300"
+                        value={brandingData.accentColor}
+                        onChange={(e) => setBrandingData(prev => ({ ...prev, accentColor: e.target.value }))}
+                        className="w-12 h-10 rounded border border-slate-300 cursor-pointer"
                         data-testid="input-accent-color"
                       />
                       <div className="flex-1">
                         <Input
-                          value="#f59e0b"
-                          placeholder="#f59e0b"
+                          value={brandingData.accentColor}
+                          onChange={(e) => setBrandingData(prev => ({ ...prev, accentColor: e.target.value }))}
+                          placeholder="#10b981"
                           className="font-mono"
+                          data-testid="input-accent-color-text"
                         />
                       </div>
                     </div>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Used for highlights and call-to-action elements
+                    </p>
                   </div>
                 </div>
               </CardContent>

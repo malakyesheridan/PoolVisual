@@ -380,6 +380,37 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Update organization (for branding, logo, etc.)
+  app.patch("/api/orgs/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { orgId } = req.params;
+      if (!orgId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+
+      const updates = req.body;
+      const updatedOrg = await storage.updateOrg(orgId, updates);
+
+      // If branding was updated, invalidate PDF cache for all quotes in this org
+      if (updates.brandColors || updates.logoUrl) {
+        try {
+          const { pdfGenerator } = await import('./lib/pdfGenerator.js');
+          // Get all quotes for this org and invalidate their cache
+          const quotes = await storage.getQuotes(orgId);
+          await Promise.all(
+            quotes.map(quote => pdfGenerator.invalidateCache(quote.id).catch(() => {}))
+          );
+        } catch (error) {
+          console.warn('[Routes] Failed to invalidate PDF cache after branding update:', error);
+        }
+      }
+
+      res.json(updatedOrg);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   // Get organization member endpoint
   app.get("/api/orgs/:orgId/members/:userId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {

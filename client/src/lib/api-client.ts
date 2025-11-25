@@ -99,6 +99,17 @@ class ApiClient {
     });
   }
 
+  async updateOrg(orgId: string, data: any) {
+    return this.request<any>(`/orgs/${orgId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getOrg(orgId: string) {
+    return this.request<any>(`/orgs/${orgId}`);
+  }
+
   async inviteToOrg(orgId: string, email: string, role: string) {
     return this.request<any>(`/orgs/${orgId}/invite`, {
       method: 'POST',

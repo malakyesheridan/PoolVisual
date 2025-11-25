@@ -93,6 +93,15 @@ export class MockStorage {
     return this.orgs.find(o => o.id === id);
   }
 
+  async updateOrg(id: string, updates: Partial<InsertOrg>): Promise<Org> {
+    const orgIndex = this.orgs.findIndex(o => o.id === id);
+    if (orgIndex === -1) {
+      throw new Error('Organization not found');
+    }
+    this.orgs[orgIndex] = { ...this.orgs[orgIndex], ...updates };
+    return this.orgs[orgIndex];
+  }
+
   async getUserOrgs(userId: string): Promise<Org[]> {
     const memberOrgIds = this.orgMembers
       .filter(m => m.userId === userId)

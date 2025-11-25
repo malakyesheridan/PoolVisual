@@ -74,6 +74,7 @@ export interface IStorage {
   // Organizations
   getOrg(id: string): Promise<Org | undefined>;
   createOrg(org: InsertOrg, userId: string): Promise<Org>;
+  updateOrg(id: string, updates: Partial<InsertOrg>): Promise<Org>;
   getUserOrgs(userId: string): Promise<Org[]>;
   getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined>;
   createOrgMember(orgId: string, userId: string, role?: string): Promise<OrgMember>;
@@ -147,6 +148,18 @@ export class PostgresStorage implements IStorage {
   async getOrg(id: string): Promise<Org | undefined> {
     const [org] = await ensureDb().select().from(orgs).where(eq(orgs.id, id));
     return org;
+  }
+
+  async updateOrg(id: string, updates: Partial<InsertOrg>): Promise<Org> {
+    const [updated] = await ensureDb()
+      .update(orgs)
+      .set(updates)
+      .where(eq(orgs.id, id))
+      .returning();
+    if (!updated) {
+      throw new Error('Failed to update organization');
+    }
+    return updated;
   }
 
   async createOrg(insertOrg: InsertOrg, userId: string): Promise<Org> {
