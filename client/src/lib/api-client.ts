@@ -76,6 +76,20 @@ class ApiClient {
     });
   }
 
+  async requestPasswordReset(email: string) {
+    return this.request<{ ok: boolean; message: string }>('/auth/password-reset/initiate', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async resetPassword(token: string, newPassword: string) {
+    return this.request<{ ok: boolean; message: string }>('/auth/password-reset/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
+    });
+  }
+
   // Organizations
   async getMyOrgs() {
     return this.request<any[]>('/me/orgs');

@@ -44,14 +44,15 @@ export default function Login() {
 
     try {
       const response = await apiClient.login(data.email, data.password);
-      if (response.ok) {
+      if (response.ok && response.user) {
         login(response.user);
         navigate('/dashboard');
       } else {
-        setError('Login failed');
+        setError(response.error || 'Login failed');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
+    } catch (err: any) {
+      const errorMessage = err?.response?.data?.error || err?.message || 'Login failed';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -145,6 +146,19 @@ export default function Login() {
                       disabled={isLoading}
                       testId="input-login-password"
                     />
+                    
+                    <div className="flex items-center justify-between">
+                      <a 
+                        href="/forgot-password" 
+                        className="text-sm text-primary hover:underline"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate('/forgot-password');
+                        }}
+                      >
+                        Forgot password?
+                      </a>
+                    </div>
                     
                     <Button 
                       type="submit" 

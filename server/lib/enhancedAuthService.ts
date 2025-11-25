@@ -60,7 +60,9 @@ export class EnhancedAuthService {
       
       // 3. Check account lockout (even if user doesn't exist - prevents enumeration)
       if (user) {
-        if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+        // Handle missing security fields gracefully (if migration hasn't run yet)
+        const lockedUntil = user.lockedUntil ? new Date(user.lockedUntil) : null;
+        if (lockedUntil && lockedUntil > new Date()) {
           await AuthAuditService.logLoginAttempt({
             email,
             ...clientInfo,
@@ -76,12 +78,12 @@ export class EnhancedAuthService {
           return {
             success: false,
             error: 'Account is temporarily locked due to too many failed login attempts. Please try again later.',
-            lockedUntil: new Date(user.lockedUntil),
+            lockedUntil: lockedUntil,
             remainingAttempts: 0,
           };
         }
 
-        // 4. Check if account is active
+        // 4. Check if account is active (default to true if field doesn't exist)
         if (user.isActive === false) {
           await AuthAuditService.logLoginAttempt({
             email,
@@ -111,12 +113,17 @@ export class EnhancedAuthService {
           const newFailedAttempts = (user.failedLoginAttempts || 0) + 1;
           const shouldLock = newFailedAttempts >= this.MAX_FAILED_ATTEMPTS;
           
-          await storage.updateUser(user.id, {
-            failedLoginAttempts: newFailedAttempts,
-            lockedUntil: shouldLock 
-              ? new Date(Date.now() + this.LOCKOUT_DURATION_MS)
-              : null,
-          });
+          try {
+            await storage.updateUser(user.id, {
+              failedLoginAttempts: newFailedAttempts,
+              lockedUntil: shouldLock 
+                ? new Date(Date.now() + this.LOCKOUT_DURATION_MS)
+                : null,
+            });
+          } catch (error: any) {
+            // If update fails due to missing columns, that's okay - just log it
+            console.warn('[EnhancedAuth] Could not update failed attempts (migration may not have run):', error.message);
+          }
 
           if (shouldLock) {
             await AuthAuditService.logSecurityEvent({
@@ -147,12 +154,18 @@ export class EnhancedAuthService {
       }
 
       // 6. Successful login - reset failed attempts and update login stats
-      await storage.updateUser(user.id, {
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-        lastLoginAt: new Date(),
-        loginCount: (user.loginCount || 0) + 1,
-      });
+      // Only update security fields if they exist (migration may not have run)
+      try {
+        await storage.updateUser(user.id, {
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastLoginAt: new Date(),
+          loginCount: (user.loginCount || 0) + 1,
+        });
+      } catch (error: any) {
+        // If update fails due to missing columns, that's okay - login should still succeed
+        console.warn('[EnhancedAuth] Could not update security fields (migration may not have run):', error.message);
+      }
 
       // 7. Log successful login
       await AuthAuditService.logLoginAttempt({

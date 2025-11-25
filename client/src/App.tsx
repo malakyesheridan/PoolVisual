@@ -35,6 +35,8 @@ const ShareQuote = React.lazy(() => import("@/pages/share-quote"));
 const Settings = React.lazy(() => import("@/pages/settings"));
 const MaterialsNew = React.lazy(() => import("@/pages/MaterialsNew"));
 const Library = React.lazy(() => import("@/pages/Library"));
+const ForgotPassword = React.lazy(() => import("@/pages/forgot-password"));
+const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -195,6 +197,16 @@ function PublicRouter() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/forgot-password">
+        <Suspense fallback={<PageLoader />}>
+          <ForgotPassword />
+        </Suspense>
+      </Route>
+      <Route path="/reset-password">
+        <Suspense fallback={<PageLoader />}>
+          <ResetPassword />
+        </Suspense>
+      </Route>
       <Route path="/share/q/:token" component={ShareQuote} />
       
       {/* Redirect everything else to login for non-authenticated users */}
