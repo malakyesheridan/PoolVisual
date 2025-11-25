@@ -9,15 +9,19 @@ class ApiClient {
 
   private async request<T>(
     endpoint: string,
-    options: RequestInit = {}
+    options: RequestInit & { responseType?: 'blob' | 'json' } = {}
   ): Promise<T> {
+    const { responseType, ...fetchOptions } = options;
+    const isBlobRequest = responseType === 'blob';
+    
     const config: RequestInit = {
       headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
+        // Only set Content-Type for JSON requests (not for blob downloads)
+        ...(isBlobRequest ? {} : { 'Content-Type': 'application/json' }),
+        ...fetchOptions.headers,
       },
       credentials: 'include', // Important for session cookies
-      ...options,
+      ...fetchOptions,
     };
 
     const response = await fetch(`${this.baseURL}${endpoint}`, config);
@@ -47,6 +51,11 @@ class ApiClient {
     // Handle no-content responses
     if (response.status === 204) {
       return {} as T;
+    }
+
+    // Handle blob responses
+    if (isBlobRequest) {
+      return response.blob() as Promise<T>;
     }
 
     return response.json();

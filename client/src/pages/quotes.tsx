@@ -319,25 +319,41 @@ export default function Quotes() {
 
   const handleDownloadPDF = async (quoteId: string) => {
     try {
+      // Get quote details for better filename
+      const quoteData = quotes.find(q => q.id === quoteId);
+      const filename = quoteData 
+        ? `quote-${quoteData.clientName?.replace(/[^a-z0-9]/gi, '-').toLowerCase() || 'quote'}-${quoteId.substring(0, 8)}.pdf`
+        : `quote-${quoteId.substring(0, 8)}.pdf`;
+      
       const blob = await apiClient.generateQuotePDF(quoteId, {
         watermark: false,
         terms: true
       });
       
+      // Create blob URL for download
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `quote-${quoteId.substring(0, 8)}.pdf`;
+      link.download = filename;
+      link.style.display = 'none'; // Hide the link
+      
+      // Append to body, click, and remove
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      
+      // Cleanup: remove link and revoke blob URL after a short delay
+      // This ensures the download starts before cleanup
+      setTimeout(() => {
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      }, 100);
       
       toast({
         title: "PDF Downloaded",
         description: "Quote PDF has been downloaded successfully",
       });
     } catch (error: any) {
+      console.error('[Quotes] Error downloading PDF:', error);
       toast({
         title: "Error downloading PDF",
         description: error.message || "Failed to download PDF",
