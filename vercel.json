@@ -13,7 +13,7 @@
       "src": "server/index.ts",
       "use": "@vercel/node",
       "config": {
-        "includeFiles": ["server/**", "shared/**", "public/**", "dist/**"],
+        "includeFiles": ["server/**", "shared/**"],
         "maxDuration": 30
       }
     }
