@@ -511,56 +511,8 @@ export function registerQuoteRoutes(app: Express): void {
     }
   });
 
-  // Generate PDF for quote
-  app.get("/api/quotes/:id/pdf", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
-    try {
-      const { id } = req.params;
-      const { watermark, terms, message } = req.query;
-      
-      if (!id) {
-        return res.status(400).json({ message: "Quote ID is required" });
-      }
-
-      // Verify quote access
-      const quote = await storage.getQuote(id);
-      if (!quote) {
-        return res.status(404).json({ message: "Quote not found" });
-      }
-
-      const job = await storage.getJob(quote.jobId);
-      if (!job) {
-        return res.status(404).json({ message: "Job not found" });
-      }
-
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-
-      // Dynamically import PDF generator to avoid bundling chromium
-      const { pdfGenerator } = await import('../lib/pdfGenerator.js');
-      
-      // Generate PDF
-      const pdfBuffer = await pdfGenerator.generateQuotePDF({
-        quoteId: id,
-        includeWatermark: watermark === 'true',
-        includeTerms: terms === 'true',
-        customMessage: message as string
-      });
-
-      // Set headers for PDF download
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="quote-${id.substring(0, 8)}.pdf"`);
-      res.setHeader('Content-Length', pdfBuffer.length);
-      
-      res.send(pdfBuffer);
-    } catch (error) {
-      console.error('[QuoteRoutes] Error generating PDF:', error);
-      res.status(500).json({ message: (error as Error).message });
-    }
-  });
+  // PDF generation is handled by separate Vercel serverless function at /api/quotes/:id/pdf
+  // This prevents chromium from being bundled into the main serverless function
 
   // Preview PDF (returns PDF as base64 for preview)
   app.get("/api/quotes/:id/pdf-preview", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
