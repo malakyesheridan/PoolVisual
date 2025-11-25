@@ -55,6 +55,7 @@ export class EmailService {
       const emailData = await this.gatherQuoteEmailData(quoteId);
       
       // Dynamically import PDF generator to avoid bundling chromium
+      // This import is lazy and only happens at runtime
       const { pdfGenerator } = await import('./pdfGenerator.js');
       
       // Generate PDF attachment

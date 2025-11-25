@@ -19,8 +19,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     // Import dependencies dynamically
-    const { pdfGenerator } = await import('../../server/lib/pdfGenerator.js');
-    const { storage } = await import('../../server/storage.js');
+    // Use absolute paths from project root
+    const { pdfGenerator } = await import('../../../server/lib/pdfGenerator.js');
+    const { storage } = await import('../../../server/storage.js');
     
     // TODO: Add proper authentication check
     // For now, we'll verify quote exists
