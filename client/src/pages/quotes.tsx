@@ -36,7 +36,8 @@ import {
   X,
   Trash2,
   Copy,
-  Download
+  Download,
+  Send
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { formatCurrency } from "@/lib/measurement-utils";
