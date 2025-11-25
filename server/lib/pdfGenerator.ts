@@ -42,14 +42,13 @@ export class PDFGenerator {
       
       if (isProduction) {
         // Production/Vercel: Use puppeteer-core with @sparticuz/chromium
-        // Dynamic imports to avoid bundling chromium
+        // Dynamic imports to avoid bundling chromium into serverless function
         try {
-          const [puppeteerCore, chromium] = await Promise.all([
-            import('puppeteer-core'),
-            import('@sparticuz/chromium')
-          ]);
+          // Lazy load to prevent bundler from including in main bundle
+          const puppeteerCore = await import('puppeteer-core');
+          const chromium = await import('@sparticuz/chromium');
           
-          // Set graphics mode to false for serverless (reduces size)
+          // Set graphics mode to false for serverless (reduces size significantly)
           chromium.default.setGraphicsMode(false);
           
           const executablePath = await chromium.default.executablePath();
