@@ -38,15 +38,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       customMessage: message as string
     });
 
+    // Ensure pdfBuffer is a Buffer
+    if (!Buffer.isBuffer(pdfBuffer)) {
+      throw new Error('PDF generation did not return a valid buffer');
+    }
+
     // Set headers for PDF download
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="quote-${id.substring(0, 8)}.pdf"`);
     res.setHeader('Content-Length', pdfBuffer.length.toString());
+    res.setHeader('Cache-Control', 'no-cache');
     
-    res.send(pdfBuffer);
+    // Send PDF buffer - use end() for Vercel serverless functions
+    res.end(pdfBuffer);
   } catch (error) {
     console.error('[PDF API] Error generating PDF:', error);
-    res.status(500).json({ message: (error as Error).message });
+    
+    // If headers were already sent, we can't send JSON
+    if (res.headersSent) {
+      res.end();
+      return;
+    }
+    
+    res.status(500).json({ 
+      message: (error as Error).message,
+      error: error instanceof Error ? error.stack : String(error)
+    });
   }
 }
 
