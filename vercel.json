@@ -18,6 +18,11 @@
       }
     }
   ],
+  "functions": {
+    "server/index.ts": {
+      "excludeFiles": "node_modules/@sparticuz/chromium/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",

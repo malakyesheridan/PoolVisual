@@ -8,8 +8,7 @@
  */
 
 // Use puppeteer-core for production (with @sparticuz/chromium) and regular puppeteer for development
-import puppeteerCore from 'puppeteer-core';
-import puppeteer from 'puppeteer';
+// Import dynamically to avoid bundling chromium in serverless functions
 import { storage } from '../storage.js';
 import { Quote, QuoteItem, Org, Settings } from '../../shared/schema.js';
 
@@ -34,7 +33,7 @@ export interface PDFData {
 }
 
 export class PDFGenerator {
-  private browser: puppeteer.Browser | null = null;
+  private browser: any = null; // puppeteer.Browser type
 
   async initialize(): Promise<void> {
     if (!this.browser) {
@@ -43,11 +42,19 @@ export class PDFGenerator {
       
       if (isProduction) {
         // Production/Vercel: Use puppeteer-core with @sparticuz/chromium
+        // Dynamic imports to avoid bundling chromium
         try {
-          const chromium = await import('@sparticuz/chromium');
+          const [puppeteerCore, chromium] = await Promise.all([
+            import('puppeteer-core'),
+            import('@sparticuz/chromium')
+          ]);
+          
+          // Set graphics mode to false for serverless (reduces size)
+          chromium.default.setGraphicsMode(false);
+          
           const executablePath = await chromium.default.executablePath();
           
-          this.browser = await puppeteerCore.launch({
+          this.browser = await puppeteerCore.default.launch({
             args: chromium.default.args,
             defaultViewport: chromium.default.defaultViewport,
             executablePath,
@@ -59,8 +66,9 @@ export class PDFGenerator {
         }
       } else {
         // Development: Use regular puppeteer (includes Chrome)
-        this.browser = await puppeteer.launch({
-          headless: 'new',
+        const puppeteer = await import('puppeteer');
+        this.browser = await puppeteer.default.launch({
+          headless: true,
           args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
       }
