@@ -8,6 +8,7 @@
 import { storage } from '../storage.js';
 import { PasswordService, PasswordValidator } from './passwordService.js';
 import { AuthAuditService } from './authAuditService.js';
+import type { User } from '../../shared/schema.js';
 
 export interface LoginResult {
   success: boolean;
@@ -51,7 +52,13 @@ export class EnhancedAuthService {
       }
 
       // 2. Get user from database
-      const user = await storage.getUserByEmail(email);
+      let user: User | undefined;
+      try {
+        user = await storage.getUserByEmail(email);
+      } catch (dbError: any) {
+        console.error('[EnhancedAuth] Database error getting user:', dbError?.message || dbError);
+        throw new Error(`Database error: ${dbError?.message || 'Failed to query user'}`);
+      }
       
       // 3. Check account lockout (even if user doesn't exist - prevents enumeration)
       if (user) {
@@ -100,7 +107,15 @@ export class EnhancedAuthService {
       }
 
       // 5. Verify password
-      const passwordValid = user && await PasswordService.verifyPassword(password, user.password);
+      let passwordValid = false;
+      if (user && user.password) {
+        try {
+          passwordValid = await PasswordService.verifyPassword(password, user.password);
+        } catch (verifyError: any) {
+          console.error('[EnhancedAuth] Password verification error:', verifyError?.message || verifyError);
+          throw new Error(`Password verification failed: ${verifyError?.message || 'Unknown error'}`);
+        }
+      }
       
       if (!user || !passwordValid) {
         // Failed login - increment attempts and potentially lock account
@@ -183,17 +198,44 @@ export class EnhancedAuthService {
         },
       };
     } catch (error) {
-      console.error('[EnhancedAuth] Login error:', error);
-      await AuthAuditService.logLoginAttempt({
-        email,
-        ...clientInfo,
-        success: false,
-        reason: (error as Error).message,
-      });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      console.error('[EnhancedAuth] Login error:', errorMessage);
+      if (errorStack) {
+        console.error('[EnhancedAuth] Error stack:', errorStack);
+      }
+      
+      // Try to log the attempt, but don't fail if logging fails
+      try {
+        await AuthAuditService.logLoginAttempt({
+          email,
+          ...clientInfo,
+          success: false,
+          reason: errorMessage,
+        });
+      } catch (logError) {
+        console.error('[EnhancedAuth] Failed to log login attempt:', logError);
+      }
+      
+      // Return more specific error if it's a known issue
+      if (errorMessage.includes('database') || errorMessage.includes('connection')) {
+        return {
+          success: false,
+          error: 'Database connection error. Please try again later.',
+        };
+      }
+      
+      if (errorMessage.includes('timeout')) {
+        return {
+          success: false,
+          error: 'Request timeout. Please try again.',
+        };
+      }
       
       return {
         success: false,
-        error: 'An error occurred during login. Please try again.',
+        error: `Login failed: ${errorMessage}`,
       };
     }
   }

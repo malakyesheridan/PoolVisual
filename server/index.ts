@@ -248,8 +248,21 @@ app.post("/api/auth/login", async (req, res) => {
 
     return res.json({ ok: true, user: req.session.user });
   } catch (e: any) {
-    console.error('[Auth/Login] Error:', e);
-    return res.status(500).json({ ok: false, error: e?.message || "Login failed" });
+    const errorMessage = e?.message || String(e);
+    const errorStack = e?.stack;
+    
+    console.error('[Auth/Login] Error:', errorMessage);
+    if (errorStack) {
+      console.error('[Auth/Login] Error stack:', errorStack);
+    }
+    
+    // Return 500 for server errors, but preserve the actual error message
+    return res.status(500).json({ 
+      ok: false, 
+      error: errorMessage || "Login failed",
+      // Include stack in development for debugging
+      ...(process.env.NODE_ENV === 'development' && errorStack ? { stack: errorStack } : {})
+    });
   }
 });
 
