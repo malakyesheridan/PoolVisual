@@ -56,13 +56,26 @@ export class EnhancedAuthService {
       try {
         user = await storage.getUserByEmail(email);
       } catch (dbError: any) {
-        console.error('[EnhancedAuth] Database error getting user:', dbError?.message || dbError);
-        throw new Error(`Database error: ${dbError?.message || 'Failed to query user'}`);
+        // If it's a column missing error, that's okay - migration hasn't run
+        if (dbError?.message?.includes('does not exist') || dbError?.message?.includes('column')) {
+          console.warn('[EnhancedAuth] Security columns missing (migration may not have run), continuing without lockout checks');
+          // Try to get user with basic query
+          try {
+            const basicUser = await storage.getUserByEmail(email);
+            user = basicUser;
+          } catch (retryError: any) {
+            console.error('[EnhancedAuth] Failed to get user even with fallback:', retryError?.message || retryError);
+            throw new Error(`Database error: ${retryError?.message || 'Failed to query user'}`);
+          }
+        } else {
+          console.error('[EnhancedAuth] Database error getting user:', dbError?.message || dbError);
+          throw new Error(`Database error: ${dbError?.message || 'Failed to query user'}`);
+        }
       }
       
       // 3. Check account lockout (even if user doesn't exist - prevents enumeration)
-      if (user) {
-        // Handle missing security fields gracefully (if migration hasn't run yet)
+      // Skip lockout checks if security fields don't exist (migration hasn't run)
+      if (user && user.lockedUntil !== undefined) {
         const lockedUntil = user.lockedUntil ? new Date(user.lockedUntil) : null;
         if (lockedUntil && lockedUntil > new Date()) {
           await AuthAuditService.logLoginAttempt({
@@ -86,7 +99,8 @@ export class EnhancedAuthService {
         }
 
         // 4. Check if account is active (default to true if field doesn't exist)
-        if (user.isActive === false) {
+        // Only check if isActive field exists (migration has run)
+        if (user.isActive !== undefined && user.isActive === false) {
           await AuthAuditService.logLoginAttempt({
             email,
             ...clientInfo,
@@ -119,7 +133,8 @@ export class EnhancedAuthService {
       
       if (!user || !passwordValid) {
         // Failed login - increment attempts and potentially lock account
-        if (user) {
+        // Only update security fields if they exist (migration has run)
+        if (user && user.failedLoginAttempts !== undefined) {
           const newFailedAttempts = (user.failedLoginAttempts || 0) + 1;
           const shouldLock = newFailedAttempts >= this.MAX_FAILED_ATTEMPTS;
           
@@ -152,8 +167,8 @@ export class EnhancedAuthService {
           reason: user ? 'Invalid password' : 'User not found',
         });
 
-        const remainingAttempts = user 
-          ? Math.max(0, this.MAX_FAILED_ATTEMPTS - newFailedAttempts)
+        const remainingAttempts = user && user.failedLoginAttempts !== undefined
+          ? Math.max(0, this.MAX_FAILED_ATTEMPTS - (user.failedLoginAttempts + 1))
           : undefined;
 
         return {
@@ -164,17 +179,28 @@ export class EnhancedAuthService {
       }
 
       // 6. Successful login - reset failed attempts and update login stats
-      // Only update security fields if they exist (migration may not have run)
-      try {
-        await storage.updateUser(user.id, {
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-          lastLoginAt: new Date(),
-          loginCount: (user.loginCount || 0) + 1,
-        });
-      } catch (error: any) {
-        // If update fails due to missing columns, that's okay - login should still succeed
-        console.warn('[EnhancedAuth] Could not update security fields (migration may not have run):', error.message);
+      // Only update security fields if they exist (migration has run)
+      if (user.failedLoginAttempts !== undefined || user.loginCount !== undefined) {
+        try {
+          const updates: any = {};
+          if (user.failedLoginAttempts !== undefined) {
+            updates.failedLoginAttempts = 0;
+            updates.lockedUntil = null;
+          }
+          if (user.lastLoginAt !== undefined) {
+            updates.lastLoginAt = new Date();
+          }
+          if (user.loginCount !== undefined) {
+            updates.loginCount = (user.loginCount || 0) + 1;
+          }
+          
+          if (Object.keys(updates).length > 0) {
+            await storage.updateUser(user.id, updates);
+          }
+        } catch (error: any) {
+          // If update fails due to missing columns, that's okay - login should still succeed
+          console.warn('[EnhancedAuth] Could not update security fields (migration may not have run):', error.message);
+        }
       }
 
       // 7. Log successful login

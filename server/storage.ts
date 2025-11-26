@@ -151,8 +151,45 @@ export class PostgresStorage implements IStorage {
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await ensureDb().select().from(users).where(eq(users.email, email));
-    return user;
+    try {
+      // Try to select all columns (including new security fields if migration has run)
+      const [user] = await ensureDb().select().from(users).where(eq(users.email, email));
+      return user;
+    } catch (error: any) {
+      // If query fails due to missing columns (migration hasn't run), try selecting only base columns
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+        console.warn('[Storage] Migration may not have run, selecting base columns only');
+        try {
+          const [user] = await ensureDb()
+            .select({
+              id: users.id,
+              email: users.email,
+              username: users.username,
+              password: users.password,
+              createdAt: users.createdAt,
+            })
+            .from(users)
+            .where(eq(users.email, email));
+          // Return user with undefined for missing security fields
+          return user ? {
+            ...user,
+            lockedUntil: undefined,
+            failedLoginAttempts: undefined,
+            lastLoginAt: undefined,
+            loginCount: undefined,
+            isActive: undefined,
+            emailVerifiedAt: undefined,
+            emailVerified: undefined,
+            passwordResetToken: undefined,
+            passwordResetExpires: undefined,
+          } as User : undefined;
+        } catch (fallbackError) {
+          console.error('[Storage] Fallback query also failed:', fallbackError);
+          throw error; // Throw original error
+        }
+      }
+      throw error;
+    }
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
