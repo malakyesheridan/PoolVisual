@@ -92,7 +92,7 @@ export default function ShareQuote() {
       <header className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Logo variant="full" size="sm" />
+            <Logo variant="full" size="md" />
           </div>
           
           <Badge variant="outline" data-testid="badge-quote-status">
