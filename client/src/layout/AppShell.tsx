@@ -170,7 +170,7 @@ export function AppShell({ children }: PropsWithChildren) {
         <header className="app-header bg-white/80 border-b z-header">
           <div className="mx-auto max-w-7xl h-full flex items-center px-3 gap-3">
             <Link href="/" className="flex items-center">
-              <Logo variant="full" size="sm" />
+              <Logo variant="full" size="md" />
             </Link>
             
             {/* Desktop Navigation */}

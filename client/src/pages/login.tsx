@@ -95,7 +95,7 @@ export default function Login() {
         {/* Logo and Title */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <Logo variant="full" size="lg" showBorder />
+            <Logo variant="full" size="xl" />
           </div>
           <h1 className="text-2xl font-bold text-foreground">EasyFlow Studio</h1>
           <p className="text-muted-foreground mt-2">Professional quoting and design</p>

@@ -35,7 +35,7 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
     <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between z-50" data-testid="header-main">
       <div className="flex items-center space-x-6">
         <div className="flex items-center space-x-3">
-          <Logo variant="full" size="sm" />
+          <Logo variant="full" size="md" />
         </div>
         
         <nav className="hidden md:flex space-x-1" data-testid="nav-main">
