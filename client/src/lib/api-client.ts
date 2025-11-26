@@ -482,6 +482,52 @@ class ApiClient {
     });
   }
 
+  // Email Verification
+  async sendVerificationEmail() {
+    return this.request<{ message: string }>('/user/verify-email/send', {
+      method: 'POST',
+    });
+  }
+
+  async verifyEmail(token: string) {
+    return this.request<{ message: string }>('/user/verify-email/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    });
+  }
+
+  // User Sessions
+  async getUserSessions() {
+    return this.request<any[]>('/user/sessions', {
+      method: 'GET',
+    });
+  }
+
+  async revokeSession(sessionId: string) {
+    return this.request<{ message: string }>(`/user/sessions/${sessionId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async revokeAllOtherSessions() {
+    return this.request<{ message: string }>('/user/sessions', {
+      method: 'DELETE',
+    });
+  }
+
+  // Security Log
+  async getSecurityLog(options?: { limit?: number; offset?: number; eventType?: string }) {
+    const params = new URLSearchParams();
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.offset) params.append('offset', options.offset.toString());
+    if (options?.eventType) params.append('eventType', options.eventType);
+    
+    const query = params.toString();
+    return this.request<any[]>(`/user/security-log${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    });
+  }
+
   // Notifications
   async getNotifications() {
     return this.request<any[]>('/notifications');

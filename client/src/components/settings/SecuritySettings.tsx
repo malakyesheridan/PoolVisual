@@ -7,6 +7,9 @@ import { useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Save, Eye, EyeOff } from "lucide-react";
+import { EmailVerificationBanner } from "./EmailVerificationBanner";
+import { ActiveSessions } from "./ActiveSessions";
+import { SecurityLog } from "./SecurityLog";
 
 export function SecuritySettings() {
   const { toast } = useToast();
@@ -71,18 +74,23 @@ export function SecuritySettings() {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Lock className="w-5 h-5" />
-            Change Password
-          </CardTitle>
-          <CardDescription>
-            Update your password to keep your account secure
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+    <div className="space-y-6">
+      {/* Email Verification Banner */}
+      <EmailVerificationBanner />
+
+      {/* Change Password */}
+      <form onSubmit={handleSubmit}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lock className="w-5 h-5" />
+              Change Password
+            </CardTitle>
+            <CardDescription>
+              Update your password to keep your account secure
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div>
             <Label htmlFor="currentPassword">Current Password</Label>
             <div className="relative mt-1">
@@ -170,6 +178,13 @@ export function SecuritySettings() {
         </CardContent>
       </Card>
     </form>
+
+      {/* Active Sessions */}
+      <ActiveSessions />
+
+      {/* Security Log */}
+      <SecurityLog />
+    </div>
   );
 }
 
