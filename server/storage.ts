@@ -24,6 +24,7 @@ import {
   orgs,
   orgMembers,
   settings,
+  userPreferences,
   jobs,
   photos,
   materials,
@@ -76,6 +77,11 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User>;
+  
+  // User Preferences
+  getUserPreferences(userId: string): Promise<any | undefined>;
+  upsertUserPreferences(userId: string, preferences: any): Promise<any>;
   
   // Organizations
   getOrg(id: string): Promise<Org | undefined>;
@@ -659,6 +665,57 @@ export class PostgresStorage implements IStorage {
       validityDays: setting.validityDays,
       pdfTerms: setting.pdfTerms ?? undefined
     };
+  }
+
+  // User Preferences methods
+  async getUserPreferences(userId: string): Promise<any | undefined> {
+    try {
+      const [prefs] = await ensureDb()
+        .select()
+        .from(userPreferences)
+        .where(eq(userPreferences.userId, userId));
+      return prefs;
+    } catch (error: any) {
+      // If table doesn't exist yet (migration not run), return undefined
+      if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+        console.warn('[Storage] user_preferences table does not exist yet');
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async upsertUserPreferences(userId: string, preferences: any): Promise<any> {
+    try {
+      const existing = await this.getUserPreferences(userId);
+      
+      if (existing) {
+        const [updated] = await ensureDb()
+          .update(userPreferences)
+          .set({
+            ...preferences,
+            updatedAt: new Date(),
+          })
+          .where(eq(userPreferences.userId, userId))
+          .returning();
+        return updated;
+      } else {
+        const [created] = await ensureDb()
+          .insert(userPreferences)
+          .values({
+            userId,
+            ...preferences,
+          })
+          .returning();
+        return created;
+      }
+    } catch (error: any) {
+      // If table doesn't exist yet (migration not run), throw helpful error
+      if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+        throw new Error('User preferences table does not exist. Please run migration 017_user_preferences_and_profile.sql');
+      }
+      throw error;
+    }
   }
 
   // Authentication & Security methods

@@ -31,6 +31,10 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").default(false),
   passwordResetToken: text("password_reset_token"),
   passwordResetExpires: timestamp("password_reset_expires"),
+  // Profile fields
+  displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
+  timezone: text("timezone").default("UTC"),
 });
 
 // Organizations
@@ -63,6 +67,17 @@ export const settings = pgTable("settings", {
   depositDefaultPct: numeric("deposit_default_pct", { precision: 5, scale: 4 }).default("0.30").notNull(),
   validityDays: integer("validity_days").default(30).notNull(),
   pdfTerms: text("pdf_terms"),
+});
+
+// User preferences
+export const userPreferences = pgTable("user_preferences", {
+  userId: uuid("user_id").references(() => users.id).primaryKey(),
+  dateFormat: text("date_format").default("dd/mm/yyyy").notNull(),
+  measurementUnits: text("measurement_units").default("metric").notNull(),
+  language: text("language").default("en").notNull(),
+  theme: text("theme").default("light").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 // Materials

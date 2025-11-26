@@ -447,6 +447,41 @@ class ApiClient {
     });
   }
 
+  // User Profile
+  async getUserProfile() {
+    return this.request<any>('/user/profile', {
+      method: 'GET',
+    });
+  }
+
+  async updateUserProfile(data: any) {
+    return this.request<any>('/user/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async changePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ message: string }>('/user/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  // User Preferences
+  async getUserPreferences() {
+    return this.request<any>('/user/preferences', {
+      method: 'GET',
+    });
+  }
+
+  async updateUserPreferences(data: any) {
+    return this.request<any>('/user/preferences', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Notifications
   async getNotifications() {
     return this.request<any[]>('/notifications');

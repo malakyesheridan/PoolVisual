@@ -1852,6 +1852,118 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // User Profile Endpoints
+  app.get("/api/user/profile", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      // Return user profile (exclude password)
+      const { password, ...profile } = user;
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.patch("/api/user/profile", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const updates = req.body;
+      // Prevent password updates through this endpoint (use separate endpoint)
+      const { password, ...safeUpdates } = updates;
+      
+      const updatedUser = await storage.updateUser(req.user.id, safeUpdates);
+      const { password: _, ...profile } = updatedUser;
+      res.json(profile);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/user/change-password", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) {
+        return res.status(400).json({ message: "Current password and new password are required" });
+      }
+      
+      // Get user and verify current password
+      const user = await storage.getUser(req.user.id);
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      
+      const { PasswordService } = await import('./lib/passwordService.js');
+      const isValid = await PasswordService.verifyPassword(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(401).json({ message: "Current password is incorrect" });
+      }
+      
+      // Validate new password
+      const { PasswordValidator } = await import('./lib/passwordService.js');
+      const validation = PasswordValidator.validate(newPassword);
+      if (!validation.valid) {
+        return res.status(400).json({ message: validation.errors.join(', ') });
+      }
+      
+      // Hash and update password
+      const hashedPassword = await PasswordService.hashPassword(newPassword);
+      await storage.updateUser(req.user.id, { password: hashedPassword });
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // User Preferences Endpoints
+  app.get("/api/user/preferences", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const preferences = await storage.getUserPreferences(req.user.id);
+      // Return defaults if no preferences exist
+      res.json(preferences || {
+        dateFormat: 'dd/mm/yyyy',
+        measurementUnits: 'metric',
+        language: 'en',
+        theme: 'light',
+      });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.patch("/api/user/preferences", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const updates = req.body;
+      const preferences = await storage.upsertUserPreferences(req.user.id, updates);
+      res.json(preferences);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   // Image composition endpoint (for before/after generation)
   app.post("/api/photos/:id/composite", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
