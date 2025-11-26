@@ -51,8 +51,14 @@ export default function Login() {
         setError(response.error || 'Login failed');
       }
     } catch (err: any) {
-      const errorMessage = err?.response?.data?.error || err?.message || 'Login failed';
+      // Extract error message from various possible locations
+      const errorMessage = 
+        err?.response?.data?.error || 
+        err?.response?.data?.message || 
+        err?.message || 
+        'Login failed. Please check your email and password.';
       setError(errorMessage);
+      console.error('[Login] Error details:', err);
     } finally {
       setIsLoading(false);
     }

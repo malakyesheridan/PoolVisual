@@ -28,8 +28,12 @@ class ApiClient {
 
     if (!response.ok) {
       const ct = response.headers.get("content-type") || "";
-      const body = ct.includes("application/json") ? await response.json() : await response.text();
-      console.error(`API Error ${response.status}:`, body);
+      let body: any;
+      try {
+        body = ct.includes("application/json") ? await response.json() : await response.text();
+      } catch (parseError) {
+        body = await response.text();
+      }
       
       // Handle validation errors with detailed messages
       if (response.status === 400 && typeof body === "object" && body.errors) {
@@ -37,14 +41,23 @@ class ApiClient {
         const error = new Error(`Validation error: ${errorMessages}`);
         (error as any).status = response.status;
         (error as any).statusCode = response.status;
+        (error as any).response = { data: body };
         throw error;
       }
       
-      const errorMessage = typeof body === "string" ? body : body?.message || body?.error || "Request failed";
+      // Extract error message from response body
+      let errorMessage = "Request failed";
+      if (typeof body === "string") {
+        errorMessage = body;
+      } else if (body && typeof body === "object") {
+        errorMessage = body.error || body.message || body.details || JSON.stringify(body);
+      }
+      
       const error = new Error(errorMessage);
-      // CRITICAL FIX: Preserve status code for proper error handling
+      // Preserve status code and response data for proper error handling
       (error as any).status = response.status;
       (error as any).statusCode = response.status;
+      (error as any).response = { data: body };
       throw error;
     }
 

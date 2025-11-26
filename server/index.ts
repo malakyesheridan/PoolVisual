@@ -190,6 +190,14 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body || {};
     
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ 
+        ok: false, 
+        error: 'Email and password are required' 
+      });
+    }
+    
     // In no-DB mode, return a mock user for development
     if (process.env.NO_DB_MODE === 'true') {
       req.session.user = { id: 'dev-user', email: email, username: 'dev-user' };

@@ -41,14 +41,9 @@ export class EnhancedAuthService {
     };
 
     try {
-      // 1. Validate input
+      // 1. Validate input (already validated in route, but double-check)
       if (!email || !password) {
-        await AuthAuditService.logLoginAttempt({
-          email: email || 'unknown',
-          ...clientInfo,
-          success: false,
-          reason: 'Missing email or password',
-        });
+        // Don't log audit for missing input - already handled by route
         return {
           success: false,
           error: 'Email and password are required',
