@@ -35,9 +35,21 @@ export default defineConfig({
     rollupOptions: {
       external: [],
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-portal'],
+        manualChunks: (id) => {
+          // Vendor chunks
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@radix-ui')) {
+              return 'radix-vendor';
+            }
+            return 'vendor';
+          }
+          // Stable chunk names for pages to prevent import errors
+          if (id.includes('pages/job-detail')) {
+            return 'job-detail';
+          }
         },
       },
     },

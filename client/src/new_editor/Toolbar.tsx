@@ -88,8 +88,12 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
     measurements,
     drawingMode,
     dispatch,
-    getState
+    getState,
+    activeVariantId
   } = useEditorStore();
+  
+  // Check if viewing a variant (not the original image)
+  const isViewingVariant = activeVariantId !== null;
   const { addTemplate } = useUnifiedTemplateStore();
 
   // Get job context from store if not provided as props - REACTIVE
@@ -1716,8 +1720,9 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
           {/* Center Section: Tools & Zoom (Combined) */}
           <div className="flex items-center gap-2 flex-1 justify-center">
-            {/* Tools Group */}
-            <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
+            {/* Tools Group - Hide mask creation tools when viewing a variant */}
+            {!isViewingVariant && (
+              <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -1802,7 +1807,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   </Tooltip>
                 </div>
               )}
-            </div>
+              </div>
+            )}
             
             {/* Zoom & Calibration Controls - Compact Toolbar Section */}
             <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
