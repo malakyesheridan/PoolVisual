@@ -31,9 +31,9 @@ export default function Settings() {
     pdfTerms: '',
   });
   const [brandingData, setBrandingData] = useState({
-    primaryColor: '#0ea5e9',
-    secondaryColor: '#1f2937',
-    accentColor: '#10b981',
+    primaryColor: '#000000', // Black - EasyFlow Studio primary
+    secondaryColor: '#fafafa', // Off-white
+    accentColor: '#6366f1', // Indigo accent
     logoUrl: '',
   });
 
@@ -73,9 +73,9 @@ export default function Settings() {
     if (organization) {
       const brandColors = organization.brandColors as { primary?: string; secondary?: string; accent?: string } | null || {};
       setBrandingData({
-        primaryColor: brandColors.primary || '#0ea5e9',
-        secondaryColor: brandColors.secondary || '#1f2937',
-        accentColor: brandColors.accent || '#10b981',
+        primaryColor: brandColors.primary || '#000000', // Black - EasyFlow Studio default
+        secondaryColor: brandColors.secondary || '#fafafa', // Off-white
+        accentColor: brandColors.accent || '#6366f1', // Indigo accent
         logoUrl: organization.logoUrl || '',
       });
     }
@@ -332,7 +332,7 @@ export default function Settings() {
                         <Input
                           value={brandingData.primaryColor}
                           onChange={(e) => setBrandingData(prev => ({ ...prev, primaryColor: e.target.value }))}
-                          placeholder="#0ea5e9"
+                          placeholder="#000000"
                           className="font-mono"
                           data-testid="input-primary-color-text"
                         />

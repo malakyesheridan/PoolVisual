@@ -34,19 +34,7 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
     <header className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between z-50" data-testid="header-main">
       <div className="flex items-center space-x-6">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth="2" 
-                d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-              />
-            </svg>
-          </div>
-          <h1 className="text-lg font-semibold text-slate-900" data-testid="text-app-title">
-            PoolVisual Quotes
-          </h1>
+          <Logo variant="full" size="sm" />
         </div>
         
         <nav className="hidden md:flex space-x-1" data-testid="nav-main">

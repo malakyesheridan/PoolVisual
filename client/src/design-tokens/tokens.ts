@@ -13,42 +13,42 @@ export const designTokens = {
   colors: {
     light: {
       primary: {
-        DEFAULT: 'hsl(203.8863 88.2845% 53.1373%)',
-        hover: 'hsl(203.8863 88.2845% 48%)',
-        active: 'hsl(203.8863 88.2845% 43%)',
-        foreground: 'hsl(0 0% 100%)',
+        DEFAULT: 'hsl(0 0% 0%)', // Black - EasyFlow Studio primary
+        hover: 'hsl(0 0% 15%)',
+        active: 'hsl(0 0% 25%)',
+        foreground: 'hsl(0 0% 98%)', // Off-white text on black
       },
       surface: {
-        canvas: 'hsl(240, 4.8%, 95.9%)',
-        panel: 'hsl(0 0% 100%)',
+        canvas: 'hsl(0 0% 98%)', // Off-white background
+        panel: 'hsl(0 0% 100%)', // Pure white for panels
         toolbar: 'hsl(0 0% 100%)',
-        sidebar: 'hsl(0 0% 100%)',
-        footer: 'hsl(0 0% 100%)',
+        sidebar: 'hsl(0 0% 98%)', // Off-white sidebar
+        footer: 'hsl(0 0% 98%)',
       },
       border: {
-        DEFAULT: 'hsl(201.4286 30.4348% 90.9804%)',
-        divider: 'hsl(220 13% 91%)',
-        focus: 'hsl(202.8169 89.1213% 53.1373%)',
+        DEFAULT: 'hsl(0 0% 90%)', // Light gray border
+        divider: 'hsl(0 0% 85%)',
+        focus: 'hsl(0 0% 0%)', // Black focus ring
       },
     },
     dark: {
       primary: {
-        DEFAULT: 'hsl(203.8863 88.2845% 53.1373%)',
-        hover: 'hsl(203.8863 88.2845% 58%)',
-        active: 'hsl(203.8863 88.2845% 48%)',
-        foreground: 'hsl(0 0% 100%)',
+        DEFAULT: 'hsl(0 0% 98%)', // Off-white in dark mode
+        hover: 'hsl(0 0% 95%)',
+        active: 'hsl(0 0% 90%)',
+        foreground: 'hsl(0 0% 0%)', // Black text on off-white
       },
       surface: {
-        canvas: 'hsl(240, 5.9%, 10%)',
-        panel: 'hsl(240, 5.9%, 12%)',
-        toolbar: 'hsl(240, 5.9%, 12%)',
-        sidebar: 'hsl(240, 5.9%, 12%)',
-        footer: 'hsl(240, 5.9%, 12%)',
+        canvas: 'hsl(0 0% 5%)', // Very dark for dark mode
+        panel: 'hsl(0 0% 8%)',
+        toolbar: 'hsl(0 0% 8%)',
+        sidebar: 'hsl(0 0% 5%)',
+        footer: 'hsl(0 0% 5%)',
       },
       border: {
-        DEFAULT: 'hsl(240, 3.7%, 15.9%)',
-        divider: 'hsl(240, 3.7%, 15.9%)',
-        focus: 'hsl(202.8169 89.1213% 53.1373%)',
+        DEFAULT: 'hsl(0 0% 15%)',
+        divider: 'hsl(0 0% 15%)',
+        focus: 'hsl(0 0% 98%)', // Off-white focus ring in dark mode
       },
     },
     highContrast: {

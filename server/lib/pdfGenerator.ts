@@ -293,9 +293,9 @@ export class PDFGenerator {
     
     // Extract branding colors from organization (with defaults)
     const brandColors = organization.brandColors as { primary?: string; secondary?: string; accent?: string } | null || {};
-    const primaryColor = brandColors.primary || '#0ea5e9';
-    const secondaryColor = brandColors.secondary || '#1f2937';
-    const accentColor = brandColors.accent || '#10b981';
+    const primaryColor = brandColors.primary || '#000000'; // Black - EasyFlow Studio default
+    const secondaryColor = brandColors.secondary || '#fafafa'; // Off-white
+    const accentColor = brandColors.accent || '#6366f1'; // Indigo accent
     
     // Generate logo HTML if available
     const logoHtml = organization.logoUrl 

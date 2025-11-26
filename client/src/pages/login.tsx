@@ -12,6 +12,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { loginSchema, registerSchema, type LoginFormData, type RegisterFormData } from '@/lib/form-validation';
 import { Form } from '@/components/ui/form';
 import { FormField } from '@/components/common/FormField';
+import { Logo } from '@/components/brand/Logo';
 
 export default function Login() {
   const [, navigate] = useLocation();
@@ -93,18 +94,11 @@ export default function Login() {
       <div className="w-full max-w-md">
         {/* Logo and Title */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path 
-                strokeLinecap="round" 
-                strokeLinejoin="round" 
-                strokeWidth="2" 
-                d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"
-              />
-            </svg>
+          <div className="flex justify-center mb-4">
+            <Logo variant="full" size="lg" showBorder />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">PoolVisual Quotes</h1>
-          <p className="text-slate-600 mt-2">Professional pool renovation quoting</p>
+          <h1 className="text-2xl font-bold text-foreground">EasyFlow Studio</h1>
+          <p className="text-muted-foreground mt-2">Professional quoting and design</p>
         </div>
 
         <Card className="border-0 shadow-lg">

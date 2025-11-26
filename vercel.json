@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "name": "poolvisual",
+  "name": "easyflow-studio",
   "builds": [
     {
       "src": "package.json",

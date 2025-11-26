@@ -12,18 +12,18 @@
   --spacing-2xl: 3rem;
   --spacing-3xl: 4rem;
   /* Colors - Light */
-  --primary-default: hsl(203.8863 88.2845% 53.1373%);
-  --primary-hover: hsl(203.8863 88.2845% 48%);
-  --primary-active: hsl(203.8863 88.2845% 43%);
-  --primary-foreground: hsl(0 0% 100%);
-  --surface-canvas: hsl(240, 4.8%, 95.9%);
+  --primary-default: hsl(0 0% 0%);
+  --primary-hover: hsl(0 0% 15%);
+  --primary-active: hsl(0 0% 25%);
+  --primary-foreground: hsl(0 0% 98%);
+  --surface-canvas: hsl(0 0% 98%);
   --surface-panel: hsl(0 0% 100%);
   --surface-toolbar: hsl(0 0% 100%);
-  --surface-sidebar: hsl(0 0% 100%);
-  --surface-footer: hsl(0 0% 100%);
-  --border-default: hsl(201.4286 30.4348% 90.9804%);
-  --border-divider: hsl(220 13% 91%);
-  --border-focus: hsl(202.8169 89.1213% 53.1373%);
+  --surface-sidebar: hsl(0 0% 98%);
+  --surface-footer: hsl(0 0% 98%);
+  --border-default: hsl(0 0% 90%);
+  --border-divider: hsl(0 0% 85%);
+  --border-focus: hsl(0 0% 0%);
   /* Elevation */
   --elevation-none: none;
   --elevation-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
@@ -43,18 +43,18 @@
 
 .dark {
   /* Colors - Dark */
-  --primary-default: hsl(203.8863 88.2845% 53.1373%);
-  --primary-hover: hsl(203.8863 88.2845% 58%);
-  --primary-active: hsl(203.8863 88.2845% 48%);
-  --primary-foreground: hsl(0 0% 100%);
-  --surface-canvas: hsl(240, 5.9%, 10%);
-  --surface-panel: hsl(240, 5.9%, 12%);
-  --surface-toolbar: hsl(240, 5.9%, 12%);
-  --surface-sidebar: hsl(240, 5.9%, 12%);
-  --surface-footer: hsl(240, 5.9%, 12%);
-  --border-default: hsl(240, 3.7%, 15.9%);
-  --border-divider: hsl(240, 3.7%, 15.9%);
-  --border-focus: hsl(202.8169 89.1213% 53.1373%);
+  --primary-default: hsl(0 0% 98%);
+  --primary-hover: hsl(0 0% 95%);
+  --primary-active: hsl(0 0% 90%);
+  --primary-foreground: hsl(0 0% 0%);
+  --surface-canvas: hsl(0 0% 5%);
+  --surface-panel: hsl(0 0% 8%);
+  --surface-toolbar: hsl(0 0% 8%);
+  --surface-sidebar: hsl(0 0% 5%);
+  --surface-footer: hsl(0 0% 5%);
+  --border-default: hsl(0 0% 15%);
+  --border-divider: hsl(0 0% 15%);
+  --border-focus: hsl(0 0% 98%);
   /* High Contrast - Dark (same var names) */
   --surface-foreground: hsl(0, 0%, 100%);
   --surface-background: hsl(0, 0%, 0%);

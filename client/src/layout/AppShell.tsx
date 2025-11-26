@@ -27,6 +27,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useStatusSyncStore } from '@/stores/statusSyncStore';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
+import { Logo } from '@/components/brand/Logo';
 
 // Notifications Bell Component
 function NotificationsBell() {
@@ -168,8 +169,8 @@ export function AppShell({ children }: PropsWithChildren) {
       {!isCanvasEditorPage && (
         <header className="app-header bg-white/80 border-b z-header">
           <div className="mx-auto max-w-7xl h-full flex items-center px-3 gap-3">
-            <Link href="/" className="font-semibold text-lg text-blue-600 hover:text-blue-700">
-              PoolVisual Quotes
+            <Link href="/" className="flex items-center">
+              <Logo variant="full" size="sm" />
             </Link>
             
             {/* Desktop Navigation */}

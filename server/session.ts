@@ -1,6 +1,6 @@
 import type { SessionOptions } from "iron-session";
 export const sessionOptions: SessionOptions = {
-  cookieName: "pv.session",
+  cookieName: "ef.session", // Changed from pv.session - users will need to re-login after deployment
   password: process.env.SESSION_SECRET || "dev_dev_dev_dev_dev_dev_dev_dev_dev_dev_32+chars",
   cookieOptions: {
     secure: process.env.NODE_ENV === "production",
