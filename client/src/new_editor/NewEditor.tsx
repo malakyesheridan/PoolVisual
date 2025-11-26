@@ -39,9 +39,10 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   });
   
   // Sidebar collapsed/expanded state with localStorage persistence
+  // Default to OPEN by default - user can manually toggle
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(() => {
     const saved = localStorage.getItem('poolVisual-sidebarOpen');
-    return saved ? saved === 'true' : false; // Default to closed for fresh images
+    return saved ? saved === 'true' : true; // Default to OPEN
   });
   
   // Resize state
@@ -54,51 +55,23 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const prevMaskCountRef = useRef(masks.length);
   const prevImageUrlRef = useRef(useEditorStore.getState().imageUrl);
   
-  // Listen for mask creation to auto-open sidebar
+  // REMOVED: Auto sidebar behavior - sidebar stays open by default, user controls manually
+  // Track mask count for other purposes (if needed)
   useEffect(() => {
     const currentMasks = masks;
     const currentMaskCount = currentMasks.length;
-    const prevMaskCount = prevMaskCountRef.current;
-    
-    // Check if a new mask was just created
-    if (currentMaskCount > prevMaskCount && !isSidebarOpen) {
-      // New mask created and sidebar is closed - open it
-      setIsSidebarOpen(true);
-      setActiveTab('materials');
-      setIsFreshImage(false);
-      localStorage.setItem('poolVisual-sidebarOpen', 'true');
-      console.log('[NewEditor] Mask created, auto-opening sidebar');
-    }
-    
-    // Update ref
     prevMaskCountRef.current = currentMaskCount;
     
     // If no masks, mark as fresh image
     if (currentMaskCount === 0) {
       setIsFreshImage(true);
     }
-  }, [masks.length, isSidebarOpen]);
+  }, [masks.length]);
   
-  // Close sidebar when fresh image is uploaded (SET_IMAGE action)
-  // Use selector to get imageUrl reactively instead of calling getState() in dependency array
+  // Track image URL changes (no auto sidebar behavior)
   const imageUrl = useEditorStore(state => state.imageUrl);
   useEffect(() => {
-    const currentImageUrl = imageUrl;
-    const prevImageUrl = prevImageUrlRef.current;
-    
-    // If image URL changed and we have no masks, close sidebar
-    if (currentImageUrl && currentImageUrl !== prevImageUrl && prevImageUrl !== undefined) {
-      const currentMasks = useEditorStore.getState().masks;
-      if (currentMasks.length === 0) {
-        setIsSidebarOpen(false);
-        setIsFreshImage(true);
-        localStorage.setItem('poolVisual-sidebarOpen', 'false');
-        console.log('[NewEditor] Fresh image uploaded, closing sidebar');
-      }
-    }
-    
-    // Update ref
-    prevImageUrlRef.current = currentImageUrl;
+    prevImageUrlRef.current = imageUrl;
   }, [imageUrl]);
   
   // Toggle sidebar function
@@ -1046,15 +1019,17 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
           />
       
-      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-4">
-        {/* Canvas viewport container - fixed box that does NOT resize on zoom */}
+      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-4 relative">
+        {/* Canvas viewport container - fixed size assuming sidebar is always open */}
         <div 
           ref={containerRef}
-          className="flex-1 relative bg-white rounded-xl shadow-md min-h-0"
+          className="relative bg-white rounded-xl shadow-md min-h-0"
           style={{
             position: 'relative',
             overflow: 'hidden',
-            minWidth: 0,
+            // Canvas size assumes sidebar is always open - fixed width calculation
+            width: `calc(100% - ${sidebarWidth + 20}px)`, // sidebar width + gap + padding
+            flexShrink: 0,
             // Prevent horizontal scroll during zoom
             overflowX: 'hidden'
           }}
@@ -1156,6 +1131,30 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           aria-label="Editor Sidebar"
           aria-hidden={!isSidebarOpen}
         >
+          {/* Sidebar Toggle Button - always visible */}
+          <button
+            onClick={toggleSidebar}
+            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
+            aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          >
+            {isSidebarOpen ? (
+              <PanelRight className="w-4 h-4 text-gray-600" />
+            ) : (
+              <PanelLeft className="w-4 h-4 text-gray-600" />
+            )}
+          </button>
+          
+          {/* Resize Handle - only show when sidebar is open */}
+          {isSidebarOpen && (
+            <div
+              ref={resizeHandleRef}
+              className={`absolute left-0 top-0 bottom-0 w-1 bg-gray-300 hover:bg-primary/80 cursor-col-resize transition-colors ${
+                isResizing ? 'bg-primary' : ''
+              }`}
+            />
+          )}
+          
           {/* Tab Navigation - only render when sidebar is open */}
           {isSidebarOpen && (
             <TooltipProvider>
@@ -1165,7 +1164,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
                       activeTab === 'materials'
-                        ? 'text-primary border-b-2 border-blue-600'
+                        ? 'text-primary border-b-2 border-primary'
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                     onClick={() => setActiveTab('materials')}
@@ -1181,7 +1180,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
                       activeTab === 'variants'
-                        ? 'text-primary border-b-2 border-blue-600'
+                        ? 'text-primary border-b-2 border-primary'
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                     onClick={() => setActiveTab('variants')}
@@ -1197,7 +1196,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
                   <button
                     className={`flex-1 px-3 py-2 text-sm font-medium flex items-center justify-center ${
                       activeTab === 'masks'
-                        ? 'text-primary border-b-2 border-blue-600'
+                        ? 'text-primary border-b-2 border-primary'
                         : 'text-gray-500 hover:text-gray-700'
                     }`}
                     onClick={() => setActiveTab('masks')}
