@@ -201,7 +201,7 @@ export function EnhancedQuoteBuilder({
 
   const getKindColor = (kind: string) => {
     switch (kind) {
-      case 'material': return 'bg-blue-100 text-blue-800';
+      case 'material': return 'bg-primary/10 text-primary';
       case 'labor': return 'bg-green-100 text-green-800';
       case 'adjustment': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';

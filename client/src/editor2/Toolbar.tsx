@@ -85,7 +85,7 @@ export function Toolbar() {
       {/* Upload */}
       <button
         onClick={() => fileInputRef.current?.click()}
-        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium"
+        className="px-3 py-2 bg-primary hover:bg-primary/90 rounded text-sm font-medium"
       >
         Upload Photo
       </button>
@@ -122,7 +122,7 @@ export function Toolbar() {
         onClick={() => dispatch({ type: 'mode/set', mode: 'select' })}
         className={`px-3 py-2 rounded text-sm font-medium ${
           doc.mode === 'select' 
-            ? 'bg-blue-600 text-white' 
+            ? 'bg-primary text-white' 
             : 'bg-gray-600 hover:bg-gray-700'
         }`}
       >
@@ -133,7 +133,7 @@ export function Toolbar() {
         onClick={() => dispatch({ type: 'mode/set', mode: 'draw-area' })}
         className={`px-3 py-2 rounded text-sm font-medium ${
           doc.mode === 'draw-area' 
-            ? 'bg-blue-600 text-white' 
+            ? 'bg-primary text-white' 
             : 'bg-gray-600 hover:bg-gray-700'
         }`}
       >

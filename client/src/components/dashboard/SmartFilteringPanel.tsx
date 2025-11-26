@@ -155,7 +155,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
           </div>
           <button
             onClick={() => applySmartFiltering()}
-            className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+            className="px-3 py-1 text-sm bg-primary/10 text-primary rounded-md hover:bg-blue-200 transition-colors"
           >
             Apply Filters
           </button>
@@ -176,7 +176,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
               onClick={() => setActiveTab(tab.id as any)}
               className={`flex items-center space-x-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === tab.id
-                  ? 'border-blue-500 text-blue-600'
+                  ? 'border-primary text-primary'
                   : 'border-transparent text-slate-600 hover:text-slate-900'
               }`}
             >
@@ -202,7 +202,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       type="checkbox"
                       checked={enabled}
                       onChange={(e) => handleCategoryFilterChange(category, e.target.checked)}
-                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      className="w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
                     />
                     <div className="flex items-center space-x-2">
                       {getCategoryIcon(category)}
@@ -225,7 +225,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       ...userPreferences.timeBasedFiltering,
                       enabled: e.target.checked
                     })}
-                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
                   />
                   <span className="text-sm text-slate-700">Enable time-based filtering</span>
                 </label>
@@ -238,7 +238,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       ...userPreferences.timeBasedFiltering,
                       respectBusinessHours: e.target.checked
                     })}
-                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
                   />
                   <span className="text-sm text-slate-700">Respect business hours</span>
                 </label>
@@ -250,7 +250,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       type="time"
                       value={userPreferences.timeBasedFiltering.businessHours.start}
                       onChange={(e) => handleBusinessHoursChange('start', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
                     />
                   </div>
                   <div>
@@ -259,7 +259,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       type="time"
                       value={userPreferences.timeBasedFiltering.businessHours.end}
                       onChange={(e) => handleBusinessHoursChange('end', e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
                     />
                   </div>
                 </div>
@@ -282,7 +282,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       max="50"
                       value={limit}
                       onChange={(e) => handleFrequencyLimitChange(category, parseInt(e.target.value))}
-                      className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-blue-500 focus:border-blue-500"
+                      className="w-20 px-2 py-1 text-sm border border-slate-300 rounded focus:ring-primary focus:border-primary"
                     />
                   </div>
                 ))}
@@ -301,7 +301,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       ...userPreferences.smartGrouping,
                       enabled: e.target.checked
                     })}
-                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    className="w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
                   />
                   <span className="text-sm text-slate-700">Enable smart grouping</span>
                 </label>
@@ -317,7 +317,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       ...userPreferences.smartGrouping,
                       batchThreshold: parseInt(e.target.value)
                     })}
-                    className="w-20 px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                    className="w-20 px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
                   />
                 </div>
               </div>
@@ -332,7 +332,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
               <h4 className="text-sm font-medium text-slate-900">Custom Filters</h4>
               <button
                 onClick={createCustomFilter}
-                className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                className="flex items-center space-x-2 px-3 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary/90 transition-colors"
               >
                 <Plus className="w-4 h-4" />
                 <span>Add Filter</span>
@@ -347,7 +347,7 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
                       type="checkbox"
                       checked={filter.enabled}
                       onChange={() => toggleFilterEnabled(filter.id)}
-                      className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      className="w-4 h-4 text-primary border-slate-300 rounded focus:ring-primary"
                     />
                     <div>
                       <div className="flex items-center space-x-2">
@@ -392,9 +392,9 @@ export const SmartFilteringPanel: React.FC<SmartFilteringPanelProps> = ({ projec
           <div className="space-y-6">
             {/* Overview Stats */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{stats.total}</div>
-                <div className="text-sm text-blue-700">Total Notifications</div>
+              <div className="p-4 bg-primary/5 rounded-lg">
+                <div className="text-2xl font-bold text-primary">{stats.total}</div>
+                <div className="text-sm text-primary">Total Notifications</div>
               </div>
               <div className="p-4 bg-green-50 rounded-lg">
                 <div className="text-2xl font-bold text-green-600">{notificationGroups.length}</div>

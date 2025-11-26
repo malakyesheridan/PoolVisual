@@ -71,7 +71,7 @@ export function JobCard({
   }, [firstVariant?.id]);
   
   let StatusIcon = Clock;
-  let statusColor = 'bg-blue-100 text-blue-700 border-blue-200';
+  let statusColor = 'bg-primary/10 text-primary border-primary/20';
   let statusLabel = 'Processing';
   
   if (isCompleted) {
@@ -87,7 +87,7 @@ export function JobCard({
   return (
     <div className={`rounded-lg border transition-all duration-200 ${
       isActive 
-        ? 'border-blue-500 bg-blue-50 shadow-md' 
+        ? 'border-primary bg-primary/5 shadow-md' 
         : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm'
     } p-4 space-y-3`}>
       {/* Header */}
@@ -100,7 +100,7 @@ export function JobCard({
         </div>
         <div className="flex items-center gap-2">
           {isVariantActive && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-600 text-white">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-primary text-white">
               <Sparkles className="w-3 h-3" />
               <span>Active on Canvas</span>
             </div>
@@ -118,7 +118,7 @@ export function JobCard({
         <div className="space-y-2">
           <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-600 rounded-full transition-all duration-300"
+              className="h-full bg-primary rounded-full transition-all duration-300"
               style={{ width: `${Math.max(0, Math.min(100, job.progress_percent || 0))}%` }}
             />
           </div>
@@ -169,7 +169,7 @@ export function JobCard({
                 </div>
               )}
               {isVariantActive && (
-                <div className="absolute top-2 right-2 bg-blue-600 text-white text-xs px-2 py-1 rounded-full font-medium z-20">
+                <div className="absolute top-2 right-2 bg-primary text-white text-xs px-2 py-1 rounded-full font-medium z-20">
                   Active
                 </div>
               )}
@@ -181,7 +181,7 @@ export function JobCard({
             {!isVariantActive && onApply && (
               <button
                 onClick={() => onApply(job)}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
               >
                 <Eye className="w-4 h-4" />
                 Apply to Canvas
@@ -228,7 +228,7 @@ export function JobCard({
           {onRetry && (
             <button
               onClick={() => onRetry(job)}
-              className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              className="w-full px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
             >
               <RefreshCw className="w-4 h-4" />
               Retry

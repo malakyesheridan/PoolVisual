@@ -67,7 +67,7 @@ export function SelectedAssetPanel({ asset }: SelectedAssetPanelProps) {
         <div className="flex items-center gap-2">
           <button
             onClick={handleDuplicate}
-            className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+            className="text-xs px-2 py-1 bg-primary/10 text-primary rounded hover:bg-blue-200"
             title="Duplicate (Ctrl+D)"
           >
             Copy
@@ -117,7 +117,7 @@ export function SelectedAssetPanel({ asset }: SelectedAssetPanelProps) {
         <select
           value={asset.blend}
           onChange={(e) => handleBlendChange(e.target.value as Blend)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         >
           {blendModes.map(mode => (
             <option key={mode} value={mode}>
@@ -229,7 +229,7 @@ export function SelectedAssetPanel({ asset }: SelectedAssetPanelProps) {
           <button
             onClick={handleLockToggle}
             className={`w-8 h-4 rounded-full transition-colors ${
-              asset.locked ? 'bg-blue-500' : 'bg-gray-300'
+              asset.locked ? 'bg-primary' : 'bg-gray-300'
             }`}
           >
             <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
@@ -243,7 +243,7 @@ export function SelectedAssetPanel({ asset }: SelectedAssetPanelProps) {
           <button
             onClick={handleHideToggle}
             className={`w-8 h-4 rounded-full transition-colors ${
-              asset.hidden ? 'bg-blue-500' : 'bg-gray-300'
+              asset.hidden ? 'bg-primary' : 'bg-gray-300'
             }`}
           >
             <div className={`w-3 h-3 bg-white rounded-full transition-transform ${

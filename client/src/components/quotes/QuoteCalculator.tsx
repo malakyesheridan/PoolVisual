@@ -95,7 +95,7 @@ export function QuoteCalculator({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800';
-      case 'sent': return 'bg-blue-100 text-blue-800';
+      case 'sent': return 'bg-primary/10 text-primary';
       case 'accepted': return 'bg-green-100 text-green-800';
       case 'declined': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -113,7 +113,7 @@ export function QuoteCalculator({
 
   const getKindColor = (kind: string) => {
     switch (kind) {
-      case 'material': return 'bg-blue-100 text-blue-800';
+      case 'material': return 'bg-primary/10 text-primary';
       case 'labor': return 'bg-green-100 text-green-800';
       case 'adjustment': return 'bg-purple-100 text-purple-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -238,7 +238,7 @@ export function QuoteCalculator({
 
         <div className="space-y-3">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-primary mt-0.5" />
             <div className="text-sm text-slate-600">
               <p className="font-medium text-slate-900 mb-1">What this will do:</p>
               <ul className="space-y-1 list-disc list-inside">

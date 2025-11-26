@@ -80,19 +80,19 @@ export default function PhotoToolbar() {
         <span className="text-xs">Mode:</span>
         <button 
           onClick={() => setTransformMode("translate")}
-          className={`px-2 py-1 text-xs rounded ${transformMode === "translate" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
+          className={`px-2 py-1 text-xs rounded ${transformMode === "translate" ? "bg-primary text-white" : "bg-gray-200"}`}
         >
           Move
         </button>
         <button 
           onClick={() => setTransformMode("rotate")}
-          className={`px-2 py-1 text-xs rounded ${transformMode === "rotate" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
+          className={`px-2 py-1 text-xs rounded ${transformMode === "rotate" ? "bg-primary text-white" : "bg-gray-200"}`}
         >
           Rotate
         </button>
         <button 
           onClick={() => setTransformMode("scale")}
-          className={`px-2 py-1 text-xs rounded ${transformMode === "scale" ? "bg-blue-500 text-white" : "bg-gray-200"}`}
+          className={`px-2 py-1 text-xs rounded ${transformMode === "scale" ? "bg-primary text-white" : "bg-gray-200"}`}
         >
           Scale
         </button>
@@ -278,7 +278,7 @@ export default function PhotoToolbar() {
         </button>
 
        <button  
-        className="px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+        className="px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary"
         onClick={async () => {
           const threeCanvas = document.querySelector("canvas") as HTMLCanvasElement | null;
           if (!threeCanvas) return alert("3D canvas not found");

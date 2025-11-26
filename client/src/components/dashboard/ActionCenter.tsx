@@ -265,7 +265,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="text-center">
-                <div className="text-lg font-bold text-blue-600">{jobs.length}</div>
+                <div className="text-lg font-bold text-primary">{jobs.length}</div>
                 <div className="text-xs text-gray-600">Projects</div>
               </div>
               <div className="text-center">

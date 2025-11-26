@@ -113,15 +113,15 @@ export function CalibrationControls() {
 
   if (isCalibrating) {
     return (
-      <Card className="mb-4 border-blue-200">
+      <Card className="mb-4 border-primary/20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center">
-            <Ruler className="h-4 w-4 mr-2 text-blue-600" />
+            <Ruler className="h-4 w-4 mr-2 text-primary" />
             Setting Calibration
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="text-xs text-blue-700 bg-blue-50 p-2 rounded">
+          <div className="text-xs text-primary bg-primary/5 p-2 rounded">
             <Info className="h-3 w-3 inline mr-1" />
             Draw a line on a known distance in the image
           </div>

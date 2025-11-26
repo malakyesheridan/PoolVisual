@@ -111,7 +111,7 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
       case 'critical': return 'border-red-300 bg-red-50';
       case 'error': return 'border-red-200 bg-red-50';
       case 'warning': return 'border-yellow-200 bg-yellow-50';
-      case 'info': return 'border-blue-200 bg-blue-50';
+      case 'info': return 'border-primary/20 bg-primary/5';
       default: return 'border-gray-200 bg-gray-50';
     }
   };
@@ -119,7 +119,7 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
   const getDeadlineStatusColor = (status: ProjectDeadline['status']) => {
     switch (status) {
       case 'completed': return 'text-green-600 bg-green-50';
-      case 'in_progress': return 'text-blue-600 bg-blue-50';
+      case 'in_progress': return 'text-primary bg-primary/5';
       case 'overdue': return 'text-red-600 bg-red-50';
       case 'cancelled': return 'text-gray-600 bg-gray-50';
       default: return 'text-yellow-600 bg-yellow-50';
@@ -162,7 +162,7 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-blue-600" />
+            <Calendar className="w-5 h-5 text-primary" />
             Timeline & Deadlines
             {(alerts.length > 0 || overdueDeadlines.length > 0) && (
               <Badge variant="destructive" className="text-xs">
@@ -196,7 +196,7 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
+                    ? 'border-primary text-primary'
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -345,14 +345,14 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
               {timeline ? (
                 <>
                   {/* Timeline Overview */}
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-semibold text-blue-900">Project Timeline</h4>
-                      <Badge className="text-blue-600 bg-blue-100">
+                      <h4 className="text-sm font-semibold text-primary">Project Timeline</h4>
+                      <Badge className="text-primary bg-primary/10">
                         {timeline.progressPercentage}% Complete
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-blue-700">
+                    <div className="flex items-center gap-4 text-xs text-primary">
                       <span>Start: {format(timeline.startDate, 'MMM dd')}</span>
                       <span>End: {format(timeline.endDate, 'MMM dd')}</span>
                       <span>Duration: {timeline.totalDuration} days</span>
@@ -360,7 +360,7 @@ export function DeadlineAlerts({ className = '', projectId }: DeadlineAlertsProp
                     <div className="mt-2">
                       <div className="w-full bg-blue-200 rounded-full h-2">
                         <div 
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                          className="bg-primary h-2 rounded-full transition-all duration-300"
                           style={{ width: `${timeline.progressPercentage}%` }}
                         ></div>
                       </div>

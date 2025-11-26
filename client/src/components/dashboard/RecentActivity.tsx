@@ -54,8 +54,8 @@ export function RecentActivity({ jobs, className = '' }: RecentActivityProps) {
       description: `Status changed to ${job.status}`,
       timestamp: job.updatedAt,
       icon: Activity,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-100'
+      color: 'text-primary',
+      bgColor: 'bg-primary/10'
     }));
 
   const getActivityIcon = (type: string) => {

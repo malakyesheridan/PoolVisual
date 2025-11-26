@@ -92,7 +92,7 @@ export function MaskManagementPanel({ className = '' }: MaskManagementPanelProps
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
             onKeyDown={handleKeyPress}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
             autoFocus
           />
           <div className="flex justify-end space-x-2 mt-2">
@@ -104,7 +104,7 @@ export function MaskManagementPanel({ className = '' }: MaskManagementPanelProps
             </button>
             <button
               onClick={handleCreateGroup}
-              className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="px-3 py-1 text-sm bg-primary text-white rounded hover:bg-primary"
             >
               Create
             </button>

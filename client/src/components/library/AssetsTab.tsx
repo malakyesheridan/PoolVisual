@@ -123,7 +123,7 @@ export const AssetsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, ref)
     return (
       <div className="flex items-center justify-center h-64">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
           <p className="text-gray-600">Loading assets...</p>
         </div>
       </div>
@@ -178,8 +178,8 @@ export const AssetsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, ref)
 
       {/* Add Asset Form */}
       {showAddForm && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-          <h3 className="font-medium text-blue-900 mb-4">Add New Asset</h3>
+        <div className="bg-primary/5 border border-primary/20 rounded-lg p-6">
+          <h3 className="font-medium text-primary mb-4">Add New Asset</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Basic Information */}
@@ -350,7 +350,7 @@ export const AssetsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, ref)
           <div
             key={asset.id}
             className={`border rounded-lg p-4 hover:shadow-md transition-shadow ${
-              selectedAsset?.id === asset.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+              selectedAsset?.id === asset.id ? 'border-primary bg-primary/5' : 'border-gray-200'
             }`}
             onClick={() => selectAsset(asset.id)}
           >

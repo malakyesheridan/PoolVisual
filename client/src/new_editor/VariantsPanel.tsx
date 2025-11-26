@@ -166,7 +166,7 @@ export function VariantsPanel() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600 mb-4" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
         <p className="text-sm text-gray-500">Loading variants...</p>
       </div>
     );
@@ -210,7 +210,7 @@ export function VariantsPanel() {
               data-variant-id={variant.id}
               className={`group relative rounded-lg border-2 transition-all ${
                 isActive
-                  ? 'border-blue-500 bg-blue-50'
+                  ? 'border-primary bg-primary/5'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
             >
@@ -225,7 +225,7 @@ export function VariantsPanel() {
                   }}
                 />
                 {isActive && (
-                  <div className="absolute top-2 right-2 bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-medium">
+                  <div className="absolute top-2 right-2 bg-primary text-white text-xs px-2 py-1 rounded-full font-medium">
                     Active
                   </div>
                 )}
@@ -236,7 +236,7 @@ export function VariantsPanel() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <Sparkles size={14} className="text-blue-600 flex-shrink-0" />
+                      <Sparkles size={14} className="text-primary flex-shrink-0" />
                       <span className="text-sm font-medium text-gray-900 truncate">
                         {getModeLabel(variant.mode)} {variant.rank + 1}
                       </span>
@@ -253,7 +253,7 @@ export function VariantsPanel() {
                       onClick={() => handleSelectVariant(variant)}
                       className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                         isActive
-                          ? 'bg-blue-600 text-white'
+                          ? 'bg-primary text-white'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                       disabled={isDeleting}

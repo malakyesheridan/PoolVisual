@@ -221,9 +221,9 @@ export function EdgeCalibrationDialog({ maskId, onClose, globalPixelsPerMeter = 
 
         <div className="space-y-4">
           {/* Info Banner */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2">
-            <Info className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-800">
+          <div className="bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-start gap-2">
+            <Info className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-primary">
               <p className="font-medium mb-1">Perspective Correction</p>
               <p>
                 Enter the real-world length for each edge. This corrects for perspective distortion 
@@ -265,7 +265,7 @@ export function EdgeCalibrationDialog({ maskId, onClose, globalPixelsPerMeter = 
                   <div
                     key={edge.edgeIndex}
                     className={`flex items-center gap-3 p-2 rounded-md border transition-colors ${
-                      isHovered ? 'bg-blue-50 border-blue-300' : 'bg-gray-50 border-gray-200'
+                      isHovered ? 'bg-primary/5 border-blue-300' : 'bg-gray-50 border-gray-200'
                     }`}
                   >
                     <div className="flex-shrink-0 w-20 text-xs text-gray-600">
@@ -285,7 +285,7 @@ export function EdgeCalibrationDialog({ maskId, onClose, globalPixelsPerMeter = 
                         onFocus={() => handleEdgeFocus(edge.edgeIndex)}
                         onBlur={handleEdgeBlur}
                         placeholder="meters"
-                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary"
                       />
                       <span className="text-xs text-gray-500">m</span>
                     </div>
@@ -349,7 +349,7 @@ export function EdgeCalibrationDialog({ maskId, onClose, globalPixelsPerMeter = 
             <button
               onClick={handleSave}
               disabled={edgeMeasurements.size === 0}
-              className="flex-1 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {validation?.isValid && (
                 <CheckCircle2 className="w-4 h-4" />

@@ -98,14 +98,14 @@ export function BulkActionToolbar() {
   const isLoading = bulkActionInProgress || actionInProgress !== null;
   
   return (
-    <div className="sticky top-0 z-10 bg-blue-50 border-b border-blue-200 px-4 py-3 flex items-center justify-between shadow-sm">
+    <div className="sticky top-0 z-10 bg-primary/5 border-b border-primary/20 px-4 py-3 flex items-center justify-between shadow-sm">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-blue-900">
+        <span className="text-sm font-medium text-primary">
           {selectedCount} job{selectedCount !== 1 ? 's' : ''} selected
         </span>
         <button
           onClick={deselectAllJobs}
-          className="text-sm text-blue-600 hover:text-blue-800 underline"
+          className="text-sm text-primary hover:text-primary underline"
           disabled={isLoading}
         >
           Clear selection
@@ -116,7 +116,7 @@ export function BulkActionToolbar() {
         <button
           onClick={handleBulkRetry}
           disabled={isLoading || actionInProgress !== null}
-          className="px-3 py-1.5 text-sm font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          className="px-3 py-1.5 text-sm font-medium text-primary bg-primary/10 hover:bg-blue-200 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           title="Retry failed jobs"
         >
           <RefreshCw className={`w-4 h-4 ${actionInProgress === 'retry' ? 'animate-spin' : ''}`} />

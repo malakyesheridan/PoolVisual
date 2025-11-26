@@ -320,7 +320,7 @@ export function AssetsPanel() {
                   <div
                     key={asset.id}
                     className={`flex items-center gap-2 p-2 rounded border ${
-                      selectedAssetId === asset.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200'
+                      selectedAssetId === asset.id ? 'border-primary bg-primary/5' : 'border-gray-200'
                     }`}
                     onClick={() => setSelectedAsset(asset.id)}
                   >

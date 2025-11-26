@@ -91,8 +91,8 @@ export default function JobsNew() {
         <Card className="border-slate-200 shadow-[0_1px_3px_rgba(15,23,42,0.08)]">
           <CardHeader className="border-b border-slate-100 bg-slate-50/50">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                <User className="w-5 h-5 text-blue-600" />
+              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <User className="w-5 h-5 text-primary" />
               </div>
               <div>
                 <CardTitle className="text-xl text-slate-900">Client Information</CardTitle>
@@ -183,7 +183,7 @@ export default function JobsNew() {
                     type="submit"
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-create-job"
-                    className="min-w-[140px] bg-blue-600 hover:bg-blue-700 text-white"
+                    className="min-w-[140px] bg-primary hover:bg-primary/90 text-white"
                   >
                     {isSubmitting || createJobMutation.isPending ? (
                       <>
@@ -204,25 +204,25 @@ export default function JobsNew() {
         </Card>
 
         {/* Tips Card - Enhanced Design */}
-        <Card className="mt-6 border-blue-200 bg-gradient-to-br from-blue-50 to-blue-50/50 shadow-sm">
+        <Card className="mt-6 border-primary/20 bg-gradient-to-br from-blue-50 to-blue-50/50 shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                <Info className="w-4 h-4 text-blue-600" />
+              <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <Info className="w-4 h-4 text-primary" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-blue-900 mb-3 text-sm">Getting Started Tips</h3>
-                <ul className="text-sm text-blue-800 space-y-2">
+                <h3 className="font-semibold text-primary mb-3 text-sm">Getting Started Tips</h3>
+                <ul className="text-sm text-primary space-y-2">
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span className="text-primary mt-0.5">•</span>
                     <span>Ensure all client contact details are accurate for quote delivery and follow-up communications</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span className="text-primary mt-0.5">•</span>
                     <span>The property address will be used for material delivery calculations and scheduling site visits</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="text-blue-600 mt-0.5">•</span>
+                    <span className="text-primary mt-0.5">•</span>
                     <span>You can upload photos and start creating estimates once the job is created</span>
                   </li>
                 </ul>

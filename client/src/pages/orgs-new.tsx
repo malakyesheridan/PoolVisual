@@ -149,10 +149,10 @@ export default function OrgsNew() {
         </Card>
 
         {/* Tips */}
-        <Card className="mt-6 bg-blue-50 border-blue-200">
+        <Card className="mt-6 bg-primary/5 border-primary/20">
           <CardContent className="p-6">
-            <h3 className="font-medium text-blue-900 mb-2">Getting Started</h3>
-            <ul className="text-sm text-blue-800 space-y-1">
+            <h3 className="font-medium text-primary mb-2">Getting Started</h3>
+            <ul className="text-sm text-primary space-y-1">
               <li>• You need an organization to create jobs and manage projects</li>
               <li>• You can invite team members to your organization later</li>
               <li>• Organization settings can be updated from the settings page</li>

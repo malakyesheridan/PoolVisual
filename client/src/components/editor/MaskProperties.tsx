@@ -250,7 +250,7 @@ export function MaskProperties() {
             </Label>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { value: 0, label: 'Surface', color: 'bg-blue-100 text-blue-700' },
+                { value: 0, label: 'Surface', color: 'bg-primary/10 text-primary' },
                 { value: 1, label: 'Mid-Level', color: 'bg-green-100 text-green-700' },
                 { value: 2, label: 'Deep', color: 'bg-purple-100 text-purple-700' }
               ].map(({ value, label, color }) => (

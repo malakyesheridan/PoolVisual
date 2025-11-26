@@ -64,7 +64,7 @@ export function RecentActivityCompact({ jobs, className = '' }: RecentActivityCo
     <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
       <CardHeader className="pb-4">
         <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-600" />
+          <Activity className="w-5 h-5 text-primary" />
           Recent Activity
         </CardTitle>
       </CardHeader>

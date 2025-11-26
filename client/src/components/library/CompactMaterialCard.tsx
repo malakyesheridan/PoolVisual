@@ -92,7 +92,7 @@ export function CompactMaterialCard({
             </div>
             <div className="flex-1 text-left">
               <div className="text-sm text-gray-500">No material selected</div>
-              <div className="text-xs text-blue-600 font-medium mt-0.5">
+              <div className="text-xs text-primary font-medium mt-0.5">
                 Click to browse
               </div>
             </div>

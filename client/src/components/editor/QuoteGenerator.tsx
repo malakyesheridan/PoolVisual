@@ -210,7 +210,7 @@ export function QuoteGenerator() {
               const materialSettings = maskMaterials?.[mask.id];
               
               return (
-                <div key={mask.id} className="bg-blue-50 rounded p-2">
+                <div key={mask.id} className="bg-primary/5 rounded p-2">
                   <div className="flex items-center justify-between">
                     <div className="text-xs">
                       <Badge variant="outline" className="text-xs mb-1">

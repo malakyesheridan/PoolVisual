@@ -125,7 +125,7 @@ export function CollaborationNotifications({
     switch (notification.priority) {
       case 'high': return 'border-red-200 bg-red-50';
       case 'medium': return 'border-yellow-200 bg-yellow-50';
-      case 'low': return 'border-blue-200 bg-blue-50';
+      case 'low': return 'border-primary/20 bg-primary/5';
       default: return 'border-gray-200 bg-white';
     }
   };
@@ -165,7 +165,7 @@ export function CollaborationNotifications({
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-blue-600" />
+            <Users className="w-5 h-5 text-primary" />
             Team Collaboration
             {unreadCount > 0 && (
               <Badge variant="destructive" className="text-xs">
@@ -199,7 +199,7 @@ export function CollaborationNotifications({
                 onClick={() => setActiveTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
+                    ? 'border-primary text-primary'
                     : 'border-transparent text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -275,7 +275,7 @@ export function CollaborationNotifications({
                             )}
                           </div>
                           {notification.actionRequired && (
-                            <div className="mt-2 text-xs text-blue-600">
+                            <div className="mt-2 text-xs text-primary">
                               Action required
                             </div>
                           )}

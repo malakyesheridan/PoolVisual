@@ -210,7 +210,7 @@ export function MetricsBar({ materials, onGenerateQuote, className }: MetricsBar
             {summary.completionPercentage < 100 && summary.totalMasks > 0 && (
               <div className="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-blue-500 transition-all duration-300"
+                  className="h-full bg-primary transition-all duration-300"
                   style={{ width: `${summary.completionPercentage}%` }}
                 />
               </div>
@@ -248,8 +248,8 @@ export function MetricsBar({ materials, onGenerateQuote, className }: MetricsBar
       )}
 
       {summary.isCalibrated && summary.masksWithMaterials < summary.totalMasks && summary.totalMasks > 0 && (
-        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <p className="text-xs text-blue-800">
+        <div className="mt-3 p-2 bg-primary/5 border border-primary/20 rounded-md">
+          <p className="text-xs text-primary">
             <strong>Materials needed:</strong> Assign materials to all masks to generate an accurate quote.
           </p>
         </div>

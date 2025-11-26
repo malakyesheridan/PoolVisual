@@ -65,7 +65,7 @@ export function ProjectCard({ job, onView }: ProjectCardProps) {
           
           {/* View button */}
           <Button 
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="w-full bg-primary hover:bg-primary/90 text-white rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
             onClick={() => onView(job.id)}
           >
             <Eye className="w-4 h-4 mr-2" />

@@ -679,7 +679,7 @@ export default function Materials() {
               <Card className="sticky top-6">
                 <CardHeader>
                   <CardTitle className="text-lg font-semibold flex items-center gap-2">
-                    <Zap className="w-5 h-5 text-blue-600" />
+                    <Zap className="w-5 h-5 text-primary" />
                     Manual Import Turbo
                   </CardTitle>
                 </CardHeader>
@@ -687,10 +687,10 @@ export default function Materials() {
                   <form onSubmit={handleSubmit} className="space-y-6">
                     
                     {/* Quick Import Section */}
-                    <div className="space-y-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="space-y-4 p-4 bg-primary/5 rounded-lg border border-primary/20">
                       <div className="flex items-center gap-2">
-                        <Link2 className="w-4 h-4 text-blue-600" />
-                        <Label className="font-medium text-blue-900">Quick Import</Label>
+                        <Link2 className="w-4 h-4 text-primary" />
+                        <Label className="font-medium text-primary">Quick Import</Label>
                       </div>
                       
                       {/* Product URL */}
@@ -808,7 +808,7 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
                                 }}
                                 className={`relative flex-shrink-0 w-16 h-16 border-2 rounded overflow-hidden ${
                                   selectedImageIndex === index 
-                                    ? 'border-blue-500 ring-2 ring-blue-200' 
+                                    ? 'border-primary ring-2 ring-primary/20' 
                                     : 'border-gray-300 hover:border-gray-400'
                                 }`}
                                 data-testid={`image-option-${index}`}
@@ -826,7 +826,7 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
                                   No preview
                                 </div>
                                 {selectedImageIndex === index && (
-                                  <div className="absolute top-1 right-1 w-4 h-4 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs">
+                                  <div className="absolute top-1 right-1 w-4 h-4 bg-primary text-white rounded-full flex items-center justify-center text-xs">
                                     ✓
                                   </div>
                                 )}
@@ -1103,7 +1103,7 @@ e.g. 'Sheet 300×300mm, Tile 25×25mm, $149/m², Tumbled finish'"
                         <Button 
                           type="submit" 
                           onClick={() => setSaveAndNext(true)}
-                          className="flex-1 bg-blue-600 hover:bg-blue-700"
+                          className="flex-1 bg-primary hover:bg-primary/90"
                           disabled={createMaterialMutation.isPending}
                           data-testid="button-save-and-next"
                         >

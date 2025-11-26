@@ -138,14 +138,14 @@ export function PoolTemplates({ onTemplateApply }: PoolTemplatesProps) {
             placeholder="Search templates..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           />
           
           {categories.length > 0 && (
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as TemplateCategory | '')}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary"
             >
               <option value="">All Categories</option>
               {categories.map(category => (
@@ -215,7 +215,7 @@ export function PoolTemplates({ onTemplateApply }: PoolTemplatesProps) {
                   <p className="text-xs text-gray-500 mb-1">{template.description}</p>
                   <div className="flex flex-wrap gap-1 mb-2">
                     {template.tags.slice(0, 3).map(tag => (
-                      <span key={tag} className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-xs rounded">
+                      <span key={tag} className="px-1.5 py-0.5 bg-primary/10 text-primary text-xs rounded">
                         {tag}
                       </span>
                     ))}
@@ -226,7 +226,7 @@ export function PoolTemplates({ onTemplateApply }: PoolTemplatesProps) {
                         const mode = window.confirm('Replace current scene? (Cancel to merge)') ? 'replace' : 'merge';
                         handleTemplateApply(template, mode);
                       }}
-                      className="px-3 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+                      className="px-3 py-1 bg-primary text-white text-xs rounded hover:bg-primary"
                     >
                       Apply
                     </button>

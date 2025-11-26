@@ -122,7 +122,7 @@ export function WorkflowSuggestions({ className = '', projectId, maxSuggestions 
     switch (priority) {
       case 'high': return 'text-red-600 bg-red-50 border-red-200';
       case 'medium': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-      case 'low': return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'low': return 'text-primary bg-primary/5 border-primary/20';
       default: return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };

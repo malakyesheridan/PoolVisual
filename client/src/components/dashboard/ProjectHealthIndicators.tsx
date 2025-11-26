@@ -123,7 +123,7 @@ export function ProjectHealthIndicators({ className = '', projectId }: ProjectHe
   const getHealthColor = (status: string) => {
     switch (status) {
       case 'excellent': return 'text-green-600 bg-green-50 border-green-200';
-      case 'good': return 'text-blue-600 bg-blue-50 border-blue-200';
+      case 'good': return 'text-primary bg-primary/5 border-primary/20';
       case 'warning': return 'text-yellow-600 bg-yellow-50 border-yellow-200';
       case 'critical': return 'text-red-600 bg-red-50 border-red-200';
       default: return 'text-gray-600 bg-gray-50 border-gray-200';
@@ -133,7 +133,7 @@ export function ProjectHealthIndicators({ className = '', projectId }: ProjectHe
   const getHealthIcon = (status: string) => {
     switch (status) {
       case 'excellent': return <CheckCircle className="w-5 h-5 text-green-600" />;
-      case 'good': return <TrendingUp className="w-5 h-5 text-blue-600" />;
+      case 'good': return <TrendingUp className="w-5 h-5 text-primary" />;
       case 'warning': return <AlertTriangle className="w-5 h-5 text-yellow-600" />;
       case 'critical': return <AlertTriangle className="w-5 h-5 text-red-600" />;
       default: return <Clock className="w-5 h-5 text-gray-600" />;
@@ -142,7 +142,7 @@ export function ProjectHealthIndicators({ className = '', projectId }: ProjectHe
 
   const getProgressColor = (percentage: number) => {
     if (percentage >= 80) return 'bg-green-500';
-    if (percentage >= 60) return 'bg-blue-500';
+    if (percentage >= 60) return 'bg-primary';
     if (percentage >= 40) return 'bg-yellow-500';
     return 'bg-red-500';
   };
@@ -231,7 +231,7 @@ export function ProjectHealthIndicators({ className = '', projectId }: ProjectHe
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <PieChart className="w-5 h-5 text-blue-600" />
+            <PieChart className="w-5 h-5 text-primary" />
             Detailed Metrics
           </CardTitle>
         </CardHeader>
@@ -246,7 +246,7 @@ export function ProjectHealthIndicators({ className = '', projectId }: ProjectHe
             </div>
             <div className="w-full bg-slate-200 rounded-full h-2">
               <div 
-                className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                className="bg-primary h-2 rounded-full transition-all duration-300"
                 style={{ 
                   width: `${healthMetrics.metrics.totalPhotos > 0 
                     ? (healthMetrics.metrics.photosWithCanvasWork / healthMetrics.metrics.totalPhotos) * 100 

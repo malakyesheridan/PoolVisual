@@ -1652,7 +1652,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:bg-blue-800 transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 font-semibold"
+                      className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 font-semibold"
                       aria-label="File Operations Menu"
                     >
                       <FileText size={16} />
@@ -1744,9 +1744,9 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                       activeTool === 'area'
-                        ? 'bg-white text-blue-600 shadow-sm'
+                        ? 'bg-white text-primary shadow-sm'
                         : 'text-gray-600 hover:text-gray-800 hover:bg-white'
                     }`}
                     aria-label="Area Tool"
@@ -1772,7 +1772,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                         onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'area' })}
                         className={`px-1.5 py-0.5 text-[10px] font-medium rounded-[var(--radius-sm)] transition-colors ${
                           drawingMode === 'area'
-                            ? 'bg-blue-50 text-[var(--primary-default)]'
+                            ? 'bg-primary/5 text-[var(--primary-default)]'
                             : 'text-gray-500 hover:text-gray-700'
                         }`}
                       >
@@ -1789,7 +1789,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                         onClick={() => dispatch({ type: 'SET_DRAWING_MODE', payload: 'freehand' })}
                         className={`px-1.5 py-0.5 text-[10px] font-medium rounded-[var(--radius-sm)] transition-colors ${
                           drawingMode === 'freehand'
-                            ? 'bg-blue-50 text-[var(--primary-default)]'
+                            ? 'bg-primary/5 text-[var(--primary-default)]'
                             : 'text-gray-500 hover:text-gray-700'
                         }`}
                       >
@@ -1813,7 +1813,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={handleZoomOut}
                     disabled={state !== 'ready'}
-                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                       aria-label="Zoom Out"
                   >
                     <ZoomOut size={14} />
@@ -1836,7 +1836,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={handleZoomIn}
                     disabled={state !== 'ready'}
-                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
                       aria-label="Zoom In"
                   >
                     <ZoomIn size={14} />
@@ -1857,9 +1857,9 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={() => setShowCalibrationTool(true)}
                     disabled={state !== 'ready'}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                       calibration.isCalibrated
-                        ? 'bg-blue-50 text-blue-700 border border-blue-300 hover:bg-blue-100'
+                        ? 'bg-primary/5 text-primary border border-blue-300 hover:bg-primary/10'
                         : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
                     } disabled:opacity-50 disabled:cursor-not-allowed`}
                     aria-label="Calibrate Measurements"
@@ -1894,7 +1894,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                       onClick={hasUnsavedChanges ? handleSaveToJob : undefined}
                       className={`p-2 rounded-[var(--radius-md)] transition-colors ${
                         isSavingToJob
-                          ? 'text-blue-600'
+                          ? 'text-primary'
                           : saveError
                             ? 'text-red-600'
                             : hasUnsavedChanges
@@ -1932,7 +1932,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                       <button
                         onClick={handleSaveToJob}
                         disabled={state !== 'ready' || isSavingToJob}
-                        className="flex items-center space-x-2 px-3 py-1.5 bg-blue-600 text-white rounded-[var(--radius-md)] hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[var(--elevation-sm)] text-sm font-medium"
+                        className="flex items-center space-x-2 px-3 py-1.5 bg-primary text-white rounded-[var(--radius-md)] hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[var(--elevation-sm)] text-sm font-medium"
                       >
                         {isSavingToJob ? (
                           <Loader2 size={14} className="animate-spin" />
@@ -1959,7 +1959,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <button
                   onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
                   disabled={state !== 'ready'}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 text-sm font-semibold"
+                  className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 text-sm font-semibold"
                   aria-label="Enhance with AI"
                 >
                   <Sparkles size={16} />
@@ -2016,9 +2016,9 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <div
                     className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium transition-all duration-150 ${
                       currentStep === step.id
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm'
                         : workflowSteps.findIndex(s => s.id === currentStep) > index
-                          ? 'bg-blue-100 text-blue-700'
+                          ? 'bg-primary/10 text-primary'
                           : 'bg-gray-100 text-gray-500'
                     }`}
                   >
@@ -2028,7 +2028,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 {index < workflowSteps.length - 1 && (
                   <div className={`h-0.5 w-4 transition-all duration-150 ${
                     workflowSteps.findIndex(s => s.id === currentStep) > index
-                      ? 'bg-blue-600'
+                      ? 'bg-primary'
                       : 'bg-gray-300'
                   }`} />
                 )}

@@ -66,9 +66,9 @@ export const NotificationActionButton: React.FC<NotificationActionButtonProps> =
   const getActionColor = () => {
     switch (suggestion.priority) {
       case 'high': return 'bg-red-600 hover:bg-red-700 text-white';
-      case 'medium': return 'bg-blue-600 hover:bg-blue-700 text-white';
+      case 'medium': return 'bg-primary hover:bg-primary/90 text-white';
       case 'low': return 'bg-gray-600 hover:bg-gray-700 text-white';
-      default: return 'bg-blue-600 hover:bg-blue-700 text-white';
+      default: return 'bg-primary hover:bg-primary/90 text-white';
     }
   };
 
@@ -221,7 +221,7 @@ export const EnhancedNotificationItem: React.FC<EnhancedNotificationItemProps> =
                 {!isExpanded && notification.suggestions.length > 1 && (
                   <button
                     onClick={() => setIsExpanded(true)}
-                    className="text-xs text-blue-600 hover:text-blue-800"
+                    className="text-xs text-primary hover:text-primary"
                   >
                     Show {notification.suggestions.length - 1} more suggestions
                   </button>

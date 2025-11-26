@@ -96,7 +96,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
           
           <Button 
             onClick={() => navigate('/jobs/new')} 
-            className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            className="bg-primary hover:bg-primary/90 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
           >
             <Plus className="w-4 h-4 mr-2" />
             New Project
@@ -132,7 +132,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
               variant="ghost"
               size="sm"
               onClick={() => navigate('/jobs')}
-                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-all duration-150"
+                className="text-primary hover:text-primary hover:bg-primary/5 transition-all duration-150"
             >
               View All
               <Eye className="w-4 h-4 ml-1" />
@@ -149,7 +149,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                 placeholder="Search projects..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
+                  className="pl-10 border-gray-200 rounded-lg focus:border-primary focus:ring-primary transition-all duration-150"
                   aria-label="Search projects"
               />
             </div>
@@ -158,7 +158,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
               <select
                 value={selectedOrgId || ''}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
+                  className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:border-primary focus:ring-primary transition-all duration-150"
               >
                 {orgs.map((org) => (
                   <option key={org.id} value={org.id}>
@@ -175,9 +175,9 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                     <button
                   key={status}
                   onClick={() => setFilterStatus(status.toLowerCase() as any)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                         isActive
-                          ? 'bg-blue-600 text-white shadow-sm'
+                          ? 'bg-primary text-white shadow-sm'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                       }`}
                       aria-pressed={isActive}
@@ -195,8 +195,8 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
             {filteredJobs.length === 0 ? (
               <div className="flex items-center justify-center min-h-[280px] px-6 py-12">
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Search className="w-8 h-8 text-blue-600" />
+                  <div className="w-16 h-16 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Search className="w-8 h-8 text-primary" />
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No projects found</h3>
                   <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
@@ -207,7 +207,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                   {!searchTerm && filterStatus === 'all' && (
                     <Button
                       onClick={() => navigate('/jobs/new')}
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150"
+                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Create Your First Project

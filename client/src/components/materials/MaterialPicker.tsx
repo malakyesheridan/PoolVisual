@@ -108,7 +108,7 @@ export function MaterialPicker({ className }: MaterialPickerProps) {
               variant={isMaterialSelected(material.id) ? "default" : "outline"}
               className={cn(
                 "h-auto p-3 flex flex-col items-center text-center",
-                isMaterialSelected(material.id) && "ring-2 ring-blue-500"
+                isMaterialSelected(material.id) && "ring-2 ring-primary"
               )}
               onClick={() => handleMaterialSelect(material.id)}
               disabled={!selectedMaskId}

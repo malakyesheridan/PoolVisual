@@ -108,8 +108,8 @@ export default function Library() {
                     onClick={() => setActiveTab(tab.id)}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                       isActive
-                        ? 'border-blue-500 text-blue-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
                     }`}
                     data-testid={`tab-${tab.id}`}
                   >
@@ -124,8 +124,11 @@ export default function Library() {
 
         {/* Tab Content */}
         <div className="tab-content">
-          {activeTab === 'materials' && <MaterialsTab ref={materialsTabRef} />}
-          {activeTab === 'templates' && <TemplatesTab ref={templatesTabRef} />}
+          {activeTab === 'materials' ? (
+            <MaterialsTab ref={materialsTabRef} />
+          ) : (
+            <TemplatesTab ref={templatesTabRef} />
+          )}
         </div>
       </div>
     </div>

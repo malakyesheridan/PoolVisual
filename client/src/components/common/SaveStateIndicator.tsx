@@ -50,9 +50,9 @@ export function SaveStateIndicator({
       case 'saving':
         return {
           icon: Loader2,
-          color: 'text-blue-600',
-          bgColor: 'bg-blue-50',
-          borderColor: 'border-blue-200',
+          color: 'text-primary',
+          bgColor: 'bg-primary/5',
+          borderColor: 'border-primary/20',
           label: 'Saving...',
           spinning: true,
         };

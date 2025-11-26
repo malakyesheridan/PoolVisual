@@ -109,7 +109,7 @@ export default function SmartBlendControls({
           className={`w-full py-2 px-4 rounded-md font-medium transition-colors ${
             isProcessing
               ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700 text-white'
+              : 'bg-primary hover:bg-primary/90 text-white'
           }`}
         >
           {isProcessing ? (

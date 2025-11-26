@@ -93,7 +93,7 @@ export function TemplateInspector({ className = '' }: TemplateInspectorProps) {
       <div className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Gauge className="w-4 h-4 text-blue-600" />
+            <Gauge className="w-4 h-4 text-primary" />
             <h4 className="font-medium text-sm">Template Sections</h4>
           </div>
           {hasCalibration && (

@@ -64,7 +64,7 @@ export function EmptyState({
           {primaryAction && (
             <Button
               onClick={primaryAction.onClick}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary/90"
               size="lg"
             >
               {primaryAction.icon && (
@@ -78,7 +78,7 @@ export function EmptyState({
             secondaryAction.variant === 'link' ? (
               <button
                 onClick={secondaryAction.onClick}
-                className="text-blue-600 hover:text-blue-700 text-sm font-medium underline-offset-4 hover:underline"
+                className="text-primary hover:text-primary text-sm font-medium underline-offset-4 hover:underline"
               >
                 {secondaryAction.label}
               </button>

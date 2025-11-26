@@ -62,7 +62,7 @@ export function PhotoSelectionModal({ open, onClose, jobId, onSelectPhoto }: Pho
         <div className="flex-1 overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <span className="ml-3 text-slate-600">Loading photos...</span>
             </div>
           ) : error ? (
@@ -84,7 +84,7 @@ export function PhotoSelectionModal({ open, onClose, jobId, onSelectPhoto }: Pho
                 <button
                   key={photo.id}
                   onClick={() => handlePhotoSelect(photo.id)}
-                  className="group relative aspect-square rounded-lg overflow-hidden border-2 border-slate-200 hover:border-blue-500 transition-all hover:shadow-lg bg-slate-50"
+                  className="group relative aspect-square rounded-lg overflow-hidden border-2 border-slate-200 hover:border-primary transition-all hover:shadow-lg bg-slate-50"
                 >
                   <img
                     src={photo.originalUrl}

@@ -77,11 +77,11 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
 
   const statusConfig = {
     queued: { label: 'Queued', color: 'bg-gray-500', icon: Clock, textColor: 'text-gray-700' },
-    downloading: { label: 'Downloading', color: 'bg-blue-500', icon: Clock, textColor: 'text-blue-700' },
-    preprocessing: { label: 'Preprocessing', color: 'bg-blue-500', icon: Clock, textColor: 'text-blue-700' },
-    rendering: { label: 'Rendering', color: 'bg-blue-500', icon: Clock, textColor: 'text-blue-700' },
-    postprocessing: { label: 'Postprocessing', color: 'bg-blue-500', icon: Clock, textColor: 'text-blue-700' },
-    uploading: { label: 'Uploading', color: 'bg-blue-500', icon: Clock, textColor: 'text-blue-700' },
+    downloading: { label: 'Downloading', color: 'bg-primary', icon: Clock, textColor: 'text-primary' },
+    preprocessing: { label: 'Preprocessing', color: 'bg-primary', icon: Clock, textColor: 'text-primary' },
+    rendering: { label: 'Rendering', color: 'bg-primary', icon: Clock, textColor: 'text-primary' },
+    postprocessing: { label: 'Postprocessing', color: 'bg-primary', icon: Clock, textColor: 'text-primary' },
+    uploading: { label: 'Uploading', color: 'bg-primary', icon: Clock, textColor: 'text-primary' },
     completed: { label: 'Completed', color: 'bg-green-500', icon: CheckCircle, textColor: 'text-green-700' },
     failed: { label: 'Failed', color: 'bg-red-500', icon: XCircle, textColor: 'text-red-700' },
     canceled: { label: 'Canceled', color: 'bg-gray-500', icon: XCircle, textColor: 'text-gray-700' },
@@ -545,7 +545,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
   return (
     <div className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm hover:shadow-md transition-shadow">
       {/* Status Header */}
-      <div className={`flex items-center justify-between p-3 bg-gray-50 border-b ${isSelected ? 'bg-blue-50 border-blue-200' : ''}`}>
+      <div className={`flex items-center justify-between p-3 bg-gray-50 border-b ${isSelected ? 'bg-primary/5 border-primary/20' : ''}`}>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {/* Selection Checkbox */}
           {isSelectMode && (
@@ -553,7 +553,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
               type="checkbox"
               checked={isSelected}
               onChange={() => toggleJobSelection(jobId)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer"
+              className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary focus:ring-2 cursor-pointer"
               aria-label={`Select job ${jobId.slice(0, 8)}`}
             />
           )}
@@ -591,7 +591,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
             <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white border border-gray-300 text-xs">
               {job.mode === 'add_pool' ? (
                 <>
-                  <Waves className="w-3 h-3 text-blue-600" />
+                  <Waves className="w-3 h-3 text-primary" />
                   <span className="text-gray-700">Pool</span>
                 </>
               ) : job.mode === 'add_decoration' ? (
@@ -635,7 +635,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
             <button
               onClick={handleDuplicate}
               disabled={isDuplicating}
-              className="p-1 text-gray-400 hover:text-blue-600 transition-colors disabled:opacity-50"
+              className="p-1 text-gray-400 hover:text-primary transition-colors disabled:opacity-50"
               title="Duplicate job"
               aria-label="Duplicate job"
             >
@@ -694,7 +694,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
                   r="16"
                   fill="none"
                   stroke={
-                    config.color === 'bg-blue-500' ? '#3b82f6' :
+                    config.color === 'bg-primary' ? '#3b82f6' :
                     config.color === 'bg-gray-500' ? '#6b7280' :
                     config.color === 'bg-green-500' ? '#10b981' :
                     config.color === 'bg-red-500' ? '#ef4444' :
@@ -806,7 +806,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
             </div>
             <button
               onClick={() => setShowVariantComparison(true)}
-              className="px-3 py-1.5 text-xs font-medium text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-md transition-colors flex items-center gap-1.5"
+              className="px-3 py-1.5 text-xs font-medium text-primary bg-primary/5 hover:bg-primary/10 rounded-md transition-colors flex items-center gap-1.5"
               title="Compare variants"
             >
               <Layers className="w-3 h-3" />
@@ -861,7 +861,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
           <button 
             onClick={handleRetry}
             disabled={isRetrying}
-            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1.5 px-2 py-1 rounded hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-xs text-primary hover:text-primary flex items-center gap-1.5 px-2 py-1 rounded hover:bg-primary/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isRetrying ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -898,7 +898,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
                     <label className="text-xs font-medium text-gray-600">Job ID</label>
                     <button
                       onClick={handleCopyId}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700 transition-colors"
+                      className="flex items-center gap-1 text-xs text-primary hover:text-primary transition-colors"
                     >
                       <Copy className="w-3 h-3" />
                       {copiedId ? 'Copied!' : 'Copy'}
@@ -952,7 +952,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
                                 href={jobDetails.imageUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:text-blue-700 truncate flex items-center gap-1"
+                                className="text-xs text-primary hover:text-primary truncate flex items-center gap-1"
                               >
                                 <span className="truncate">{jobDetails.imageUrl.substring(0, 60)}...</span>
                                 <ExternalLink className="w-3 h-3 flex-shrink-0" />
@@ -966,7 +966,7 @@ function JobProgressComponent({ jobId }: { jobId: string }) {
                                 href={jobDetails.compositeImageUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-xs text-blue-600 hover:text-blue-700 truncate flex items-center gap-1"
+                                className="text-xs text-primary hover:text-primary truncate flex items-center gap-1"
                               >
                                 <span className="truncate">{jobDetails.compositeImageUrl.substring(0, 60)}...</span>
                                 <ExternalLink className="w-3 h-3 flex-shrink-0" />

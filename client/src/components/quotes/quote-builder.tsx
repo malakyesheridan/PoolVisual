@@ -190,7 +190,7 @@ export function QuoteBuilder({
               </TableHeader>
               <TableBody>
                 {showAddForm && (
-                  <TableRow className="bg-blue-50/30">
+                  <TableRow className="bg-primary/5/30">
                     <TableCell colSpan={6} className="p-4">
                       <div className="grid grid-cols-12 gap-3 items-end">
                         <div className="col-span-4">
@@ -390,7 +390,7 @@ export function QuoteBuilder({
                                   variant="ghost"
                                   size="sm"
                                   onClick={() => handleStartEdit(item)}
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 h-8 w-8 p-0"
+                                  className="text-primary hover:text-primary hover:bg-primary/5 h-8 w-8 p-0"
                                   data-testid={`button-edit-item-${item.id}`}
                                 >
                                   <Edit className="w-3 h-3" />
@@ -459,7 +459,7 @@ export function QuoteBuilder({
             <div className="flex justify-between items-center pt-3 border-t border-slate-200">
               <span className="text-sm text-slate-600">Deposit Required ({(depositPct * 100).toFixed(0)}%):</span>
               <span 
-                className="text-sm font-semibold text-blue-600"
+                className="text-sm font-semibold text-primary"
                 data-testid="text-deposit-amount"
               >
                 {formatCurrency(depositAmount)}

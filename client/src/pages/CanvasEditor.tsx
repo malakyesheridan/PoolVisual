@@ -353,7 +353,7 @@ export default function CanvasEditor() {
             className="hidden"
             id="photo-upload"
           />
-          <label htmlFor="photo-upload" className="px-4 py-2 bg-blue-500 text-white rounded cursor-pointer hover:bg-blue-600">
+          <label htmlFor="photo-upload" className="px-4 py-2 bg-primary text-white rounded cursor-pointer hover:bg-primary">
             Upload Photo
           </label>
           
@@ -377,19 +377,19 @@ export default function CanvasEditor() {
         <div className="flex items-center gap-2">
           <button 
             onClick={() => setTool('pan')} 
-            className={`px-3 py-1 rounded ${tool === 'pan' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            className={`px-3 py-1 rounded ${tool === 'pan' ? 'bg-primary text-white' : 'bg-gray-200'}`}
           >
             Pan
           </button>
           <button 
             onClick={() => setTool('area')} 
-            className={`px-3 py-1 rounded ${tool === 'area' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            className={`px-3 py-1 rounded ${tool === 'area' ? 'bg-primary text-white' : 'bg-gray-200'}`}
           >
             Area
           </button>
           <button 
             onClick={() => setTool('select')} 
-            className={`px-3 py-1 rounded ${tool === 'select' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            className={`px-3 py-1 rounded ${tool === 'select' ? 'bg-primary text-white' : 'bg-gray-200'}`}
           >
             Select
           </button>
@@ -533,7 +533,7 @@ export default function CanvasEditor() {
                 disabled={!selectedMaskId}
                 className={`w-full p-3 text-left rounded border ${
                   selectedMaskId 
-                    ? 'hover:bg-blue-50 border-blue-200' 
+                    ? 'hover:bg-primary/5 border-primary/20' 
                     : 'bg-gray-100 border-gray-200 text-gray-500'
                 }`}
               >
@@ -543,8 +543,8 @@ export default function CanvasEditor() {
           </div>
           
           {selectedMaskId && (
-            <div className="mt-4 p-3 bg-blue-50 rounded">
-              <p className="text-sm text-blue-700">
+            <div className="mt-4 p-3 bg-primary/5 rounded">
+              <p className="text-sm text-primary">
                 Selected mask: {selectedMaskId.slice(0, 8)}...
               </p>
             </div>

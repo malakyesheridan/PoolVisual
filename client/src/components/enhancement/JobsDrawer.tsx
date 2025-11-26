@@ -994,14 +994,14 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-sm rounded-t-xl z-10">
         <div className="flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-blue-600" />
+            <Sparkles className="w-5 h-5 text-primary" />
             <div className="font-semibold text-base text-gray-900">AI Enhancements</div>
         </div>
         <div className="flex items-center gap-2">
           {/* Select Mode Toggle */}
           <button
             onClick={toggleSelectMode}
-            className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${isSelectMode ? 'bg-blue-50 text-blue-600' : 'text-gray-600'}`}
+            className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${isSelectMode ? 'bg-primary/5 text-primary' : 'text-gray-600'}`}
             title="Select mode"
           >
             {isSelectMode ? (
@@ -1043,7 +1043,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
               placeholder="Search by job ID or date... (Ctrl+K)"
               value={debouncedSearchQuery}
               onChange={(e) => setDebouncedSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
             />
           </div>
           
@@ -1059,7 +1059,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                     onClick={() => setStatusFilter(filter)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ${
                       statusFilter === filter
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
@@ -1079,7 +1079,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                     onClick={() => setTypeFilter(filter)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
                       typeFilter === filter
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
@@ -1114,7 +1114,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                     onClick={() => setGroupBy(group)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 flex items-center gap-1.5 ${
                       groupBy === group
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                     aria-label={`Group by ${group}`}
@@ -1136,7 +1136,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                     onClick={() => setDateFilter(filter)}
                     className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ${
                       dateFilter === filter
-                        ? 'bg-blue-600 text-white shadow-sm'
+                        ? 'bg-primary text-white shadow-sm'
                         : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
                     }`}
                   >
@@ -1153,7 +1153,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortOption)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none transition-all"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent appearance-none transition-all"
                 >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
@@ -1178,9 +1178,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
               <button
                 onClick={() => handleCreateEnhancement('add_pool')}
                 disabled={isCreating}
-                className="flex flex-col items-center justify-center gap-2 px-3 py-4 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm"
+                className="flex flex-col items-center justify-center gap-2 px-3 py-4 bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm"
               >
-                <Waves className="w-5 h-5 text-blue-600" />
+                <Waves className="w-5 h-5 text-primary" />
                 <span className="font-medium text-sm text-gray-900">Add Pool</span>
                 <span className="text-xs text-gray-600 text-center leading-tight">Add a realistic pool to your design</span>
               </button>
@@ -1209,7 +1209,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           
           {isCreating && (
             <div className="flex items-center justify-center gap-2 text-sm text-gray-600 py-2">
-              <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+              <Loader2 className="w-4 h-4 animate-spin text-primary" />
               <span>Creating enhancement...</span>
             </div>
           )}

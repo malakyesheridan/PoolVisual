@@ -127,7 +127,7 @@ export function ImageUpload({ onImageLoad, onClear, currentImage, className }: I
           className={cn(
             "border-2 border-dashed rounded-lg p-8 text-center transition-colors cursor-pointer",
             isDragging 
-              ? "border-blue-500 bg-blue-50" 
+              ? "border-primary bg-primary/5" 
               : "border-slate-300 hover:border-slate-400 hover:bg-slate-50"
           )}
           onDrop={handleDrop}

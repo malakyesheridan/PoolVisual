@@ -118,7 +118,7 @@ export function AssetsPanel() {
               onClick={() => setSelectedCategory(category)}
               className={`px-3 py-1 text-sm rounded ${
                 selectedCategory === category
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-primary text-white'
                   : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
               }`}
             >
@@ -135,7 +135,7 @@ export function AssetsPanel() {
           placeholder="Search assets..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
         />
       </div>
 
@@ -154,7 +154,7 @@ export function AssetsPanel() {
               <TooltipTrigger asChild>
                 <button
                   onClick={() => handleAssetSelect(asset.id)}
-                  className="p-2 border border-gray-200 rounded text-left hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                  className="p-2 border border-gray-200 rounded text-left hover:border-blue-300 hover:bg-primary/5 transition-colors"
                 >
                   {/* Asset Preview */}
                   <div className="w-full h-16 bg-gray-100 rounded mb-2 flex items-center justify-center overflow-hidden">
@@ -213,7 +213,7 @@ export function AssetsPanel() {
                     key={asset.id}
                     className={`p-2 text-xs rounded cursor-pointer ${
                       selectedAssetId === asset.id
-                        ? 'bg-blue-100 border border-blue-300'
+                        ? 'bg-primary/10 border border-blue-300'
                         : 'bg-white border border-gray-200 hover:bg-gray-50'
                     }`}
                     onClick={() => dispatch({ type: 'SET_SELECTED_ASSET', payload: asset.id })}
@@ -233,8 +233,8 @@ export function AssetsPanel() {
 
       {/* Place Mode Indicator */}
       {useEditorStore.getState().assetPlaceMode && (
-        <div className="flex-shrink-0 p-4 bg-blue-50 border-t border-blue-200">
-          <div className="text-sm text-blue-700">
+        <div className="flex-shrink-0 p-4 bg-primary/5 border-t border-primary/20">
+          <div className="text-sm text-primary">
             <strong>Place Mode:</strong> Click on canvas to place{' '}
             {useUnifiedAssetStore.getState().assets[useEditorStore.getState().assetPlaceMode!.defId]?.name || useEditorStore.getState().assetPlaceMode!.defId}
           </div>
@@ -243,7 +243,7 @@ export function AssetsPanel() {
               dispatch({ type: 'SET_ASSET_PLACE_MODE', payload: null });
               document.body.style.cursor = 'default';
             }}
-            className="mt-2 px-3 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+            className="mt-2 px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary"
           >
             Cancel
           </button>

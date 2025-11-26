@@ -89,7 +89,7 @@ export function MaterialBrowserModal({
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="Search materials..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 
@@ -117,13 +117,13 @@ export function MaterialBrowserModal({
                     onClick={() => handleSelect(material.id)}
                     className={`relative p-3 border-2 rounded-lg text-left transition-all hover:shadow-md ${
                       isSelected
-                        ? 'border-blue-500 bg-blue-50 shadow-sm'
+                        ? 'border-primary bg-primary/5 shadow-sm'
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
                     {/* Selection indicator */}
                     {isSelected && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center z-10">
+                      <div className="absolute top-2 right-2 w-5 h-5 bg-primary rounded-full flex items-center justify-center z-10">
                         <Check className="w-3 h-3 text-white" />
                       </div>
                     )}

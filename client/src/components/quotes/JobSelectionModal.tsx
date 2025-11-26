@@ -31,7 +31,7 @@ export function JobSelectionModal({
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'new': return 'bg-primary/5 text-primary border border-primary/20';
       case 'estimating': return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
       case 'sent': return 'bg-purple-50 text-purple-700 border border-purple-200';
       case 'accepted': return 'bg-green-50 text-green-700 border border-green-200';
@@ -151,7 +151,7 @@ export function JobSelectionModal({
                     </div>
                     
                     <div className="flex-shrink-0">
-                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                      <div className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center text-primary">
                         <FolderOpen className="w-4 h-4" />
                       </div>
                     </div>

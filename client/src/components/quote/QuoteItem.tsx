@@ -84,7 +84,7 @@ export function QuoteItem({ item, quoteId, maskName }: QuoteItemProps) {
                 type="number"
                 value={editValues.materialCost}
                 onChange={(e) => setEditValues(prev => ({ ...prev, materialCost: parseFloat(e.target.value) || 0 }))}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 step="0.01"
               />
             </div>
@@ -94,7 +94,7 @@ export function QuoteItem({ item, quoteId, maskName }: QuoteItemProps) {
                 type="number"
                 value={editValues.laborCost}
                 onChange={(e) => setEditValues(prev => ({ ...prev, laborCost: parseFloat(e.target.value) || 0 }))}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 step="0.01"
               />
             </div>
@@ -105,7 +105,7 @@ export function QuoteItem({ item, quoteId, maskName }: QuoteItemProps) {
               type="number"
               value={editValues.markup}
               onChange={(e) => setEditValues(prev => ({ ...prev, markup: parseFloat(e.target.value) || 0 }))}
-              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
               step="0.1"
             />
           </div>
@@ -114,7 +114,7 @@ export function QuoteItem({ item, quoteId, maskName }: QuoteItemProps) {
             <textarea
               value={editValues.notes}
               onChange={(e) => setEditValues(prev => ({ ...prev, notes: e.target.value }))}
-              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
               rows={2}
               placeholder="Additional notes..."
             />
@@ -129,7 +129,7 @@ export function QuoteItem({ item, quoteId, maskName }: QuoteItemProps) {
             <button
               onClick={handleSave}
               onKeyDown={handleKeyPress}
-              className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary"
             >
               Save
             </button>

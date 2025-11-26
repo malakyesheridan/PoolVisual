@@ -303,7 +303,7 @@ export function MaterialsPanel() {
             placeholder="Search..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mb-4 transition-all duration-150"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary mb-4 transition-all duration-150"
             aria-label="Search materials"
           />
           
@@ -313,9 +313,9 @@ export function MaterialsPanel() {
               <button
                 key={category}
                 onClick={() => setSelectedCategory(category)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                className={`px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                   selectedCategory === category
-                    ? 'bg-blue-50 text-blue-700 border border-blue-300 shadow-sm'
+                    ? 'bg-primary/5 text-primary border border-blue-300 shadow-sm'
                     : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 hover:border-gray-400'
                 }`}
                 aria-label={`Filter by ${category === 'all' ? 'all categories' : category}`}
@@ -330,8 +330,8 @@ export function MaterialsPanel() {
       
       {/* Contextual Message */}
       {!selectedId && (
-        <div className="flex-shrink-0 p-6 border-b border-gray-100 bg-blue-50">
-          <div className="text-sm text-blue-700">
+        <div className="flex-shrink-0 p-6 border-b border-gray-100 bg-primary/5">
+          <div className="text-sm text-primary">
             <strong>Select a mask</strong> to assign materials
           </div>
         </div>
@@ -353,9 +353,9 @@ export function MaterialsPanel() {
                 <button
                   key={material.id}
                   onClick={() => handleMaterialSelect(material.id)}
-                  className={`p-2 border rounded-xl text-left transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                  className={`p-2 border rounded-xl text-left transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
                     activeMaterialId === material.id 
-                      ? 'border-blue-500 bg-blue-50 shadow-md scale-100' 
+                      ? 'border-primary bg-primary/5 shadow-md scale-100' 
                       : 'border-gray-200 hover:scale-[1.02] hover:shadow-md hover:border-gray-300'
                   }`}
                   aria-label={`Select material: ${material.name}`}
@@ -391,10 +391,10 @@ export function MaterialsPanel() {
       </div>
 
       {selectedMask && isPoolInterior && (
-        <div className="flex-shrink-0 p-4 bg-blue-50 border-t border-b border-blue-200">
+        <div className="flex-shrink-0 p-4 bg-primary/5 border-t border-b border-primary/20">
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-medium text-blue-900">Quick Sections</span>
-            <span className="text-xs text-blue-600">({selectedMask.poolSectionType})</span>
+            <span className="text-xs font-medium text-primary">Quick Sections</span>
+            <span className="text-xs text-primary">({selectedMask.poolSectionType})</span>
           </div>
           
           {/* Batch Create Button */}
@@ -402,7 +402,7 @@ export function MaterialsPanel() {
             <button
               onClick={handleBatchCreate}
               disabled={isCreatingSections}
-              className="w-full mb-3 px-3 py-2 text-xs font-medium bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              className="w-full mb-3 px-3 py-2 text-xs font-medium bg-primary text-white rounded hover:bg-primary/90 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
               title="Creates waterline, coping and paving in one go (uses calibration for exact widths)"
             >
               {isCreatingSections ? 'Creating...' : 'Create All Sections (Batch)'}
@@ -416,7 +416,7 @@ export function MaterialsPanel() {
               className={`px-2 py-1.5 text-xs rounded transition-all ${
                 createdSectionTypes.has('waterline')
                   ? 'bg-gray-100 text-gray-500 border border-gray-300 cursor-not-allowed'
-                  : 'bg-white text-blue-700 hover:bg-blue-100 border border-blue-300'
+                  : 'bg-white text-primary hover:bg-primary/10 border border-blue-300'
               }`}
             >
               {createdSectionTypes.has('waterline') ? '✓ Waterline' : '+ Waterline'}<br/>
@@ -472,7 +472,7 @@ export function MaterialsPanel() {
                   onClick={handleVersionToggle}
                   className={`px-2 py-1 text-xs rounded ${
                     (materialSettings.underwaterVersion || 'v1') === 'v1' 
-                      ? 'bg-blue-100 text-blue-700' 
+                      ? 'bg-primary/10 text-primary' 
                       : 'bg-green-100 text-green-700'
                   }`}
                 >

@@ -194,7 +194,7 @@ export const EnhancedNotificationPanel: React.FC<EnhancedNotificationPanelProps>
         <div className="flex items-center space-x-2">
           <button
             onClick={() => applySmartFiltering()}
-            className="flex items-center space-x-2 px-3 py-2 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors"
+            className="flex items-center space-x-2 px-3 py-2 text-sm bg-primary/10 text-primary rounded-md hover:bg-blue-200 transition-colors"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
@@ -213,7 +213,7 @@ export const EnhancedNotificationPanel: React.FC<EnhancedNotificationPanelProps>
               placeholder="Search notifications..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
             />
           </div>
 
@@ -225,7 +225,7 @@ export const EnhancedNotificationPanel: React.FC<EnhancedNotificationPanelProps>
               <select
                 value={filterPriority}
                 onChange={(e) => setFilterPriority(e.target.value as any)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
               >
                 <option value="all">All Priorities</option>
                 <option value="urgent">Urgent</option>
@@ -241,7 +241,7 @@ export const EnhancedNotificationPanel: React.FC<EnhancedNotificationPanelProps>
               <select
                 value={filterCategory}
                 onChange={(e) => setFilterCategory(e.target.value as any)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                className="w-full px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
               >
                 <option value="all">All Categories</option>
                 <option value="workflow">Workflow</option>
@@ -259,7 +259,7 @@ export const EnhancedNotificationPanel: React.FC<EnhancedNotificationPanelProps>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as any)}
-                  className="flex-1 px-3 py-2 border border-slate-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                  className="flex-1 px-3 py-2 border border-slate-300 rounded-md focus:ring-primary focus:border-primary"
                 >
                   <option value="date">Date</option>
                   <option value="priority">Priority</option>

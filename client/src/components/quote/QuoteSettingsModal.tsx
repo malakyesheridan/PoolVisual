@@ -75,7 +75,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                   type="number"
                   value={settings.defaultMarkup}
                   onChange={(e) => setSettings(prev => ({ ...prev, defaultMarkup: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   step="0.1"
                   min="0"
                   max="100"
@@ -91,7 +91,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                   type="number"
                   value={settings.defaultTaxRate}
                   onChange={(e) => setSettings(prev => ({ ...prev, defaultTaxRate: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   step="0.1"
                   min="0"
                   max="50"
@@ -107,7 +107,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                   type="number"
                   value={settings.defaultLaborCost}
                   onChange={(e) => setSettings(prev => ({ ...prev, defaultLaborCost: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   step="0.01"
                   min="0"
                 />
@@ -128,7 +128,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                   type="text"
                   value={settings.companyName}
                   onChange={(e) => setSettings(prev => ({ ...prev, companyName: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   placeholder="Your Company Name"
                 />
               </div>
@@ -140,7 +140,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                 <textarea
                   value={settings.companyAddress}
                   onChange={(e) => setSettings(prev => ({ ...prev, companyAddress: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                   rows={2}
                   placeholder="123 Main St, City, State 12345"
                 />
@@ -155,7 +155,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                     type="text"
                     value={settings.companyPhone}
                     onChange={(e) => setSettings(prev => ({ ...prev, companyPhone: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="(555) 123-4567"
                   />
                 </div>
@@ -168,7 +168,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
                     type="email"
                     value={settings.companyEmail}
                     onChange={(e) => setSettings(prev => ({ ...prev, companyEmail: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="quotes@company.com"
                   />
                 </div>
@@ -187,7 +187,7 @@ export function QuoteSettingsModal({ isOpen, onClose }: QuoteSettingsModalProps)
           <button
             onClick={handleSave}
             onKeyDown={handleKeyPress}
-            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors flex items-center space-x-2"
+            className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary transition-colors flex items-center space-x-2"
           >
             <Save size={16} />
             <span>Save Settings</span>

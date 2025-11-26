@@ -186,13 +186,13 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
 
       {/* Project Context Info */}
       {project && (
-        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+        <div className="mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg">
           <div className="flex items-center justify-between">
-            <div className="text-xs text-blue-800">
+            <div className="text-xs text-primary">
               <div className="font-medium">{project.client.name}</div>
               <div>{project.client.email}</div>
             </div>
-            <div className="text-xs text-blue-600">
+            <div className="text-xs text-primary">
               {Object.values(masks).filter(m => m.materialId && m.isVisible !== false).length} masks ready for quoting
             </div>
           </div>
@@ -208,7 +208,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
             value={newQuoteName}
             onChange={(e) => setNewQuoteName(e.target.value)}
             onKeyDown={handleKeyPress}
-            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
             autoFocus
           />
           <div className="flex justify-between items-center mt-2">
@@ -221,7 +221,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
               </button>
               <button
                 onClick={handleCreateQuote}
-                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                className="px-2 py-1 text-xs bg-primary text-white rounded hover:bg-primary"
               >
                 Create Empty
               </button>
@@ -262,7 +262,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
                 type="number"
                 value={quoteSettings.defaultMarkup}
                 onChange={(e) => UPDATE_QUOTE_SETTINGS({ defaultMarkup: parseFloat(e.target.value) || 0 })}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 step="0.1"
               />
             </div>
@@ -272,7 +272,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
                 type="number"
                 value={quoteSettings.defaultTaxRate}
                 onChange={(e) => UPDATE_QUOTE_SETTINGS({ defaultTaxRate: parseFloat(e.target.value) || 0 })}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 step="0.1"
               />
             </div>
@@ -282,7 +282,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
                 type="number"
                 value={quoteSettings.defaultLaborCost}
                 onChange={(e) => UPDATE_QUOTE_SETTINGS({ defaultLaborCost: parseFloat(e.target.value) || 0 })}
-                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                 step="0.01"
               />
             </div>
@@ -308,7 +308,7 @@ export function QuotePanel({ className = '' }: QuotePanelProps) {
                 key={quote.id}
                 className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
                   activeQuoteId === quote.id 
-                    ? 'bg-blue-100 border border-blue-300' 
+                    ? 'bg-primary/10 border border-blue-300' 
                     : 'bg-gray-50 hover:bg-gray-100'
                 }`}
                 onClick={() => SET_ACTIVE_QUOTE(quote.id)}

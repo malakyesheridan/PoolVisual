@@ -560,7 +560,7 @@ export function Material3DRenderer({
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center justify-between">
           <div className="flex items-center">
-            <Layers className="h-4 w-4 mr-2 text-blue-600" />
+            <Layers className="h-4 w-4 mr-2 text-primary" />
             3D Material Preview: {material.name}
           </div>
           <div className="flex items-center space-x-1">
@@ -604,7 +604,7 @@ export function Material3DRenderer({
                   onClick={() => setRenderMode(mode)}
                   className={`px-2 py-1 text-xs rounded ${
                     renderMode === mode 
-                      ? 'bg-blue-600 text-white' 
+                      ? 'bg-primary text-white' 
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >

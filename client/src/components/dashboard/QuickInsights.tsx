@@ -59,8 +59,8 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
       type: 'quote',
       message: `${jobsNeedingQuote.length} ${jobsNeedingQuote.length === 1 ? 'project needs' : 'projects need'} a quote`,
       icon: AlertCircle,
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
+      color: 'text-primary',
+      bgColor: 'bg-primary/5',
       action: 'Create Quote',
       jobs: jobsNeedingQuote,
       onClick: () => {
@@ -106,14 +106,14 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
       <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
         <CardHeader className="pb-3">
           <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-blue-600" />
+            <TrendingUp className="w-5 h-5 text-primary" />
             Quick Insights
           </CardTitle>
         </CardHeader>
         <CardContent className="pb-4">
           <div className="text-center py-6 px-4 bg-gradient-to-br from-slate-50 to-gray-50 rounded-lg">
-            <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
-              <CheckCircle2 className="w-6 h-6 text-blue-600" />
+            <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-3">
+              <CheckCircle2 className="w-6 h-6 text-primary" />
             </div>
             <p className="text-sm font-medium text-gray-700 mb-1">All caught up!</p>
             <p className="text-xs text-gray-500">No action items at this time</p>
@@ -127,7 +127,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
     <Card className={`bg-white border border-gray-100 rounded-xl shadow-sm ${className}`}>
       <CardHeader className="pb-3">
         <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-blue-600" />
+          <TrendingUp className="w-5 h-5 text-primary" />
           Quick Insights
         </CardTitle>
       </CardHeader>
@@ -161,7 +161,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
                       e.stopPropagation();
                       navigate(`/jobs/${insight.jobs[0].id}`);
                     }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 h-7"
+                    className="bg-primary hover:bg-primary/90 text-white text-xs px-3 py-1 h-7"
                   >
                     <FileText className="w-3 h-3 mr-1" />
                     Create Quote

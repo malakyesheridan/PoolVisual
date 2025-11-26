@@ -55,8 +55,8 @@ export function RevenueIntelligence({ jobs, quotes, className = '' }: RevenueInt
       value: jobs.length > 0 ? formatCurrency(totalPipelineValue) : "$0.00",
       subtitle: `${jobs.length} projects`,
       icon: DollarSign,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100"
+      color: "text-primary",
+      bgColor: "bg-primary/10"
     },
     {
       title: "Closed This Month",

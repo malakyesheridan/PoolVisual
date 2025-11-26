@@ -227,13 +227,13 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
   // Don't render modal when in measuring mode - let user interact with canvas
   if (mode === 'measuring') {
     return (
-      <div className="fixed top-4 left-4 bg-blue-100 border border-blue-300 rounded-lg p-3 shadow-lg z-50">
+      <div className="fixed top-4 left-4 bg-primary/10 border border-blue-300 rounded-lg p-3 shadow-lg z-50">
         <div className="flex items-center">
           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-3"></div>
           <div>
-            <div className="text-sm font-medium text-blue-900">📏 Measuring Mode Active</div>
-            <div className="text-xs text-blue-700">Click two points on the canvas</div>
-            <div className="text-xs text-blue-600">Points: {measurementPoints.length}/2</div>
+            <div className="text-sm font-medium text-primary">📏 Measuring Mode Active</div>
+            <div className="text-xs text-primary">Click two points on the canvas</div>
+            <div className="text-xs text-primary">Points: {measurementPoints.length}/2</div>
           </div>
         </div>
       </div>
@@ -263,7 +263,7 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
 
         <div className="space-y-4">
           {/* Calibration Status */}
-          <div className="p-3 bg-blue-50 rounded-lg">
+          <div className="p-3 bg-primary/5 rounded-lg">
             <div className="flex items-center">
               <div className={`w-3 h-3 rounded-full mr-3 ${
                 calibration.isCalibrated ? 'bg-green-500' : 'bg-yellow-500'
@@ -322,7 +322,7 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
             )}
             {mode === 'measuring' && (
               <div>
-                <p className="font-medium text-blue-600 mb-2">📏 Measuring Mode Active</p>
+                <p className="font-medium text-primary mb-2">📏 Measuring Mode Active</p>
                 <p className="mb-2">Click on two points on the canvas that represent a known distance.</p>
                 <p className="text-xs text-gray-500">
                   Points measured: {measurementPoints.length}/2
@@ -381,7 +381,7 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
                 placeholder="e.g., 5.0"
                 step="0.1"
                 min="0.1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
                 autoFocus
               />
             </div>
@@ -403,7 +403,7 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
                   className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
                     Math.abs((photoSpace?.scale || 1) - 1.0) >= 0.01
                       ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                      : 'text-white bg-blue-600 hover:bg-blue-700'
+                      : 'text-white bg-primary hover:bg-primary/90'
                   }`}
                 >
                   Start Calibration

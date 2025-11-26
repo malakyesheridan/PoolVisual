@@ -177,7 +177,7 @@ export function MaterialsSidebar() {
                             </div>
                           )}
                           {material.physicalRepeatM && (
-                            <div className="text-xs text-blue-600">
+                            <div className="text-xs text-primary">
                               {(parseFloat(material.physicalRepeatM) * 1000).toFixed(0)}mm repeat
                             </div>
                           )}

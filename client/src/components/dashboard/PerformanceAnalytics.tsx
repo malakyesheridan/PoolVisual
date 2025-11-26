@@ -169,7 +169,7 @@ export function PerformanceAnalytics({ jobs, quotes, className = '' }: Performan
               <div className="text-xs text-gray-600">Conversion Rate</div>
             </div>
             <div>
-              <div className="text-lg font-bold text-blue-600">{jobs.length > 0 ? clientSatisfaction : 0}</div>
+              <div className="text-lg font-bold text-primary">{jobs.length > 0 ? clientSatisfaction : 0}</div>
               <div className="text-xs text-gray-600">Client Rating</div>
             </div>
             <div>

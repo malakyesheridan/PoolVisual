@@ -96,7 +96,7 @@ export function MaterialVisualPicker({
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder="Search..."
-          className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full pl-7 pr-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
         />
       </div>
       
@@ -118,7 +118,7 @@ export function MaterialVisualPicker({
                   onClick={() => onSelect(material.id)}
                   className={`p-1.5 border rounded text-left transition-all hover:shadow-sm ${
                     selectedMaterialId === material.id 
-                      ? 'border-blue-500 bg-blue-50 shadow-sm' 
+                      ? 'border-primary bg-primary/5 shadow-sm' 
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                 >
@@ -142,7 +142,7 @@ export function MaterialVisualPicker({
                     
                     {/* Selection indicator */}
                     {selectedMaterialId === material.id && (
-                      <div className="absolute top-1 right-1 w-3 h-3 bg-blue-500 rounded-full flex items-center justify-center">
+                      <div className="absolute top-1 right-1 w-3 h-3 bg-primary rounded-full flex items-center justify-center">
                         <Check className="w-1.5 h-1.5 text-white" />
                       </div>
                     )}
@@ -169,8 +169,8 @@ export function MaterialVisualPicker({
       
       {/* Selected material summary */}
       {selectedMaterialId && (
-        <div className="p-1.5 bg-blue-50 border border-blue-200 rounded text-xs">
-          <div className="font-medium text-blue-900 text-[10px]">
+        <div className="p-1.5 bg-primary/5 border border-primary/20 rounded text-xs">
+          <div className="font-medium text-primary text-[10px]">
             ✓ {categoryMaterials.find(m => m.id === selectedMaterialId)?.name}
           </div>
         </div>

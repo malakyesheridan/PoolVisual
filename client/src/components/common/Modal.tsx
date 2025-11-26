@@ -60,8 +60,8 @@ const variantIcons: Record<ModalVariant, React.ComponentType<{ className?: strin
 const variantColors: Record<ModalVariant, string> = {
   default: 'text-slate-900',
   confirm: 'text-yellow-600',
-  form: 'text-blue-600',
-  info: 'text-blue-600',
+  form: 'text-primary',
+  info: 'text-primary',
   danger: 'text-red-600',
 };
 
@@ -149,7 +149,7 @@ export function Modal({
         {/* Loading overlay */}
         {loading && (
           <div className="absolute inset-0 bg-white/50 backdrop-blur-sm z-50 flex items-center justify-center rounded-lg">
-            <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         )}
 

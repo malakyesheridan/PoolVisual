@@ -180,7 +180,7 @@ export default function MaterialsNew() {
                 console.log('[MAT/CREATE:CLICK]');
                 setShowAddSheet(true);
               }}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-add-material"
             >
               <Plus className="w-4 h-4 mr-2" />
@@ -244,7 +244,7 @@ export default function MaterialsNew() {
             </p>
             <Button 
               onClick={() => setShowAddSheet(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
             >
               <Plus className="w-4 h-4 mr-2" />
               Add Your First Material

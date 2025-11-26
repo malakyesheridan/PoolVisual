@@ -46,8 +46,8 @@ export function DashboardMetrics({ jobs, quotes = [], className = '' }: Dashboar
       title: "Total Projects",
       value: totalProjects,
       icon: Briefcase,
-      color: "text-blue-600",
-      bgColor: "bg-blue-100"
+      color: "text-primary",
+      bgColor: "bg-primary/10"
     },
     {
       title: "Active Projects", 

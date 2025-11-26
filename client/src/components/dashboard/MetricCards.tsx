@@ -60,8 +60,8 @@ export function MetricCards({
       title: "Total Projects",
       value: totalProjects,
       icon: Briefcase,
-      color: "text-blue-600",
-      bgColor: "bg-blue-50"
+      color: "text-primary",
+      bgColor: "bg-primary/5"
     },
     {
       title: "Active Projects", 

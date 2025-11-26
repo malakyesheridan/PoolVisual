@@ -103,7 +103,7 @@ export function Sidebar({ materials, className }: SidebarProps) {
                         className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                       >
                         <div className="flex items-center gap-2">
-                          <Icon className="w-4 h-4 text-blue-600" />
+                          <Icon className="w-4 h-4 text-primary" />
                           <div>
                             <div className="font-medium text-sm">
                               {label} {index + 1}

@@ -48,7 +48,7 @@ export function PoolTemplateLibrary({ onTemplateDragStart }: PoolTemplateLibrary
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <div className="flex items-center space-x-2 mb-3">
-          <Droplets size={20} className="text-blue-600" />
+          <Droplets size={20} className="text-primary" />
           <h3 className="text-lg font-semibold text-gray-900">Pool Templates</h3>
         </div>
         
@@ -94,7 +94,7 @@ export function PoolTemplateLibrary({ onTemplateDragStart }: PoolTemplateLibrary
                     {template.description}
                   </p>
                   <div className="flex items-center mt-2 space-x-2">
-                    <span className="inline-block px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">
+                    <span className="inline-block px-2 py-0.5 text-xs bg-primary/10 text-primary rounded-full">
                       {template.type}
                     </span>
                     <span className="text-xs text-gray-400">

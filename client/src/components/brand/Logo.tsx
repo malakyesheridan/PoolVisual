@@ -2,9 +2,9 @@
  * EasyFlow Studio Logo Component
  * 
  * Reusable logo component with multiple variants
+ * Uses the actual EasyFlow Studio logo image
  */
 
-import React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface LogoProps {
@@ -13,6 +13,10 @@ export interface LogoProps {
   className?: string;
   showBorder?: boolean;
 }
+
+// Logo image path - update this when the actual logo file is added
+const LOGO_IMAGE_PATH = '/logo/easyflow-logo.png';
+const LOGO_ICON_PATH = '/logo/easyflow-logo-icon.png';
 
 export function Logo({ 
   variant = 'full', 
@@ -47,70 +51,28 @@ export function Logo({
   if (variant === 'icon') {
     return (
       <div className={cn('flex items-center justify-center', sizeClasses[size], className)}>
-        <svg
-          width={iconSize}
-          height={iconSize}
-          viewBox="0 0 100 100"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="text-foreground"
-        >
-          {/* Circular arrow symbol with dollar sign */}
-          <rect
-            x="5"
-            y="5"
-            width="90"
-            height="90"
-            rx="4"
-            stroke="currentColor"
-            strokeWidth="2"
-            fill="none"
-          />
-          {/* Bottom-left to top-right arrow */}
-          <path
-            d="M 20 75 Q 30 50, 50 50 L 70 50"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M 65 45 L 70 50 L 65 55"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          {/* Top-right to bottom-left arrow */}
-          <path
-            d="M 80 25 Q 70 50, 50 50 L 30 50"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M 35 45 L 30 50 L 35 55"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          {/* Dollar sign in center */}
-          <text
-            x="50"
-            y="55"
-            fontSize="32"
-            fontWeight="bold"
-            textAnchor="middle"
-            fill="currentColor"
-            fontFamily="Arial, sans-serif"
-          >
-            $
-          </text>
-        </svg>
+        <img
+          src={LOGO_ICON_PATH}
+          alt="EasyFlow Studio"
+          className={cn('object-contain', sizeClasses[size])}
+          onError={(e) => {
+            // Fallback to SVG if image not found
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+            const fallback = document.createElement('div');
+            fallback.innerHTML = `
+              <svg width="${iconSize}" height="${iconSize}" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-foreground">
+                <rect x="5" y="5" width="90" height="90" rx="4" stroke="currentColor" stroke-width="2" fill="none"/>
+                <path d="M 20 75 Q 30 50, 50 50 L 70 50" stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <path d="M 65 45 L 70 50 L 65 55" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <path d="M 80 25 Q 70 50, 50 50 L 30 50" stroke="currentColor" stroke-width="6" stroke-linecap="round" fill="none"/>
+                <path d="M 35 45 L 30 50 L 35 55" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                <text x="50" y="55" font-size="32" font-weight="bold" text-anchor="middle" fill="currentColor" font-family="Arial, sans-serif">$</text>
+              </svg>
+            `;
+            target.parentElement?.appendChild(fallback.firstChild as Node);
+          }}
+        />
       </div>
     );
   }
@@ -136,70 +98,16 @@ export function Logo({
       )}
     >
       <div className={cn('flex items-center justify-center', sizeClasses[size])}>
-        <svg
-          width={iconSize}
-          height={iconSize}
-          viewBox="0 0 100 100"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="text-foreground"
-        >
-          {/* Circular arrow symbol with dollar sign */}
-          <rect
-            x="5"
-            y="5"
-            width="90"
-            height="90"
-            rx="4"
-            stroke="currentColor"
-            strokeWidth="2"
-            fill="none"
-          />
-          {/* Bottom-left to top-right arrow */}
-          <path
-            d="M 20 75 Q 30 50, 50 50 L 70 50"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M 65 45 L 70 50 L 65 55"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          {/* Top-right to bottom-left arrow */}
-          <path
-            d="M 80 25 Q 70 50, 50 50 L 30 50"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            fill="none"
-          />
-          <path
-            d="M 35 45 L 30 50 L 35 55"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            fill="none"
-          />
-          {/* Dollar sign in center */}
-          <text
-            x="50"
-            y="55"
-            fontSize="32"
-            fontWeight="bold"
-            textAnchor="middle"
-            fill="currentColor"
-            fontFamily="Arial, sans-serif"
-          >
-            $
-          </text>
-        </svg>
+        <img
+          src={LOGO_IMAGE_PATH}
+          alt="EasyFlow Studio"
+          className={cn('object-contain', sizeClasses[size])}
+          onError={(e) => {
+            // Fallback to text if image not found
+            const target = e.target as HTMLImageElement;
+            target.style.display = 'none';
+          }}
+        />
       </div>
       <div className="flex flex-col">
         <span className={cn('font-bold text-foreground', textSize)}>EasyFlow</span>

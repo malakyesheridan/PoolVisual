@@ -99,7 +99,7 @@ export function AnalyticsDashboard({ data, onClose }: AnalyticsDashboardProps) {
           </div>
           <div className="bg-white rounded-lg p-3 border border-gray-200">
             <div className="flex items-center gap-2 mb-1">
-              <Clock className="w-4 h-4 text-blue-600" />
+              <Clock className="w-4 h-4 text-primary" />
               <span className="text-xs text-gray-600">Avg Processing Time</span>
             </div>
             <div className="text-2xl font-bold text-gray-900">

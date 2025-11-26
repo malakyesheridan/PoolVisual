@@ -90,11 +90,11 @@ export function MaterialUsagePanel({ className = '' }: MaterialUsagePanelProps) 
         <div className="space-y-4">
           {/* Summary Stats */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-blue-50 p-3 rounded-lg">
+            <div className="bg-primary/5 p-3 rounded-lg">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs text-blue-600 font-medium">Total Materials</p>
-                  <p className="text-lg font-bold text-blue-900">
+                  <p className="text-xs text-primary font-medium">Total Materials</p>
+                  <p className="text-lg font-bold text-primary">
                     {projectSummary.totalMaterials}
                   </p>
                 </div>

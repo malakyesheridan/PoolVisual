@@ -86,7 +86,7 @@ export function VariantComparisonModal({
                   }}
                   className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                     viewMode === mode
-                      ? 'bg-blue-600 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                   }`}
                 >
@@ -119,7 +119,7 @@ export function VariantComparisonModal({
                       loading="lazy"
                     />
                     {variant.rank !== undefined && (
-                      <div className="absolute top-2 left-2 bg-blue-600 text-white px-2 py-0.5 rounded text-xs font-medium">
+                      <div className="absolute top-2 left-2 bg-primary text-white px-2 py-0.5 rounded text-xs font-medium">
                         Rank {variant.rank}
                       </div>
                     )}
@@ -156,7 +156,7 @@ export function VariantComparisonModal({
                 <select
                   value={selectedVariantIndex}
                   onChange={(e) => setSelectedVariantIndex(Number(e.target.value))}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   {variants.map((_, index) => (
                     <option key={index} value={index}>
@@ -178,7 +178,7 @@ export function VariantComparisonModal({
                 </div>
                 <div className="space-y-2">
                   <div className="text-sm font-medium text-gray-700">Enhanced</div>
-                  <div className="relative aspect-square rounded-lg border-2 border-blue-200 overflow-hidden bg-gray-100">
+                  <div className="relative aspect-square rounded-lg border-2 border-primary/20 overflow-hidden bg-gray-100">
                     <img
                       src={selectedVariant.url}
                       alt="Enhanced variant"
@@ -214,7 +214,7 @@ export function VariantComparisonModal({
                 <select
                   value={selectedVariantIndex}
                   onChange={(e) => setSelectedVariantIndex(Number(e.target.value))}
-                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                   {variants.map((_, index) => (
                     <option key={index} value={index}>

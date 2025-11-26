@@ -16,7 +16,7 @@ export function ProjectCanvasEditorTest({ jobId, photoId }: ProjectCanvasEditorT
   
   return (
     <div className="h-screen">
-      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 text-sm">
+      <div className="bg-primary/5 border-b border-primary/20 px-4 py-2 text-sm">
         <strong>Test Mode:</strong> Project Canvas Editor - Job: {jobId}, Photo: {photoId || 'None'}
       </div>
       <ProjectCanvasEditor jobId={jobId} photoId={photoId} />

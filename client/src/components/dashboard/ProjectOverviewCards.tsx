@@ -48,7 +48,7 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
   const getProjectHealthColor = (status: string) => {
     switch (status) {
       case 'completed': return 'text-green-600 bg-green-50';
-      case 'in_progress': return 'text-blue-600 bg-blue-50';
+      case 'in_progress': return 'text-primary bg-primary/5';
       case 'draft': return 'text-yellow-600 bg-yellow-50';
       default: return 'text-gray-600 bg-gray-50';
     }
@@ -65,7 +65,7 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
 
   const getCompletionColor = (percentage: number) => {
     if (percentage >= 80) return 'text-green-600';
-    if (percentage >= 50) return 'text-blue-600';
+    if (percentage >= 50) return 'text-primary';
     if (percentage >= 25) return 'text-yellow-600';
     return 'text-red-600';
   };
@@ -98,10 +98,10 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
   return (
     <div className={`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 ${className}`}>
       {/* Current Project Card */}
-      <Card className="border-blue-200 bg-blue-50">
+      <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg text-blue-900">
+            <CardTitle className="text-lg text-primary">
               Current Project
             </CardTitle>
             <Badge className={getProjectHealthColor(project.status)}>
@@ -111,31 +111,31 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
         </CardHeader>
         <CardContent className="space-y-3">
           <div>
-            <h3 className="font-semibold text-blue-900">{project.name}</h3>
-            <p className="text-sm text-blue-700">{project.client.name}</p>
+            <h3 className="font-semibold text-primary">{project.name}</h3>
+            <p className="text-sm text-primary">{project.client.name}</p>
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-blue-600">
+          <div className="flex items-center gap-2 text-sm text-primary">
             <MapPin className="w-4 h-4" />
             <span>{project.client.address || 'No address'}</span>
           </div>
           
-          <div className="flex items-center gap-2 text-sm text-blue-600">
+          <div className="flex items-center gap-2 text-sm text-primary">
             <Calendar className="w-4 h-4" />
             <span>Created {formatDistanceToNow(project.createdAt, { addSuffix: true })}</span>
           </div>
 
           {analytics && (
-            <div className="pt-2 border-t border-blue-200">
+            <div className="pt-2 border-t border-primary/20">
               <div className="flex items-center justify-between text-sm mb-2">
-                <span className="text-blue-700">Completion:</span>
+                <span className="text-primary">Completion:</span>
                 <span className={`font-medium ${getCompletionColor(analytics.completionPercentage)}`}>
                   {analytics.completionPercentage}%
                 </span>
               </div>
               <div className="w-full bg-blue-200 rounded-full h-2">
                 <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  className="bg-primary h-2 rounded-full transition-all duration-300"
                   style={{ width: `${analytics.completionPercentage}%` }}
                 ></div>
               </div>
@@ -179,7 +179,7 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm text-slate-600">Canvas Work</span>
-            <span className="font-semibold text-blue-600">
+            <span className="font-semibold text-primary">
               {analytics?.photosWithCanvasWork || 0} photos
             </span>
           </div>
@@ -230,7 +230,7 @@ export function ProjectOverviewCards({ className = '' }: ProjectOverviewCardsPro
               {analytics && analytics.estimatedValue > 0 && (
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-slate-600">Estimated Value</span>
-                  <span className="font-semibold text-blue-600">
+                  <span className="font-semibold text-primary">
                     {formatCurrency(analytics.estimatedValue)}
                   </span>
                 </div>

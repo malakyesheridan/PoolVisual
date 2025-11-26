@@ -81,7 +81,7 @@ export default function ProjectBar() {
       <button 
         onClick={handleSave}
         disabled={loading || !name.trim()}
-        className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
+        className="px-3 py-1 text-sm bg-primary text-white rounded hover:bg-primary disabled:opacity-50"
       >
         {loading ? "Saving..." : "Save"}
       </button>

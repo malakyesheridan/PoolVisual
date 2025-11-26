@@ -160,7 +160,7 @@ export default function Jobs() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'new': return 'bg-primary/5 text-primary border border-primary/20';
       case 'estimating': return 'bg-yellow-50 text-yellow-700 border border-yellow-200';
       case 'sent': return 'bg-purple-50 text-purple-700 border border-purple-200';
       case 'accepted': return 'bg-green-50 text-green-700 border border-green-200';
@@ -196,7 +196,7 @@ export default function Jobs() {
       return { 
         status: 'in-progress', 
         label: `${canvasWorkProgress.completionPercentage}% Complete`, 
-        color: 'text-blue-600',
+        color: 'text-primary',
         icon: Clock 
       };
     }
@@ -206,7 +206,7 @@ export default function Jobs() {
     return { 
       status: 'started', 
       label: 'Started', 
-      color: 'text-blue-600',
+      color: 'text-primary',
       icon: Clock 
     };
   };
@@ -233,7 +233,7 @@ export default function Jobs() {
           
         <Button 
           onClick={() => navigate('/jobs/new')} 
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-3 py-1.5 h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
+          className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-1.5 h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           data-testid="button-new-job"
         >
           <Plus className="w-3.5 h-3.5 mr-1.5" />
@@ -250,7 +250,7 @@ export default function Jobs() {
               placeholder="Search jobs by client or address..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
+              className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-primary transition-all duration-150"
               data-testid="input-search-jobs"
               aria-label="Search jobs"
             />
@@ -260,7 +260,7 @@ export default function Jobs() {
             <select
               value={selectedOrgId || ''}
               onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="px-3 py-1.5 h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-blue-500 focus:ring-blue-500 transition-all duration-150"
+              className="px-3 py-1.5 h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-primary focus:ring-primary transition-all duration-150"
               data-testid="select-organization"
             >
               {orgs.map((org) => (
@@ -368,8 +368,8 @@ export default function Jobs() {
             ) : filteredJobs.length === 0 ? (
               <div className="flex items-center justify-center min-h-[280px] px-6 py-12">
                 <div className="flex flex-col items-center text-center">
-                  <div className="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <FolderOpen className="w-6 h-6 text-blue-600" />
+                  <div className="w-12 h-12 bg-primary/5 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FolderOpen className="w-6 h-6 text-primary" />
                   </div>
                   <h3 className="text-base font-semibold text-gray-900 mb-1.5">
                     {searchTerm ? "No jobs found" : "No jobs yet"}
@@ -382,7 +382,7 @@ export default function Jobs() {
                   {!searchTerm ? (
                     <Button
                       onClick={() => navigate('/jobs/new')}
-                      className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg px-4 py-2 h-9 text-sm font-medium transition-all duration-150"
+                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-4 py-2 h-9 text-sm font-medium transition-all duration-150"
                     >
                       <Plus className="w-3.5 h-3.5 mr-1.5" />
                       Create Your First Job
@@ -422,7 +422,7 @@ export default function Jobs() {
                       <div className="flex items-start gap-4 min-w-0 flex-1">
                         {/* Timeline Column */}
                         <div className="flex flex-col items-center pt-1 flex-shrink-0">
-                          <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
+                          <div className="w-2.5 h-2.5 rounded-full bg-primary"></div>
                           <div className="flex-1 w-px bg-slate-200"></div>
                         </div>
                         
@@ -473,7 +473,7 @@ export default function Jobs() {
                             setClientInfoModalOpen(true);
                           }}
                           data-testid={`button-view-client-info-${job.id}`}
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all duration-150"
+                          className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-md transition-all duration-150"
                           aria-label="View client information"
                           title="View client information"
                         >

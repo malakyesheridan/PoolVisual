@@ -40,7 +40,7 @@ export function QuoteSelectionModal({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-50 text-gray-700 border border-gray-200';
-      case 'sent': return 'bg-blue-50 text-blue-700 border border-blue-200';
+      case 'sent': return 'bg-primary/5 text-primary border border-primary/20';
       case 'accepted': return 'bg-green-50 text-green-700 border border-green-200';
       case 'declined': return 'bg-red-50 text-red-700 border border-red-200';
       default: return 'bg-gray-50 text-gray-700 border border-gray-200';
@@ -117,7 +117,7 @@ export function QuoteSelectionModal({
         {allowCreateNew && (
           <Button
             onClick={handleCreateNew}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-primary hover:bg-primary/90 text-white"
           >
             <Plus className="w-4 h-4 mr-2" />
             Create New Quote
@@ -182,7 +182,7 @@ export function QuoteSelectionModal({
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
-                      <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
+                      <div className="w-8 h-8 rounded-full bg-primary/5 flex items-center justify-center text-primary">
                         <FileText className="w-4 h-4" />
                       </div>
                     </div>

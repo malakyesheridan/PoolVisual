@@ -79,7 +79,7 @@ export function MaskItem({ mask, index }: MaskItemProps) {
     <div 
       className={`flex items-center justify-between p-2 rounded-lg mb-2 cursor-pointer transition-colors ${
         isSelected 
-          ? 'bg-blue-100 border border-blue-300' 
+          ? 'bg-primary/10 border border-blue-300' 
           : 'bg-gray-50 hover:bg-gray-100'
       }`}
       onClick={handleMaskClick}
@@ -126,12 +126,12 @@ export function MaskItem({ mask, index }: MaskItemProps) {
               onChange={(e) => setEditName(e.target.value)}
               onBlur={handleRename}
               onKeyDown={handleKeyPress}
-              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
               autoFocus
             />
           ) : (
             <span 
-              className={`text-xs font-medium cursor-pointer hover:text-blue-600 ${
+              className={`text-xs font-medium cursor-pointer hover:text-primary ${
                 !isVisible ? 'text-gray-400 line-through' : 'text-gray-700'
               }`}
               onClick={() => setIsEditing(true)}

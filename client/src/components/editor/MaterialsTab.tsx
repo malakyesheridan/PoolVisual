@@ -49,7 +49,7 @@ function MaterialCard({ material, isSelected, onSelect, isAttaching }: MaterialC
   return (
     <Card 
       className={`cursor-pointer transition-all hover:shadow-md ${
-        isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+        isSelected ? 'ring-2 ring-primary bg-primary/5' : ''
       }`}
       onClick={onSelect}
       data-testid={`material-card-${material.id}`}
@@ -227,7 +227,7 @@ export function MaterialsTab() {
             <TabsTrigger
               key={category.id}
               value={category.id}
-              className="text-xs py-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className="text-xs py-2 data-[state=active]:bg-primary data-[state=active]:text-white"
               data-testid={`material-category-${category.id}`}
             >
               {category.label}
@@ -240,7 +240,7 @@ export function MaterialsTab() {
             <TabsTrigger
               key={category.id}
               value={category.id}
-              className="text-xs py-2 data-[state=active]:bg-blue-500 data-[state=active]:text-white"
+              className="text-xs py-2 data-[state=active]:bg-primary data-[state=active]:text-white"
               data-testid={`material-category-${category.id}`}
             >
               {category.label}

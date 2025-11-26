@@ -76,7 +76,7 @@ export function NotificationPanel({ className = '' }: NotificationPanelProps) {
       case 'success': return 'border-green-200 bg-green-50';
       case 'warning': return 'border-yellow-200 bg-yellow-50';
       case 'error': return 'border-red-200 bg-red-50';
-      default: return 'border-blue-200 bg-blue-50';
+      default: return 'border-primary/20 bg-primary/5';
     }
   };
 

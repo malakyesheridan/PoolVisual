@@ -96,16 +96,16 @@ export function CalibrationControlsV2() {
             return (
               <div 
                 key={sample.id} 
-                className="flex items-center gap-1 bg-blue-50 border border-blue-200 rounded px-2 py-1"
+                className="flex items-center gap-1 bg-primary/5 border border-primary/20 rounded px-2 py-1"
               >
-                <span className="text-xs text-blue-700">
+                <span className="text-xs text-primary">
                   #{index + 1}: {sample.meters}m ({distance.toFixed(0)}px)
                 </span>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() => handleDeleteSample(sample.id)}
-                  className="h-4 w-4 p-0 text-blue-600 hover:text-red-600"
+                  className="h-4 w-4 p-0 text-primary hover:text-red-600"
                   data-testid={`delete-sample-${index}`}
                 >
                   <Trash2 className="h-3 w-3" />
@@ -154,7 +154,7 @@ export function CalibrationControlsV2() {
     const previewPpm = distance / meters;
     
     return (
-      <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">
+      <div className="text-xs text-primary bg-primary/5 p-2 rounded">
         <div>Live preview: {distance.toFixed(0)}px = {meters}m</div>
         <div>Scale: {formatPixelsPerMeter(previewPpm)}</div>
       </div>
@@ -211,16 +211,16 @@ export function CalibrationControlsV2() {
     const isEnteringLength = calState === 'lengthEntry';
     
     return (
-      <Card className="mb-4 border-blue-200">
+      <Card className="mb-4 border-primary/20">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center">
-            <Ruler className="h-4 w-4 mr-2 text-blue-600" />
+            <Ruler className="h-4 w-4 mr-2 text-primary" />
             Setting Reference Scale
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {isPlacingPoints && (
-            <div className="text-xs text-blue-700 bg-blue-50 p-2 rounded">
+            <div className="text-xs text-primary bg-primary/5 p-2 rounded">
               <Info className="h-3 w-3 inline mr-1" />
               {calState === 'placingA' ? 
                 'Click to place first point of reference line' :

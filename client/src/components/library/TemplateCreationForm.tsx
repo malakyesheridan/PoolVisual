@@ -163,21 +163,21 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
           <div key={step.key} className="flex items-center">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
               index <= currentStepIndex 
-                ? 'bg-blue-500 text-white' 
+                ? 'bg-primary text-white' 
                 : 'bg-gray-200 text-gray-600'
             }`}>
               {index + 1}
             </div>
             <div className="ml-2">
               <div className={`text-sm font-medium ${
-                index <= currentStepIndex ? 'text-blue-600' : 'text-gray-500'
+                index <= currentStepIndex ? 'text-primary' : 'text-gray-500'
               }`}>
                 {step.title}
               </div>
             </div>
             {index < steps.length - 1 && (
               <div className={`w-8 h-px ml-4 ${
-                index < currentStepIndex ? 'bg-blue-500' : 'bg-gray-200'
+                index < currentStepIndex ? 'bg-primary' : 'bg-gray-200'
               }`} />
             )}
           </div>
@@ -311,7 +311,7 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
                     }}
                     className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                       !useDrawing
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-primary text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                   >
@@ -321,7 +321,7 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
                     onClick={() => setUseDrawing(true)}
                     className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
                       useDrawing
-                        ? 'bg-blue-600 text-white'
+                        ? 'bg-primary text-white'
                         : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                     }`}
                   >
@@ -591,7 +591,7 @@ export function TemplateCreationForm({ onSave, onCancel, editingTemplate }: Temp
 
         <div className="flex gap-2">
           {currentStep === 'preview' ? (
-            <Button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={handleSave} className="bg-primary hover:bg-primary/90">
               <Save className="w-4 h-4 mr-1" />
               {editingTemplate ? 'Update Template' : 'Save Template'}
             </Button>

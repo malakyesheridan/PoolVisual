@@ -82,7 +82,7 @@ export function PreviewModal({
         <div className="relative bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-300 min-h-[300px] flex items-center justify-center">
           {loading && !compositeImageUrl ? (
             <div className="flex flex-col items-center gap-3 py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
               <p className="text-sm text-gray-600">Generating preview...</p>
             </div>
           ) : imageError ? (
@@ -148,9 +148,9 @@ export function PreviewModal({
         </div>
 
         {/* Warning Message */}
-        <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-          <CheckCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-blue-800">
+        <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">
+          <CheckCircle className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-primary">
             This preview shows exactly what will be sent to the AI enhancement service. 
             Make sure all masks and materials are correct before proceeding.
           </p>

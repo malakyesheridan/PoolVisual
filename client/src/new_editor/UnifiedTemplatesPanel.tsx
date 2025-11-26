@@ -108,7 +108,7 @@ export function UnifiedTemplatesPanel() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search..."
-                className="w-full px-3 pl-10 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150"
+                className="w-full px-3 pl-10 py-2 text-sm border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-150"
                 aria-label="Search templates"
               />
             </div>
@@ -144,7 +144,7 @@ export function UnifiedTemplatesPanel() {
               {templates.map((template) => (
                 <div
                   key={template.id}
-                  className="bg-white border border-gray-200 rounded-xl hover:shadow-md hover:scale-[1.02] transition-all duration-150 hover:border-gray-300 flex gap-2 cursor-pointer focus-within:ring-2 focus-within:ring-blue-500 focus-within:ring-offset-1"
+                  className="bg-white border border-gray-200 rounded-xl hover:shadow-md hover:scale-[1.02] transition-all duration-150 hover:border-gray-300 flex gap-2 cursor-pointer focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-1"
                   role="button"
                   tabIndex={0}
                   aria-label={`Template: ${template.name}`}
@@ -193,7 +193,7 @@ export function UnifiedTemplatesPanel() {
                     
                     <button
                       onClick={() => handleApplyTemplate(template.id)}
-                      className="mt-2 w-full px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded transition-colors"
+                      className="mt-2 w-full px-2 py-1 bg-primary hover:bg-primary/90 text-white text-xs rounded transition-colors"
                     >
                       Apply
                     </button>

@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ChevronDown, Maximize2 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuthStore } from "@/stores/auth-store";
+import { Logo } from "@/components/brand/Logo";
 
 interface TopNavigationProps {
   currentPage?: string;

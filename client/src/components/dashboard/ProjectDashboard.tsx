@@ -103,7 +103,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'new': return 'bg-blue-100 text-blue-800';
+      case 'new': return 'bg-primary/10 text-primary';
       case 'estimating': return 'bg-yellow-100 text-yellow-800';
       case 'sent': return 'bg-purple-100 text-purple-800';
       case 'accepted': return 'bg-green-100 text-green-800';
@@ -156,7 +156,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
               Filter
             </Button>
             
-            <Button onClick={() => navigate('/jobs/new')} className="bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all duration-200">
+            <Button onClick={() => navigate('/jobs/new')} className="bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-200">
               <Plus className="w-4 h-4 mr-2" />
               New Project
             </Button>
@@ -204,7 +204,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
                 placeholder="Search projects..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 border-slate-200 focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 border-slate-200 focus:border-primary focus:ring-primary"
               />
             </div>
             
@@ -212,7 +212,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
               <select
                 value={selectedOrgId || ''}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
-                className="px-4 py-2 border border-slate-200 rounded-lg bg-white text-sm focus:border-blue-500 focus:ring-blue-500"
+                className="px-4 py-2 border border-slate-200 rounded-lg bg-white text-sm focus:border-primary focus:ring-primary"
               >
                 {orgs.map((org) => (
                   <option key={org.id} value={org.id}>
@@ -293,7 +293,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
                       size="lg" 
                       variant="outline"
                       onClick={() => navigate('/jobs/new')}
-                      className="border-2 border-blue-600 text-blue-600 hover:bg-blue-600 hover:text-white px-8 py-4 text-lg font-semibold transition-all duration-200 hover:scale-105"
+                      className="border-2 border-blue-600 text-primary hover:bg-primary hover:text-white px-8 py-4 text-lg font-semibold transition-all duration-200 hover:scale-105"
                     >
                       <Plus className="w-5 h-5 mr-2" />
                       Create Your First Project
@@ -306,7 +306,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
                 <div className="text-center">
                   <Button 
                     onClick={() => navigate('/jobs/new')}
-                    className="bg-blue-600 hover:bg-blue-700 px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                    className="bg-primary hover:bg-primary/90 px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
                   >
                     <Plus className="w-4 h-4 mr-2" />
                     Create New Project

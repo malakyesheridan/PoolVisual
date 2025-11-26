@@ -292,7 +292,7 @@ export function QuickActions({ className = '', projectId }: QuickActionsProps) {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Canvas Work:</span>
-                <span className="font-medium text-blue-600">{projectStats.photosWithCanvasWork}</span>
+                <span className="font-medium text-primary">{projectStats.photosWithCanvasWork}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Masks:</span>

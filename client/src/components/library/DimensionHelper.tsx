@@ -36,7 +36,7 @@ export function DimensionHelper({
   const getPoolSizeCategory = (widthM: number, heightM: number) => {
     const area = widthM * heightM;
     if (area > 80) return { category: 'Extra Large', color: 'bg-purple-100 text-purple-800' };
-    if (area > 50) return { category: 'Large', color: 'bg-blue-100 text-blue-800' };
+    if (area > 50) return { category: 'Large', color: 'bg-primary/10 text-primary' };
     if (area > 25) return { category: 'Medium', color: 'bg-green-100 text-green-800' };
     return { category: 'Small', color: 'bg-yellow-100 text-yellow-800' };
   };
@@ -170,10 +170,10 @@ export function DimensionHelper({
       </div>
 
       {/* Size reference info */}
-      <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg">
         <div className="flex items-start gap-2">
-          <Info className="w-4 h-4 text-blue-600 mt-0.5" />
-          <div className="text-xs text-blue-800">
+          <Info className="w-4 h-4 text-primary mt-0.5" />
+          <div className="text-xs text-primary">
             <div className="font-medium mb-1">Size Reference:</div>
             <div className="space-y-1">
               <div>• Small: 3-5m × 2-4m (family pools)</div>

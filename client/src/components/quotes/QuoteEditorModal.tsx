@@ -166,7 +166,7 @@ export function QuoteEditorModal({
                   </div>
                   <div>
                     <span className="text-gray-600">Total:</span>
-                    <div className="font-semibold text-lg text-blue-600">{formatCurrency(total)}</div>
+                    <div className="font-semibold text-lg text-primary">{formatCurrency(total)}</div>
                   </div>
                 </div>
               </CardContent>
@@ -213,7 +213,7 @@ export function QuoteEditorModal({
                     value={newItem.unitPrice}
                     onChange={(e) => setNewItem({ ...newItem, unitPrice: e.target.value })}
                   />
-                  <Button onClick={handleAddNewItem} className="bg-blue-600 hover:bg-blue-700">
+                  <Button onClick={handleAddNewItem} className="bg-primary hover:bg-primary/90">
                     <Plus className="w-4 h-4 mr-2" />
                     Add
                   </Button>
@@ -281,7 +281,7 @@ export function QuoteEditorModal({
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleSyncFromCanvas(item)}
-                                className="text-blue-600 hover:text-blue-700"
+                                className="text-primary hover:text-primary"
                                 title="Sync from Canvas"
                               >
                                 <RefreshCw className="w-4 h-4" />

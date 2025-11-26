@@ -147,7 +147,7 @@ export function AssetLibrary({ onAssetDragStart }: AssetLibraryProps) {
           <div className="text-red-500 mb-2">⚠️ {error}</div>
           <button
             onClick={() => window.location.reload()}
-            className="text-sm text-blue-600 hover:text-blue-800"
+            className="text-sm text-primary hover:text-primary"
           >
             Retry
           </button>
@@ -177,7 +177,7 @@ export function AssetLibrary({ onAssetDragStart }: AssetLibraryProps) {
           placeholder="Search assets..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-3"
+          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-primary mb-3"
           data-testid="asset-search"
         />
 
@@ -187,7 +187,7 @@ export function AssetLibrary({ onAssetDragStart }: AssetLibraryProps) {
             onClick={() => setSelectedCategory('')}
             className={`px-2 py-1 text-xs rounded ${
               selectedCategory === ''
-                ? 'bg-blue-500 text-white'
+                ? 'bg-primary text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
             data-testid="asset-category-all"
@@ -200,7 +200,7 @@ export function AssetLibrary({ onAssetDragStart }: AssetLibraryProps) {
               onClick={() => setSelectedCategory(category)}
               className={`px-2 py-1 text-xs rounded capitalize ${
                 selectedCategory === category
-                  ? 'bg-blue-500 text-white'
+                  ? 'bg-primary text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
               data-testid={`asset-category-${category}`}
@@ -376,13 +376,13 @@ function AssetCard({ item, onDragStart }: AssetCardProps) {
           // Dispatch to store (would need to import useEditorStore)
           console.log('Add asset at center:', asset);
         }}
-        className="mt-2 w-full px-2 py-1 bg-blue-500 text-white text-xs rounded hover:bg-blue-600"
+        className="mt-2 w-full px-2 py-1 bg-primary text-white text-xs rounded hover:bg-primary"
       >
         Add
       </button>
 
       {/* Hover overlay */}
-      <div className="absolute inset-0 bg-blue-500 bg-opacity-0 group-hover:bg-opacity-10 rounded-lg transition-all pointer-events-none" />
+      <div className="absolute inset-0 bg-primary bg-opacity-0 group-hover:bg-opacity-10 rounded-lg transition-all pointer-events-none" />
     </div>
   );
 }

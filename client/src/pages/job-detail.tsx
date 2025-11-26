@@ -341,7 +341,7 @@ export default function JobDetail() {
   const getQuoteStatusColor = (status: string) => {
     switch (status) {
       case 'draft': return 'bg-gray-100 text-gray-800';
-      case 'sent': return 'bg-blue-100 text-blue-800';
+      case 'sent': return 'bg-primary/10 text-primary';
       case 'accepted': return 'bg-green-100 text-green-800';
       case 'declined': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
@@ -852,7 +852,7 @@ export default function JobDetail() {
               <CardContent>
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                    <div className="w-3 h-3 bg-primary rounded-full"></div>
                     <div>
                       <p className="text-sm font-medium">Job Created</p>
                       <p className="text-xs text-slate-500">

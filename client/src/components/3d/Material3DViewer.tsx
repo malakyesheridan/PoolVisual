@@ -324,20 +324,20 @@ export function Material3DViewer({ className = '' }: Material3DViewerProps) {
 
         {/* Material Info */}
         {currentMaterial && isVisible && (
-          <Card className="bg-blue-50 border-blue-200">
+          <Card className="bg-primary/5 border-primary/20">
             <CardContent className="p-3">
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-sm font-medium text-blue-900">
+                <h4 className="text-sm font-medium text-primary">
                   {currentMaterial.name}
                 </h4>
                 <Badge variant="secondary" className="text-xs">
                   {currentMaterial.category}
                 </Badge>
               </div>
-              <p className="text-xs text-blue-700 mb-2">
+              <p className="text-xs text-primary mb-2">
                 {currentMaterial.description}
               </p>
-              <div className="flex justify-between items-center text-xs text-blue-600">
+              <div className="flex justify-between items-center text-xs text-primary">
                 <span>Price: ${currentMaterial.pricePerUnit}/{currentMaterial.unit}</span>
                 <span>SKU: {currentMaterial.sku}</span>
               </div>

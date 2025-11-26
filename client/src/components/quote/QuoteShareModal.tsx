@@ -98,7 +98,7 @@ Pool Design Pro`);
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
               placeholder="client@example.com"
               autoFocus
             />
@@ -112,7 +112,7 @@ Pool Design Pro`);
               type="text"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
 
@@ -124,7 +124,7 @@ Pool Design Pro`);
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyPress}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
               rows={8}
               placeholder="Enter your message..."
             />
@@ -147,7 +147,7 @@ Pool Design Pro`);
           <button
             onClick={handleSend}
             disabled={isSending || !email.trim()}
-            className="px-4 py-2 text-sm bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            className="px-4 py-2 text-sm bg-primary text-white rounded-md hover:bg-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
             <Send size={16} />
             <span>{isSending ? 'Sending...' : 'Send Quote'}</span>

@@ -22,7 +22,7 @@ interface ErrorAlertProps {
 const severityConfig: Record<ErrorSeverity, { icon: React.ComponentType<{ className?: string }>; color: string }> = {
   error: { icon: XCircle, color: 'text-red-600' },
   warning: { icon: AlertTriangle, color: 'text-yellow-600' },
-  info: { icon: AlertCircle, color: 'text-blue-600' },
+  info: { icon: AlertCircle, color: 'text-primary' },
 };
 
 export function ErrorAlert({

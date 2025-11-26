@@ -134,7 +134,7 @@ export const TemplatesTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
             </p>
             <Button 
               onClick={() => setShowAddForm(true)}
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground"
             >
               <Plus className="w-4 h-4 mr-2" />
               Create Your First Template

@@ -197,7 +197,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
               key={t}
               className={`px-4 py-2 rounded-t-lg capitalize transition-colors ${
                 tab === t 
-                  ? 'bg-blue-100 text-blue-700 border-b-2 border-blue-500' 
+                  ? 'bg-primary/10 text-primary border-b-2 border-primary' 
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
               }`}
               onClick={() => setTab(t)}
@@ -322,12 +322,12 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
 
           {tab === 'prefill' && (
             <div className="space-y-4">
-              <div className="bg-blue-50 p-4 rounded-lg">
+              <div className="bg-primary/5 p-4 rounded-lg">
                 <div className="flex items-center gap-2 mb-2">
-                  <Info className="w-4 h-4 text-blue-600" />
-                  <span className="font-medium text-blue-900">Auto-fill from Product URL</span>
+                  <Info className="w-4 h-4 text-primary" />
+                  <span className="font-medium text-primary">Auto-fill from Product URL</span>
                 </div>
-                <p className="text-sm text-blue-700 mb-3">
+                <p className="text-sm text-primary mb-3">
                   Paste a product URL to automatically extract name, price, dimensions, and other details.
                 </p>
                 
@@ -341,7 +341,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
                   <Button 
                     onClick={handlePrefill} 
                     disabled={prefillLoading || !prefillUrl.trim()}
-                    className="bg-blue-600 hover:bg-blue-700"
+                    className="bg-primary hover:bg-primary/90"
                   >
                     {prefillLoading ? 'Loading...' : 'Import'}
                   </Button>
@@ -404,7 +404,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
             <Button 
               onClick={onSave} 
               disabled={saving || !requiredOk}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary/90"
             >
               {saving ? 'Saving...' : 'Save Material'}
             </Button>

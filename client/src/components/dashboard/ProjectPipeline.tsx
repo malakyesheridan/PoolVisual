@@ -38,7 +38,7 @@ const ProjectCard = ({ project, onView, onEdit }: ProjectCardProps) => (
       <h4 className="font-medium text-sm text-gray-900 truncate">{project.clientName}</h4>
       <Badge 
         className={`text-xs ${
-          project.status === 'new' ? 'bg-blue-100 text-blue-800' :
+          project.status === 'new' ? 'bg-primary/10 text-primary' :
           project.status === 'estimating' ? 'bg-yellow-100 text-yellow-800' :
           project.status === 'sent' ? 'bg-purple-100 text-purple-800' :
           project.status === 'accepted' ? 'bg-green-100 text-green-800' :
@@ -94,9 +94,9 @@ export function ProjectPipeline({ jobs, onView, onEdit, className = '' }: Projec
       key: 'new', 
       title: 'New Projects', 
       icon: Circle, 
-      color: 'text-blue-600',
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200'
+      color: 'text-primary',
+      bgColor: 'bg-primary/5',
+      borderColor: 'border-primary/20'
     },
     { 
       key: 'estimating', 
