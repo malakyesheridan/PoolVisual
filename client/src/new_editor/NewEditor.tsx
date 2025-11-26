@@ -1083,54 +1083,35 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           )}
         </div>
         
-        {/* Sidebar Toggle Button */}
-        <button
-          onClick={toggleSidebar}
-          className="absolute top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
-          style={{ 
-            right: isSidebarOpen ? `${sidebarWidth + 16}px` : '16px',
-            transition: 'right 0.3s ease-in-out'
-          }}
-          aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-          title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-        >
-          {isSidebarOpen ? (
-            <PanelRight className="w-4 h-4 text-gray-600" />
-          ) : (
-            <PanelLeft className="w-4 h-4 text-gray-600" />
-          )}
-        </button>
-        
-        {/* Resize Handle - only show when sidebar is open */}
-        {isSidebarOpen && (
-          <div
-            ref={resizeHandleRef}
-            className={`w-1 bg-gray-300 hover:bg-primary/80 cursor-col-resize transition-colors ${
-              isResizing ? 'bg-primary' : ''
-            }`}
-            style={{ minHeight: '100%' }}
-          />
-        )}
-        
-        {/* Sidebar - dynamic width with smooth animation */}
-        <div 
-          ref={sidebarRef} 
-          style={{ 
+        {/* Sidebar - positioned absolutely so it overlays, doesn't affect canvas size */}
+        <div
+          ref={sidebarRef}
+          className="absolute top-4 bottom-4 right-4 bg-white rounded-xl shadow-md flex flex-col transition-all duration-300 z-30"
+          style={{
             width: isSidebarOpen ? `${sidebarWidth}px` : '0px',
-            flexShrink: 0,
-            flexGrow: 0,
-            flexBasis: isSidebarOpen ? `${sidebarWidth}px` : '0px',
-            transition: 'width 0.3s ease-in-out, flex-basis 0.3s ease-in-out',
             overflow: isSidebarOpen ? 'visible' : 'hidden',
-            minWidth: 0
-          }} 
-          className={`h-full flex flex-col bg-white shadow-sm border-l border-gray-100 rounded-xl ${
-            isSidebarOpen ? 'opacity-100' : 'opacity-0'
-          }`}
+            transition: 'width 0.3s ease-in-out, opacity 0.3s ease-in-out',
+            opacity: isSidebarOpen ? 1 : 0,
+            pointerEvents: isSidebarOpen ? 'auto' : 'none'
+          }}
           role="complementary"
           aria-label="Editor Sidebar"
           aria-hidden={!isSidebarOpen}
         >
+          {/* Sidebar Toggle Button - always visible */}
+          <button
+            onClick={toggleSidebar}
+            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
+            aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+            title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          >
+            {isSidebarOpen ? (
+              <PanelRight className="w-4 h-4 text-gray-600" />
+            ) : (
+              <PanelLeft className="w-4 h-4 text-gray-600" />
+            )}
+          </button>
+          
           {/* Sidebar Toggle Button - always visible */}
           <button
             onClick={toggleSidebar}
