@@ -25,17 +25,17 @@ export function Logo({
   showBorder = false 
 }: LogoProps) {
   const sizeClasses = {
-    sm: 'h-24',   // Doubled from h-12
-    md: 'h-32',   // Doubled from h-16
-    lg: 'h-48',   // Doubled from h-24
-    xl: 'h-64',   // Doubled from h-32
+    sm: 'h-8',    // 32px - small
+    md: 'h-10',   // 40px - medium (for navigation)
+    lg: 'h-16',   // 64px - large
+    xl: 'h-24',   // 96px - extra large (for login page)
   };
 
   const iconSizes = {
-    sm: 96,   // Doubled from 48
-    md: 128,  // Doubled from 64
-    lg: 192,  // Doubled from 96
-    xl: 256,  // Doubled from 128
+    sm: 32,   // 32px
+    md: 40,   // 40px
+    lg: 64,   // 64px
+    xl: 96,   // 96px
   };
 
   const textSizes = {
