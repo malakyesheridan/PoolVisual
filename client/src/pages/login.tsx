@@ -92,13 +92,11 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo and Title */}
+        {/* Logo */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
             <Logo variant="full" size="xl" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">EasyFlow Studio</h1>
-          <p className="text-muted-foreground mt-2">Professional quoting and design</p>
         </div>
 
         <Card className="border-0 shadow-lg">
