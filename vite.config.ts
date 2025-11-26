@@ -39,14 +39,6 @@ export default defineConfig({
           'react-vendor': ['react', 'react-dom'],
           'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-portal'],
         },
-        // Use deterministic chunk file names to prevent import errors
-        chunkFileNames: (chunkInfo) => {
-          // Use a hash based on the chunk's content for stability
-          const facadeModuleId = chunkInfo.facadeModuleId
-            ? chunkInfo.facadeModuleId.split('/').pop()?.replace(/\.[^/.]+$/, '') || 'chunk'
-            : 'chunk';
-          return `assets/${facadeModuleId}-[hash].js`;
-        },
       },
     },
   },
