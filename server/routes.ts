@@ -1864,11 +1864,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "User not found" });
       }
       
-      // Return user profile (exclude password)
-      const { password, ...profile } = user;
+      // Return user profile (exclude password and sensitive fields)
+      const { password, passwordResetToken, passwordResetExpires, ...profile } = user;
       res.json(profile);
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+    } catch (error: any) {
+      console.error('[Routes] Error getting user profile:', error);
+      res.status(500).json({ message: error?.message || "Failed to get user profile" });
     }
   });
 
@@ -1879,14 +1880,20 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       const updates = req.body;
-      // Prevent password updates through this endpoint (use separate endpoint)
-      const { password, ...safeUpdates } = updates;
+      // Prevent password and sensitive field updates through this endpoint
+      const { password, passwordResetToken, passwordResetExpires, id, createdAt, ...safeUpdates } = updates;
+      
+      // Validate email if provided
+      if (safeUpdates.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(safeUpdates.email)) {
+        return res.status(400).json({ message: "Invalid email format" });
+      }
       
       const updatedUser = await storage.updateUser(req.user.id, safeUpdates);
-      const { password: _, ...profile } = updatedUser;
+      const { password: _, passwordResetToken: __, passwordResetExpires: ___, ...profile } = updatedUser;
       res.json(profile);
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+    } catch (error: any) {
+      console.error('[Routes] Error updating user profile:', error);
+      res.status(500).json({ message: error?.message || "Failed to update user profile" });
     }
   });
 
@@ -1938,15 +1945,31 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       const preferences = await storage.getUserPreferences(req.user.id);
-      // Return defaults if no preferences exist
-      res.json(preferences || {
-        dateFormat: 'dd/mm/yyyy',
-        measurementUnits: 'metric',
-        language: 'en',
-        theme: 'light',
-      });
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+      // Return defaults if no preferences exist (remove userId from response)
+      if (preferences) {
+        const { userId, ...prefs } = preferences;
+        res.json(prefs);
+      } else {
+        res.json({
+          dateFormat: 'dd/mm/yyyy',
+          measurementUnits: 'metric',
+          language: 'en',
+          theme: 'light',
+        });
+      }
+    } catch (error: any) {
+      console.error('[Routes] Error getting user preferences:', error);
+      // If table doesn't exist, return defaults
+      if (error?.message?.includes('does not exist') || error?.message?.includes('relation')) {
+        res.json({
+          dateFormat: 'dd/mm/yyyy',
+          measurementUnits: 'metric',
+          language: 'en',
+          theme: 'light',
+        });
+      } else {
+        res.status(500).json({ message: error?.message || "Failed to get user preferences" });
+      }
     }
   });
 
@@ -1957,10 +1980,29 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       const updates = req.body;
+      
+      // Validate preference values
+      const validDateFormats = ['dd/mm/yyyy', 'mm/dd/yyyy', 'yyyy-mm-dd'];
+      const validUnits = ['metric', 'imperial'];
+      const validThemes = ['light', 'dark', 'auto'];
+      
+      if (updates.dateFormat && !validDateFormats.includes(updates.dateFormat)) {
+        return res.status(400).json({ message: `Invalid date format. Must be one of: ${validDateFormats.join(', ')}` });
+      }
+      if (updates.measurementUnits && !validUnits.includes(updates.measurementUnits)) {
+        return res.status(400).json({ message: `Invalid measurement units. Must be one of: ${validUnits.join(', ')}` });
+      }
+      if (updates.theme && !validThemes.includes(updates.theme)) {
+        return res.status(400).json({ message: `Invalid theme. Must be one of: ${validThemes.join(', ')}` });
+      }
+      
       const preferences = await storage.upsertUserPreferences(req.user.id, updates);
-      res.json(preferences);
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+      // Remove userId from response
+      const { userId, ...prefs } = preferences;
+      res.json(prefs);
+    } catch (error: any) {
+      console.error('[Routes] Error updating user preferences:', error);
+      res.status(500).json({ message: error?.message || "Failed to update user preferences" });
     }
   });
 

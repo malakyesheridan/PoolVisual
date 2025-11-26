@@ -54,10 +54,11 @@ export function SecuritySettings() {
       return;
     }
 
+    // Password validation is handled by backend, but we can do basic checks
     if (formData.newPassword.length < 8) {
       toast({
         title: "Password too short",
-        description: "Password must be at least 8 characters",
+        description: "Password must be at least 8 characters with uppercase, lowercase, and number",
         variant: "destructive",
       });
       return;

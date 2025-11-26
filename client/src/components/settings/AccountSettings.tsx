@@ -18,19 +18,27 @@ export function AccountSettings() {
     avatarUrl: '',
   });
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, error: profileError } = useQuery({
     queryKey: ['/api/user/profile'],
-    queryFn: () => apiClient.getUserProfile(),
+    queryFn: async () => {
+      try {
+        return await apiClient.getUserProfile();
+      } catch (error: any) {
+        console.error('[AccountSettings] Error fetching profile:', error);
+        throw error;
+      }
+    },
     staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   useEffect(() => {
     if (profile) {
       setFormData({
-        displayName: profile.displayName || '',
+        displayName: profile.displayName || profile.display_name || '',
         email: profile.email || '',
         username: profile.username || '',
-        avatarUrl: profile.avatarUrl || '',
+        avatarUrl: profile.avatarUrl || profile.avatar_url || '',
       });
     }
   }, [profile]);
@@ -70,6 +78,19 @@ export function AccountSettings() {
             <div className="h-4 bg-slate-200 rounded w-1/4"></div>
             <div className="h-10 bg-slate-200 rounded"></div>
             <div className="h-10 bg-slate-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (profileError) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-4">Failed to load profile</p>
+            <p className="text-sm text-slate-500">{profileError instanceof Error ? profileError.message : 'Unknown error'}</p>
           </div>
         </CardContent>
       </Card>

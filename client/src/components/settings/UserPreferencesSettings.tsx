@@ -18,10 +18,24 @@ export function UserPreferencesSettings() {
     theme: 'light',
   });
 
-  const { data: preferences, isLoading } = useQuery({
+  const { data: preferences, isLoading, error: preferencesError } = useQuery({
     queryKey: ['/api/user/preferences'],
-    queryFn: () => apiClient.getUserPreferences(),
+    queryFn: async () => {
+      try {
+        return await apiClient.getUserPreferences();
+      } catch (error: any) {
+        console.error('[UserPreferencesSettings] Error fetching preferences:', error);
+        // Return defaults on error instead of throwing
+        return {
+          dateFormat: 'dd/mm/yyyy',
+          measurementUnits: 'metric',
+          language: 'en',
+          theme: 'light',
+        };
+      }
+    },
     staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   useEffect(() => {
@@ -66,6 +80,19 @@ export function UserPreferencesSettings() {
             <div className="h-4 bg-slate-200 rounded w-1/4"></div>
             <div className="h-10 bg-slate-200 rounded"></div>
             <div className="h-10 bg-slate-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (preferencesError && !preferences) {
+    return (
+      <Card>
+        <CardContent className="p-6">
+          <div className="text-center py-8">
+            <p className="text-red-600 mb-4">Failed to load preferences</p>
+            <p className="text-sm text-slate-500">{preferencesError instanceof Error ? preferencesError.message : 'Unknown error'}</p>
           </div>
         </CardContent>
       </Card>

@@ -467,6 +467,29 @@ export class MockStorage {
   }
 
   // Authentication & Security methods (mock implementations)
+  async getUserPreferences(userId: string): Promise<any | undefined> {
+    // Mock implementation - return default preferences
+    return {
+      userId,
+      dateFormat: 'dd/mm/yyyy',
+      measurementUnits: 'metric',
+      language: 'en',
+      theme: 'light',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  async upsertUserPreferences(userId: string, preferences: any): Promise<any> {
+    // Mock implementation - just return the preferences
+    return {
+      userId,
+      ...preferences,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
     const userIndex = this.users.findIndex(u => u.id === id);
     if (userIndex === -1) {
