@@ -505,7 +505,16 @@ export class MockStorage {
   }
 
   async createSecurityEvent(data: { userId?: string; eventType: string; ipAddress?: string; userAgent?: string; details?: Record<string, any> }): Promise<void> {
-    // Mock: just log to console
+    // Mock: store in memory
+    this.securityEvents.push({
+      id: this.generateId(),
+      userId: data.userId,
+      eventType: data.eventType,
+      ipAddress: data.ipAddress,
+      userAgent: data.userAgent,
+      details: data.details,
+      createdAt: new Date(),
+    });
     console.log('[MockStorage] Security event:', data);
   }
 
@@ -519,9 +528,14 @@ export class MockStorage {
     console.log('[MockStorage] Verification token created:', data.identifier);
   }
 
-  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null> {
+  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date; createdAt: Date } | null> {
     // Mock: return null (tokens not stored in mock mode)
     return null;
+  }
+
+  async getVerificationTokensForIdentifier(identifier: string): Promise<Array<{ createdAt: Date }>> {
+    // Mock: return empty array
+    return [];
   }
 
   async deleteVerificationToken(token: string): Promise<void> {

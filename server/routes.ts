@@ -1937,6 +1937,121 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Email Verification Endpoints
+  app.post("/api/user/verify-email/send", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const { EmailVerificationService } = await import('./lib/emailVerificationService.js');
+      const emailVerificationService = new EmailVerificationService();
+      const result = await emailVerificationService.sendVerificationEmailToUser(req.user.id);
+      
+      if (result.success) {
+        res.json({ message: result.message });
+      } else {
+        res.status(400).json({ message: result.message, error: result.error });
+      }
+    } catch (error: any) {
+      console.error('[Routes] Error sending verification email:', error);
+      res.status(500).json({ message: error?.message || "Failed to send verification email" });
+    }
+  });
+
+  app.post("/api/user/verify-email/confirm", async (req: any, res: any) => {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        return res.status(400).json({ message: "Verification token is required" });
+      }
+      
+      const { EmailVerificationService } = await import('./lib/emailVerificationService.js');
+      const emailVerificationService = new EmailVerificationService();
+      const result = await emailVerificationService.verifyEmail(token);
+      
+      if (result.success) {
+        res.json({ message: result.message });
+      } else {
+        res.status(400).json({ message: result.message, error: result.error });
+      }
+    } catch (error: any) {
+      console.error('[Routes] Error verifying email:', error);
+      res.status(500).json({ message: error?.message || "Failed to verify email" });
+    }
+  });
+
+  // User Sessions Endpoints
+  app.get("/api/user/sessions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const sessions = await storage.getUserSessions(req.user.id);
+      res.json(sessions);
+    } catch (error: any) {
+      console.error('[Routes] Error getting user sessions:', error);
+      res.status(500).json({ message: error?.message || "Failed to get user sessions" });
+    }
+  });
+
+  app.delete("/api/user/sessions/:sessionId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const { sessionId } = req.params;
+      const session = await storage.getUserSession(sessionId);
+      
+      if (!session || session.userId !== req.user.id) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      
+      await storage.deleteUserSession(sessionId);
+      res.json({ message: "Session revoked successfully" });
+    } catch (error: any) {
+      console.error('[Routes] Error revoking session:', error);
+      res.status(500).json({ message: error?.message || "Failed to revoke session" });
+    }
+  });
+
+  app.delete("/api/user/sessions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      // Get current session ID from Iron Session
+      const currentSessionId = req.session?.id || req.session?.sessionId;
+      await storage.deleteUserSessions(req.user.id, currentSessionId);
+      res.json({ message: "All other sessions revoked successfully" });
+    } catch (error: any) {
+      console.error('[Routes] Error revoking sessions:', error);
+      res.status(500).json({ message: error?.message || "Failed to revoke sessions" });
+    }
+  });
+
+  // Security Log Endpoint
+  app.get("/api/user/security-log", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "Authentication required" });
+      }
+      
+      const limit = parseInt(req.query.limit as string) || 50;
+      const offset = parseInt(req.query.offset as string) || 0;
+      const eventType = req.query.eventType as string | undefined;
+      
+      const events = await storage.getSecurityEvents(req.user.id, { limit, offset, eventType });
+      res.json(events);
+    } catch (error: any) {
+      console.error('[Routes] Error getting security log:', error);
+      res.status(500).json({ message: error?.message || "Failed to get security log" });
+    }
+  });
+
   // User Preferences Endpoints
   app.get("/api/user/preferences", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {

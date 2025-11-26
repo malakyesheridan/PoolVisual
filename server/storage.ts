@@ -34,11 +34,13 @@ import {
   loginAttempts,
   securityEvents,
   verificationTokens,
+  userSessions,
   type LoginAttempt,
   type SecurityEvent,
-  type VerificationToken
+  type VerificationToken,
+  type UserSession
 } from "../shared/schema.js";
-import { eq, desc, and, sql, gte } from "drizzle-orm";
+import { eq, desc, and, sql, gte, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
@@ -144,9 +146,21 @@ export interface IStorage {
   createSecurityEvent(data: { userId?: string; eventType: string; ipAddress?: string; userAgent?: string; details?: Record<string, any> }): Promise<void>;
   getRecentFailedLoginAttempts(email: string, windowMinutes: number): Promise<number>;
   createVerificationToken(data: { identifier: string; token: string; expires: Date }): Promise<void>;
-  getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null>;
+  getVerificationToken(token: string): Promise<{ identifier: string; expires: Date; createdAt: Date } | null>;
+  getVerificationTokensForIdentifier(identifier: string): Promise<Array<{ createdAt: Date }>>;
   deleteVerificationToken(token: string): Promise<void>;
   deleteVerificationTokensForIdentifier(identifier: string): Promise<void>;
+  
+  // User Sessions
+  createUserSession(data: { userId: string; sessionId: string; deviceInfo?: any; ipAddress?: string; userAgent?: string }): Promise<UserSession>;
+  getUserSessions(userId: string): Promise<UserSession[]>;
+  getUserSession(sessionId: string): Promise<UserSession | undefined>;
+  updateUserSession(sessionId: string, updates: { lastActive?: Date }): Promise<void>;
+  deleteUserSession(sessionId: string): Promise<void>;
+  deleteUserSessions(userId: string, excludeSessionId?: string): Promise<void>;
+  
+  // Security Events
+  getSecurityEvents(userId: string, options?: { limit?: number; offset?: number; eventType?: string }): Promise<SecurityEvent[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -774,16 +788,29 @@ export class PostgresStorage implements IStorage {
     });
   }
 
-  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date } | null> {
+  async getVerificationToken(token: string): Promise<{ identifier: string; expires: Date; createdAt: Date } | null> {
     const [vt] = await ensureDb()
-      .select({ identifier: verificationTokens.identifier, expires: verificationTokens.expires })
+      .select({ 
+        identifier: verificationTokens.identifier, 
+        expires: verificationTokens.expires,
+        createdAt: verificationTokens.createdAt
+      })
       .from(verificationTokens)
       .where(eq(verificationTokens.token, token));
     
     if (!vt) return null;
     if (vt.expires < new Date()) return null; // Expired
     
-    return { identifier: vt.identifier, expires: vt.expires };
+    return { identifier: vt.identifier, expires: vt.expires, createdAt: vt.createdAt };
+  }
+
+  async getVerificationTokensForIdentifier(identifier: string): Promise<Array<{ createdAt: Date }>> {
+    const tokens = await ensureDb()
+      .select({ createdAt: verificationTokens.createdAt })
+      .from(verificationTokens)
+      .where(eq(verificationTokens.identifier, identifier));
+    
+    return tokens;
   }
 
   async deleteVerificationToken(token: string): Promise<void> {
@@ -796,6 +823,86 @@ export class PostgresStorage implements IStorage {
     await ensureDb()
       .delete(verificationTokens)
       .where(eq(verificationTokens.identifier, identifier));
+  }
+
+  // User Sessions methods
+  async createUserSession(data: { userId: string; sessionId: string; deviceInfo?: any; ipAddress?: string; userAgent?: string }): Promise<UserSession> {
+    const [session] = await ensureDb()
+      .insert(userSessions)
+      .values({
+        userId: data.userId,
+        sessionId: data.sessionId,
+        deviceInfo: data.deviceInfo || null,
+        ipAddress: data.ipAddress || null,
+        userAgent: data.userAgent || null,
+      })
+      .returning();
+    return session;
+  }
+
+  async getUserSessions(userId: string): Promise<UserSession[]> {
+    return await ensureDb()
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.userId, userId))
+      .orderBy(desc(userSessions.lastActive));
+  }
+
+  async getUserSession(sessionId: string): Promise<UserSession | undefined> {
+    const [session] = await ensureDb()
+      .select()
+      .from(userSessions)
+      .where(eq(userSessions.sessionId, sessionId));
+    return session;
+  }
+
+  async updateUserSession(sessionId: string, updates: { lastActive?: Date }): Promise<void> {
+    await ensureDb()
+      .update(userSessions)
+      .set(updates)
+      .where(eq(userSessions.sessionId, sessionId));
+  }
+
+  async deleteUserSession(sessionId: string): Promise<void> {
+    await ensureDb()
+      .delete(userSessions)
+      .where(eq(userSessions.sessionId, sessionId));
+  }
+
+  async deleteUserSessions(userId: string, excludeSessionId?: string): Promise<void> {
+    if (excludeSessionId) {
+      await ensureDb()
+        .delete(userSessions)
+        .where(
+          and(
+            eq(userSessions.userId, userId),
+            ne(userSessions.sessionId, excludeSessionId)
+          )
+        );
+    } else {
+      await ensureDb()
+        .delete(userSessions)
+        .where(eq(userSessions.userId, userId));
+    }
+  }
+
+  // Security Events methods
+  async getSecurityEvents(userId: string, options?: { limit?: number; offset?: number; eventType?: string }): Promise<SecurityEvent[]> {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+    
+    const conditions = [eq(securityEvents.userId, userId)];
+    if (options?.eventType) {
+      conditions.push(eq(securityEvents.eventType, options.eventType));
+    }
+    
+    return await ensureDb()
+      .select()
+      .from(securityEvents)
+      .where(and(...conditions))
+      .orderBy(desc(securityEvents.createdAt))
+      .limit(limit)
+      .offset(offset);
   }
 }
 

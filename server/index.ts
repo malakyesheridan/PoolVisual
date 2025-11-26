@@ -246,6 +246,31 @@ app.post("/api/auth/login", async (req, res) => {
     };
     await req.session.save();
 
+    // Track session for security management
+    try {
+      const { parseUserAgent } = await import('./lib/deviceParser.js');
+      const deviceInfo = parseUserAgent(userAgent);
+      
+      // Use Iron Session's internal session ID if available, otherwise generate one
+      // Iron Session stores session in encrypted cookie, we'll use a hash of user + timestamp
+      const sessionId = `session-${result.user!.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+      
+      await storage.createUserSession({
+        userId: result.user!.id,
+        sessionId,
+        deviceInfo,
+        ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+        userAgent,
+      });
+      
+      // Store session ID in session for later reference
+      (req.session as any).sessionId = sessionId;
+      await req.session.save();
+    } catch (sessionError) {
+      // Don't fail login if session tracking fails
+      console.warn('[Auth/Login] Failed to track session:', sessionError);
+    }
+
     return res.json({ ok: true, user: req.session.user });
   } catch (e: any) {
     const errorMessage = e?.message || String(e);

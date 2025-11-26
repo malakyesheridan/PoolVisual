@@ -35,6 +35,8 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
   timezone: text("timezone").default("UTC"),
+  emailVerified: boolean("email_verified").default(false).notNull(),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
 });
 
 // Organizations
@@ -535,6 +537,18 @@ export const verificationTokens = pgTable("verification_tokens", {
   token: text("token").notNull().unique(), // 64-char hex token
   expires: timestamp("expires").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// User sessions table for tracking active sessions
+export const userSessions = pgTable("user_sessions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull(),
+  deviceInfo: jsonb("device_info"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  lastActive: timestamp("last_active", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
 export type User = typeof users.$inferSelect;
