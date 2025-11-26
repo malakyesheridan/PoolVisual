@@ -143,7 +143,7 @@ export const TemplatesTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
         ) : (
           // Templates grid
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {templates.map((template) => (
+            {(templates || []).map((template) => (
               <div
                 key={template.id}
                 className="bg-white rounded-lg border shadow-sm hover:shadow-md transition-shadow"

@@ -243,7 +243,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
         ) : (
           // Materials grid
           <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
-            {filteredMaterials.map((material) => (
+            {(filteredMaterials || []).map((material) => (
               <div
                 key={material.id}
                 className="group flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] hover:border-slate-300 transition-colors transition-shadow"
