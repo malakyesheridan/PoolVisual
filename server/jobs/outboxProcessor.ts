@@ -209,7 +209,25 @@ export async function processOutboxEvents() {
           try {
             // Construct n8n webhook payload
             // Note: n8n workflow expects 'mode' at root level (not nested in options)
-            const mode = payload.options?.mode || 'add_decoration';
+            // Priority: payload.mode (top-level) > payload.options.mode (legacy) > default
+            let mode = payload.mode || payload.options?.mode || 'add_decoration';
+            
+            // Map mode value to match n8n workflow expectations
+            // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
+            const modeMapping: Record<string, string> = {
+              'blend_materials': 'blend_material',
+              'blend_material': 'blend_material',
+              'add_decoration': 'add_decoration',
+              'add_pool': 'add_pool'
+            };
+            mode = modeMapping[mode] || 'add_decoration';
+            
+            // Validate mode is one of the three valid values
+            const validModes = ['blend_material', 'add_decoration', 'add_pool'];
+            if (!validModes.includes(mode)) {
+              console.warn(`[Outbox] Invalid mode '${mode}', defaulting to 'add_decoration'`);
+              mode = 'add_decoration';
+            }
             
             // Convert relative imageUrl to absolute URL if needed
             let absoluteImageUrl = payload.imageUrl;

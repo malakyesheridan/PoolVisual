@@ -761,15 +761,25 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         finalCompositeImageUrl = undefined; // Server will generate composite
       }
       
-      // Create payload - only include compositeImageUrl if we successfully uploaded it
+      // Map mode value to match n8n workflow expectations
+      // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
+      // Client uses: 'blend_materials' (plural), 'add_decoration', 'add_pool'
+      const modeMapping: Record<string, string> = {
+        'blend_materials': 'blend_material',
+        'add_decoration': 'add_decoration',
+        'add_pool': 'add_pool'
+      };
+      const n8nMode = modeMapping[previewData.mode] || 'add_decoration';
+      
+      // Create payload - mode must be at top level for n8n workflow routing
       const payload: any = {
         tenantId: '123e4567-e89b-12d3-a456-426614174000',
         photoId: previewData.effectivePhotoId,
         imageUrl: previewData.currentImageUrl, // Original image (for reference)
         inputHash: `enhancement-${Date.now()}`,
         masks: previewData.masks,
+        mode: n8nMode, // Top-level mode field (required by n8n workflow for routing)
         options: {
-          mode: previewData.mode, // Send mode to n8n workflow
           ...previewData.jobContext ? { jobId: previewData.jobContext.jobId } : {}
         },
         calibration: 1000,

@@ -170,6 +170,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       compositeImageUrl, // Client-exported canvas (optional)
       inputHash,
       masks = [],
+      mode, // Top-level mode field (for n8n workflow routing)
       options = {},
       calibration,
       width,
@@ -303,6 +304,25 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       const appUrl = (process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
       const callbackUrl = `${appUrl}/api/ai/enhancement/${jobId}/callback`;
       const callbackSecret = process.env.N8N_WEBHOOK_SECRET || 'secret';
+
+      // Map mode value to match n8n workflow expectations
+      // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
+      // Client may send: 'blend_materials' (plural), 'add_decoration', 'add_pool'
+      const modeMapping: Record<string, string> = {
+        'blend_materials': 'blend_material',
+        'blend_material': 'blend_material',
+        'add_decoration': 'add_decoration',
+        'add_pool': 'add_pool'
+      };
+      let finalMode = mode || options?.mode || 'add_decoration';
+      finalMode = modeMapping[finalMode] || 'add_decoration';
+      
+      // Validate mode is one of the three valid values
+      const validModes = ['blend_material', 'add_decoration', 'add_pool'];
+      if (!validModes.includes(finalMode)) {
+        console.warn(`[Create Enhancement] Invalid mode '${finalMode}', defaulting to 'add_decoration'`);
+        finalMode = 'add_decoration';
+      }
 
       // CRITICAL FIX: Fetch photo from database to get correct dimensions
       // Client-provided dimensions may not match database
