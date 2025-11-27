@@ -6,11 +6,14 @@ import { UserPreferencesSettings } from "@/components/settings/UserPreferencesSe
 import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
 import { NotificationsSettings } from "@/components/settings/NotificationsSettings";
 import { useOrgs } from "@/hooks/useOrgs";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Menu, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
   const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const { data: orgs = [] } = useOrgs();
 
   // Auto-select first org if available
@@ -39,19 +42,63 @@ export default function Settings() {
 
   return (
     <div className="bg-slate-50 min-h-screen">
-      <div className="flex">
+      <div className="flex relative">
+        {/* Sidebar Toggle Button */}
+        <Button
+          variant="outline"
+          size="icon"
+          className={cn(
+            "fixed top-4 left-4 z-50 md:hidden",
+            sidebarOpen && "left-[17rem]"
+          )}
+          onClick={() => setSidebarOpen(!sidebarOpen)}
+        >
+          {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </Button>
+
         {/* Sidebar Navigation */}
-        <SettingsSidebar 
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-        />
+        <div
+          className={cn(
+            "transition-transform duration-300 ease-in-out",
+            "fixed md:static inset-y-0 left-0 z-40",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          )}
+        >
+          <SettingsSidebar 
+            activeSection={activeSection}
+            onSectionChange={(section) => {
+              setActiveSection(section);
+              // Close sidebar on mobile after selection
+              if (window.innerWidth < 768) {
+                setSidebarOpen(false);
+              }
+            }}
+            className="h-full overflow-y-auto"
+          />
+        </div>
+
+        {/* Overlay for mobile */}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         
         {/* Main Content */}
-        <div className="flex-1">
+        <div className="flex-1 w-full md:w-auto">
           <div className="max-w-4xl mx-auto px-6 py-8">
             {/* Header */}
             <div className="flex items-center gap-3 mb-8">
-              <SettingsIcon className="w-8 h-8 text-slate-600" />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="md:hidden"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+              >
+                <Menu className="w-5 h-5" />
+              </Button>
+              <SettingsIcon className="w-8 h-8 text-slate-600 hidden md:block" />
               <div>
                 <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
                   Settings
