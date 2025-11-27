@@ -360,7 +360,13 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
         compositeImageUrl, // Client-exported canvas (image with masks applied)
         inputHash,
         masks,
-        options,
+        mode: finalMode, // Top-level mode field (required by n8n workflow for routing)
+        options: {
+          ...options,
+          // Remove mode from options if it exists (mode is now at top level)
+          model: options.model || 'seedream',
+          variants: options.variants || 1
+        },
         calibration,
         width: finalWidth,   // Use database dimensions
         height: finalHeight, // Use database dimensions
@@ -369,6 +375,9 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
         provider: 'comfy:inpaint',
         model: 'sdxl'
       };
+      
+      // Ensure mode is not in options
+      delete (outboxPayload.options as any).mode;
 
       console.log('[Create Enhancement] Creating outbox event for job:', jobId);
       console.log('[Create Enhancement] Masks received from client:', {
