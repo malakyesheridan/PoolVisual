@@ -1083,6 +1083,24 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           )}
         </div>
         
+        {/* Sidebar Toggle Button - always visible, positioned independently */}
+        <button
+          onClick={toggleSidebar}
+          className="fixed top-1/2 right-4 -translate-y-1/2 z-50 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
+          style={{
+            right: isSidebarOpen ? `${sidebarWidth + 16}px` : '16px',
+            transition: 'right 0.3s ease-in-out'
+          }}
+          aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+          title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
+        >
+          {isSidebarOpen ? (
+            <PanelRight className="w-4 h-4 text-gray-600" />
+          ) : (
+            <PanelLeft className="w-4 h-4 text-gray-600" />
+          )}
+        </button>
+
         {/* Sidebar - positioned absolutely so it overlays, doesn't affect canvas size */}
         <div
           ref={sidebarRef}
@@ -1098,33 +1116,6 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           aria-label="Editor Sidebar"
           aria-hidden={!isSidebarOpen}
         >
-          {/* Sidebar Toggle Button - always visible */}
-          <button
-            onClick={toggleSidebar}
-            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
-            aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-            title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-          >
-            {isSidebarOpen ? (
-              <PanelRight className="w-4 h-4 text-gray-600" />
-            ) : (
-              <PanelLeft className="w-4 h-4 text-gray-600" />
-            )}
-          </button>
-          
-          {/* Sidebar Toggle Button - always visible */}
-          <button
-            onClick={toggleSidebar}
-            className="absolute -left-10 top-1/2 -translate-y-1/2 z-40 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
-            aria-label={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-            title={isSidebarOpen ? 'Close sidebar' : 'Open sidebar'}
-          >
-            {isSidebarOpen ? (
-              <PanelRight className="w-4 h-4 text-gray-600" />
-            ) : (
-              <PanelLeft className="w-4 h-4 text-gray-600" />
-            )}
-          </button>
           
           {/* Resize Handle - only show when sidebar is open */}
           {isSidebarOpen && (
