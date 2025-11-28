@@ -12,7 +12,7 @@ import { storage } from '../storage.js';
 import { PasswordService } from '../lib/passwordService.js';
 import { eq, desc, and, or, like, sql, count } from 'drizzle-orm';
 import { users, orgs, orgMembers, jobs, quotes, photos } from '../../shared/schema.js';
-import { getDb as getDatabase } from '../db.js';
+import { getDatabase } from '../db.js';
 
 export const adminRouter = Router();
 
