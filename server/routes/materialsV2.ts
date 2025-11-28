@@ -209,6 +209,8 @@ export function materialsV2Routes(app: Express) {
         console.log('[v2/materials] No materials found in database');
       }
       
+      // Explicitly set content-type to ensure JSON response
+      res.setHeader('Content-Type', 'application/json');
       res.json({ items: materials });
       return;
     } catch (error: any) {
@@ -216,6 +218,8 @@ export function materialsV2Routes(app: Express) {
       console.error('[v2/materials] Error message:', error?.message);
       console.error('[v2/materials] Error stack:', error?.stack);
       console.error('[v2/materials] Error name:', error?.name);
+      // Explicitly set content-type even for errors
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ 
         error: 'LIST_FAILED', 
         message: error?.message || 'Unknown error',

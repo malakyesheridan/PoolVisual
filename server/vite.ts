@@ -100,7 +100,12 @@ export function serveStatic(app: Express) {
 
   // fall through to index.html if the file doesn't exist (SPA routing)
   // This handles client-side routes when files don't exist
-  app.get("*", (_req, res) => {
+  // IMPORTANT: Only match non-API routes to avoid intercepting API requests
+  app.get("*", (req, res, next) => {
+    // Skip API routes - they should be handled by API route handlers
+    if (req.path.startsWith('/api/')) {
+      return next(); // Let API routes handle it
+    }
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }

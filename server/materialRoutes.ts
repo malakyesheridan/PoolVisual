@@ -293,8 +293,13 @@ export function registerMaterialRoutes(app: Express) {
       
       const paginatedMaterials = filteredMaterials.slice(start, end);
 
+      // Explicitly set content-type to ensure JSON response
+      res.setHeader('Content-Type', 'application/json');
+      // Return in the format expected by the client (items array)
+      // Also include pagination metadata for compatibility
       res.json({
-        materials: paginatedMaterials,
+        items: paginatedMaterials,
+        materials: paginatedMaterials, // Keep for backward compatibility
         total: filteredMaterials.length,
         page: pageNum,
         pageSize: size,
@@ -303,6 +308,7 @@ export function registerMaterialRoutes(app: Express) {
 
     } catch (error) {
       console.error('Get materials error:', error);
+      res.setHeader('Content-Type', 'application/json');
       res.status(500).json({ error: 'Failed to get materials' });
     }
   });
