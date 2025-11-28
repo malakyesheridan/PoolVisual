@@ -155,7 +155,7 @@ export function AdminAuditLogs() {
                           {log.actionType.replace(/\./g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                         </Badge>
                         <span className="text-xs text-slate-500">
-                          {formatDistanceToNow(new Date(log.createdAt), { addSuffix: true })}
+                          {formatDistanceToNow(new Date(log.createdAt))}
                         </span>
                       </div>
                       {log.resourceType && (
