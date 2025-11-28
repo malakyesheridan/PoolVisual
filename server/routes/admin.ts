@@ -10,8 +10,9 @@ import { requireAdmin, AdminRequest } from '../middleware/adminAuth.js';
 import { logAdminAction, AdminActionTypes } from '../lib/adminAudit.js';
 import { storage } from '../storage.js';
 import { PasswordService } from '../lib/passwordService.js';
-import { eq, desc, and, or, like, sql } from 'drizzle-orm';
+import { eq, desc, and, or, like, sql, count } from 'drizzle-orm';
 import { users, orgs, orgMembers, jobs, quotes, photos } from '../../shared/schema.js';
+import { getDatabase } from '../lib/db.js';
 
 export const adminRouter = Router();
 
@@ -26,23 +27,23 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
   try {
     const adminUser = req.adminUser!;
     
-    // Get system stats (using raw SQL for efficiency)
-    const db = (await import('../lib/db.js')).getDatabase();
+    // Get system stats using Drizzle
+    const db = getDatabase();
     
     const [
-      totalUsers,
-      totalOrgs,
-      totalJobs,
-      totalQuotes,
-      activeUsers,
-      recentSignups
+      totalUsersResult,
+      totalOrgsResult,
+      totalJobsResult,
+      totalQuotesResult,
+      activeUsersResult,
+      recentSignupsResult
     ] = await Promise.all([
-      db.execute(sql`SELECT COUNT(*) as count FROM users`),
-      db.execute(sql`SELECT COUNT(*) as count FROM orgs`),
-      db.execute(sql`SELECT COUNT(*) as count FROM jobs`),
-      db.execute(sql`SELECT COUNT(*) as count FROM quotes`),
-      db.execute(sql`SELECT COUNT(*) as count FROM users WHERE last_login_at > NOW() - INTERVAL '30 days'`),
-      db.execute(sql`SELECT COUNT(*) as count FROM users WHERE created_at > NOW() - INTERVAL '7 days'`)
+      db.select({ count: count() }).from(users),
+      db.select({ count: count() }).from(orgs),
+      db.select({ count: count() }).from(jobs),
+      db.select({ count: count() }).from(quotes),
+      db.select({ count: count() }).from(users).where(sql`last_login_at > NOW() - INTERVAL '30 days'`),
+      db.select({ count: count() }).from(users).where(sql`created_at > NOW() - INTERVAL '7 days'`)
     ]);
 
     await logAdminAction(
@@ -58,12 +59,12 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
     res.json({
       ok: true,
       stats: {
-        totalUsers: Number(totalUsers.rows[0]?.count || 0),
-        totalOrgs: Number(totalOrgs.rows[0]?.count || 0),
-        totalJobs: Number(jobs.rows[0]?.count || 0),
-        totalQuotes: Number(quotes.rows[0]?.count || 0),
-        activeUsers: Number(activeUsers.rows[0]?.count || 0),
-        recentSignups: Number(recentSignups.rows[0]?.count || 0),
+        totalUsers: Number(totalUsersResult[0]?.count || 0),
+        totalOrgs: Number(totalOrgsResult[0]?.count || 0),
+        totalJobs: Number(totalJobsResult[0]?.count || 0),
+        totalQuotes: Number(totalQuotesResult[0]?.count || 0),
+        activeUsers: Number(activeUsersResult[0]?.count || 0),
+        recentSignups: Number(recentSignupsResult[0]?.count || 0),
       }
     });
   } catch (error: any) {
@@ -84,19 +85,38 @@ adminRouter.get('/users', async (req: AdminRequest, res) => {
     const search = req.query.search as string;
     const offset = (page - 1) * limit;
 
-    const db = (await import('../lib/db.js')).getDatabase();
+    const db = getDatabase();
     
-    let query = sql`SELECT id, email, username, created_at, last_login_at, is_active, is_admin FROM users WHERE 1=1`;
-    const params: any[] = [];
+    // Build query with optional search
+    let userQuery = db
+      .select({
+        id: users.id,
+        email: users.email,
+        username: users.username,
+        createdAt: users.createdAt,
+        lastLoginAt: users.lastLoginAt,
+        isActive: users.isActive,
+        isAdmin: users.isAdmin,
+      })
+      .from(users);
+    
+    let countQuery = db.select({ count: count() }).from(users);
     
     if (search) {
-      query = sql`${query} AND (email ILIKE ${`%${search}%`} OR username ILIKE ${`%${search}%`})`;
+      const searchCondition = or(
+        like(users.email, `%${search}%`),
+        like(users.username, `%${search}%`)
+      );
+      userQuery = userQuery.where(searchCondition);
+      countQuery = countQuery.where(searchCondition);
     }
     
-    query = sql`${query} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+    userQuery = userQuery.orderBy(desc(users.createdAt)).limit(limit).offset(offset);
     
-    const result = await db.execute(query);
-    const countResult = await db.execute(sql`SELECT COUNT(*) as count FROM users ${search ? sql`WHERE email ILIKE ${`%${search}%`} OR username ILIKE ${`%${search}%`}` : sql``}`);
+    const [userList, countResult] = await Promise.all([
+      userQuery,
+      countQuery
+    ]);
 
     await logAdminAction(
       adminUser.id,
@@ -111,12 +131,12 @@ adminRouter.get('/users', async (req: AdminRequest, res) => {
 
     res.json({
       ok: true,
-      users: result.rows,
+      users: userList,
       pagination: {
         page,
         limit,
-        total: Number(countResult.rows[0]?.count || 0),
-        totalPages: Math.ceil(Number(countResult.rows[0]?.count || 0) / limit),
+        total: Number(countResult[0]?.count || 0),
+        totalPages: Math.ceil(Number(countResult[0]?.count || 0) / limit),
       }
     });
   } catch (error: any) {
@@ -308,16 +328,23 @@ adminRouter.get('/organizations', async (req: AdminRequest, res) => {
     const search = req.query.search as string;
     const offset = (page - 1) * limit;
 
-    const db = (await import('../lib/db.js')).getDatabase();
+    const db = getDatabase();
     
-    let query = sql`SELECT * FROM orgs WHERE 1=1`;
+    let orgQuery = db.select().from(orgs);
+    let countQuery = db.select({ count: count() }).from(orgs);
+    
     if (search) {
-      query = sql`${query} AND name ILIKE ${`%${search}%`}`;
+      const searchCondition = like(orgs.name, `%${search}%`);
+      orgQuery = orgQuery.where(searchCondition);
+      countQuery = countQuery.where(searchCondition);
     }
-    query = sql`${query} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
     
-    const result = await db.execute(query);
-    const countResult = await db.execute(sql`SELECT COUNT(*) as count FROM orgs ${search ? sql`WHERE name ILIKE ${`%${search}%`}` : sql``}`);
+    orgQuery = orgQuery.orderBy(desc(orgs.createdAt)).limit(limit).offset(offset);
+    
+    const [orgList, countResult] = await Promise.all([
+      orgQuery,
+      countQuery
+    ]);
 
     await logAdminAction(
       adminUser.id,
@@ -332,12 +359,12 @@ adminRouter.get('/organizations', async (req: AdminRequest, res) => {
 
     res.json({
       ok: true,
-      organizations: result.rows,
+      organizations: orgList,
       pagination: {
         page,
         limit,
-        total: Number(countResult.rows[0]?.count || 0),
-        totalPages: Math.ceil(Number(countResult.rows[0]?.count || 0) / limit),
+        total: Number(countResult[0]?.count || 0),
+        totalPages: Math.ceil(Number(countResult[0]?.count || 0) / limit),
       }
     });
   } catch (error: any) {
