@@ -89,8 +89,8 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
   }, []);
 
   // Filter materials based on search and category
-  const allMaterials = Object.values(materials);
-  const filteredMaterials = allMaterials.filter(material => {
+  const allMaterials = materials && typeof materials === 'object' ? Object.values(materials) : [];
+  const filteredMaterials = (allMaterials || []).filter(material => {
     const matchesSearch = !search || 
       material.name.toLowerCase().includes(search.toLowerCase()) ||
       material.sku?.toLowerCase().includes(search.toLowerCase()) ||
