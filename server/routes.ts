@@ -201,6 +201,9 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const userData = insertUserSchema.parse(req.body);
       
+      // Normalize email to lowercase (consistent with login)
+      const normalizedEmail = userData.email.toLowerCase().trim();
+      
       // Enhanced password validation
       const passwordValidation = PasswordValidator.validate(userData.password);
       if (!passwordValidation.valid) {
@@ -212,7 +215,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         });
       }
 
-      const existingUser = await storage.getUserByEmail(userData.email);
+      const existingUser = await storage.getUserByEmail(normalizedEmail);
       if (existingUser) {
         return res.status(400).json({ ok: false, error: "User already exists with this email" });
       }
@@ -221,6 +224,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const hashedPassword = await PasswordService.hashPassword(userData.password);
       const user = await storage.createUser({
         ...userData,
+        email: normalizedEmail, // Use normalized email
         password: hashedPassword,
         isActive: true,
         failedLoginAttempts: 0,

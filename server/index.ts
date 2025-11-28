@@ -151,25 +151,28 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Email, password, and username required" });
     }
     
+    // Normalize email to lowercase (consistent with login)
+    const normalizedEmail = email.toLowerCase().trim();
+    
     // Org name defaults to username if not provided (backward compatibility)
     const organizationName = orgName || username;
 
     // In no-DB mode, return a mock user for development
     if (process.env.NO_DB_MODE === 'true') {
-      req.session.user = { id: 'dev-user', email: email, username: username };
+      req.session.user = { id: 'dev-user', email: normalizedEmail, username: username };
       await req.session.save();
       return res.json({ ok: true, user: req.session.user });
     }
 
-    // Check if user already exists
-    const existingUser = await storage.getUserByEmail(email);
+    // Check if user already exists (use normalized email)
+    const existingUser = await storage.getUserByEmail(normalizedEmail);
     if (existingUser) {
       return res.status(409).json({ ok: false, error: "User with this email already exists" });
     }
 
-    // Hash password and create user
+    // Hash password and create user (use normalized email)
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await storage.createUser({ email, password: hashedPassword, username });
+    const user = await storage.createUser({ email: normalizedEmail, password: hashedPassword, username });
     
     // Auto-create organization for the user
     const org = await storage.createOrg(
