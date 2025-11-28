@@ -129,6 +129,11 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
 export async function registerRoutes(app: Express): Promise<void> {
   console.log('🔧 Registering routes...');
   
+  // Register admin routes
+  const { adminRouter } = await import('./routes/admin.js');
+  app.use('/api/admin', adminRouter);
+  console.log('✅ Admin routes registered');
+  
   // Texture proxy (must be early to avoid auth middleware conflicts)
   registerTextureProxyRoutes(app);
   
