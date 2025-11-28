@@ -431,6 +431,25 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Get single organization
+  app.get("/api/orgs/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { orgId } = req.params;
+      if (!orgId) {
+        return res.status(400).json({ message: "Organization ID is required" });
+      }
+
+      const org = await storage.getOrg(orgId);
+      if (!org) {
+        return res.status(404).json({ message: "Organization not found" });
+      }
+
+      res.json(org);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
   // Update organization (for branding, logo, etc.)
   app.patch("/api/orgs/:orgId", authenticateSession, verifyOrgMembership, async (req: AuthenticatedRequest, res: any) => {
     try {
