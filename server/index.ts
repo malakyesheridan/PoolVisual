@@ -249,11 +249,16 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
 
-    // Set session
+    // Get full user to check admin status
+    const fullUser = await storage.getUser(result.user!.id);
+    
+    // Set session (include admin status)
     req.session.user = {
       id: result.user!.id,
       email: result.user!.email,
       username: result.user!.username,
+      isAdmin: fullUser?.isAdmin || false,
+      adminPermissions: (fullUser?.adminPermissions as string[]) || [],
     };
     await req.session.save();
 

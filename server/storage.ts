@@ -35,10 +35,13 @@ import {
   securityEvents,
   verificationTokens,
   userSessions,
+  adminActions,
   type LoginAttempt,
   type SecurityEvent,
   type VerificationToken,
-  type UserSession
+  type UserSession,
+  type AdminAction,
+  type InsertAdminAction
 } from "../shared/schema.js";
 import { eq, desc, and, sql, gte, ne } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -161,6 +164,10 @@ export interface IStorage {
   
   // Security Events
   getSecurityEvents(userId: string, options?: { limit?: number; offset?: number; eventType?: string }): Promise<SecurityEvent[]>;
+  
+  // Admin Actions
+  createAdminAction(data: InsertAdminAction): Promise<AdminAction>;
+  getAdminActions(options?: { limit?: number; offset?: number; adminUserId?: string; actionType?: string }): Promise<AdminAction[]>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -903,6 +910,42 @@ export class PostgresStorage implements IStorage {
       .orderBy(desc(securityEvents.createdAt))
       .limit(limit)
       .offset(offset);
+  }
+
+  // Admin Actions methods
+  async createAdminAction(data: InsertAdminAction): Promise<AdminAction> {
+    const [action] = await ensureDb()
+      .insert(adminActions)
+      .values(data)
+      .returning();
+    if (!action) throw new Error("Failed to create admin action");
+    return action;
+  }
+
+  async getAdminActions(options?: { limit?: number; offset?: number; adminUserId?: string; actionType?: string }): Promise<AdminAction[]> {
+    const limit = options?.limit || 50;
+    const offset = options?.offset || 0;
+    
+    const conditions = [];
+    if (options?.adminUserId) {
+      conditions.push(eq(adminActions.adminUserId, options.adminUserId));
+    }
+    if (options?.actionType) {
+      conditions.push(eq(adminActions.actionType, options.actionType));
+    }
+    
+    const query = ensureDb()
+      .select()
+      .from(adminActions)
+      .orderBy(desc(adminActions.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    if (conditions.length > 0) {
+      query.where(and(...conditions));
+    }
+    
+    return await query;
   }
 }
 

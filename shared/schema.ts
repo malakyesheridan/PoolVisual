@@ -35,8 +35,9 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
   timezone: text("timezone").default("UTC"),
-  emailVerified: boolean("email_verified").default(false).notNull(),
-  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  // Admin fields
+  isAdmin: boolean("is_admin").default(false).notNull(),
+  adminPermissions: jsonb("admin_permissions").default(sql`'[]'::jsonb`),
 });
 
 // Organizations
@@ -551,11 +552,26 @@ export const userSessions = pgTable("user_sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+// Admin actions table for audit logging
+export const adminActions = pgTable("admin_actions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  adminUserId: uuid("admin_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  actionType: text("action_type").notNull(),
+  resourceType: text("resource_type"),
+  resourceId: uuid("resource_id"),
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type LoginAttempt = typeof loginAttempts.$inferSelect;
 export type SecurityEvent = typeof securityEvents.$inferSelect;
 export type VerificationToken = typeof verificationTokens.$inferSelect;
+export type AdminAction = typeof adminActions.$inferSelect;
+export type InsertAdminAction = typeof adminActions.$inferInsert;
 export type Org = typeof orgs.$inferSelect;
 export type InsertOrg = z.infer<typeof insertOrgSchema>;
 export type Job = typeof jobs.$inferSelect;

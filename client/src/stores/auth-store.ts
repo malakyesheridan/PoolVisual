@@ -6,6 +6,8 @@ interface User {
   email: string;
   username: string;
   emailVerified?: boolean;
+  isAdmin?: boolean;
+  adminPermissions?: string[];
 }
 
 interface AuthState {
