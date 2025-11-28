@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Building2, Briefcase, FileText, UserCheck, UserPlus, Loader2, AlertCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
 // Format number with commas
 const formatNumber = (num: number) => {
   return new Intl.NumberFormat('en-US').format(num);
