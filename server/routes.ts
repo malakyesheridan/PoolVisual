@@ -147,9 +147,15 @@ export async function registerRoutes(app: Express): Promise<void> {
   registerMaterialRoutes(app);
   registerMaterialRoutesV2(app); // Bulletproof materials endpoint
   
-  // Register V2 materials routes
-  const { materialsV2Routes } = await import('./routes/materialsV2.js');
-  materialsV2Routes(app);
+  // Register V2 materials routes - CRITICAL: Must register before 404 handler
+  try {
+    const materialsV2Module = await import('./routes/materialsV2.js');
+    materialsV2Module.materialsV2Routes(app);
+    console.log('✅ Materials V2 routes registered');
+  } catch (error) {
+    console.error('[Routes] Failed to register materials V2 routes:', error);
+    throw error; // Fail fast - this is critical
+  }
   
   // Register force materials routes for debugging
   const { materialsForceRoutes } = await import('./routes/materialsForce.js');

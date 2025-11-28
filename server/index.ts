@@ -360,11 +360,32 @@ async function initializeServer() {
   app.use('/api/ai/enhancement', aiEnhancementRouter);
   
   // Register other routes SYNCHRONOUSLY - routes must exist before export
+  // CRITICAL: This must complete before 404 handler is registered
+  console.log('[Server] Starting route registration...');
   try {
     await registerRoutes(app);
+    console.log('[Server] Route registration completed successfully');
+    
+    // Verify critical routes are registered by checking Express router
+    const routes: string[] = [];
+    if (app._router?.stack) {
+      app._router.stack.forEach((layer: any) => {
+        if (layer.route) {
+          const method = layer.route.stack[0]?.method?.toUpperCase() || 'UNKNOWN';
+          routes.push(`${method} ${layer.route.path}`);
+        }
+      });
+    }
+    console.log('[Server] Total registered routes:', routes.length);
+    const materialsRoutes = routes.filter((r: string) => r.includes('materials'));
+    console.log('[Server] Materials routes found:', materialsRoutes);
+    const hasV2Route = routes.some((r: string) => r.includes('/api/v2/materials'));
+    console.log('[Server] /api/v2/materials route registered:', hasV2Route);
   } catch (error) {
     console.error('[Server] Failed to register routes:', error);
-    // Don't throw - routes that were registered before error will still work
+    console.error('[Server] Route registration error stack:', error instanceof Error ? error.stack : 'No stack');
+    // Re-throw to prevent 404 handler from being registered if routes fail
+    throw error;
   }
 
   // Health check endpoint

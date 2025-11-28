@@ -67,6 +67,8 @@ const CreateDto = z.object({
 }));
 
 export function materialsV2Routes(app: Express) {
+  console.log('[materialsV2Routes] Registering materials V2 routes...');
+  
   // Probe and Echo endpoints for debugging
   app.get('/api/v2/_probe', (req, res) => {
     res.json({ ok: true, ts: Date.now(), env: process.env.NODE_ENV });
@@ -185,7 +187,9 @@ export function materialsV2Routes(app: Express) {
   });
 
   // List materials for hydration
+  console.log('[materialsV2Routes] Registering GET /api/v2/materials');
   app.get('/api/v2/materials', async (req, res) => {
+    console.log('[materialsV2Routes] GET /api/v2/materials handler called');
     try {
       console.log('[v2/materials] Starting materials fetch...');
       console.log('[v2/materials] DATABASE_URL:', process.env.DATABASE_URL ? 'SET' : 'NOT SET');
@@ -228,6 +232,8 @@ export function materialsV2Routes(app: Express) {
       });
     }
   });
+  
+  console.log('[materialsV2Routes] All materials V2 routes registered successfully');
 
   // Delete material endpoint
   app.delete('/api/v2/materials/:id', async (req, res) => {
