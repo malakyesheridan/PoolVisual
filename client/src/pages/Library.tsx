@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, startTransition } from 'react';
 import { Button } from '../components/ui/button';
 import { Plus, Package, FileText } from 'lucide-react';
 import { MaterialsTab } from '../components/library/MaterialsTab';
@@ -105,7 +105,11 @@ export default function Library() {
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
+                    onClick={() => {
+                      startTransition(() => {
+                        setActiveTab(tab.id);
+                      });
+                    }}
                     className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
                       isActive
                         ? 'border-primary text-primary'

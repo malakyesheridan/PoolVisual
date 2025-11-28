@@ -81,13 +81,17 @@ function ProtectedRouter() {
           
           <Route path="/materials">
             <ProtectedRoute>
-              <Library />
+              <Suspense fallback={<PageLoader />}>
+                <Library />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
           <Route path="/library">
             <ProtectedRoute>
-              <Library />
+              <Suspense fallback={<PageLoader />}>
+                <Library />
+              </Suspense>
             </ProtectedRoute>
           </Route>
           
