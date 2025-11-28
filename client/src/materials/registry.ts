@@ -80,9 +80,13 @@ export async function ensureLoaded() {
         source: 'API'
       });
       return;
+    } else {
+      // API returned empty array, fall through to JSON
+      console.log('[MaterialsLoadInfo] API returned empty array, falling back to JSON');
     }
   } catch (apiError) {
     console.warn('[MaterialsLoadError] API failed:', apiError);
+    // Fall through to JSON fallback
   }
 
   try {
@@ -109,18 +113,68 @@ async function loadFromAPI(): Promise<any[]> {
   // Try v2 endpoint first (same as Materials Library page)
   try {
     const response = await fetch('/api/v2/materials', { credentials: 'include' });
-    if (!response.ok) throw new Error(`API v2 failed: ${response.status}`);
-    const data = await response.json();
-    return data.items || [];
-  } catch {
+    if (!response.ok) {
+      throw new Error(`API v2 failed: ${response.status} ${response.statusText}`);
+    }
+    
+    // Check content type to ensure it's JSON
+    const contentType = response.headers.get('content-type');
+    if (contentType && !contentType.includes('application/json')) {
+      console.warn('[MaterialsLoadError] API v2 returned non-JSON content:', contentType);
+      throw new Error(`API v2 returned non-JSON content: ${contentType}`);
+    }
+    
+    const text = await response.text();
+    if (!text || text.trim() === '') {
+      console.warn('[MaterialsLoadError] API v2 returned empty response');
+      return []; // Return empty array instead of throwing
+    }
+    
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError: any) {
+      console.warn('[MaterialsLoadError] API v2 JSON parse failed:', parseError?.message, 'Response:', text.substring(0, 100));
+      throw new Error(`API v2 JSON parse failed: ${parseError?.message}`);
+    }
+    
+    const items = data.items || [];
+    if (!Array.isArray(items)) {
+      console.warn('[MaterialsLoadError] API v2 items is not an array:', typeof items);
+      return []; // Return empty array instead of throwing
+    }
+    
+    return items;
+  } catch (v2Error: any) {
+    console.warn('[MaterialsLoadError] API v2 failed:', v2Error?.message || v2Error);
     // Fallback to v1 endpoint
     try {
       const response = await fetch('/api/materials', { credentials: 'include' });
-      if (!response.ok) throw new Error(`API v1 failed: ${response.status}`);
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(`API v1 failed: ${response.status} ${response.statusText}`);
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType && !contentType.includes('application/json')) {
+        throw new Error(`API v1 returned non-JSON content: ${contentType}`);
+      }
+      
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        return []; // Return empty array instead of throwing
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (parseError: any) {
+        throw new Error(`API v1 JSON parse failed: ${parseError?.message}`);
+      }
+      
       return Array.isArray(data) ? data : data.items || [];
-    } catch {
-      throw new Error('Both API endpoints failed');
+    } catch (v1Error: any) {
+      console.warn('[MaterialsLoadError] API v1 failed:', v1Error?.message || v1Error);
+      throw new Error(`Both API endpoints failed. v2: ${v2Error?.message || 'unknown'}, v1: ${v1Error?.message || 'unknown'}`);
     }
   }
 }
