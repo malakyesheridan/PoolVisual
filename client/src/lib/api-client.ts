@@ -566,6 +566,61 @@ class ApiClient {
       body: JSON.stringify({ photoId, maskId, materialId }),
     });
   }
+
+  // Admin endpoints
+  async getAdminOverview() {
+    return this.request<{ ok: boolean; stats: { totalUsers: number; totalOrgs: number; totalJobs: number; totalQuotes: number; activeUsers: number; recentSignups: number } }>('/admin/overview');
+  }
+
+  async getAdminUsers(options?: { page?: number; limit?: number; search?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    return this.request<{ ok: boolean; users: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/users?${params.toString()}`);
+  }
+
+  async getAdminUser(userId: string) {
+    return this.request<{ ok: boolean; user: any; organizations: any[] }>(`/admin/users/${userId}`);
+  }
+
+  async updateAdminUser(userId: string, updates: any) {
+    return this.request<{ ok: boolean; user: any }>(`/admin/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async resetAdminUserPassword(userId: string, newPassword: string) {
+    return this.request<{ ok: boolean; message: string }>(`/admin/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword }),
+    });
+  }
+
+  async activateAdminUser(userId: string, isActive: boolean) {
+    return this.request<{ ok: boolean; message: string }>(`/admin/users/${userId}/activate`, {
+      method: 'POST',
+      body: JSON.stringify({ isActive }),
+    });
+  }
+
+  async getAdminOrganizations(options?: { page?: number; limit?: number; search?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    return this.request<{ ok: boolean; organizations: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/organizations?${params.toString()}`);
+  }
+
+  async getAdminAuditLogs(options?: { page?: number; limit?: number; adminUserId?: string; actionType?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.adminUserId) params.append('adminUserId', options.adminUserId);
+    if (options?.actionType) params.append('actionType', options.actionType);
+    return this.request<{ ok: boolean; logs: any[]; pagination: { page: number; limit: number } }>(`/admin/audit-logs?${params.toString()}`);
+  }
 }
 
 export const apiClient = new ApiClient();

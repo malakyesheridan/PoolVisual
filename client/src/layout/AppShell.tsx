@@ -13,7 +13,8 @@ import {
   User,
   LogOut,
   Palette,
-  Bell
+  Bell,
+  Shield
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -157,6 +158,7 @@ export function AppShell({ children }: PropsWithChildren) {
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: 'Quotes', icon: FileText },
+    ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
   // Precise route detection for canvas editor pages

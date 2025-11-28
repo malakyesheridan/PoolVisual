@@ -37,6 +37,7 @@ const MaterialsNew = React.lazy(() => import("@/pages/MaterialsNew"));
 const Library = React.lazy(() => import("@/pages/Library"));
 const ForgotPassword = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
+const AdminDashboard = React.lazy(() => import("@/pages/admin/AdminDashboard"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -178,6 +179,14 @@ function ProtectedRouter() {
             <ProtectedRoute>
               <Suspense fallback={<PageLoader />}>
                 <Settings />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/admin">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <AdminDashboard />
               </Suspense>
             </ProtectedRoute>
           </Route>
