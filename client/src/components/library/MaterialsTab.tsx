@@ -331,7 +331,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                   </div>
                 </div>
               </div>
-            ))}
+            )) : null}
           </div>
         )}
       </div>
