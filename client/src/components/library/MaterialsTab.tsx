@@ -213,7 +213,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
             <div className="animate-spin w-8 h-8 border-4 border-orange-500 border-t-transparent rounded-full" />
             <span className="ml-3 text-gray-600">Loading materials...</span>
           </div>
-        ) : filteredMaterials.length === 0 && allMaterials.length === 0 ? (
+        ) : (!Array.isArray(filteredMaterials) || filteredMaterials.length === 0) && (!Array.isArray(allMaterials) || allMaterials.length === 0) ? (
           // Empty state
           <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
@@ -233,7 +233,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
               Add Your First Material
             </Button>
           </div>
-        ) : filteredMaterials.length === 0 ? (
+        ) : !Array.isArray(filteredMaterials) || filteredMaterials.length === 0 ? (
           // No search results
           <div className="text-center py-12">
             <p className="text-gray-600">

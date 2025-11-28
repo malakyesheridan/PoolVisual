@@ -26,7 +26,9 @@ export const TemplatesTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
     categoryFilter 
   } = useUnifiedTemplateStore();
   
-  const { templates, loading, error } = useTemplateSelectors();
+  const { templates: rawTemplates, loading, error } = useTemplateSelectors();
+  // Ensure templates is always an array
+  const templates = Array.isArray(rawTemplates) ? rawTemplates : [];
 
   // Expose triggerAdd function to parent component
   useImperativeHandle(ref, () => ({
@@ -120,7 +122,7 @@ export const TemplatesTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
           <div className="text-center py-8">
             <div className="text-red-500">Error: {error}</div>
           </div>
-        ) : templates.length === 0 ? (
+        ) : !Array.isArray(templates) || templates.length === 0 ? (
           // Empty state
           <div className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-12 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
