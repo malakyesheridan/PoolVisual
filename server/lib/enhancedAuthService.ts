@@ -51,18 +51,30 @@ export class EnhancedAuthService {
         };
       }
 
-      // 2. Get user from database
+      // 2. Get user from database (normalize email to lowercase for lookup)
       let user: User | undefined;
+      const normalizedEmail = email.toLowerCase().trim();
       try {
-        user = await storage.getUserByEmail(email);
+        user = await storage.getUserByEmail(normalizedEmail);
+        console.log('[EnhancedAuth] User lookup:', {
+          email: normalizedEmail,
+          found: !!user,
+          hasPassword: !!user?.password,
+          userId: user?.id
+        });
       } catch (dbError: any) {
         // If it's a column missing error, that's okay - migration hasn't run
         if (dbError?.message?.includes('does not exist') || dbError?.message?.includes('column')) {
           console.warn('[EnhancedAuth] Security columns missing (migration may not have run), continuing without lockout checks');
           // Try to get user with basic query
           try {
-            const basicUser = await storage.getUserByEmail(email);
+            const basicUser = await storage.getUserByEmail(normalizedEmail);
             user = basicUser;
+            console.log('[EnhancedAuth] Fallback user lookup succeeded:', {
+              email: normalizedEmail,
+              found: !!user,
+              hasPassword: !!user?.password
+            });
           } catch (retryError: any) {
             console.error('[EnhancedAuth] Failed to get user even with fallback:', retryError?.message || retryError);
             throw new Error(`Database error: ${retryError?.message || 'Failed to query user'}`);
@@ -125,10 +137,23 @@ export class EnhancedAuthService {
       if (user && user.password) {
         try {
           passwordValid = await PasswordService.verifyPassword(password, user.password);
+          console.log('[EnhancedAuth] Password verification:', {
+            email: normalizedEmail,
+            passwordValid,
+            passwordLength: password.length,
+            hashLength: user.password.length,
+            hashPrefix: user.password.substring(0, 10) // First 10 chars of hash for debugging
+          });
         } catch (verifyError: any) {
           console.error('[EnhancedAuth] Password verification error:', verifyError?.message || verifyError);
           throw new Error(`Password verification failed: ${verifyError?.message || 'Unknown error'}`);
         }
+      } else {
+        console.log('[EnhancedAuth] Cannot verify password:', {
+          email: normalizedEmail,
+          hasUser: !!user,
+          hasPassword: !!user?.password
+        });
       }
       
       if (!user || !passwordValid) {
@@ -161,7 +186,7 @@ export class EnhancedAuthService {
         }
 
         await AuthAuditService.logLoginAttempt({
-          email,
+          email: normalizedEmail,
           ...clientInfo,
           success: false,
           reason: user ? 'Invalid password' : 'User not found',

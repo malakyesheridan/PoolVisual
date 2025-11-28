@@ -198,6 +198,14 @@ app.post("/api/auth/login", async (req, res) => {
       });
     }
     
+    // Normalize email (lowercase, trim)
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log('[Auth/Login] Login attempt:', {
+      originalEmail: email,
+      normalizedEmail,
+      passwordLength: password?.length || 0
+    });
+    
     // In no-DB mode, return a mock user for development
     if (process.env.NO_DB_MODE === 'true') {
       req.session.user = { id: 'dev-user', email: email, username: 'dev-user' };
@@ -222,7 +230,7 @@ app.post("/api/auth/login", async (req, res) => {
     const userAgent = req.headers['user-agent'];
     
     const result = await EnhancedAuthService.login(
-      email,
+      normalizedEmail,
       password,
       typeof ipAddress === 'string' ? ipAddress : undefined,
       userAgent
