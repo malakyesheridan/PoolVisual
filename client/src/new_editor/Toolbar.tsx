@@ -93,7 +93,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   } = useEditorStore();
   
   // Check if viewing a variant (not the original image)
-  const isViewingVariant = activeVariantId !== null;
+  // Only hide tools when viewing an enhanced variant, not when viewing the original
+  const isViewingVariant = activeVariantId !== null && activeVariantId !== 'original';
   const { addTemplate } = useUnifiedTemplateStore();
 
   // Get job context from store if not provided as props - REACTIVE
