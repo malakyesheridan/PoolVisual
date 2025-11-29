@@ -233,14 +233,22 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // Hash password with enhanced service
       const hashedPassword = await PasswordService.hashPassword(userData.password);
-      const user = await storage.createUser({
+      
+      // Prepare user data, ensuring isAdmin is not set (will default to false in createUser)
+      const userToCreate: any = {
         ...userData,
         email: normalizedEmail, // Use normalized email
         password: hashedPassword,
         isActive: true,
         failedLoginAttempts: 0,
         loginCount: 0,
-      });
+      };
+      
+      // Remove isAdmin from userData if present (should not be set during registration)
+      delete userToCreate.isAdmin;
+      delete userToCreate.adminPermissions;
+      
+      const user = await storage.createUser(userToCreate);
 
       // Log security event
       const { AuthAuditService } = await import('./lib/authAuditService.js');

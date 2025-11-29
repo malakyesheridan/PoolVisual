@@ -261,9 +261,59 @@ export class PostgresStorage implements IStorage {
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const [user] = await ensureDb().insert(users).values(insertUser).returning();
-    if (!user) throw new Error("Failed to create user");
-    return user;
+    try {
+      // Ensure isAdmin is set to false if not provided (for databases without migration)
+      const userData = {
+        ...insertUser,
+        isAdmin: insertUser.isAdmin ?? false,
+      };
+      const [user] = await ensureDb().insert(users).values(userData).returning();
+      if (!user) throw new Error("Failed to create user");
+      return user;
+    } catch (error: any) {
+      // If query fails due to missing columns (migration hasn't run), try inserting only base columns
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column') || error?.message?.includes('is_admin')) {
+        console.warn('[Storage] Migration may not have run for createUser, inserting base columns only');
+        try {
+          // Insert only base columns that should always exist
+          const baseUserData: any = {
+            id: insertUser.id,
+            email: insertUser.email,
+            username: insertUser.username,
+            password: insertUser.password,
+            createdAt: insertUser.createdAt,
+          };
+          
+          // Add optional base fields if they exist in insertUser
+          if ('isActive' in insertUser) baseUserData.isActive = insertUser.isActive;
+          if ('failedLoginAttempts' in insertUser) baseUserData.failedLoginAttempts = insertUser.failedLoginAttempts;
+          if ('loginCount' in insertUser) baseUserData.loginCount = insertUser.loginCount;
+          if ('emailVerified' in insertUser) baseUserData.emailVerified = insertUser.emailVerified;
+          if ('timezone' in insertUser) baseUserData.timezone = insertUser.timezone;
+          
+          const [user] = await ensureDb().insert(users).values(baseUserData).returning();
+          if (!user) throw new Error("Failed to create user");
+          
+          // Return user with missing fields set to defaults
+          return {
+            ...user,
+            isAdmin: false,
+            adminPermissions: undefined,
+            lockedUntil: undefined,
+            lastLoginAt: undefined,
+            emailVerifiedAt: undefined,
+            passwordResetToken: undefined,
+            passwordResetExpires: undefined,
+            displayName: undefined,
+            avatarUrl: undefined,
+          } as User;
+        } catch (fallbackError) {
+          console.error('[Storage] Fallback createUser also failed:', fallbackError);
+          throw error; // Throw original error
+        }
+      }
+      throw error;
+    }
   }
 
   async getOrg(id: string): Promise<Org | undefined> {
