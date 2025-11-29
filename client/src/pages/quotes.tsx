@@ -1049,6 +1049,7 @@ export default function Quotes() {
                 );
               })}
             </div>
+            </>
           )}
         </div>
       </div>
