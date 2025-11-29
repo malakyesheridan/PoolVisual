@@ -1960,23 +1960,25 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
               </>
             )}
             
-            {/* Enhance button - Primary Action */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
-                  disabled={state !== 'ready'}
-                  className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 text-sm font-semibold"
-                  aria-label="Enhance with AI"
-                >
-                  <Sparkles size={16} />
-                  <span>Enhance</span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <span>AI Enhancements</span>
-              </TooltipContent>
-            </Tooltip>
+            {/* Enhance button - Primary Action - Only show when viewing original image */}
+            {!isViewingVariant && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
+                    disabled={state !== 'ready'}
+                    className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 text-sm font-semibold"
+                    aria-label="Enhance with AI"
+                  >
+                    <Sparkles size={16} />
+                    <span>Enhance</span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <span>AI Enhancements</span>
+                </TooltipContent>
+              </Tooltip>
+            )}
             
             {/* Quote Button - Only show when job is selected */}
             {effectiveJobId && job && (
