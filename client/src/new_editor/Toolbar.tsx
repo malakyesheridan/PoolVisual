@@ -1648,21 +1648,21 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   return (
     <TooltipProvider>
       <div className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100" role="toolbar" aria-label="Canvas Editor Toolbar">
-        <div className="flex items-center justify-between gap-4 px-6 py-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 md:gap-4 px-3 md:px-6 py-2 md:py-3">
           {/* Left Section: File Operations */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
             {/* File Dropdown Menu */}
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
                     <button
-                      className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 font-semibold"
+                      className="flex items-center space-x-1 md:space-x-2 px-3 md:px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 font-semibold h-11 md:h-auto tap-target"
                       aria-label="File Operations Menu"
                     >
                       <FileText size={16} />
-                      <span className="font-medium">File</span>
-                      <ChevronDown size={14} />
+                      <span className="hidden md:inline font-medium">File</span>
+                      <ChevronDown className="hidden md:block" size={14} />
                     </button>
                   </DropdownMenuTrigger>
                 </TooltipTrigger>
@@ -1705,7 +1705,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
             {/* Job Controls - only show when in job context */}
             {jobId && (
-              <div className="flex items-center border-l border-[var(--border-divider)] pl-3">
+              <div className="hidden md:flex items-center border-l border-[var(--border-divider)] pl-3">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1720,22 +1720,22 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           </div>
 
           {/* Center Section: Tools & Zoom (Combined) */}
-          <div className="flex items-center gap-2 flex-1 justify-center">
+          <div className="flex items-center gap-2 flex-1 justify-center flex-wrap">
             {/* Tools Group - Hide mask creation tools when viewing a variant */}
             {!isViewingVariant && (
-              <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
+              <div className="flex items-center bg-gray-50 rounded-xl p-0.5 md:p-1 border border-gray-200 shadow-sm">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'select' })}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-[var(--radius-sm)] transition-colors ${
+                    className={`flex items-center space-x-1 md:space-x-2 px-2 md:px-3 py-1.5 rounded-[var(--radius-sm)] transition-colors h-11 md:h-auto tap-target ${
                       activeTool === 'select'
                         ? 'bg-[var(--surface-panel)] text-[var(--primary-default)] shadow-[var(--elevation-xs)]'
                         : 'text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)]'
                     }`}
                   >
                     <MousePointer size={16} />
-                    <span className="text-sm font-medium">Select</span>
+                    <span className="text-xs md:text-sm font-medium">Select</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -1750,7 +1750,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => dispatch({ type: 'SET_ACTIVE_TOOL', payload: 'area' })}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
+                    className={`flex items-center space-x-1 md:space-x-2 px-2 md:px-3 py-1.5 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 h-11 md:h-auto tap-target ${
                       activeTool === 'area'
                         ? 'bg-white text-primary shadow-sm'
                         : 'text-gray-600 hover:text-gray-800 hover:bg-white'
@@ -1758,7 +1758,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                     aria-label="Area Tool"
                   >
                     <Square size={16} />
-                    <span className="text-sm font-medium">Area</span>
+                    <span className="text-xs md:text-sm font-medium">Area</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -1812,7 +1812,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
             )}
             
             {/* Zoom & Calibration Controls - Compact Toolbar Section */}
-            <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-1 border border-gray-200 shadow-sm">
+            <div className="flex items-center gap-1.5 md:gap-2 bg-gray-50 rounded-xl p-0.5 md:p-1 border border-gray-200 shadow-sm">
               {/* Zoom Controls */}
               <div className="flex items-center bg-white rounded-lg p-0.5 border border-gray-200">
               <Tooltip>
@@ -1820,7 +1820,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={handleZoomOut}
                     disabled={state !== 'ready'}
-                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                      className="p-2 md:p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target"
                       aria-label="Zoom Out"
                   >
                     <ZoomOut size={14} />
@@ -1834,7 +1834,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 </TooltipContent>
               </Tooltip>
               
-                <div className="px-2 py-1 text-xs font-mono text-gray-700 min-w-[50px] text-center">
+                <div className="px-2 py-1 text-xs font-mono text-gray-700 min-w-[45px] md:min-w-[50px] text-center">
                 {zoomLabel}
               </div>
               
@@ -1843,7 +1843,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={handleZoomIn}
                     disabled={state !== 'ready'}
-                      className="p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
+                      className="p-2 md:p-1.5 text-gray-600 hover:text-gray-800 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed rounded-md transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target"
                       aria-label="Zoom In"
                   >
                     <ZoomIn size={14} />
@@ -1864,7 +1864,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={() => setShowCalibrationTool(true)}
                     disabled={state !== 'ready'}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
+                    className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 h-11 md:h-auto tap-target ${
                       calibration.isCalibrated
                         ? 'bg-primary/5 text-primary border border-blue-300 hover:bg-primary/10'
                         : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
@@ -1872,9 +1872,12 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                     aria-label="Calibrate Measurements"
                   >
                     <Ruler size={14} />
-                    {calibration.isCalibrated 
-                      ? `${calibration.pixelsPerMeter.toFixed(0)} px/m` 
-                      : 'Calibrate'}
+                    <span className="hidden md:inline">
+                      {calibration.isCalibrated 
+                        ? `${calibration.pixelsPerMeter.toFixed(0)} px/m` 
+                        : 'Calibrate'}
+                    </span>
+                    <span className="md:hidden">Cal</span>
                   </button>
                 </TooltipTrigger>
                 <TooltipContent>
@@ -1885,10 +1888,12 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           </div>
         
           {/* Right Section: Actions (Simplified) */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 md:gap-2 flex-shrink-0">
             {/* Job Selection - Replace Create Quote */}
             {!selectedJobId && (
-              <JobSelector onJobSelect={handleJobSelect} />
+              <div className="hidden md:block">
+                <JobSelector onJobSelect={handleJobSelect} />
+              </div>
             )}
             
             {/* Save State Indicator (Icon-only) and Save Button - Show when job selected */}
@@ -1899,7 +1904,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <TooltipTrigger asChild>
                     <button
                       onClick={hasUnsavedChanges ? handleSaveToJob : undefined}
-                      className={`p-2 rounded-[var(--radius-md)] transition-colors ${
+                      className={`p-2 rounded-[var(--radius-md)] transition-colors tap-target ${
                         isSavingToJob
                           ? 'text-primary'
                           : saveError
@@ -1939,7 +1944,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                       <button
                         onClick={handleSaveToJob}
                         disabled={state !== 'ready' || isSavingToJob}
-                        className="flex items-center space-x-2 px-3 py-1.5 bg-primary text-white rounded-[var(--radius-md)] hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[var(--elevation-sm)] text-sm font-medium"
+                        className="flex items-center space-x-1 md:space-x-2 px-2 md:px-3 py-1.5 bg-primary text-white rounded-[var(--radius-md)] hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-[var(--elevation-sm)] text-xs md:text-sm font-medium h-11 md:h-auto tap-target"
                       >
                         {isSavingToJob ? (
                           <Loader2 size={14} className="animate-spin" />
@@ -1967,7 +1972,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   <button
                     onClick={() => setShowEnhancementDrawer(!showEnhancementDrawer)}
                     disabled={state !== 'ready'}
-                    className="flex items-center space-x-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 text-sm font-semibold"
+                    className="flex items-center space-x-1 md:space-x-2 px-3 md:px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 text-xs md:text-sm font-semibold h-11 md:h-auto tap-target"
                     aria-label="Enhance with AI"
                   >
                     <Sparkles size={16} />
@@ -1986,7 +1991,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => setShowQuoteModal(true)}
-                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)] rounded-[var(--radius-md)] transition-colors"
+                    className="p-2 text-gray-600 hover:text-gray-800 hover:bg-[var(--surface-panel)] rounded-[var(--radius-md)] transition-colors tap-target"
                     aria-label="View Quotes"
                   >
                     <Receipt size={16} />

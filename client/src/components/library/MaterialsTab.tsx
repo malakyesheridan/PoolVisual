@@ -178,21 +178,21 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
   return (
     <div className="space-y-6">
       {/* Search + Filters Bar */}
-      <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="mt-4 md:mt-6 flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-3 rounded-2xl bg-white border border-slate-200 px-3 md:px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+        <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search materials..."
-            className="pl-10"
+            className="pl-10 h-11 md:h-auto"
           />
         </div>
         
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-gray-500" />
+          <Filter className="w-4 h-4 text-gray-500 flex-shrink-0" />
           <Select value={categoryFilter} onValueChange={(value: any) => setCategoryFilter(value)}>
-            <SelectTrigger className="w-48">
+            <SelectTrigger className="w-full md:w-48 h-11 md:h-auto">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -242,11 +242,11 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
           </div>
         ) : (
           // Materials grid
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 auto-rows-fr">
+          <div className="mt-4 md:mt-6 grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-6 auto-rows-fr">
             {Array.isArray(filteredMaterials) && filteredMaterials.length > 0 ? filteredMaterials.map((material) => (
               <div
                 key={material.id}
-                className="group flex flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] hover:border-slate-300 transition-colors transition-shadow"
+                className="group flex flex-col rounded-xl md:rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden hover:shadow-[0_18px_45px_rgba(15,23,42,0.08)] hover:border-slate-300 transition-colors transition-shadow"
               >
                 {/* Texture/Thumbnail */}
                 <div className="relative aspect-[4/3] w-full overflow-hidden">
@@ -304,19 +304,19 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                 </div>
 
                 {/* Content */}
-                <div className="flex flex-col gap-1 px-4 py-3">
-                  <h3 className="font-semibold text-gray-900 mb-1 line-clamp-2">
+                <div className="flex flex-col gap-1 px-2 md:px-4 py-2 md:py-3">
+                  <h3 className="font-semibold text-sm md:text-base text-gray-900 mb-1 line-clamp-2">
                     {material.name}
                   </h3>
                   
                   {material.sku && (
-                    <p className="text-sm text-gray-500 mb-2">SKU: {material.sku}</p>
+                    <p className="text-xs md:text-sm text-gray-500 mb-1 md:mb-2">SKU: {material.sku}</p>
                   )}
                   
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-1">
                     <div>
                       {material.price && (
-                        <p className="font-semibold text-green-600">
+                        <p className="font-semibold text-sm md:text-base text-green-600">
                           ${typeof material.price === 'number' ? material.price.toFixed(2) : parseFloat(String(material.price)).toFixed(2)}
                         </p>
                       )}
@@ -324,7 +324,7 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
                     </div>
                     
                     {material.supplier && (
-                      <Badge variant="outline" className="text-xs">
+                      <Badge variant="outline" className="text-xs hidden md:inline-flex">
                         {material.supplier}
                       </Badge>
                     )}

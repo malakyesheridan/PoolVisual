@@ -14,7 +14,9 @@ import {
   LogOut,
   Palette,
   Bell,
-  Shield
+  Shield,
+  Menu,
+  X
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -29,6 +31,11 @@ import { Badge } from '@/components/ui/badge';
 import { useStatusSyncStore } from '@/stores/statusSyncStore';
 import { NotificationPanel } from '@/components/notifications/NotificationPanel';
 import { Logo } from '@/components/brand/Logo';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 
 // Notifications Bell Component
 function NotificationsBell() {
@@ -151,6 +158,7 @@ function NotificationsBell() {
 export function AppShell({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { user, logout } = useAuthStore();
+  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -169,11 +177,85 @@ export function AppShell({ children }: PropsWithChildren) {
     <div className="app-shell">
       {/* Conditionally render header ONLY - children always render */}
       {!isCanvasEditorPage && (
-        <header className="app-header bg-white/80 border-b z-header">
-          <div className="mx-auto max-w-7xl h-full flex items-center px-3 gap-3">
+        <header className="app-header bg-white/80 border-b z-header safe-top">
+          <div className="mx-auto max-w-7xl h-full flex items-center px-3 md:px-3 gap-3">
             <Link href="/" className="flex items-center">
               <Logo variant="full" size="md" />
             </Link>
+            
+            {/* Mobile Menu Button */}
+            <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+              <SheetTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="md:hidden tap-target"
+                  aria-label="Open menu"
+                >
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-[280px] sm:w-[300px] p-0">
+                <div className="flex flex-col h-full">
+                  <div className="flex items-center justify-between p-4 border-b">
+                    <Logo variant="full" size="sm" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="tap-target"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
+                  <nav className="flex-1 overflow-y-auto p-4 space-y-1">
+                    {navItems.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = location.startsWith(item.to);
+                      return (
+                        <Link
+                          key={item.to}
+                          href={item.to}
+                          onClick={() => setMobileMenuOpen(false)}
+                          className={cn(
+                            'flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium transition-colors tap-target',
+                            'hover:bg-slate-100',
+                            isActive 
+                              ? 'bg-primary/10 text-primary' 
+                              : 'text-slate-700'
+                          )}
+                        >
+                          <Icon className="h-5 w-5" />
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </nav>
+                  {user && (
+                    <div className="p-4 border-t space-y-2">
+                      <Link
+                        href="/settings"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100 transition-colors tap-target"
+                      >
+                        <Settings className="h-5 w-5" />
+                        Settings
+                      </Link>
+                      <button
+                        onClick={() => {
+                          logout();
+                          setMobileMenuOpen(false);
+                        }}
+                        className="flex items-center gap-3 px-3 py-3 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100 transition-colors w-full text-left tap-target"
+                      >
+                        <LogOut className="h-5 w-5" />
+                        Log out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
             
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center gap-1 text-sm ml-6">

@@ -665,12 +665,31 @@ export default function Quotes() {
 
   // Quotes list view
   return (
-    <div className="bg-slate-50">      
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-3 mb-4">
+    <div className="bg-slate-50 pb-20 md:pb-0">      
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-8">
+        {/* Mobile Header */}
+        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
+          <div className="flex items-center justify-between">
+            <h1 className="font-semibold mobile-text-lg" data-testid="text-page-title">
+              Quotes
+            </h1>
+            <Button 
+              data-testid="button-new-quote"
+              onClick={handleNewQuote}
+              disabled={createQuoteMutation.isPending}
+              size="sm"
+              className="tap-target"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New
+            </Button>
+          </div>
+        </div>
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center justify-between gap-3 mb-4">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900" data-testid="text-page-title">
+            <h1 className="text-2xl font-semibold text-slate-900" data-testid="text-page-title-desktop">
               Quotes
             </h1>
             <p className="text-sm text-slate-500 mt-1">
@@ -694,7 +713,7 @@ export default function Quotes() {
             </Button>
             
             <Button 
-              data-testid="button-new-quote"
+              data-testid="button-new-quote-desktop"
               onClick={handleNewQuote}
               disabled={createQuoteMutation.isPending}
             >
@@ -705,14 +724,14 @@ export default function Quotes() {
         </div>
 
         {/* Search + Project Selector Bar */}
-        <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl bg-white border border-slate-200 px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
-          <div className="relative flex-1 min-w-[220px]">
+        <div className="mb-4 md:mb-6 flex flex-col md:flex-row md:flex-wrap items-stretch md:items-center gap-3 rounded-2xl bg-white border border-slate-200 px-3 md:px-4 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.04)]">
+          <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
               placeholder="Search quotes..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
+              className="pl-10 h-11 md:h-auto"
               data-testid="input-search-quotes"
             />
           </div>
@@ -721,7 +740,7 @@ export default function Quotes() {
             <select
               value={selectedOrgId || ''}
               onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="w-full sm:w-auto px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm"
+              className="w-full md:w-auto px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm h-11 md:h-auto"
               data-testid="select-organization"
             >
               {orgs.map((org) => (
@@ -734,7 +753,7 @@ export default function Quotes() {
         </div>
 
         {/* Stats Row */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-4 md:mb-6">
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 flex items-center justify-between shadow-sm">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Total</p>
@@ -819,84 +838,149 @@ export default function Quotes() {
               )}
             </div>
           ) : (
-            <div>
-              {filteredQuotes.map((quote, index) => {
-                const getStatusPillColor = (status: string) => {
-                  switch (status) {
-                    case 'draft': return 'bg-slate-100 text-slate-600';
-                    case 'sent': return 'bg-primary/10 text-primary';
-                    case 'accepted': return 'bg-emerald-100 text-emerald-700';
-                    case 'declined': return 'bg-red-100 text-red-700';
-                    default: return 'bg-slate-100 text-slate-600';
-                  }
-                };
-                
-                const getTimelineDotColor = (status: string) => {
-                  switch (status) {
-                    case 'accepted': return 'bg-emerald-500';
-                    case 'sent': return 'bg-primary';
-                    default: return 'bg-slate-400';
-                  }
-                };
-                
-                return (
-                  <div 
-                    key={quote.id}
-                    className="group flex items-center justify-between gap-4 border-t border-slate-100 px-5 py-4 first:border-t-0 hover:bg-slate-50/60 transition-colors cursor-pointer"
-                    onClick={() => navigate(`/quotes/${quote.id}`)}
-                    data-testid={`quote-item-${quote.id}`}
-                  >
-                    {/* Left Side */}
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <span className={`h-2.5 w-2.5 rounded-full ${getTimelineDotColor(quote.status)} mt-1 flex-shrink-0`} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <p className="text-sm font-medium text-slate-900 truncate" data-testid={`text-quote-id-${quote.id}`}>
-                            {quote.name || `Quote #${quote.id.slice(-8).toUpperCase()}`}
-                          </p>
-                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${getStatusPillColor(quote.status)}`} data-testid={`badge-quote-status-${quote.id}`}>
-                            {quote.status}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          Updated {formatDistanceToNow(new Date(quote.updatedAt || quote.createdAt), { addSuffix: true })}
-                          {quote.clientName && ` · ${quote.clientName}`}
-                          {quote.jobId && (
-                            <span className="inline-flex items-center gap-1 ml-2">
-                              <LinkIcon className="w-3 h-3" />
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  navigate(`/jobs/${quote.jobId}`);
-                                }}
-                                className="hover:underline"
-                              >
-                                View Job
-                              </button>
+            <>
+              {/* Mobile Card View */}
+              <div className="md:hidden space-y-3">
+                {filteredQuotes.map((quote) => {
+                  const getStatusPillColor = (status: string) => {
+                    switch (status) {
+                      case 'draft': return 'bg-slate-100 text-slate-600';
+                      case 'sent': return 'bg-primary/10 text-primary';
+                      case 'accepted': return 'bg-emerald-100 text-emerald-700';
+                      case 'declined': return 'bg-red-100 text-red-700';
+                      default: return 'bg-slate-100 text-slate-600';
+                    }
+                  };
+                  
+                  return (
+                    <div 
+                      key={quote.id}
+                      className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow cursor-pointer tap-target"
+                      onClick={() => navigate(`/quotes/${quote.id}`)}
+                      data-testid={`quote-item-${quote.id}`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-semibold text-slate-900 truncate" data-testid={`text-quote-id-${quote.id}`}>
+                              {quote.name || `Quote #${quote.id.slice(-8).toUpperCase()}`}
+                            </p>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium flex-shrink-0 ${getStatusPillColor(quote.status)}`} data-testid={`badge-quote-status-${quote.id}`}>
+                              {quote.status}
                             </span>
+                          </div>
+                          {quote.clientName && (
+                            <p className="text-xs text-slate-500 mb-1">{quote.clientName}</p>
                           )}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Right Side */}
-                    <div className="flex items-center gap-4 flex-shrink-0">
-                      <div className="text-right">
-                        <div className="text-sm font-semibold text-slate-900" data-testid={`text-quote-total-${quote.id}`}>
-                          {formatCurrency(parseFloat(quote.total || '0'))}
+                          <p className="text-xs text-slate-400">
+                            Updated {formatDistanceToNow(new Date(quote.updatedAt || quote.createdAt), { addSuffix: true })}
+                          </p>
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {quote.items?.length || 0} items
+                        <div className="text-right ml-3 flex-shrink-0">
+                          <div className="text-base font-bold text-slate-900" data-testid={`text-quote-total-${quote.id}`}>
+                            {formatCurrency(parseFloat(quote.total || '0'))}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {quote.items?.length || 0} items
+                          </div>
+                        </div>
+                      </div>
+                      {quote.jobId && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/jobs/${quote.jobId}`);
+                          }}
+                          className="flex items-center gap-1 text-xs text-primary hover:underline mt-2 tap-target"
+                        >
+                          <LinkIcon className="w-3 h-3" />
+                          View Job
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop List View */}
+              <div className="hidden md:block">
+                {filteredQuotes.map((quote, index) => {
+                  const getStatusPillColor = (status: string) => {
+                    switch (status) {
+                      case 'draft': return 'bg-slate-100 text-slate-600';
+                      case 'sent': return 'bg-primary/10 text-primary';
+                      case 'accepted': return 'bg-emerald-100 text-emerald-700';
+                      case 'declined': return 'bg-red-100 text-red-700';
+                      default: return 'bg-slate-100 text-slate-600';
+                    }
+                  };
+                  
+                  const getTimelineDotColor = (status: string) => {
+                    switch (status) {
+                      case 'accepted': return 'bg-emerald-500';
+                      case 'sent': return 'bg-primary';
+                      default: return 'bg-slate-400';
+                    }
+                  };
+                  
+                  return (
+                    <div 
+                      key={quote.id}
+                      className="group flex items-center justify-between gap-4 border-t border-slate-100 px-5 py-4 first:border-t-0 hover:bg-slate-50/60 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/quotes/${quote.id}`)}
+                      data-testid={`quote-item-desktop-${quote.id}`}
+                    >
+                      {/* Left Side */}
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <span className={`h-2.5 w-2.5 rounded-full ${getTimelineDotColor(quote.status)} mt-1 flex-shrink-0`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <p className="text-sm font-medium text-slate-900 truncate" data-testid={`text-quote-id-desktop-${quote.id}`}>
+                              {quote.name || `Quote #${quote.id.slice(-8).toUpperCase()}`}
+                            </p>
+                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${getStatusPillColor(quote.status)}`} data-testid={`badge-quote-status-desktop-${quote.id}`}>
+                              {quote.status}
+                            </span>
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            Updated {formatDistanceToNow(new Date(quote.updatedAt || quote.createdAt), { addSuffix: true })}
+                            {quote.clientName && ` · ${quote.clientName}`}
+                            {quote.jobId && (
+                              <span className="inline-flex items-center gap-1 ml-2">
+                                <LinkIcon className="w-3 h-3" />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/jobs/${quote.jobId}`);
+                                  }}
+                                  className="hover:underline"
+                                >
+                                  View Job
+                                </button>
+                              </span>
+                            )}
+                          </p>
                         </div>
                       </div>
                       
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/quotes/${quote.id}`);
-                        }}
-                        className="rounded-full bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-colors"
+                      {/* Right Side */}
+                      <div className="flex items-center gap-4 flex-shrink-0">
+                        <div className="text-right">
+                          <div className="text-sm font-semibold text-slate-900" data-testid={`text-quote-total-desktop-${quote.id}`}>
+                            {formatCurrency(parseFloat(quote.total || '0'))}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {quote.items?.length || 0} items
+                          </div>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/quotes/${quote.id}`);
+                          }}
+                          className="rounded-full bg-indigo-600 px-3.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-colors"
                         data-testid={`button-view-quote-${quote.id}`}
                       >
                         View

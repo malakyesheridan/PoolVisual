@@ -177,25 +177,25 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex md:items-center md:justify-center">
+    <div className="fixed inset-0 z-50 flex md:items-center md:justify-center safe-top safe-bottom">
       <div className="absolute inset-0 bg-black/40" onClick={onClose}/>
       <div className="relative bg-white dark:bg-zinc-900 w-full h-full md:max-w-4xl md:h-[85vh] md:rounded-2xl shadow-xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="font-semibold text-lg">
+        <div className="flex items-center justify-between p-4 md:p-4 border-b safe-top">
+          <div className="font-semibold text-base md:text-lg">
             {initial?.id ? 'Edit Material' : 'Add Material'}
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} className="tap-target">
             <X className="w-4 h-4" />
           </Button>
         </div>
 
         {/* Tabs */}
-        <div className="px-4 pt-2 flex gap-1 text-sm border-b">
+        <div className="px-3 md:px-4 pt-2 flex gap-1 text-sm border-b overflow-x-auto scrollbar-hide">
           {(['details', 'prefill', 'texture'] as const).map((t) => (
             <button
               key={t}
-              className={`px-4 py-2 rounded-t-lg capitalize transition-colors ${
+              className={`px-3 md:px-4 py-2 rounded-t-lg capitalize transition-colors whitespace-nowrap tap-target ${
                 tab === t 
                   ? 'bg-primary/10 text-primary border-b-2 border-primary' 
                   : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
@@ -208,7 +208,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto p-4 space-y-4">
+        <div className="flex-1 overflow-auto p-4 md:p-4 space-y-4 safe-bottom">
           {tab === 'details' && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -218,6 +218,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
                   value={form.name}
                   onChange={(e) => updateForm({ name: e.target.value })}
                   placeholder="Material name"
+                  className="h-11 md:h-auto"
                 />
               </div>
 
@@ -228,13 +229,14 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
                   value={form.sku}
                   onChange={(e) => updateForm({ sku: e.target.value })}
                   placeholder="Product code"
+                  className="h-11 md:h-auto"
                 />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="category">Category *</Label>
                 <Select value={form.category} onValueChange={(value) => updateForm({ category: value })}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11 md:h-auto">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -250,7 +252,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
               <div className="space-y-2">
                 <Label htmlFor="unit">Unit *</Label>
                 <Select value={form.unit} onValueChange={(value) => updateForm({ unit: value })}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11 md:h-auto">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -270,6 +272,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
                   value={form.price}
                   onChange={(e) => updateForm({ price: e.target.value })}
                   placeholder="0.00"
+                  className="h-11 md:h-auto"
                 />
               </div>
 
@@ -282,6 +285,7 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
                   value={form.cost}
                   onChange={(e) => updateForm({ cost: e.target.value })}
                   placeholder="0.00"
+                  className="h-11 md:h-auto"
                 />
               </div>
 
@@ -393,18 +397,18 @@ export function AddEditMaterialSheet({ open, onClose, initial }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t p-4 flex justify-between items-center">
-          <div className="text-sm text-gray-500">
+        <div className="border-t p-4 md:p-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 safe-bottom">
+          <div className="text-xs md:text-sm text-gray-500">
             {!requiredOk && <span className="text-red-500">* Required fields: Name, Category, Unit, Texture URL</span>}
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={onClose} className="flex-1 md:flex-none h-11 md:h-auto tap-target">
               Cancel
             </Button>
             <Button 
               onClick={onSave} 
               disabled={saving || !requiredOk}
-              className="bg-primary hover:bg-primary/90"
+              className="flex-1 md:flex-none bg-primary hover:bg-primary/90 h-11 md:h-auto tap-target"
             >
               {saving ? 'Saving...' : 'Save Material'}
             </Button>

@@ -17,6 +17,11 @@ import {
   TooltipProvider, 
   TooltipTrigger 
 } from '../components/ui/tooltip';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from '../components/ui/sheet';
 
 interface NewEditorProps {
   jobId?: string;
@@ -1019,7 +1024,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
           />
       
-      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-4 relative">
+      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-2 md:p-4 relative">
         {/* Canvas viewport container - fixed size assuming sidebar is always open */}
         <div 
           ref={containerRef}
@@ -1028,7 +1033,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             position: 'relative',
             overflow: 'hidden',
             // Canvas size assumes sidebar is always open - fixed width calculation
-            width: `calc(100% - ${sidebarWidth + 20}px)`, // sidebar width + gap + padding
+            width: `calc(100% - ${isSidebarOpen ? sidebarWidth + 20 : 20}px)`, // sidebar width + gap + padding (mobile: full width)
             flexShrink: 0,
             // Prevent horizontal scroll during zoom
             overflowX: 'hidden'
@@ -1083,10 +1088,89 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           )}
         </div>
         
-        {/* Sidebar Toggle Button - always visible, positioned independently */}
+        {/* Mobile Sidebar - Sheet Drawer */}
+        <div className="md:hidden">
+          <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
+            <SheetTrigger asChild>
+              <button
+                className="fixed top-1/2 right-4 -translate-y-1/2 z-50 p-3 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all tap-target"
+                aria-label="Open sidebar"
+                title="Open sidebar"
+              >
+                <PanelLeft className="w-5 h-5 text-gray-600" />
+              </button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[85vw] sm:w-[400px] p-0 flex flex-col">
+              {/* Tab Navigation */}
+              <TooltipProvider>
+                <div className="flex border-b border-gray-100 bg-white px-4 pt-4 pb-2">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={`flex-1 px-3 py-3 text-sm font-medium flex items-center justify-center tap-target ${
+                          activeTab === 'materials'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                        onClick={() => setActiveTab('materials')}
+                      >
+                        <Package size={18} />
+                        <span className="ml-2 hidden sm:inline">Materials</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Materials</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={`flex-1 px-3 py-3 text-sm font-medium flex items-center justify-center tap-target ${
+                          activeTab === 'variants'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                        onClick={() => setActiveTab('variants')}
+                      >
+                        <Sparkles size={18} />
+                        <span className="ml-2 hidden sm:inline">Variants</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Variants</TooltipContent>
+                  </Tooltip>
+
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        className={`flex-1 px-3 py-3 text-sm font-medium flex items-center justify-center tap-target ${
+                          activeTab === 'masks'
+                            ? 'text-primary border-b-2 border-primary'
+                            : 'text-gray-500 hover:text-gray-700'
+                        }`}
+                        onClick={() => setActiveTab('masks')}
+                      >
+                        <Square size={18} />
+                        <span className="ml-2 hidden sm:inline">Masks</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Masks</TooltipContent>
+                  </Tooltip>
+                </div>
+              </TooltipProvider>
+              
+              {/* Tab Content */}
+              <div className="flex-1 min-h-0 relative overflow-hidden">
+                {activeTab === 'materials' && <MaterialsPanel />}
+                {activeTab === 'variants' && <VariantsPanel />}
+                {activeTab === 'masks' && <MaskManagementPanel />}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        {/* Desktop Sidebar Toggle Button */}
         <button
           onClick={toggleSidebar}
-          className="fixed top-1/2 right-4 -translate-y-1/2 z-50 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all"
+          className="hidden md:block fixed top-1/2 right-4 -translate-y-1/2 z-50 p-2 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all tap-target"
           style={{
             right: isSidebarOpen ? `${sidebarWidth + 16}px` : '16px',
             transition: 'right 0.3s ease-in-out'
@@ -1101,10 +1185,10 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           )}
         </button>
 
-        {/* Sidebar - positioned absolutely so it overlays, doesn't affect canvas size */}
+        {/* Desktop Sidebar - positioned absolutely so it overlays, doesn't affect canvas size */}
         <div
           ref={sidebarRef}
-          className="absolute top-4 bottom-4 right-4 bg-white rounded-xl shadow-md flex flex-col transition-all duration-300 z-30"
+          className="hidden md:block absolute top-4 bottom-4 right-4 bg-white rounded-xl shadow-md flex flex-col transition-all duration-300 z-30"
           style={{
             width: isSidebarOpen ? `${sidebarWidth}px` : '0px',
             overflow: isSidebarOpen ? 'visible' : 'hidden',
