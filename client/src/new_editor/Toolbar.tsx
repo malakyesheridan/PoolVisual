@@ -1005,7 +1005,7 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           console.error('[Toolbar] Failed to load image from photo URL:', imageUrl);
           reject(new Error('Failed to load image'));
         };
-        img.src = imageUrl;
+        img.src = urlToLoad;
       });
 
       toast.success('Photo loaded successfully');
@@ -1026,12 +1026,37 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       canvas.width = photoSpace.imgW;
       canvas.height = photoSpace.imgH;
       
+      // Get current image URL from store
+      const currentState = useEditorStore.getState();
+      const imageUrl = currentState.imageUrl;
+      
+      if (!imageUrl) {
+        reject(new Error('No image URL available'));
+        return;
+      }
+      
+      // Check if URL is external and use proxy preemptively to avoid CORS
+      const isExternalUrl = (url: string): boolean => {
+        try {
+          const urlObj = new URL(url);
+          const currentOrigin = window.location.origin;
+          return urlObj.origin !== currentOrigin;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Use proxy for external URLs to avoid CORS errors
+      const urlToLoad = isExternalUrl(imageUrl)
+        ? `/api/texture?url=${encodeURIComponent(imageUrl)}`
+        : imageUrl;
+      
       // Draw background image
       const img = new Image();
       // Set CORS to allow canvas export
       img.crossOrigin = "anonymous";
       img.onerror = () => {
-        reject(new Error('Failed to load image (CORS may be blocked)'));
+        reject(new Error(`Failed to load image (CORS may be blocked): ${imageUrl}`));
       };
       img.onload = async () => {
         try {
@@ -1070,13 +1095,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         }
       };
       
-      // Load image from current state
-      const currentState = getState();
-      if (currentState.imageUrl) {
-        img.src = currentState.imageUrl;
-      } else {
-        reject(new Error('No image loaded'));
-      }
+      // Load image using the URL we prepared earlier (with proxy if needed)
+      img.src = urlToLoad;
     });
   };
 

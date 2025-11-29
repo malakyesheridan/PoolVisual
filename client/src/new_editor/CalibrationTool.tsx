@@ -59,20 +59,23 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
   }, [dispatch]);
 
   const handleStartCalibration = useCallback(() => {
-    // Check if zoom is at 100% (scale = 1.0)
+    // Check if zoom is at 100% (scale = fitScale, which is the natural 100% zoom level)
+    const fitScale = photoSpace?.fitScale || 1;
     const currentScale = photoSpace?.scale || 1;
-    const isAt100Percent = Math.abs(currentScale - 1.0) < 0.01; // Allow small floating point tolerance
+    const isAt100Percent = Math.abs(currentScale - fitScale) < 0.01; // Allow small floating point tolerance
     
     console.log('[CalibrationTool] Starting calibration check:', {
       currentScale,
+      fitScale,
       isAt100Percent,
       photoSpace: photoSpace,
       tolerance: 0.01,
-      difference: Math.abs(currentScale - 1.0)
+      difference: Math.abs(currentScale - fitScale)
     });
     
     if (!isAt100Percent) {
-      const errorMsg = `Calibration requires zoom to be at 100%. Current zoom: ${Math.round(currentScale * 100)}%. Please zoom to 100% first.`;
+      const zoomPercent = Math.round((currentScale / fitScale) * 100);
+      const errorMsg = `Calibration requires zoom to be at 100%. Current zoom: ${zoomPercent}%. Please zoom to 100% first.`;
       console.log('[CalibrationTool] Calibration blocked:', errorMsg);
       setError(errorMsg);
       return;
@@ -399,9 +402,17 @@ export function CalibrationTool({ onClose }: CalibrationToolProps) {
                 </button>
                 <button
                   onClick={handleStartCalibration}
-                  disabled={Math.abs((photoSpace?.scale || 1) - 1.0) >= 0.01}
+                  disabled={(() => {
+                    const fitScale = photoSpace?.fitScale || 1;
+                    const currentScale = photoSpace?.scale || 1;
+                    return Math.abs(currentScale - fitScale) >= 0.01;
+                  })()}
                   className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
-                    Math.abs((photoSpace?.scale || 1) - 1.0) >= 0.01
+                    (() => {
+                      const fitScale = photoSpace?.fitScale || 1;
+                      const currentScale = photoSpace?.scale || 1;
+                      return Math.abs(currentScale - fitScale) >= 0.01;
+                    })()
                       ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
                       : 'text-white bg-primary hover:bg-primary/90'
                   }`}
