@@ -228,29 +228,51 @@ export default function Jobs() {
 
   // Jobs list view
   return (
-    <div className="min-h-screen bg-[#F6F7F9] px-8 py-6">
-      {/* Jobs Header Row */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-slate-900" data-testid="text-page-title">
+    <div className="min-h-screen bg-[#F6F7F9] px-4 md:px-8 py-4 md:py-6 pb-20 md:pb-6">
+      {/* Mobile Header */}
+      <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h1 className="font-semibold mobile-text-lg" data-testid="text-page-title-mobile">
               {jobsTerm}
             </h1>
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              jobHealthStatus === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'
+            }`} aria-label={jobHealthStatus === 'healthy' ? 'All jobs healthy' : 'Some jobs need attention'} />
+          </div>
+          <Button 
+            onClick={() => navigate('/jobs/new')} 
+            className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-2 h-11 md:h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target"
+            data-testid="button-new-job-mobile"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            {createJobText}
+          </Button>
+        </div>
+      </div>
+
+      {/* Desktop Header */}
+      <div className="hidden md:flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-slate-900" data-testid="text-page-title">
+            {jobsTerm}
+          </h1>
           <div className={`w-1.5 h-1.5 rounded-full ${
             jobHealthStatus === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'
           }`} aria-label={jobHealthStatus === 'healthy' ? 'All jobs healthy' : 'Some jobs need attention'} />
-          </div>
-          
+        </div>
+        
         <Button 
           onClick={() => navigate('/jobs/new')} 
           className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-1.5 h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           data-testid="button-new-job"
         >
           <Plus className="w-3.5 h-3.5 mr-1.5" />
-              {createJobText}
-            </Button>
-        </div>
+          {createJobText}
+        </Button>
+      </div>
 
-      <div className="max-w-6xl mx-auto w-full px-6">
+      <div className="max-w-6xl mx-auto w-full px-0 md:px-6">
         {/* Search + Filters Strip */}
         <div className="mb-6 rounded-2xl bg-white shadow-sm border border-slate-100 px-4 py-3 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">
@@ -259,7 +281,7 @@ export default function Jobs() {
               placeholder={`Search ${jobsTerm.toLowerCase()} by client or address...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-primary transition-all duration-150"
+              className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-3 md:py-2 h-11 md:h-auto text-sm md:text-sm mobile-text-base text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-primary transition-all duration-150"
               data-testid="input-search-jobs"
               aria-label="Search jobs"
             />
@@ -269,7 +291,7 @@ export default function Jobs() {
             <select
               value={selectedOrgId || ''}
               onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="px-3 py-1.5 h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-primary focus:ring-primary transition-all duration-150"
+              className="px-3 py-2.5 md:py-1.5 h-11 md:h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-primary focus:ring-primary transition-all duration-150 tap-target"
               data-testid="select-organization"
             >
               {orgs.map((org) => (
@@ -283,10 +305,10 @@ export default function Jobs() {
           <Button 
             variant="outline" 
             size="sm"
-            className="rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 px-3 py-1.5 flex items-center gap-2 transition-all duration-150"
+            className="rounded-full border border-slate-200 bg-white hover:bg-slate-50 text-sm font-medium text-slate-700 px-3 py-2.5 md:py-1.5 h-11 md:h-auto flex items-center gap-2 transition-all duration-150 tap-target"
             data-testid="button-filters"
           >
-            <Filter className="w-3.5 h-3.5" />
+            <Filter className="w-4 h-4 md:w-3.5 md:h-3.5" />
             Filters
           </Button>
         </div>
@@ -359,9 +381,9 @@ export default function Jobs() {
         {/* Recent Jobs Section - Clean Card */}
         <section className="mt-6 rounded-2xl bg-white border border-slate-200 shadow-[0_10px_30px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* Header Row */}
-          <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-            <h2 className="text-sm font-semibold text-slate-900">Recent Jobs</h2>
-            <p className="text-xs text-slate-500">Your most recent activity</p>
+          <div className="px-4 md:px-5 py-3 border-b border-slate-100 bg-slate-50/60">
+            <h2 className="text-sm md:text-sm mobile-text-base font-semibold text-slate-900">Recent Jobs</h2>
+            <p className="text-xs md:text-xs mobile-text-base text-slate-500">Your most recent activity</p>
           </div>
           
           {/* Jobs List - Timeline List */}
@@ -391,16 +413,16 @@ export default function Jobs() {
                   {!searchTerm ? (
                     <Button
                       onClick={() => navigate('/jobs/new')}
-                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-4 py-2 h-9 text-sm font-medium transition-all duration-150"
+                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-4 py-3 md:py-2 h-11 md:h-9 text-sm font-medium transition-all duration-150 tap-target"
                     >
-                      <Plus className="w-3.5 h-3.5 mr-1.5" />
+                      <Plus className="w-4 h-4 md:w-3.5 md:h-3.5 mr-1.5" />
                       Create Your First Job
                     </Button>
                   ) : (
                     <Button
                       variant="outline"
                       onClick={() => setSearchTerm('')}
-                      className="border-gray-200 hover:bg-gray-50 rounded-lg px-3 py-1.5 h-9 text-sm transition-all duration-150"
+                      className="border-gray-200 hover:bg-gray-50 rounded-lg px-3 py-2.5 md:py-1.5 h-11 md:h-9 text-sm transition-all duration-150 tap-target"
                     >
                       Clear search
                     </Button>
@@ -423,7 +445,7 @@ export default function Jobs() {
                   return (
                     <div 
                       key={job.id}
-                      className="flex items-center justify-between px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer"
+                      className="flex items-center justify-between px-4 md:px-6 py-4 hover:bg-slate-50 transition-colors cursor-pointer tap-target"
                       data-testid={`job-item-${job.id}`}
                       onClick={() => navigate(`/jobs/${job.id}`)}
                     >
@@ -438,7 +460,7 @@ export default function Jobs() {
                         {/* Job Info */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <h3 className="text-sm font-medium text-slate-900 truncate" data-testid={`text-client-name-${job.id}`}>
+                            <h3 className="text-sm md:text-sm mobile-text-base font-medium text-slate-900 truncate" data-testid={`text-client-name-${job.id}`}>
                               {job.clientName}
                             </h3>
                             {shouldShowJobStatus && (
@@ -460,7 +482,7 @@ export default function Jobs() {
                               </Badge>
                             )}
                           </div>
-                          <p className="text-xs text-slate-500" data-testid={`text-created-${job.id}`}>
+                          <p className="text-xs md:text-xs mobile-text-base text-slate-500" data-testid={`text-created-${job.id}`}>
                             Updated {formatDistanceToNow(new Date(job.canvasWorkProgress.lastCanvasWork || job.createdAt), { addSuffix: true })}
                           </p>
                         </div>
@@ -482,11 +504,11 @@ export default function Jobs() {
                             setClientInfoModalOpen(true);
                           }}
                           data-testid={`button-view-client-info-${job.id}`}
-                          className="p-1.5 text-slate-400 hover:text-primary hover:bg-primary/5 rounded-md transition-all duration-150"
+                          className="p-2.5 md:p-1.5 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/5 rounded-md transition-all duration-150 tap-target"
                           aria-label="View client information"
                           title="View client information"
                         >
-                          <User className="w-4 h-4" />
+                          <User className="w-5 h-5 md:w-4 md:h-4" />
                         </button>
                           
                         <button 
@@ -495,11 +517,11 @@ export default function Jobs() {
                               navigate(`/jobs/${job.id}`);
                             }}
                             data-testid={`button-view-job-${job.id}`}
-                          className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-all duration-150"
+                          className="p-2.5 md:p-1.5 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-all duration-150 tap-target"
                           aria-label="View job"
                           title="View job"
                           >
-                          <Eye className="w-4 h-4" />
+                          <Eye className="w-5 h-5 md:w-4 md:h-4" />
                         </button>
                           
                         <DropdownMenu>
@@ -509,10 +531,10 @@ export default function Jobs() {
                                 e.stopPropagation();
                               }}
                               data-testid={`button-job-menu-${job.id}`}
-                              className="text-slate-400 hover:text-slate-700 transition-colors"
+                              className="p-2.5 md:p-1.5 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors tap-target"
                               aria-label="Job options"
                             >
-                              <MoreHorizontal className="w-4 h-4" />
+                              <MoreHorizontal className="w-5 h-5 md:w-4 md:h-4" />
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>

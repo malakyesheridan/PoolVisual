@@ -98,10 +98,24 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   }
 
   return (
-    <div className={`min-h-screen bg-gray-50 ${className}`}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
+    <div className={`min-h-screen bg-gray-50 pb-20 md:pb-0 ${className}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8">
+        {/* Mobile Header */}
+        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 sm:mx-0 mb-4">
+          <div className="flex items-center justify-between">
+            <h1 className="font-semibold mobile-text-lg">Dashboard</h1>
+            <Button 
+              onClick={() => navigate('/jobs/new')} 
+              className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-2 h-11 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              {createJob}
+            </Button>
+          </div>
+        </div>
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div className="mb-4 sm:mb-0">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
             <p className="text-gray-600">Overview of your {projects.toLowerCase()}</p>
@@ -162,7 +176,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                 placeholder="Search projects..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-gray-200 rounded-lg focus:border-primary focus:ring-primary transition-all duration-150"
+                  className="pl-10 border-gray-200 rounded-lg focus:border-primary focus:ring-primary transition-all duration-150 h-11 md:h-auto py-3 md:py-2 mobile-text-base"
                   aria-label="Search projects"
               />
             </div>
@@ -171,7 +185,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
               <select
                 value={selectedOrgId || ''}
                 onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="px-4 py-2 border border-gray-200 rounded-lg bg-white text-sm focus:border-primary focus:ring-primary transition-all duration-150"
+                  className="px-4 py-2.5 md:py-2 h-11 md:h-auto border border-gray-200 rounded-lg bg-white text-sm mobile-text-base focus:border-primary focus:ring-primary transition-all duration-150 tap-target"
               >
                 {orgs.map((org) => (
                   <option key={org.id} value={org.id}>
@@ -188,7 +202,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                     <button
                   key={status}
                   onClick={() => setFilterStatus(status.toLowerCase() as any)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 ${
+                      className={`px-3 py-2.5 md:py-1.5 h-11 md:h-auto text-xs md:text-xs mobile-text-base font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target ${
                         isActive
                           ? 'bg-primary text-white shadow-sm'
                           : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -220,7 +234,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
                   {!searchTerm && filterStatus === 'all' && (
                     <Button
                       onClick={() => navigate('/jobs/new')}
-                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150"
+                      className="bg-primary hover:bg-primary/90 text-white rounded-lg px-5 py-3 md:py-2 h-11 md:h-auto shadow-md hover:shadow-lg transition-all duration-150 tap-target"
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Create Your First Project

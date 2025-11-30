@@ -62,7 +62,7 @@ export function PersonalizedDashboard() {
   }, [visibleWidgets]);
   
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6 pb-20 md:pb-0 px-4 md:px-0">
       {/* Welcome message based on onboarding */}
       <WelcomeMessage />
       
@@ -70,7 +70,7 @@ export function PersonalizedDashboard() {
       <QuickActionsPanel />
       
       {/* Widget grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         {Object.entries(priorityGroups)
           .sort(([a], [b]) => Number(a) - Number(b))
           .map(([priority, widgets]) => (
@@ -158,11 +158,11 @@ function WelcomeMessage() {
   
   return (
     <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
-      <CardContent className="pt-6">
-        <h2 className="text-2xl font-bold mb-2 text-slate-900">
+      <CardContent className="pt-4 md:pt-6 px-4 md:px-6">
+        <h2 className="text-xl md:text-2xl font-bold mb-2 text-slate-900 mobile-text-xl">
           Welcome to EasyFlow Studio!
         </h2>
-        <p className="text-slate-700">
+        <p className="text-slate-700 mobile-text-base">
           {messages[role] || messages.other}
         </p>
       </CardContent>
@@ -217,7 +217,7 @@ function QuickActionsPanel() {
         <Button 
           key={action.href} 
           onClick={action.onClick}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 h-11 md:h-10 px-4 py-2.5 md:py-2 tap-target"
         >
           <action.icon className="w-4 h-4" />
           {action.label}
