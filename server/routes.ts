@@ -794,35 +794,31 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Parse jobIds if provided (comma-separated)
       const jobIdArray = jobIds ? (jobIds as string).split(',').filter(Boolean) : null;
 
-      // Use optimized batch query to fetch all canvas status in one go
-      const { executeQuery } = await import('./lib/dbHelpers.js');
+      // Use Drizzle to build the query efficiently
+      const { getDatabase } = await import('./db.js');
+      const db = getDatabase();
+      const { jobs, photos, masks } = await import('../../shared/schema.js');
+      const { sql, max, and, inArray } = await import('drizzle-orm');
       
-      // Build query to get all canvas status efficiently
-      let query = `
-        SELECT 
-          j.id as job_id,
-          COUNT(DISTINCT p.id) as total_photos,
-          COUNT(DISTINCT CASE WHEN m.id IS NOT NULL THEN p.id END) as photos_with_canvas_work,
-          MAX(m.created_at) as last_canvas_work
-        FROM jobs j
-        LEFT JOIN photos p ON p.job_id = j.id
-        LEFT JOIN masks m ON m.photo_id = p.id
-        WHERE j.org_id = $1
-      `;
-      
-      const params: any[] = [orgId];
-      
+      // Build query using Drizzle
+      const conditions = [sql`${jobs.orgId} = ${orgId}::uuid`];
       if (jobIdArray && jobIdArray.length > 0) {
-        query += ` AND j.id = ANY($2::uuid[])`;
-        params.push(jobIdArray);
+        conditions.push(inArray(jobs.id, jobIdArray));
       }
       
-      query += `
-        GROUP BY j.id
-        ORDER BY j.created_at DESC
-      `;
-
-      const results = await executeQuery(query, params);
+      const results = await db
+        .select({
+          job_id: jobs.id,
+          total_photos: sql<number>`COUNT(DISTINCT ${photos.id})`,
+          photos_with_canvas_work: sql<number>`COUNT(DISTINCT CASE WHEN ${masks.id} IS NOT NULL THEN ${photos.id} END)`,
+          last_canvas_work: max(masks.createdAt),
+        })
+        .from(jobs)
+        .leftJoin(photos, sql`${photos.jobId} = ${jobs.id}`)
+        .leftJoin(masks, sql`${masks.photoId} = ${photos.id}`)
+        .where(and(...conditions))
+        .groupBy(jobs.id)
+        .orderBy(sql`${jobs.createdAt} DESC`);
 
       // Transform results to match expected format
       const canvasStatus = results.map((row: any) => ({

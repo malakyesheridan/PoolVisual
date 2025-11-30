@@ -41,6 +41,10 @@ export function UserDetailModal({ userId, open, onClose }: UserDetailModalProps)
     return (
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Loading User Details</DialogTitle>
+            <DialogDescription>Please wait while we fetch the user information.</DialogDescription>
+          </DialogHeader>
           <div className="flex items-center justify-center min-h-[400px]">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -53,6 +57,10 @@ export function UserDetailModal({ userId, open, onClose }: UserDetailModalProps)
     return (
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Error Loading User</DialogTitle>
+            <DialogDescription>There was an error loading the user details. Please try again.</DialogDescription>
+          </DialogHeader>
           <div className="text-center text-red-600">
             <AlertCircle className="h-8 w-8 mx-auto mb-4" />
             <p>Error loading user details</p>

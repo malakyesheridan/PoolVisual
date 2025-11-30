@@ -213,48 +213,52 @@ adminRouter.get('/analytics/time-series', async (req: AdminRequest, res) => {
     const db = getDatabase();
     
     // Get daily signups - days is already sanitized (parsed as integer)
-    const userSignups = await db.execute(sql`
+    const userSignupsResult = await db.execute(sql`
       SELECT 
         DATE(created_at) as date,
         COUNT(*)::integer as count
       FROM users
-      WHERE created_at > NOW() - INTERVAL '${days} days'
+      WHERE created_at > NOW() - INTERVAL '${sql.raw(String(days))} days'
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `);
+    const userSignups = Array.isArray(userSignupsResult) ? userSignupsResult : ((userSignupsResult as any).rows || []);
     
     // Get daily job creations
-    const jobCreations = await db.execute(sql`
+    const jobCreationsResult = await db.execute(sql`
       SELECT 
         DATE(created_at) as date,
         COUNT(*)::integer as count
       FROM jobs
-      WHERE created_at > NOW() - INTERVAL '${days} days'
+      WHERE created_at > NOW() - INTERVAL '${sql.raw(String(days))} days'
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `);
+    const jobCreations = Array.isArray(jobCreationsResult) ? jobCreationsResult : ((jobCreationsResult as any).rows || []);
     
     // Get daily quote creations
-    const quoteCreations = await db.execute(sql`
+    const quoteCreationsResult = await db.execute(sql`
       SELECT 
         DATE(created_at) as date,
         COUNT(*)::integer as count
       FROM quotes
-      WHERE created_at > NOW() - INTERVAL '${days} days'
+      WHERE created_at > NOW() - INTERVAL '${sql.raw(String(days))} days'
       GROUP BY DATE(created_at)
       ORDER BY date ASC
     `);
+    const quoteCreations = Array.isArray(quoteCreationsResult) ? quoteCreationsResult : ((quoteCreationsResult as any).rows || []);
     
     // Get daily active users
-    const activeUsers = await db.execute(sql`
+    const activeUsersResult = await db.execute(sql`
       SELECT 
         DATE(last_login_at) as date,
         COUNT(DISTINCT id)::integer as count
       FROM users
-      WHERE last_login_at > NOW() - INTERVAL '${days} days'
+      WHERE last_login_at > NOW() - INTERVAL '${sql.raw(String(days))} days'
       GROUP BY DATE(last_login_at)
       ORDER BY date ASC
     `);
+    const activeUsers = Array.isArray(activeUsersResult) ? activeUsersResult : ((activeUsersResult as any).rows || []);
 
     await logAdminAction(
       adminUser.id,
@@ -280,28 +284,28 @@ adminRouter.get('/analytics/time-series', async (req: AdminRequest, res) => {
     }
     
     // Add user signups
-    (Array.isArray(userSignups) ? userSignups : []).forEach((row: any) => {
+    userSignups.forEach((row: any) => {
       const dateStr = row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date;
       const entry = dateMap.get(dateStr);
       if (entry) entry.users = Number(row.count || 0);
     });
     
     // Add job creations
-    (Array.isArray(jobCreations) ? jobCreations : []).forEach((row: any) => {
+    jobCreations.forEach((row: any) => {
       const dateStr = row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date;
       const entry = dateMap.get(dateStr);
       if (entry) entry.jobs = Number(row.count || 0);
     });
     
     // Add quote creations
-    (Array.isArray(quoteCreations) ? quoteCreations : []).forEach((row: any) => {
+    quoteCreations.forEach((row: any) => {
       const dateStr = row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date;
       const entry = dateMap.get(dateStr);
       if (entry) entry.quotes = Number(row.count || 0);
     });
     
     // Add active users
-    (Array.isArray(activeUsers) ? activeUsers : []).forEach((row: any) => {
+    activeUsers.forEach((row: any) => {
       const dateStr = row.date instanceof Date ? row.date.toISOString().split('T')[0] : row.date;
       const entry = dateMap.get(dateStr);
       if (entry) entry.activeUsers = Number(row.count || 0);
@@ -636,13 +640,14 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
     
     // Get all quotes for those jobs (quotes are linked to jobs, so query by job IDs)
     const jobIds = jobs.map(job => job.id);
+    const { inArray } = await import('drizzle-orm');
     const quotes = jobIds.length > 0
-      ? await db.select().from(quotes).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(quotes.createdAt))
+      ? await db.select().from(quotes).where(inArray(quotes.jobId, jobIds)).orderBy(desc(quotes.createdAt))
       : [];
     
     // Get all photos for those jobs
     const photos = jobIds.length > 0
-      ? await db.select().from(photos).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(photos.createdAt))
+      ? await db.select().from(photos).where(inArray(photos.jobId, jobIds)).orderBy(desc(photos.createdAt))
       : [];
     
     // Get user onboarding data
@@ -959,13 +964,14 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
     
     // Get all quotes for those jobs (quotes are linked to jobs)
     const jobIds = orgJobs.map(job => job.id);
+    const { inArray } = await import('drizzle-orm');
     const quotes = jobIds.length > 0
-      ? await db.select().from(quotes).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(quotes.createdAt))
+      ? await db.select().from(quotes).where(inArray(quotes.jobId, jobIds)).orderBy(desc(quotes.createdAt))
       : [];
     
     // Get all photos
     const orgPhotos = jobIds.length > 0
-      ? await db.select().from(photos).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(photos.createdAt))
+      ? await db.select().from(photos).where(inArray(photos.jobId, jobIds)).orderBy(desc(photos.createdAt))
       : [];
     
     // Get materials
