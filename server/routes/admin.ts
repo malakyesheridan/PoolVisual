@@ -965,7 +965,7 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
     // Get all quotes for those jobs (quotes are linked to jobs)
     const jobIds = orgJobs.map(job => job.id);
     const { inArray } = await import('drizzle-orm');
-    const quotes = jobIds.length > 0
+    const orgQuotes = jobIds.length > 0
       ? await db.select().from(quotes).where(inArray(quotes.jobId, jobIds)).orderBy(desc(quotes.createdAt))
       : [];
     
@@ -986,15 +986,15 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
     
     const usageStats = {
       totalJobs: orgJobs.length,
-      totalQuotes: quotes.length,
+      totalQuotes: orgQuotes.length,
       totalPhotos: orgPhotos.length,
       totalMaterials: orgMaterials.length,
       jobsThisMonth: orgJobs.filter(j => new Date(j.createdAt) >= thisMonth).length,
-      quotesThisMonth: quotes.filter(q => new Date(q.createdAt) >= thisMonth).length,
+      quotesThisMonth: orgQuotes.filter(q => new Date(q.createdAt) >= thisMonth).length,
       photosThisMonth: orgPhotos.filter((p: any) => new Date(p.createdAt) >= thisMonth).length,
-      totalQuoteValue: quotes.reduce((sum, q) => sum + Number(q.total || 0), 0),
-      avgQuoteValue: quotes.length > 0 
-        ? quotes.reduce((sum, q) => sum + Number(q.total || 0), 0) / quotes.length 
+      totalQuoteValue: orgQuotes.reduce((sum, q) => sum + Number(q.total || 0), 0),
+      avgQuoteValue: orgQuotes.length > 0 
+        ? orgQuotes.reduce((sum, q) => sum + Number(q.total || 0), 0) / orgQuotes.length 
         : 0,
     };
 
@@ -1003,7 +1003,7 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
       totalQuoteValue: usageStats.totalQuoteValue,
       avgQuoteValue: usageStats.avgQuoteValue,
       quotesThisMonth: usageStats.quotesThisMonth,
-      quoteValueThisMonth: quotes
+      quoteValueThisMonth: orgQuotes
         .filter(q => new Date(q.createdAt) >= thisMonth)
         .reduce((sum, q) => sum + Number(q.total || 0), 0),
     };
@@ -1029,7 +1029,7 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
         user: m.user,
       })),
       jobs: orgJobs.slice(0, 50), // Limit to recent 50
-      quotes: quotes.slice(0, 50), // Limit to recent 50
+      quotes: orgQuotes.slice(0, 50), // Limit to recent 50
       photos: orgPhotos.slice(0, 100), // Limit to recent 100
       materials: orgMaterials.slice(0, 100), // Limit to recent 100
       settings,
