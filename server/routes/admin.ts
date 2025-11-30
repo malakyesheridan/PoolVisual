@@ -1043,6 +1043,91 @@ adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
 });
 
 /**
+ * GET /api/admin/materials
+ * List all materials with pagination and filtering
+ */
+adminRouter.get('/materials', async (req: AdminRequest, res) => {
+  try {
+    const adminUser = req.adminUser!;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 50;
+    const search = req.query.search as string;
+    const category = req.query.category as string;
+    const offset = (page - 1) * limit;
+
+    const db = getDatabase();
+    
+    // Build conditions
+    const conditions = [];
+    
+    if (search) {
+      conditions.push(
+        or(
+          like(materials.name, `%${search}%`),
+          like(materials.sku, `%${search}%`)
+        )
+      );
+    }
+    
+    if (category) {
+      conditions.push(eq(materials.category, category));
+    }
+    
+    const whereCondition = conditions.length > 0 
+      ? (conditions.length === 1 ? conditions[0] : and(...conditions))
+      : undefined;
+    
+    let materialQuery = db
+      .select()
+      .from(materials);
+    
+    let countQuery = db
+      .select({ count: count() })
+      .from(materials);
+    
+    if (whereCondition) {
+      materialQuery = materialQuery.where(whereCondition);
+      countQuery = countQuery.where(whereCondition);
+    }
+    
+    materialQuery = materialQuery
+      .orderBy(desc(materials.createdAt))
+      .limit(limit)
+      .offset(offset);
+    
+    const [materialList, countResult] = await Promise.all([
+      materialQuery,
+      countQuery
+    ]);
+
+    await logAdminAction(
+      adminUser.id,
+      AdminActionTypes.ANALYTICS_VIEW,
+      {
+        resourceType: 'materials',
+        metadata: { page, limit, search, category },
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      }
+    );
+
+    res.json({
+      ok: true,
+      materials: materialList,
+      pagination: {
+        page,
+        limit,
+        total: Number(countResult[0]?.count || 0),
+        totalPages: Math.ceil(Number(countResult[0]?.count || 0) / limit),
+      }
+    });
+  } catch (error: any) {
+    console.error('[Admin/Materials] Error:', error);
+    res.status(500).json({ ok: false, error: error.message || 'Failed to get materials' });
+  }
+});
+
+/**
  * GET /api/admin/jobs
  * List all jobs with pagination and filtering
  */

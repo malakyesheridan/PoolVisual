@@ -849,6 +849,15 @@ class ApiClient {
     return this.request<{ ok: boolean; quotes: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/quotes?${params.toString()}`);
   }
 
+  async getAdminMaterials(options?: { page?: number; limit?: number; search?: string; category?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    if (options?.category) params.append('category', options.category);
+    return this.request<{ ok: boolean; materials: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/materials?${params.toString()}`);
+  }
+
   async getAdminAuditLogs(options?: { page?: number; limit?: number; adminUserId?: string; actionType?: string }) {
     const params = new URLSearchParams();
     if (options?.page) params.append('page', options.page.toString());

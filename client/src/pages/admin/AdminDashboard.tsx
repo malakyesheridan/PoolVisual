@@ -5,6 +5,7 @@ import { AdminUsers } from '@/components/admin/AdminUsers';
 import { AdminOrganizations } from '@/components/admin/AdminOrganizations';
 import { AdminJobs } from '@/components/admin/AdminJobs';
 import { AdminQuotes } from '@/components/admin/AdminQuotes';
+import { AdminMaterials } from '@/components/admin/AdminMaterials';
 import { AdminAuditLogs } from '@/components/admin/AdminAuditLogs';
 import { Shield, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +20,7 @@ export default function AdminDashboard() {
   const viewParam = searchParams.get('view');
   
   const [activeSection, setActiveSection] = useState<AdminSection>(
-    (sectionParam && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'audit-logs'].includes(sectionParam))
+    (sectionParam && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'materials', 'audit-logs'].includes(sectionParam))
       ? sectionParam
       : 'overview'
   );
@@ -31,7 +32,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const section = params.get('section') as AdminSection | null;
-    if (section && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'audit-logs'].includes(section)) {
+    if (section && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'materials', 'audit-logs'].includes(section)) {
       setActiveSection(section);
     }
   }, [location]);
@@ -60,6 +61,8 @@ export default function AdminDashboard() {
         return <AdminJobs />;
       case 'quotes':
         return <AdminQuotes />;
+      case 'materials':
+        return <AdminMaterials />;
       case 'audit-logs':
         return <AdminAuditLogs />;
       default:
