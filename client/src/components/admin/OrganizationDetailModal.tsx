@@ -326,6 +326,36 @@ export function OrganizationDetailModal({ orgId, open, onClose }: OrganizationDe
           </TabsContent>
 
           <TabsContent value="activity" className="space-y-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Jobs</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{usageStats.totalJobs}</div>
+                  <div className="text-sm text-slate-500">{usageStats.jobsThisMonth} this month</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Quotes</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{usageStats.totalQuotes}</div>
+                  <div className="text-sm text-slate-500">{usageStats.quotesThisMonth} this month</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Photos</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{usageStats.totalPhotos}</div>
+                  <div className="text-sm text-slate-500">{usageStats.photosThisMonth} this month</div>
+                </CardContent>
+              </Card>
+            </div>
+
             {jobs.length > 0 && (
               <Card>
                 <CardHeader>
@@ -365,6 +395,19 @@ export function OrganizationDetailModal({ orgId, open, onClose }: OrganizationDe
                         <Badge variant="outline">{quote.status}</Badge>
                       </div>
                     ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {materials.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm">Materials Library ({materials.length})</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm text-slate-600">
+                    {materials.length} materials available
                   </div>
                 </CardContent>
               </Card>
