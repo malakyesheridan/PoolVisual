@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticateSession } from '../middleware/auth.js';
+import { authenticateSession } from '../lib/authHelper.js';
 import { subscriptionService } from '../lib/subscriptionService.js';
 import { storage } from '../storage.js';
 import { logger } from '../lib/logger.js';
