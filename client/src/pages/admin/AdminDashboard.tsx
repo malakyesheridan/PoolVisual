@@ -13,10 +13,28 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useLocation } from 'wouter';
 
 export default function AdminDashboard() {
-  const [activeSection, setActiveSection] = useState<AdminSection>('overview');
+  const [location] = useLocation();
+  const searchParams = new URLSearchParams(window.location.search);
+  const sectionParam = searchParams.get('section') as AdminSection | null;
+  const viewParam = searchParams.get('view');
+  
+  const [activeSection, setActiveSection] = useState<AdminSection>(
+    (sectionParam && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'audit-logs'].includes(sectionParam))
+      ? sectionParam
+      : 'overview'
+  );
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user } = useAuthStore();
   const [, navigate] = useLocation();
+
+  // Handle URL params for section and view
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const section = params.get('section') as AdminSection | null;
+    if (section && ['overview', 'users', 'organizations', 'jobs', 'quotes', 'audit-logs'].includes(section)) {
+      setActiveSection(section);
+    }
+  }, [location]);
 
   // Redirect if not admin
   useEffect(() => {

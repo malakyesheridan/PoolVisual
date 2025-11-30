@@ -5,13 +5,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { 
   Users, Building2, Briefcase, FileText, UserCheck, UserPlus, 
   Loader2, AlertCircle, Camera, Package, TrendingUp, Activity,
-  Target, BarChart3
+  Target, BarChart3, CreditCard, AlertTriangle, Clock, DollarSign,
+  UserX, ArrowRight, CheckCircle2, XCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TimeSeriesChart } from './charts/TimeSeriesChart';
 import { IndustryBreakdownChart } from './charts/IndustryBreakdownChart';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useLocation } from 'wouter';
 
 // Format number with commas
 const formatNumber = (num: number) => {
@@ -25,6 +27,7 @@ const formatCurrency = (num: number) => {
 
 export function AdminOverview() {
   const [timeRange, setTimeRange] = useState<30 | 90 | 365>(30);
+  const [, navigate] = useLocation();
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'overview'],
@@ -91,9 +94,124 @@ export function AdminOverview() {
     avgPhotosPerJob: '0.00',
     onboardingCompletionRate: '0.0',
     avgQuoteValue: '0.00',
+    // New actionable metrics
+    activeSubscriptions: 0,
+    trialSubscriptions: 0,
+    pastDueSubscriptions: 0,
+    canceledSubscriptions: 0,
+    trialExpiringSoon: 0,
+    stuckInOnboarding: 0,
+    inactiveUsers: 0,
+    jobsStuck: 0,
+    quotesPending: 0,
+    mrr: 0,
+    churnedThisMonth: 0,
   };
 
-  const statCards = [
+  // Actionable metric cards with click handlers
+  const actionableMetrics = [
+    {
+      title: 'Trial Expiring Soon',
+      value: formatNumber(stats.trialExpiringSoon),
+      icon: Clock,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-50',
+      borderColor: 'border-amber-200',
+      actionLabel: 'View Trials',
+      onClick: () => navigate('/admin/organizations?filter=trial_expiring'),
+      severity: stats.trialExpiringSoon > 0 ? 'warning' : 'normal',
+    },
+    {
+      title: 'Past Due Subscriptions',
+      value: formatNumber(stats.pastDueSubscriptions),
+      icon: AlertTriangle,
+      color: 'text-red-600',
+      bgColor: 'bg-red-50',
+      borderColor: 'border-red-200',
+      actionLabel: 'View Past Due',
+      onClick: () => navigate('/admin?section=organizations&filter=past_due'),
+      severity: stats.pastDueSubscriptions > 0 ? 'critical' : 'normal',
+    },
+    {
+      title: 'Stuck in Onboarding',
+      value: formatNumber(stats.stuckInOnboarding),
+      icon: UserX,
+      color: 'text-orange-600',
+      bgColor: 'bg-orange-50',
+      borderColor: 'border-orange-200',
+      actionLabel: 'View Users',
+      onClick: () => navigate('/admin?section=users&filter=stuck_onboarding'),
+      severity: stats.stuckInOnboarding > 0 ? 'warning' : 'normal',
+    },
+    {
+      title: 'Inactive Users',
+      value: formatNumber(stats.inactiveUsers),
+      icon: UserX,
+      color: 'text-slate-600',
+      bgColor: 'bg-slate-50',
+      borderColor: 'border-slate-200',
+      actionLabel: 'View Users',
+      onClick: () => navigate('/admin?section=users&filter=inactive'),
+      severity: 'normal',
+    },
+    {
+      title: 'Jobs Stuck',
+      value: formatNumber(stats.jobsStuck),
+      icon: AlertCircle,
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-50',
+      borderColor: 'border-yellow-200',
+      actionLabel: 'View Jobs',
+      onClick: () => navigate('/admin?section=jobs&filter=stuck'),
+      severity: stats.jobsStuck > 0 ? 'warning' : 'normal',
+    },
+    {
+      title: 'Quotes Pending',
+      value: formatNumber(stats.quotesPending),
+      icon: Clock,
+      color: 'text-blue-600',
+      bgColor: 'bg-blue-50',
+      borderColor: 'border-blue-200',
+      actionLabel: 'View Quotes',
+      onClick: () => navigate('/admin?section=quotes&filter=pending'),
+      severity: stats.quotesPending > 0 ? 'warning' : 'normal',
+    },
+  ];
+
+  // Subscription metrics
+  const subscriptionMetrics = [
+    {
+      title: 'Active Subscriptions',
+      value: formatNumber(stats.activeSubscriptions),
+      icon: CheckCircle2,
+      color: 'text-green-600',
+      bgColor: 'bg-green-50',
+    },
+    {
+      title: 'Trial Subscriptions',
+      value: formatNumber(stats.trialSubscriptions),
+      icon: Clock,
+      color: 'text-amber-600',
+      bgColor: 'bg-amber-50',
+    },
+    {
+      title: 'Canceled This Month',
+      value: formatNumber(stats.churnedThisMonth),
+      icon: XCircle,
+      color: 'text-red-600',
+      bgColor: 'bg-red-50',
+    },
+    {
+      title: 'Monthly Recurring Revenue',
+      value: formatCurrency(stats.mrr),
+      icon: DollarSign,
+      color: 'text-emerald-600',
+      bgColor: 'bg-emerald-50',
+    },
+  ];
+
+  // Basic stat cards (less actionable, but still useful)
+  const basicStats = [
     {
       title: 'Total Users',
       value: formatNumber(stats.totalUsers),
@@ -121,41 +239,6 @@ export function AdminOverview() {
       icon: FileText,
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
-    },
-    {
-      title: 'Total Photos',
-      value: formatNumber(stats.totalPhotos),
-      icon: Camera,
-      color: 'text-cyan-600',
-      bgColor: 'bg-cyan-50',
-    },
-    {
-      title: 'Total Materials',
-      value: formatNumber(stats.totalMaterials),
-      icon: Package,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50',
-    },
-    {
-      title: 'Active Users (30d)',
-      value: formatNumber(stats.activeUsers),
-      icon: UserCheck,
-      color: 'text-indigo-600',
-      bgColor: 'bg-indigo-50',
-    },
-    {
-      title: 'Recent Signups (7d)',
-      value: formatNumber(stats.recentSignups),
-      icon: UserPlus,
-      color: 'text-pink-600',
-      bgColor: 'bg-pink-50',
-    },
-    {
-      title: 'Total Quote Value',
-      value: formatCurrency(stats.totalQuoteValue),
-      icon: FileText,
-      color: 'text-emerald-600',
-      bgColor: 'bg-emerald-50',
     },
   ];
 
@@ -192,26 +275,96 @@ export function AdminOverview() {
 
   return (
     <div className="space-y-6">
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.title}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-slate-600">
-                  {stat.title}
-                </CardTitle>
-                <div className={cn('p-2 rounded-lg', stat.bgColor)}>
-                  <Icon className={cn('h-5 w-5', stat.color)} />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold text-slate-900">{stat.value}</div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      {/* Actionable Metrics - High Priority */}
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Actionable Metrics</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {actionableMetrics.map((metric) => {
+            const Icon = metric.icon;
+            const isActionable = metric.value !== '0' && metric.value !== '$0.00';
+            return (
+              <Card 
+                key={metric.title} 
+                className={cn(
+                  'cursor-pointer transition-all hover:shadow-md',
+                  isActionable && metric.severity === 'critical' && 'border-2 border-red-300',
+                  isActionable && metric.severity === 'warning' && 'border-2 border-amber-300',
+                  !isActionable && 'opacity-60'
+                )}
+                onClick={metric.onClick}
+              >
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    {metric.title}
+                  </CardTitle>
+                  <div className={cn('p-2 rounded-lg', metric.bgColor)}>
+                    <Icon className={cn('h-5 w-5', metric.color)} />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div className="text-3xl font-bold text-slate-900">{metric.value}</div>
+                    {isActionable && (
+                      <Button variant="ghost" size="sm" className="text-xs">
+                        {metric.actionLabel} <ArrowRight className="h-3 w-3 ml-1" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Subscription Metrics */}
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Subscription Health</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {subscriptionMetrics.map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <Card key={metric.title}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    {metric.title}
+                  </CardTitle>
+                  <div className={cn('p-2 rounded-lg', metric.bgColor)}>
+                    <Icon className={cn('h-5 w-5', metric.color)} />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-slate-900">{metric.value}</div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Basic Stats */}
+      <div>
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">System Overview</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {basicStats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <Card key={stat.title}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-slate-600">
+                    {stat.title}
+                  </CardTitle>
+                  <div className={cn('p-2 rounded-lg', stat.bgColor)}>
+                    <Icon className={cn('h-5 w-5', stat.color)} />
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-slate-900">{stat.value}</div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
       </div>
 
       {/* Engagement Metrics */}

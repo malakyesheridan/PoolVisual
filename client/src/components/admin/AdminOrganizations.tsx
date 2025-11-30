@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import { 
   Building2, 
   Search, 
@@ -13,14 +13,31 @@ import {
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+import { OrganizationDetailModal } from './OrganizationDetailModal';
 
 export function AdminOrganizations() {
+  const [location] = useLocation();
+  
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [viewingOrgId, setViewingOrgId] = useState<string | null>(null);
+
+  // Handle view param from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view) {
+      setViewingOrgId(view);
+    }
+  }, [location]);
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'organizations', page, search],
-    queryFn: () => apiClient.getAdminOrganizations({ page, limit: 20, search: search || undefined }),
+    queryFn: () => apiClient.getAdminOrganizations({ 
+      page, 
+      limit: 20, 
+      ...(search ? { search } : {})
+    }),
     staleTime: 10 * 1000,
   });
 
@@ -91,7 +108,11 @@ export function AdminOrganizations() {
                 </tr>
               ) : (
                 organizations.map((org: any) => (
-                  <tr key={org.id} className="hover:bg-slate-50">
+                  <tr 
+                    key={org.id} 
+                    className="hover:bg-slate-50 cursor-pointer"
+                    onClick={() => setViewingOrgId(org.id)}
+                  >
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-900">{org.name || 'N/A'}</div>
                       {org.abn && (
@@ -146,6 +167,15 @@ export function AdminOrganizations() {
           </div>
         )}
       </CardContent>
+
+      {/* Organization Detail Modal */}
+      {viewingOrgId && (
+        <OrganizationDetailModal
+          orgId={viewingOrgId}
+          open={!!viewingOrgId}
+          onClose={() => setViewingOrgId(null)}
+        />
+      )}
     </Card>
   );
 }

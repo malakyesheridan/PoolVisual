@@ -680,6 +680,18 @@ class ApiClient {
         avgPhotosPerJob: string;
         onboardingCompletionRate: string;
         avgQuoteValue: string;
+        // New actionable metrics
+        activeSubscriptions: number;
+        trialSubscriptions: number;
+        pastDueSubscriptions: number;
+        canceledSubscriptions: number;
+        trialExpiringSoon: number;
+        stuckInOnboarding: number;
+        inactiveUsers: number;
+        jobsStuck: number;
+        quotesPending: number;
+        mrr: number;
+        churnedThisMonth: number;
       } 
     }>('/admin/overview');
   }
@@ -735,7 +747,26 @@ class ApiClient {
   }
 
   async getAdminUser(userId: string) {
-    return this.request<{ ok: boolean; user: any; organizations: any[] }>(`/admin/users/${userId}`);
+    return this.request<{ 
+      ok: boolean; 
+      user: any; 
+      organizations: any[];
+      jobs: any[];
+      quotes: any[];
+      photos: any[];
+      onboarding: any;
+      sessions: any[];
+      securityEvents: any[];
+      loginAttempts: any[];
+      usageStats: {
+        totalJobs: number;
+        totalQuotes: number;
+        totalPhotos: number;
+        jobsThisMonth: number;
+        quotesThisMonth: number;
+        photosThisMonth: number;
+      };
+    }>(`/admin/users/${userId}`);
   }
 
   async updateAdminUser(userId: string, updates: any) {
@@ -765,6 +796,38 @@ class ApiClient {
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.search) params.append('search', options.search);
     return this.request<{ ok: boolean; organizations: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/organizations?${params.toString()}`);
+  }
+
+  async getAdminOrganization(orgId: string) {
+    return this.request<{
+      ok: boolean;
+      organization: any;
+      subscriptionPlan: any;
+      subscriptionHistory: any[];
+      members: any[];
+      jobs: any[];
+      quotes: any[];
+      photos: any[];
+      materials: any[];
+      settings: any;
+      usageStats: {
+        totalJobs: number;
+        totalQuotes: number;
+        totalPhotos: number;
+        totalMaterials: number;
+        jobsThisMonth: number;
+        quotesThisMonth: number;
+        photosThisMonth: number;
+        totalQuoteValue: number;
+        avgQuoteValue: number;
+      };
+      financialSummary: {
+        totalQuoteValue: number;
+        avgQuoteValue: number;
+        quotesThisMonth: number;
+        quoteValueThisMonth: number;
+      };
+    }>(`/admin/organizations/${orgId}`);
   }
 
   async getAdminJobs(options?: { page?: number; limit?: number; search?: string; status?: string; industry?: string }) {

@@ -10,8 +10,11 @@ import { requireAdmin, AdminRequest } from '../middleware/adminAuth.js';
 import { logAdminAction, AdminActionTypes } from '../lib/adminAudit.js';
 import { storage } from '../storage.js';
 import { PasswordService } from '../lib/passwordService.js';
-import { eq, desc, and, or, like, sql, count } from 'drizzle-orm';
-import { users, orgs, orgMembers, jobs, quotes, photos, materials, userOnboarding } from '../../shared/schema.js';
+import { eq, desc, and, or, like, sql, count, gte, lt, isNull, isNotNull } from 'drizzle-orm';
+import { 
+  users, orgs, orgMembers, jobs, quotes, photos, materials, userOnboarding,
+  subscriptionPlans, subscriptionHistory, userSessions, securityEvents, loginAttempts
+} from '../../shared/schema.js';
 import { getDatabase } from '../db.js';
 
 export const adminRouter = Router();
@@ -21,7 +24,7 @@ adminRouter.use(requireAdmin);
 
 /**
  * GET /api/admin/overview
- * Get system overview statistics with enhanced metrics
+ * Get system overview statistics with enhanced, actionable metrics
  */
 adminRouter.get('/overview', async (req: AdminRequest, res) => {
   try {
@@ -40,7 +43,22 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
       totalPhotosResult,
       totalMaterialsResult,
       onboardingCompletedResult,
-      totalQuoteValueResult
+      totalQuoteValueResult,
+      // Subscription metrics
+      activeSubscriptionsResult,
+      trialSubscriptionsResult,
+      pastDueSubscriptionsResult,
+      canceledSubscriptionsResult,
+      trialExpiringSoonResult,
+      // User engagement metrics
+      stuckInOnboardingResult,
+      inactiveUsersResult,
+      // Operational metrics
+      jobsStuckResult,
+      quotesPendingResult,
+      // Financial metrics
+      mrrResult,
+      churnedThisMonthResult
     ] = await Promise.all([
       db.select({ count: count() }).from(users),
       db.select({ count: count() }).from(orgs),
@@ -50,10 +68,72 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
       db.select({ count: count() }).from(users).where(sql`created_at > NOW() - INTERVAL '7 days'`),
       db.select({ count: count() }).from(photos),
       db.select({ count: count() }).from(materials),
-      // Get onboarding completion count (if table exists)
+      // Get onboarding completion count
       db.select({ count: count() }).from(userOnboarding).where(sql`completed = true`).catch(() => [{ count: 0 }]),
       // Get total quote value
-      db.select({ total: sql<number>`COALESCE(SUM(${quotes.total}::numeric), 0)` }).from(quotes).catch(() => [{ total: 0 }])
+      db.select({ total: sql<number>`COALESCE(SUM(${quotes.total}::numeric), 0)` }).from(quotes).catch(() => [{ total: 0 }]),
+      // Subscription status breakdown
+      db.select({ count: count() }).from(orgs).where(eq(orgs.subscriptionStatus, 'active')).catch(() => [{ count: 0 }]),
+      db.select({ count: count() }).from(orgs).where(eq(orgs.subscriptionStatus, 'trial')).catch(() => [{ count: 0 }]),
+      db.select({ count: count() }).from(orgs).where(eq(orgs.subscriptionStatus, 'past_due')).catch(() => [{ count: 0 }]),
+      db.select({ count: count() }).from(orgs).where(eq(orgs.subscriptionStatus, 'canceled')).catch(() => [{ count: 0 }]),
+      // Trial expiring in next 7 days
+      db.select({ count: count() }).from(orgs).where(
+        and(
+          eq(orgs.subscriptionStatus, 'trial'),
+          sql`subscription_trial_ends_at IS NOT NULL`,
+          sql`subscription_trial_ends_at BETWEEN NOW() AND NOW() + INTERVAL '7 days'`
+        )
+      ).catch(() => [{ count: 0 }]),
+      // Users stuck in onboarding (started but not completed in 7+ days)
+      db.select({ count: count() }).from(userOnboarding).where(
+        and(
+          sql`completed = false`,
+          sql`created_at < NOW() - INTERVAL '7 days'`
+        )
+      ).catch(() => [{ count: 0 }]),
+      // Inactive users (no login in 30+ days)
+      db.select({ count: count() }).from(users).where(
+        or(
+          sql`last_login_at IS NULL`,
+          sql`last_login_at < NOW() - INTERVAL '30 days'`
+        )
+      ).catch(() => [{ count: 0 }]),
+      // Jobs stuck (in progress > 7 days) - assuming status field exists
+      db.select({ count: count() }).from(jobs).where(
+        and(
+          sql`status IN ('estimating', 'scheduled')`,
+          sql`created_at < NOW() - INTERVAL '7 days'`
+        )
+      ).catch(() => [{ count: 0 }]),
+      // Quotes pending (sent but not accepted/declined > 14 days)
+      db.select({ count: count() }).from(quotes).where(
+        and(
+          eq(quotes.status, 'sent'),
+          sql`created_at < NOW() - INTERVAL '14 days'`
+        )
+      ).catch(() => [{ count: 0 }]),
+      // MRR calculation (simplified - sum of monthly subscription values)
+      db.execute(sql`
+        SELECT COALESCE(SUM(
+          CASE 
+            WHEN o.subscription_tier = 't1' THEN COALESCE(sp.price_monthly::numeric, 0)
+            WHEN o.subscription_tier = 't2' THEN COALESCE(sp.price_monthly::numeric, 0)
+            WHEN o.subscription_tier = 't3' THEN COALESCE(sp.price_monthly::numeric, 0)
+            ELSE 0
+          END
+        ), 0) as mrr
+        FROM orgs o
+        LEFT JOIN subscription_plans sp ON o.subscription_plan_id = sp.id
+        WHERE o.subscription_status = 'active'
+      `).catch(() => [{ mrr: 0 }]),
+      // Churned this month (canceled in last 30 days)
+      db.select({ count: count() }).from(orgs).where(
+        and(
+          eq(orgs.subscriptionStatus, 'canceled'),
+          sql`updated_at > NOW() - INTERVAL '30 days'`
+        )
+      ).catch(() => [{ count: 0 }])
     ]);
 
     // Calculate engagement metrics
@@ -63,6 +143,10 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
     const totalPhotos = Number(totalPhotosResult[0]?.count || 0);
     const onboardingCompleted = Array.isArray(onboardingCompletedResult) ? Number(onboardingCompletedResult[0]?.count || 0) : 0;
     const totalQuoteValue = Array.isArray(totalQuoteValueResult) ? Number(totalQuoteValueResult[0]?.total || 0) : 0;
+    
+    // Extract MRR
+    const mrrData = Array.isArray(mrrResult) ? mrrResult : (mrrResult as any).rows || [];
+    const mrr = Number(mrrData[0]?.mrr || 0);
 
     await logAdminAction(
       adminUser.id,
@@ -77,6 +161,7 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
     res.json({
       ok: true,
       stats: {
+        // Basic counts
         totalUsers: totalUsers,
         totalOrgs: Number(totalOrgsResult[0]?.count || 0),
         totalJobs: totalJobs,
@@ -93,6 +178,21 @@ adminRouter.get('/overview', async (req: AdminRequest, res) => {
         avgPhotosPerJob: totalJobs > 0 ? (totalPhotos / totalJobs).toFixed(2) : '0.00',
         onboardingCompletionRate: totalUsers > 0 ? ((onboardingCompleted / totalUsers) * 100).toFixed(1) : '0.0',
         avgQuoteValue: totalQuotes > 0 ? (totalQuoteValue / totalQuotes).toFixed(2) : '0.00',
+        // Subscription metrics (actionable)
+        activeSubscriptions: Number(activeSubscriptionsResult[0]?.count || 0),
+        trialSubscriptions: Number(trialSubscriptionsResult[0]?.count || 0),
+        pastDueSubscriptions: Number(pastDueSubscriptionsResult[0]?.count || 0),
+        canceledSubscriptions: Number(canceledSubscriptionsResult[0]?.count || 0),
+        trialExpiringSoon: Number(trialExpiringSoonResult[0]?.count || 0),
+        // User engagement (actionable)
+        stuckInOnboarding: Number(stuckInOnboardingResult[0]?.count || 0),
+        inactiveUsers: Number(inactiveUsersResult[0]?.count || 0),
+        // Operational (actionable)
+        jobsStuck: Number(jobsStuckResult[0]?.count || 0),
+        quotesPending: Number(quotesPendingResult[0]?.count || 0),
+        // Financial
+        mrr: mrr,
+        churnedThisMonth: Number(churnedThisMonthResult[0]?.count || 0),
       }
     });
   } catch (error: any) {
@@ -510,7 +610,7 @@ adminRouter.get('/users', async (req: AdminRequest, res) => {
 
 /**
  * GET /api/admin/users/:id
- * Get user details
+ * Get comprehensive user details with all associated data
  */
 adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
   try {
@@ -522,12 +622,71 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
       return res.status(404).json({ ok: false, error: 'User not found' });
     }
 
-    // Get user's organizations
+    const db = getDatabase();
+    
+    // Get user's organizations with full details
     const userOrgs = await storage.getUserOrgs(userId);
+    const orgIds = userOrgs.map(org => org.id);
+
+    // Get all jobs for user's organizations
+    const allJobs = orgIds.length > 0 
+      ? await Promise.all(orgIds.map(orgId => storage.getJobs(orgId)))
+      : [];
+    const jobs = allJobs.flat();
+    
+    // Get all quotes for those jobs (quotes are linked to jobs, so query by job IDs)
+    const jobIds = jobs.map(job => job.id);
+    const quotes = jobIds.length > 0
+      ? await db.select().from(quotes).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(quotes.createdAt))
+      : [];
+    
+    // Get all photos for those jobs
+    const photos = jobIds.length > 0
+      ? await db.select().from(photos).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(photos.createdAt))
+      : [];
+    
+    // Get user onboarding data
+    const onboarding = await storage.getUserOnboarding(userId);
+    
+    // Get user sessions (last 10)
+    const sessions = await storage.getUserSessions(userId);
+    
+    // Get security events (last 20)
+    const securityEvents = await storage.getSecurityEvents(userId, { limit: 20 });
+    
+    // Get login attempts (last 10)
+    const recentLoginAttempts = await db.select()
+      .from(loginAttempts)
+      .where(eq(loginAttempts.email, user.email))
+      .orderBy(desc(loginAttempts.createdAt))
+      .limit(10)
+      .catch(() => []);
+
+    // Calculate usage stats
+    const usageStats = {
+      totalJobs: jobs.length,
+      totalQuotes: quotes.length,
+      totalPhotos: photos.length,
+      jobsThisMonth: jobs.filter(j => {
+        const created = new Date(j.createdAt);
+        const now = new Date();
+        return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+      }).length,
+      quotesThisMonth: quotes.filter(q => {
+        const created = new Date(q.createdAt);
+        const now = new Date();
+        return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+      }).length,
+      photosThisMonth: photos.filter((p: any) => {
+        const created = new Date(p.createdAt);
+        const now = new Date();
+        return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
+      }).length,
+    };
 
     await logAdminAction(
       adminUser.id,
-      AdminActionTypes.USER_CREATE, // Using as view action
+      AdminActionTypes.ANALYTICS_VIEW,
       {
         resourceType: 'user',
         resourceId: userId,
@@ -543,6 +702,14 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
         password: undefined, // Never return password
       },
       organizations: userOrgs,
+      jobs: jobs.slice(0, 50), // Limit to recent 50
+      quotes: quotes.slice(0, 50), // Limit to recent 50
+      photos: photos.slice(0, 100), // Limit to recent 100
+      onboarding,
+      sessions: sessions.slice(0, 10),
+      securityEvents: securityEvents.slice(0, 20),
+      loginAttempts: recentLoginAttempts,
+      usageStats,
     });
   } catch (error: any) {
     console.error('[Admin/User] Error:', error);
@@ -733,6 +900,139 @@ adminRouter.get('/organizations', async (req: AdminRequest, res) => {
   } catch (error: any) {
     console.error('[Admin/Organizations] Error:', error);
     res.status(500).json({ ok: false, error: error.message || 'Failed to get organizations' });
+  }
+});
+
+/**
+ * GET /api/admin/organizations/:id
+ * Get comprehensive organization details with all associated data
+ */
+adminRouter.get('/organizations/:id', async (req: AdminRequest, res) => {
+  try {
+    const adminUser = req.adminUser!;
+    const orgId = req.params.id;
+
+    const db = getDatabase();
+    
+    // Get organization
+    const org = await storage.getOrg(orgId);
+    if (!org) {
+      return res.status(404).json({ ok: false, error: 'Organization not found' });
+    }
+
+    // Get subscription plan details if exists
+    const subscriptionPlan = org.subscriptionPlanId
+      ? await db.select().from(subscriptionPlans).where(eq(subscriptionPlans.id, org.subscriptionPlanId)).limit(1)
+      : null;
+
+    // Get subscription history
+    const subscriptionHistoryList = await db.select()
+      .from(subscriptionHistory)
+      .where(eq(subscriptionHistory.orgId, orgId))
+      .orderBy(desc(subscriptionHistory.createdAt))
+      .limit(50);
+
+    // Get all members
+    const members = await db.select({
+      id: orgMembers.id,
+      userId: orgMembers.userId,
+      role: orgMembers.role,
+      createdAt: orgMembers.createdAt,
+      user: {
+        id: users.id,
+        email: users.email,
+        username: users.username,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+        isActive: users.isActive,
+        lastLoginAt: users.lastLoginAt,
+        createdAt: users.createdAt,
+      }
+    })
+      .from(orgMembers)
+      .innerJoin(users, eq(orgMembers.userId, users.id))
+      .where(eq(orgMembers.orgId, orgId))
+      .orderBy(desc(orgMembers.createdAt));
+
+    // Get all jobs
+    const orgJobs = await storage.getJobs(orgId);
+    
+    // Get all quotes for those jobs (quotes are linked to jobs)
+    const jobIds = orgJobs.map(job => job.id);
+    const quotes = jobIds.length > 0
+      ? await db.select().from(quotes).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(quotes.createdAt))
+      : [];
+    
+    // Get all photos
+    const orgPhotos = jobIds.length > 0
+      ? await db.select().from(photos).where(sql`job_id = ANY(${jobIds}::uuid[])`).orderBy(desc(photos.createdAt))
+      : [];
+    
+    // Get materials
+    const orgMaterials = await storage.getMaterials(orgId);
+    
+    // Get settings
+    const settings = await storage.getOrgSettings(orgId);
+    
+    // Calculate usage stats
+    const now = new Date();
+    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    const usageStats = {
+      totalJobs: orgJobs.length,
+      totalQuotes: quotes.length,
+      totalPhotos: orgPhotos.length,
+      totalMaterials: orgMaterials.length,
+      jobsThisMonth: orgJobs.filter(j => new Date(j.createdAt) >= thisMonth).length,
+      quotesThisMonth: quotes.filter(q => new Date(q.createdAt) >= thisMonth).length,
+      photosThisMonth: orgPhotos.filter((p: any) => new Date(p.createdAt) >= thisMonth).length,
+      totalQuoteValue: quotes.reduce((sum, q) => sum + Number(q.total || 0), 0),
+      avgQuoteValue: quotes.length > 0 
+        ? quotes.reduce((sum, q) => sum + Number(q.total || 0), 0) / quotes.length 
+        : 0,
+    };
+
+    // Calculate financial summary
+    const financialSummary = {
+      totalQuoteValue: usageStats.totalQuoteValue,
+      avgQuoteValue: usageStats.avgQuoteValue,
+      quotesThisMonth: usageStats.quotesThisMonth,
+      quoteValueThisMonth: quotes
+        .filter(q => new Date(q.createdAt) >= thisMonth)
+        .reduce((sum, q) => sum + Number(q.total || 0), 0),
+    };
+
+    await logAdminAction(
+      adminUser.id,
+      AdminActionTypes.ANALYTICS_VIEW,
+      {
+        resourceType: 'organization',
+        resourceId: orgId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      }
+    );
+
+    res.json({
+      ok: true,
+      organization: org,
+      subscriptionPlan: subscriptionPlan?.[0] || null,
+      subscriptionHistory: subscriptionHistoryList,
+      members: members.map(m => ({
+        ...m,
+        user: m.user,
+      })),
+      jobs: orgJobs.slice(0, 50), // Limit to recent 50
+      quotes: quotes.slice(0, 50), // Limit to recent 50
+      photos: orgPhotos.slice(0, 100), // Limit to recent 100
+      materials: orgMaterials.slice(0, 100), // Limit to recent 100
+      settings,
+      usageStats,
+      financialSummary,
+    });
+  } catch (error: any) {
+    console.error('[Admin/Organization] Error:', error);
+    res.status(500).json({ ok: false, error: error.message || 'Failed to get organization' });
   }
 });
 

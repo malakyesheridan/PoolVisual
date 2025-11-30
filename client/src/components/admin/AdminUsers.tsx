@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useLocation } from 'wouter';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,24 +25,41 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { UserDetailModal } from './UserDetailModal';
 
 export function AdminUsers() {
+  const [location] = useLocation();
+  const searchParams = new URLSearchParams(window.location.search);
+  const viewParam = searchParams.get('view');
+  
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
+  const [viewingUserId, setViewingUserId] = useState<string | null>(viewParam || null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Handle view param from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const view = params.get('view');
+    if (view) {
+      setViewingUserId(view);
+    }
+  }, [location]);
+
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['admin', 'users', page, search],
-    queryFn: () => apiClient.getAdminUsers({ page, limit: 20, search: search || undefined }),
+    queryFn: () => apiClient.getAdminUsers({ 
+      page, 
+      limit: 20, 
+      ...(search ? { search } : {})
+    }),
     staleTime: 10 * 1000,
   });
 
@@ -179,7 +197,11 @@ export function AdminUsers() {
                   </tr>
                 ) : (
                   users.map((user: any) => (
-                    <tr key={user.id} className="hover:bg-slate-50">
+                    <tr 
+                      key={user.id} 
+                      className="hover:bg-slate-50 cursor-pointer"
+                      onClick={() => setViewingUserId(user.id)}
+                    >
                       <td className="px-4 py-3">
                         <div>
                           <div className="font-medium text-slate-900">{user.username || 'N/A'}</div>
@@ -206,7 +228,7 @@ export function AdminUsers() {
                           : 'Never'}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
                           <Button
                             variant="ghost"
                             size="sm"
@@ -373,6 +395,15 @@ export function AdminUsers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* User Detail Modal */}
+      {viewingUserId && (
+        <UserDetailModal
+          userId={viewingUserId}
+          open={!!viewingUserId}
+          onClose={() => setViewingUserId(null)}
+        />
+      )}
     </div>
   );
 }
