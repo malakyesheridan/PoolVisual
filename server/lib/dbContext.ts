@@ -7,7 +7,7 @@
  * before queries within the same transaction.
  */
 
-import { getDatabase } from './db.js';
+import { getDatabase } from '../db.js';
 import { sql } from 'drizzle-orm';
 
 export class DbContext {
