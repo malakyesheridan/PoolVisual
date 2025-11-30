@@ -83,10 +83,67 @@ class ApiClient {
     });
   }
 
-  async register(email: string, username: string, password: string, orgName?: string, industry?: string) {
+  async register(email: string, username: string, password: string, orgName?: string) {
     return this.request<{ ok: boolean; user: any; org?: any }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, username, password, orgName, industry: industry || 'pool' }),
+      body: JSON.stringify({ email, username, password, orgName }),
+    });
+  }
+
+  // Subscription methods
+  async getSubscriptionPlans(industry: 'trades' | 'real_estate') {
+    return this.request<{ ok: boolean; plans: any[] }>(`/subscription/plans/${industry}`, {
+      method: 'GET',
+    });
+  }
+
+  async getSubscriptionStatus() {
+    return this.request<{ 
+      ok: boolean; 
+      subscription: {
+        plan: any | null;
+        status: string;
+        tier: string;
+        expiresAt: string | null;
+      } 
+    }>('/subscription/status', {
+      method: 'GET',
+    });
+  }
+
+  async createCheckoutSession(data: { 
+    planKey: string; 
+    billingPeriod: 'monthly' | 'yearly' 
+  }) {
+    return this.request<{ 
+      ok: boolean; 
+      url: string; 
+      sessionId: string;
+      isPlaceholder?: boolean;
+      error?: string;
+    }>('/subscription/checkout', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async checkFeatureAccess(feature: string) {
+    return this.request<{ ok: boolean; hasAccess: boolean }>(`/subscription/features/${feature}`, {
+      method: 'GET',
+    });
+  }
+
+  // Admin methods
+  async getAdminIndustryView() {
+    return this.request<{ ok: boolean; industry: string | null }>('/admin/industry-view', {
+      method: 'GET',
+    });
+  }
+
+  async adminSwitchIndustryView(industry: string) {
+    return this.request<{ ok: boolean; industry: string; error?: string }>('/admin/switch-industry-view', {
+      method: 'POST',
+      body: JSON.stringify({ industry }),
     });
   }
 
@@ -162,7 +219,13 @@ class ApiClient {
     return this.request<{ industry: string; categoryKey: string; label: string }>(`/trade-categories/${industry}/${categoryKey}/label`);
   }
 
-  async getOrg(orgId: string) {
+  async getOrg(orgId?: string) {
+    // If no orgId provided, get current user's org
+    if (!orgId) {
+      return this.request<{ ok: boolean; org: any }>('/orgs/me', {
+        method: 'GET',
+      });
+    }
     return this.request<any>(`/orgs/${orgId}`);
   }
 
@@ -599,7 +662,68 @@ class ApiClient {
 
   // Admin endpoints
   async getAdminOverview() {
-    return this.request<{ ok: boolean; stats: { totalUsers: number; totalOrgs: number; totalJobs: number; totalQuotes: number; activeUsers: number; recentSignups: number } }>('/admin/overview');
+    return this.request<{ 
+      ok: boolean; 
+      stats: { 
+        totalUsers: number; 
+        totalOrgs: number; 
+        totalJobs: number; 
+        totalQuotes: number; 
+        totalPhotos: number;
+        totalMaterials: number;
+        activeUsers: number; 
+        recentSignups: number;
+        onboardingCompleted: number;
+        totalQuoteValue: number;
+        avgJobsPerUser: string;
+        avgQuotesPerJob: string;
+        avgPhotosPerJob: string;
+        onboardingCompletionRate: string;
+        avgQuoteValue: string;
+      } 
+    }>('/admin/overview');
+  }
+
+  async getAdminAnalyticsTimeSeries(days?: number) {
+    const params = new URLSearchParams();
+    if (days) params.append('days', days.toString());
+    return this.request<{ 
+      ok: boolean; 
+      data: Array<{ date: string; users: number; jobs: number; quotes: number; activeUsers: number }> 
+    }>(`/admin/analytics/time-series?${params.toString()}`);
+  }
+
+  async getAdminAnalyticsGrowth() {
+    return this.request<{ 
+      ok: boolean; 
+      growth: { 
+        users: { 
+          weekOverWeek: string; 
+          monthOverMonth: string; 
+          yearOverYear: string; 
+        } 
+      } 
+    }>('/admin/analytics/growth');
+  }
+
+  async getAdminAnalyticsIndustryBreakdown() {
+    return this.request<{ 
+      ok: boolean; 
+      breakdown: { 
+        users: Array<{ industry: string; count: number }>; 
+        jobs: Array<{ industry: string; count: number }>; 
+        quotes: Array<{ industry: string; count: number; totalValue: number }>; 
+      } 
+    }>('/admin/analytics/industry-breakdown');
+  }
+
+  async getAdminAnalyticsActivity(limit?: number) {
+    const params = new URLSearchParams();
+    if (limit) params.append('limit', limit.toString());
+    return this.request<{ 
+      ok: boolean; 
+      activities: Array<any> 
+    }>(`/admin/analytics/activity?${params.toString()}`);
   }
 
   async getAdminUsers(options?: { page?: number; limit?: number; search?: string }) {
@@ -641,6 +765,25 @@ class ApiClient {
     if (options?.limit) params.append('limit', options.limit.toString());
     if (options?.search) params.append('search', options.search);
     return this.request<{ ok: boolean; organizations: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/organizations?${params.toString()}`);
+  }
+
+  async getAdminJobs(options?: { page?: number; limit?: number; search?: string; status?: string; industry?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    if (options?.status) params.append('status', options.status);
+    if (options?.industry) params.append('industry', options.industry);
+    return this.request<{ ok: boolean; jobs: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/jobs?${params.toString()}`);
+  }
+
+  async getAdminQuotes(options?: { page?: number; limit?: number; search?: string; status?: string }) {
+    const params = new URLSearchParams();
+    if (options?.page) params.append('page', options.page.toString());
+    if (options?.limit) params.append('limit', options.limit.toString());
+    if (options?.search) params.append('search', options.search);
+    if (options?.status) params.append('status', options.status);
+    return this.request<{ ok: boolean; quotes: any[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(`/admin/quotes?${params.toString()}`);
   }
 
   async getAdminAuditLogs(options?: { page?: number; limit?: number; adminUserId?: string; actionType?: string }) {

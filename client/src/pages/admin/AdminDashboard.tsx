@@ -3,6 +3,8 @@ import { AdminSidebar, type AdminSection } from '@/components/admin/AdminSidebar
 import { AdminOverview } from '@/components/admin/AdminOverview';
 import { AdminUsers } from '@/components/admin/AdminUsers';
 import { AdminOrganizations } from '@/components/admin/AdminOrganizations';
+import { AdminJobs } from '@/components/admin/AdminJobs';
+import { AdminQuotes } from '@/components/admin/AdminQuotes';
 import { AdminAuditLogs } from '@/components/admin/AdminAuditLogs';
 import { Shield, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +38,10 @@ export default function AdminDashboard() {
         return <AdminUsers />;
       case 'organizations':
         return <AdminOrganizations />;
+      case 'jobs':
+        return <AdminJobs />;
+      case 'quotes':
+        return <AdminQuotes />;
       case 'audit-logs':
         return <AdminAuditLogs />;
       default:

@@ -39,6 +39,8 @@ const ForgotPassword = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
 const AdminDashboard = React.lazy(() => import("@/pages/admin/AdminDashboard"));
 const Onboarding = React.lazy(() => import("@/pages/Onboarding"));
+const Subscribe = React.lazy(() => import("@/pages/subscribe"));
+const SubscribeSuccess = React.lazy(() => import("@/pages/subscribe-success"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 // CORRECTED: Import the hook instead of using duplicate query
 import { useOnboarding } from '@/hooks/useOnboarding';
@@ -218,6 +220,22 @@ function ProtectedRouter() {
             </ProtectedRoute>
           </Route>
           
+          <Route path="/subscribe/success">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <SubscribeSuccess />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/subscribe">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <Subscribe />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
           <Route path="/onboarding">
             <ProtectedRoute>
               <Suspense fallback={<PageLoader />}>
@@ -268,6 +286,7 @@ function PublicRouter() {
     </Switch>
   );
 }
+
 
 function App() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);

@@ -10,7 +10,9 @@ interface PreviewModalProps {
   maskCount: number;
   materials: Array<{ id: string; name?: string }>;
   imageDimensions: { width: number; height: number };
-  mode: 'add_pool' | 'add_decoration' | 'blend_materials';
+  mode: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal';
+  userPrompt?: string;
+  showPromptInput?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
   loading?: boolean;
@@ -24,6 +26,8 @@ export function PreviewModal({
   materials,
   imageDimensions,
   mode,
+  userPrompt,
+  showPromptInput,
   onConfirm,
   onCancel,
   loading = false,
@@ -49,10 +53,14 @@ export function PreviewModal({
     onOpenChange(false);
   };
 
-  const modeLabels = {
+  const modeLabels: Record<string, string> = {
     add_pool: 'Add Pool',
     add_decoration: 'Add Decoration',
     blend_materials: 'Blend Materials',
+    image_enhancement: 'Image Enhancement',
+    day_to_dusk: 'Day to Dusk',
+    stage_room: 'Virtual Staging',
+    item_removal: 'Item Removal',
   };
 
   return (
@@ -146,6 +154,14 @@ export function PreviewModal({
             )}
           </div>
         </div>
+
+        {/* User Prompt Display */}
+        {showPromptInput && userPrompt && (
+          <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
+            <div className="text-sm font-medium text-slate-700 mb-1">Custom Prompt:</div>
+            <p className="text-sm text-slate-600 italic">"{userPrompt}"</p>
+          </div>
+        )}
 
         {/* Warning Message */}
         <div className="flex items-start gap-2 p-3 bg-primary/5 border border-primary/20 rounded-lg">

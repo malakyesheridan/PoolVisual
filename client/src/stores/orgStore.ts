@@ -5,6 +5,7 @@ interface Org {
   id: string;
   name: string;
   industry?: string | null;
+  industryLocked?: boolean | null;
   logoUrl?: string | null;
   abn?: string | null;
   contactEmail?: string | null;

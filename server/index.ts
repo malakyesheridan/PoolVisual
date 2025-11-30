@@ -79,6 +79,11 @@ app.use(async (req, res, next) => {
   next();
 });
 
+// Database context middleware (for RLS policies)
+import { setDbUserContext, clearDbUserContext } from './middleware/auth.js';
+app.use(setDbUserContext);
+app.use(clearDbUserContext);
+
 // Dev mode: Auto-authenticate for testing (development only)
 if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_AUTH === '1') {
   app.use(async (req, res, next) => {

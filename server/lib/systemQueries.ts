@@ -16,7 +16,7 @@ import { executeQuery } from './dbHelpers.js';
 export async function getMasksByPhotoSystem(photoId: string): Promise<any[]> {
   try {
     const result = await executeQuery(
-      `SELECT * FROM get_masks_by_photo_system($1)`,
+      `SELECT * FROM system_get_masks_by_photo($1)`,
       [photoId]
     );
     
@@ -40,9 +40,9 @@ export async function getMasksByPhotoSystem(photoId: string): Promise<any[]> {
     if (error.message?.includes('does not exist') || 
         error.message?.includes('function get_masks_by_photo_system') ||
         error.code === '42883') {
-      console.error(`[SystemQueries] ❌ CRITICAL: Function get_masks_by_photo_system() does not exist in database!`);
+      console.error(`[SystemQueries] ❌ CRITICAL: Function system_get_masks_by_photo() does not exist in database!`);
       console.error(`[SystemQueries] ❌ This means the migration has not been run in production.`);
-      console.error(`[SystemQueries] ❌ Run: npm run db:migrate:system-masks (or psql $DATABASE_URL -f migrations/010_system_mask_query.sql)`);
+      console.error(`[SystemQueries] ❌ Run: npm run db:migrate (or psql $DATABASE_URL -f migrations/025_fix_rls_for_session_auth.sql)`);
       console.error(`[SystemQueries] Error details:`, {
         message: error.message,
         code: error.code,

@@ -5,6 +5,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useLocation } from 'wouter';
 import { useAuthStore } from '@/stores/auth-store';
+import { useOrgStore } from '@/stores/orgStore';
 import { apiClient } from '@/lib/api-client';
 import { AlertCircle, Loader2 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -17,6 +18,7 @@ import { Logo } from '@/components/brand/Logo';
 export default function Login() {
   const [, navigate] = useLocation();
   const login = useAuthStore((state) => state.login);
+  const { setCurrentOrg } = useOrgStore();
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,35 +87,36 @@ export default function Login() {
     setError(null);
 
     try {
-      // For now, default to 'pool' industry (can be updated in onboarding)
+      // Register user (without industry - will be set during subscription)
       const response = await apiClient.register(
         data.email, 
         data.username, 
         data.password,
-        data.orgName || undefined, // Pass orgName if provided, otherwise undefined
-        'pool' // Default industry, can be updated in onboarding
+        data.orgName || undefined
+        // Don't pass industry - will be set during subscription
       );
+      
       if (response.ok) {
         login(response.user);
         
-        // Check if onboarding needed
-        try {
-          const onboarding = await apiClient.getOnboardingStatus();
-          if (!onboarding?.completed) {
-            navigate('/onboarding');
-          } else {
-            navigate('/dashboard');
-          }
-        } catch (error) {
-          // If onboarding check fails, assume new user and go to onboarding
-          console.warn('Onboarding check failed, redirecting to onboarding:', error);
-          navigate('/onboarding');
+        // Update org store if org was created
+        if (response.org) {
+          setCurrentOrg(response.org);
         }
+        
+        // Always redirect to subscription page for new users
+        navigate('/subscribe');
       } else {
-        setError('Registration failed');
+        setError(response.error || 'Registration failed');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Registration failed');
+    } catch (err: any) {
+      const errorMessage = 
+        err?.response?.data?.error || 
+        err?.response?.data?.message || 
+        err?.message || 
+        'Registration failed. Please try again.';
+      setError(errorMessage);
+      console.error('[Login] Registration error:', err);
     } finally {
       setIsLoading(false);
     }

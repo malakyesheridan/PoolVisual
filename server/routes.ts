@@ -134,6 +134,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.use('/api/admin', adminRouter);
   console.log('✅ Admin routes registered');
   
+  // Register subscription routes
+  const { subscriptionRoutes } = await import('./routes/subscription.js');
+  app.use('/api/subscription', subscriptionRoutes);
+  console.log('✅ Subscription routes registered');
+  
   // Texture proxy (must be early to avoid auth middleware conflicts)
   registerTextureProxyRoutes(app);
   
@@ -545,6 +550,19 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(orgs);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Get current user's organization (first org or primary)
+  app.get("/api/orgs/me", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const org = await storage.getOrgByUserId(req.user.id);
+      if (!org) {
+        return res.status(404).json({ ok: false, error: 'Organization not found' });
+      }
+      res.json({ ok: true, org });
+    } catch (error) {
+      res.status(500).json({ ok: false, error: (error as Error).message });
     }
   });
 

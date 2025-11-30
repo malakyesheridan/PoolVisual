@@ -213,21 +213,24 @@ export async function processOutboxEvents() {
             let mode = payload.mode || payload.options?.mode || 'add_decoration';
             
             // Map mode value to match n8n workflow expectations
-            // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
+            // Trades modes: 'blend_material' (singular), 'add_decoration', 'add_pool'
+            // Real estate modes: 'image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'
             const modeMapping: Record<string, string> = {
+              // Trades modes
               'blend_materials': 'blend_material',
               'blend_material': 'blend_material',
               'add_decoration': 'add_decoration',
-              'add_pool': 'add_pool'
+              'add_pool': 'add_pool',
+              // Real estate modes (pass through as-is)
+              'image_enhancement': 'image_enhancement',
+              'day_to_dusk': 'day_to_dusk',
+              'stage_room': 'stage_room',
+              'item_removal': 'item_removal',
             };
-            mode = modeMapping[mode] || 'add_decoration';
+            mode = modeMapping[mode] || mode || 'add_decoration';
             
-            // Validate mode is one of the three valid values
-            const validModes = ['blend_material', 'add_decoration', 'add_pool'];
-            if (!validModes.includes(mode)) {
-              console.warn(`[Outbox] Invalid mode '${mode}', defaulting to 'add_decoration'`);
-              mode = 'add_decoration';
-            }
+            // Check if mode requires masks (trades modes do, real estate don't)
+            const masksRequired = ['blend_material', 'add_decoration', 'add_pool'].includes(mode);
             
             // Convert relative imageUrl to absolute URL if needed
             let absoluteImageUrl = payload.imageUrl;
@@ -283,7 +286,8 @@ export async function processOutboxEvents() {
               }
               
               // Still generate mask image if needed (for AI inpainting)
-              if (effectivePhotoId && payload.masks && payload.masks.length > 0) {
+              // Only generate if masks are required for this mode
+              if (masksRequired && effectivePhotoId && payload.masks && payload.masks.length > 0) {
                 try {
                   const photo = await storage.getPhoto(effectivePhotoId);
                   if (photo) {
@@ -296,6 +300,8 @@ export async function processOutboxEvents() {
                 } catch (maskError) {
                   console.warn(`[Outbox] Failed to generate mask image:`, maskError);
                 }
+              } else if (!masksRequired) {
+                console.log(`[Outbox] Mode '${mode}' does not require masks, skipping mask image generation`);
               }
             } else if (effectivePhotoId) {
               // FALLBACK: Generate composite server-side if client didn't provide one
@@ -325,7 +331,15 @@ export async function processOutboxEvents() {
               }
               
               if (dbMasks.length === 0) {
-                console.warn(`[Outbox] ⚠️ No masks found in database, using original image URL`);
+                if (masksRequired) {
+                  console.warn(`[Outbox] ⚠️ No masks found in database but masks are required for mode '${mode}', using original image URL`);
+                } else {
+                  console.log(`[Outbox] ✅ No masks found but mode '${mode}' doesn't require masks, using original image URL`);
+                }
+                compositeImageUrl = absoluteImageUrl;
+              } else if (!masksRequired) {
+                // Mode doesn't require masks, skip composite generation
+                console.log(`[Outbox] ✅ Mode '${mode}' doesn't require masks, using original image URL`);
                 compositeImageUrl = absoluteImageUrl;
               } else {
                 try {
@@ -406,12 +420,15 @@ export async function processOutboxEvents() {
               compositeImageUrl = absoluteImageUrl;
               
               // Try to generate mask image from payload if available (fallback for cases without photoId)
-              if (payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
+              // Only if masks are required for this mode
+              if (masksRequired && payload.masks && payload.masks.length > 0 && payload.width && payload.height) {
                 try {
                   maskImageUrl = await generateMaskImage(payload.masks, payload.width, payload.height);
                 } catch (error) {
                   console.warn(`[Outbox] Failed to generate mask image from payload:`, error);
                 }
+              } else if (!masksRequired) {
+                console.log(`[Outbox] Mode '${mode}' doesn't require masks, skipping mask image generation`);
               }
             }
             
@@ -429,7 +446,10 @@ export async function processOutboxEvents() {
               masks: payload.masks || [],
               maskImageUrl: maskImageUrl, // Generated mask image URL for AI inpainting (if needed)
               mode: mode, // Top-level mode field (required by n8n workflow)
-              options: finalOptions,
+              options: {
+                ...finalOptions,
+                userPrompt: payload.options?.userPrompt, // Include user prompt if present
+              },
               calibration: payload.calibration,
               width: payload.width,
               height: payload.height,

@@ -172,6 +172,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       masks = [],
       mode, // Top-level mode field (for n8n workflow routing)
       options = {},
+      userPrompt, // NEW: Optional user prompt
       calibration,
       width,
       height
@@ -180,6 +181,46 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     // Basic input validation
     if (!tenantId || !imageUrl || !inputHash) {
       return res.status(400).json({ message: 'tenantId, imageUrl, inputHash are required' });
+    }
+
+    // Get org to check industry
+    const org = await storage.getOrg(tenantId);
+    if (!org) {
+      return res.status(404).json({ message: 'Organization not found' });
+    }
+
+    // Validate mode based on industry
+    const validModes = getValidEnhancementModes(org.industry);
+    if (mode && !validModes.includes(mode)) {
+      return res.status(400).json({ 
+        message: `Invalid enhancement mode for ${org.industry} industry`,
+        validModes,
+        providedMode: mode
+      });
+    }
+
+    // Check if masks are required for this mode
+    const masksRequired = areMasksRequiredForMode(mode, org.industry);
+    if (masksRequired && (!masks || masks.length === 0)) {
+      return res.status(400).json({ 
+        message: 'Masks are required for this enhancement mode',
+        mode,
+        industry: org.industry
+      });
+    }
+
+    // Validate and sanitize user prompt if provided
+    let sanitizedPrompt: string | undefined;
+    if (userPrompt) {
+      if (typeof userPrompt !== 'string' || userPrompt.length > 500) {
+        return res.status(400).json({ 
+          message: 'User prompt must be a string under 500 characters',
+          providedLength: typeof userPrompt === 'string' ? userPrompt.length : 0
+        });
+      }
+      sanitizedPrompt = sanitizeUserPrompt(userPrompt);
+      // Add to options
+      options.userPrompt = sanitizedPrompt;
     }
 
     // Enforce size/MP if client provided dimensions (defensive)
@@ -199,11 +240,15 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     }
 
     // Normalized cache key (provider + model are fixed here)
+    // Only include masks if required (for trades), exclude for real estate
     const cacheKey = generateCacheKey({
       inputHash,
-      masks,
+      masks: masksRequired ? masks : [], // Only include if required
       calibration,
-      options,
+      options: {
+        ...options,
+        userPrompt: sanitizedPrompt, // Include in cache key
+      },
       provider: 'comfy:inpaint',
       model: 'sdxl'
     });
@@ -1434,6 +1479,83 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
     return res.status(500).json({ message: err?.message || 'Failed to delete variant' });
   }
 });
+
+/**
+ * Get valid enhancement modes for an industry
+ */
+function getValidEnhancementModes(industry: string | null): string[] {
+  if (industry === 'real_estate') {
+    return ['image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'];
+  }
+  // Default to trades modes
+  return ['add_pool', 'add_decoration', 'blend_materials'];
+}
+
+/**
+ * Check if masks are required for a mode
+ */
+function areMasksRequiredForMode(mode: string | undefined, industry: string | null): boolean {
+  if (industry === 'real_estate') {
+    // Real estate modes don't require masks (whole-image transformations)
+    return false;
+  }
+  
+  // Trades modes require masks (material-specific regions)
+  if (mode === 'add_pool' || mode === 'add_decoration' || mode === 'blend_materials') {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Sanitize user prompt to prevent injection attacks
+ */
+function sanitizeUserPrompt(prompt: string): string {
+  // Remove potentially dangerous patterns
+  let sanitized = prompt
+    // Remove HTML/script tags
+    .replace(/<[^>]*>/g, '')
+    // Remove javascript: protocol
+    .replace(/javascript:/gi, '')
+    // Remove event handlers
+    .replace(/on\w+\s*=/gi, '')
+    // Remove control characters
+    .replace(/[\x00-\x1F\x7F]/g, '')
+    // Remove common injection patterns
+    .replace(/ignore\s+previous\s+instructions/gi, '')
+    .replace(/system\s*:/gi, '')
+    .replace(/assistant\s*:/gi, '')
+    .replace(/user\s*:/gi, '')
+    // Trim whitespace
+    .trim();
+
+  // Enforce length limit
+  if (sanitized.length > 500) {
+    sanitized = sanitized.substring(0, 500);
+  }
+
+  // Log suspicious patterns (for monitoring)
+  const suspiciousPatterns = [
+    /ignore/i,
+    /override/i,
+    /system/i,
+    /admin/i,
+    /password/i,
+    /token/i,
+  ];
+
+  const hasSuspiciousPattern = suspiciousPatterns.some(pattern => pattern.test(sanitized));
+  if (hasSuspiciousPattern) {
+    console.warn('[Enhancement] Suspicious prompt pattern detected', {
+      originalLength: prompt.length,
+      sanitizedLength: sanitized.length,
+      // Don't log the actual prompt to avoid logging sensitive data
+    });
+  }
+
+  return sanitized;
+}
 
 export default router;
 

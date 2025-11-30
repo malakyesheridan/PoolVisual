@@ -24,6 +24,12 @@ import {
   InsertTradeCategoryMapping,
   UserOnboarding,
   InsertUserOnboarding,
+  SubscriptionPlan,
+  InsertSubscriptionPlan,
+  SubscriptionHistory,
+  InsertSubscriptionHistory,
+  AdminIndustryPreference,
+  InsertAdminIndustryPreference,
   users,
   orgs,
   orgMembers,
@@ -31,6 +37,9 @@ import {
   userPreferences,
   tradeCategoryMapping,
   userOnboarding,
+  subscriptionPlans,
+  subscriptionHistory,
+  adminIndustryPreferences,
   jobs,
   photos,
   materials,
@@ -152,6 +161,28 @@ export interface IStorage {
   // Trade Categories
   getTradeCategories(industry: string): Promise<TradeCategoryMapping[]>;
   getCategoryLabel(industry: string, categoryKey: string): Promise<string | null>;
+  
+  // Subscription Plans
+  getSubscriptionPlans(industry: string): Promise<SubscriptionPlan[]>;
+  getSubscriptionPlan(id: string): Promise<SubscriptionPlan | null>;
+  getSubscriptionPlanByKey(planKey: string): Promise<SubscriptionPlan | null>;
+  createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan>;
+  updateSubscriptionPlan(id: string, updates: Partial<SubscriptionPlan>): Promise<SubscriptionPlan>;
+  
+  // Subscription History
+  createSubscriptionHistory(entry: InsertSubscriptionHistory): Promise<SubscriptionHistory>;
+  getSubscriptionHistory(orgId: string): Promise<SubscriptionHistory[]>;
+  
+  // Org by Stripe
+  getOrgByStripeSubscription(subscriptionId: string): Promise<Org | null>;
+  getOrgByStripeCustomer(customerId: string): Promise<Org | null>;
+  
+  // Admin Industry Preferences
+  upsertAdminIndustryPreference(userId: string, industry: string): Promise<void>;
+  getAdminIndustryPreference(userId: string): Promise<{ preferredIndustry: string | null } | null>;
+  
+  // Get org by user ID (helper)
+  getOrgByUserId(userId: string): Promise<Org | null>;
   
   // User Onboarding
   getUserOnboarding(userId: string): Promise<UserOnboarding | null>;
@@ -1328,6 +1359,137 @@ export class PostgresStorage implements IStorage {
     }
     
     return await query;
+  }
+
+  // Subscription Plans methods
+  async getSubscriptionPlans(industry: string): Promise<SubscriptionPlan[]> {
+    const db = ensureDb();
+    return await db
+      .select()
+      .from(subscriptionPlans)
+      .where(and(
+        eq(subscriptionPlans.industry, industry),
+        eq(subscriptionPlans.isActive, true)
+      ))
+      .orderBy(asc(subscriptionPlans.displayOrder));
+  }
+
+  async getSubscriptionPlan(id: string): Promise<SubscriptionPlan | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.id, id))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  async getSubscriptionPlanByKey(planKey: string): Promise<SubscriptionPlan | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(subscriptionPlans)
+      .where(eq(subscriptionPlans.planKey, planKey))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  async createSubscriptionPlan(plan: InsertSubscriptionPlan): Promise<SubscriptionPlan> {
+    const [created] = await ensureDb()
+      .insert(subscriptionPlans)
+      .values(plan)
+      .returning();
+    if (!created) throw new Error("Failed to create subscription plan");
+    return created;
+  }
+
+  async updateSubscriptionPlan(id: string, updates: Partial<SubscriptionPlan>): Promise<SubscriptionPlan> {
+    const [updated] = await ensureDb()
+      .update(subscriptionPlans)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(subscriptionPlans.id, id))
+      .returning();
+    if (!updated) throw new Error("Failed to update subscription plan");
+    return updated;
+  }
+
+  // Subscription History methods
+  async createSubscriptionHistory(entry: InsertSubscriptionHistory): Promise<SubscriptionHistory> {
+    const [created] = await ensureDb()
+      .insert(subscriptionHistory)
+      .values(entry)
+      .returning();
+    if (!created) throw new Error("Failed to create subscription history");
+    return created;
+  }
+
+  async getSubscriptionHistory(orgId: string): Promise<SubscriptionHistoryEntry[]> {
+    return await ensureDb()
+      .select()
+      .from(subscriptionHistory)
+      .where(eq(subscriptionHistory.orgId, orgId))
+      .orderBy(desc(subscriptionHistory.createdAt));
+  }
+
+  // Org by Stripe methods
+  async getOrgByStripeSubscription(subscriptionId: string): Promise<Org | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(orgs)
+      .where(eq(orgs.stripeSubscriptionId, subscriptionId))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  async getOrgByStripeCustomer(customerId: string): Promise<Org | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(orgs)
+      .where(eq(orgs.stripeCustomerId, customerId))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  // Admin Industry Preferences methods
+  async upsertAdminIndustryPreference(userId: string, industry: string): Promise<void> {
+    await ensureDb()
+      .insert(adminIndustryPreferences)
+      .values({
+        userId,
+        preferredIndustry: industry,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: adminIndustryPreferences.userId,
+        set: {
+          preferredIndustry: industry,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
+  async getAdminIndustryPreference(userId: string): Promise<{ preferredIndustry: string | null } | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(adminIndustryPreferences)
+      .where(eq(adminIndustryPreferences.userId, userId))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  // Get org by user ID (helper)
+  async getOrgByUserId(userId: string): Promise<Org | null> {
+    const db = ensureDb();
+    const result = await db
+      .select({ org: orgs })
+      .from(orgs)
+      .innerJoin(orgMembers, eq(orgMembers.orgId, orgs.id))
+      .where(eq(orgMembers.userId, userId))
+      .limit(1);
+    return result[0]?.org || null;
   }
 }
 

@@ -7,10 +7,12 @@ import { useOrgStore } from '@/stores/orgStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Sparkles, Sunset, Home as HomeIcon, Eraser, Info } from 'lucide-react';
 import { getIndustryTerm, getIndustryQuestionOptions } from '@/lib/industry-terminology';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Label } from '@/components/ui/label';
 
-type OnboardingStep = 'welcome' | 'industry_selection' | 'questionnaire' | 'preview' | 'upload' | 'material_demo' | 'workspace_setup' | 'completed';
+type OnboardingStep = 'welcome' | 'industry_selection' | 'questionnaire' | 'preview' | 'upload' | 'material_demo' | 'enhancement_demo' | 'workspace_setup' | 'completed';
 
 interface OnboardingResponses {
   industry?: string;
@@ -19,15 +21,39 @@ interface OnboardingResponses {
   experience?: string;
 }
 
-const STEPS: { id: OnboardingStep; title: string; description: string }[] = [
-  { id: 'welcome', title: 'Welcome', description: 'Get started with EasyFlow Studio' },
-  { id: 'industry_selection', title: 'Select Industry', description: 'Choose your primary trade' },
-  { id: 'questionnaire', title: 'Tell Us About Yourself', description: 'Help us personalize your experience' },
-  { id: 'preview', title: 'Preview', description: 'See what you can do' },
-  { id: 'upload', title: 'Upload Your First Photo', description: 'Get hands-on experience' },
-  { id: 'material_demo', title: 'Explore Materials', description: 'See how materials work' },
-  { id: 'workspace_setup', title: 'Workspace Setup', description: 'Configure your workspace' },
-];
+// Dynamic steps based on industry
+const getOnboardingSteps = (industry: string | undefined): Array<{
+  id: OnboardingStep;
+  title: string;
+  description: string;
+}> => {
+  const baseSteps = [
+    { id: 'welcome' as const, title: 'Welcome', description: 'Get started with EasyFlow Studio' },
+    { id: 'industry_selection' as const, title: 'Select Industry', description: 'Choose your primary trade' },
+  ];
+
+  // Industry should already be set from subscription, but allow override for admin
+  if (industry === 'real_estate') {
+    return [
+      ...baseSteps,
+      { id: 'questionnaire' as const, title: 'Tell Us About Yourself', description: 'Help us personalize your experience' },
+      { id: 'preview' as const, title: 'Preview', description: 'See what you can do' },
+      { id: 'upload' as const, title: 'Upload Your First Photo', description: 'Get hands-on experience' },
+      { id: 'enhancement_demo' as const, title: 'Try Enhancement', description: 'Enhance your photo' },
+      { id: 'workspace_setup' as const, title: 'Workspace Setup', description: 'Configure your workspace' },
+    ];
+  }
+
+  // Trades flow (existing)
+  return [
+    ...baseSteps,
+    { id: 'questionnaire' as const, title: 'Tell Us About Yourself', description: 'Help us personalize your experience' },
+    { id: 'preview' as const, title: 'Preview', description: 'See what you can do' },
+    { id: 'upload' as const, title: 'Upload Your First Photo', description: 'Get hands-on experience' },
+    { id: 'material_demo' as const, title: 'Explore Materials', description: 'See how materials work' },
+    { id: 'workspace_setup' as const, title: 'Workspace Setup', description: 'Configure your workspace' },
+  ];
+};
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
@@ -37,9 +63,14 @@ export default function Onboarding() {
 
   // Use refs to prevent race conditions with server state
   const isInitialized = useRef(false);
-  const [currentStep, setCurrentStep] = useState<OnboardingStep>('welcome');
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [responses, setResponses] = useState<OnboardingResponses>({});
   const [isNavigating, setIsNavigating] = useState(false);
+
+  // Use org industry if available, otherwise onboarding industry
+  const effectiveIndustry = currentOrg?.industry || responses.industry || 'pool';
+  const steps = getOnboardingSteps(effectiveIndustry);
+  const currentStep = steps[currentStepIndex]?.id || 'welcome';
 
   // Fetch onboarding status
   const { data: onboarding, isLoading } = useQuery({
@@ -102,11 +133,16 @@ export default function Onboarding() {
       const serverStep = onboarding.step || 'welcome';
       const serverResponses = onboarding.responses || {};
       
-      setCurrentStep(serverStep);
+      // Find step index in current steps array
+      const stepIndex = steps.findIndex(s => s.id === serverStep);
+      if (stepIndex >= 0) {
+        setCurrentStepIndex(stepIndex);
+      }
+      
       setResponses(serverResponses);
       isInitialized.current = true;
     }
-  }, [onboarding]);
+  }, [onboarding, steps]);
 
   // If onboarding is already completed, redirect to dashboard
   useEffect(() => {
@@ -129,37 +165,43 @@ export default function Onboarding() {
     // Debounce the API call
     debounceTimer.current = setTimeout(() => {
       updateOnboardingMutation.mutate({
-        step: currentStep,
+        step: steps[currentStepIndex]?.id || 'welcome',
         responses: newResponses,
       });
     }, 500); // 500ms debounce
-  }, [responses, currentStep, updateOnboardingMutation]);
+  }, [responses, currentStepIndex, steps, updateOnboardingMutation]);
 
   // Update industry and save to org
   const handleIndustrySelect = useCallback(async (industry: string) => {
+    // Don't update if industry is locked
+    if (currentOrg?.industryLocked) {
+      return;
+    }
+
     setResponses(prev => ({ ...prev, industry }));
     
     // Update onboarding immediately
     await updateOnboardingMutation.mutateAsync({
-      step: currentStep,
+      step: steps[currentStepIndex]?.id || 'welcome',
       responses: { ...responses, industry },
     });
 
-    // Update org industry
-    updateOrgIndustryMutation.mutate(industry);
-  }, [responses, currentStep, updateOnboardingMutation, updateOrgIndustryMutation]);
+    // Update org industry (only if not locked)
+    if (!currentOrg?.industryLocked) {
+      updateOrgIndustryMutation.mutate(industry);
+    }
+  }, [responses, currentStepIndex, steps, currentOrg, updateOnboardingMutation, updateOrgIndustryMutation]);
 
   const handleNext = useCallback(async () => {
     if (isNavigating) return;
     setIsNavigating(true);
 
     try {
-      const currentIndex = STEPS.findIndex(s => s.id === currentStep);
-      if (currentIndex >= 0 && currentIndex < STEPS.length - 1) {
-        const nextStep = STEPS[currentIndex + 1];
+      if (currentStepIndex < steps.length - 1) {
+        const nextStep = steps[currentStepIndex + 1];
         if (nextStep) {
           // Update local state immediately
-          setCurrentStep(nextStep.id);
+          setCurrentStepIndex(currentStepIndex + 1);
           
           // Save to server
           await updateOnboardingMutation.mutateAsync({
@@ -171,19 +213,18 @@ export default function Onboarding() {
     } finally {
       setIsNavigating(false);
     }
-  }, [currentStep, responses, isNavigating, updateOnboardingMutation]);
+  }, [currentStepIndex, steps, responses, isNavigating, updateOnboardingMutation]);
 
   const handleBack = useCallback(async () => {
     if (isNavigating) return;
     setIsNavigating(true);
 
     try {
-      const currentIndex = STEPS.findIndex(s => s.id === currentStep);
-      if (currentIndex > 0) {
-        const prevStep = STEPS[currentIndex - 1];
+      if (currentStepIndex > 0) {
+        const prevStep = steps[currentStepIndex - 1];
         if (prevStep) {
           // Update local state immediately
-          setCurrentStep(prevStep.id);
+          setCurrentStepIndex(currentStepIndex - 1);
           
           // Save to server
           await updateOnboardingMutation.mutateAsync({
@@ -195,14 +236,13 @@ export default function Onboarding() {
     } finally {
       setIsNavigating(false);
     }
-  }, [currentStep, responses, isNavigating, updateOnboardingMutation]);
+  }, [currentStepIndex, steps, responses, isNavigating, updateOnboardingMutation]);
 
   const handleComplete = async () => {
     await completeOnboardingMutation.mutateAsync();
   };
 
-  const currentStepIndex = STEPS.findIndex(s => s.id === currentStep);
-  const progress = ((currentStepIndex + 1) / STEPS.length) * 100;
+  const progress = ((currentStepIndex + 1) / steps.length) * 100;
 
   if (isLoading) {
     return (
@@ -225,7 +265,7 @@ export default function Onboarding() {
           <div className="mt-4">
             <Progress value={progress} className="h-2" />
             <p className="text-sm text-muted-foreground mt-2">
-              Step {currentStepIndex + 1} of {STEPS.length}
+              Step {currentStepIndex + 1} of {steps.length}
             </p>
           </div>
         </CardHeader>
@@ -237,16 +277,17 @@ export default function Onboarding() {
             )}
             {currentStep === 'industry_selection' && (
               <IndustrySelectionStep
-                selectedIndustry={responses.industry}
+                selectedIndustry={effectiveIndustry}
                 onSelect={handleIndustrySelect}
                 onNext={handleNext}
                 onBack={handleBack}
-                disabled={isNavigating}
+                disabled={isNavigating || currentOrg?.industryLocked}
+                industryLocked={currentOrg?.industryLocked}
               />
             )}
             {currentStep === 'questionnaire' && (
               <QuestionnaireStep
-                industry={responses.industry}
+                industry={effectiveIndustry}
                 responses={responses}
                 onUpdate={updateResponse}
                 onNext={handleNext}
@@ -256,7 +297,7 @@ export default function Onboarding() {
             )}
             {currentStep === 'preview' && (
               <PreviewStep
-                industry={responses.industry}
+                industry={effectiveIndustry}
                 onNext={handleNext}
                 onBack={handleBack}
                 disabled={isNavigating}
@@ -264,15 +305,23 @@ export default function Onboarding() {
             )}
             {currentStep === 'upload' && (
               <UploadStep
-                industry={responses.industry}
+                industry={effectiveIndustry}
                 onNext={handleNext}
                 onBack={handleBack}
                 disabled={isNavigating}
               />
             )}
-            {currentStep === 'material_demo' && (
+            {currentStep === 'material_demo' && effectiveIndustry !== 'real_estate' && (
               <MaterialDemoStep
-                industry={responses.industry || 'pool'}
+                industry={effectiveIndustry || 'pool'}
+                onNext={handleNext}
+                onBack={handleBack}
+                disabled={isNavigating}
+              />
+            )}
+            {currentStep === 'enhancement_demo' && effectiveIndustry === 'real_estate' && (
+              <EnhancementDemoStep
+                industry={effectiveIndustry}
                 onNext={handleNext}
                 onBack={handleBack}
                 disabled={isNavigating}
@@ -280,7 +329,7 @@ export default function Onboarding() {
             )}
             {currentStep === 'workspace_setup' && (
               <WorkspaceSetupStep
-                industry={responses.industry}
+                industry={effectiveIndustry}
                 onComplete={handleComplete}
                 onBack={handleBack}
                 disabled={isNavigating}
@@ -316,13 +365,49 @@ function IndustrySelectionStep({
   onNext,
   onBack,
   disabled,
+  industryLocked,
 }: {
   selectedIndustry?: string | undefined;
   onSelect: (industry: string) => void | Promise<void>;
   onNext: () => void | Promise<void>;
   onBack: () => void | Promise<void>;
   disabled?: boolean;
+  industryLocked?: boolean;
 }) {
+  const { currentOrg } = useOrgStore();
+
+  // If industry is locked, show read-only
+  if (industryLocked && currentOrg?.industry) {
+    const industryLabels: Record<string, string> = {
+      pool: 'Pool',
+      landscaping: 'Landscaping',
+      building: 'Building',
+      electrical: 'Electrical',
+      plumbing: 'Plumbing',
+      real_estate: 'Real Estate',
+      other: 'Other',
+    };
+    return (
+      <div className="space-y-6">
+        <Alert>
+          <Info className="h-4 w-4" />
+          <AlertDescription>
+            Your industry is set to <strong>{industryLabels[currentOrg.industry] || currentOrg.industry}</strong> based on your subscription plan.
+            This cannot be changed.
+          </AlertDescription>
+        </Alert>
+        <div className="flex justify-between mt-8">
+          <Button variant="outline" onClick={onBack} disabled={disabled}>
+            Back
+          </Button>
+          <Button onClick={onNext} disabled={disabled}>
+            Continue
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const industries = [
     { id: 'pool', label: 'Pool Renovation', icon: '🏊' },
     { id: 'landscaping', label: 'Landscaping', icon: '🌳' },
@@ -623,6 +708,110 @@ function MaterialDemoStep({
         </Button>
         <Button onClick={onNext} disabled={disabled}>
           Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function EnhancementDemoStep({
+  industry,
+  onNext,
+  onBack,
+  disabled,
+}: {
+  industry?: string;
+  onNext: () => void;
+  onBack: () => void;
+  disabled?: boolean;
+}) {
+  const [demoImage, setDemoImage] = useState<string | null>(null);
+  const [enhancementType, setEnhancementType] = useState<string>('image_enhancement');
+
+  // Load demo image
+  useEffect(() => {
+    // Use a sample real estate photo
+    setDemoImage('/demo-images/real-estate-sample.jpg');
+  }, []);
+
+  const enhancementTypes = [
+    { key: 'image_enhancement', label: 'Image Enhancement', icon: Sparkles },
+    { key: 'day_to_dusk', label: 'Day to Dusk', icon: Sunset },
+    { key: 'stage_room', label: 'Virtual Staging', icon: HomeIcon },
+    { key: 'item_removal', label: 'Item Removal', icon: Eraser },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-xl font-semibold mb-2">Try Photo Enhancement</h3>
+        <p className="text-slate-600">
+          Enhance your uploaded photo with AI-powered tools designed for real estate.
+        </p>
+      </div>
+
+      {/* Enhancement Type Selector */}
+      <div>
+        <Label className="mb-3 block">Select Enhancement Type</Label>
+        <div className="grid grid-cols-2 gap-3">
+          {enhancementTypes.map((type) => {
+            const Icon = type.icon;
+            return (
+              <button
+                key={type.key}
+                onClick={() => setEnhancementType(type.key)}
+                disabled={disabled}
+                className={`p-4 border-2 rounded-lg text-left transition-all ${
+                  enhancementType === type.key
+                    ? 'border-primary bg-primary/5'
+                    : 'border-slate-200 hover:border-slate-300'
+                } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <Icon className="h-6 w-6 mb-2 text-slate-600" />
+                <div className="font-medium">{type.label}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Demo Preview */}
+      {demoImage && (
+        <div className="border rounded-lg p-4 bg-slate-50">
+          <div className="text-sm text-slate-600 mb-2">
+            Preview: {enhancementTypes.find(t => t.key === enhancementType)?.label}
+          </div>
+          <div className="relative aspect-video bg-slate-200 rounded overflow-hidden">
+            <img
+              src={demoImage}
+              alt="Demo"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="text-white text-center">
+                <Sparkles className="h-8 w-8 mx-auto mb-2" />
+                <p className="text-sm">Enhancement Preview</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Info Box */}
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          You can enhance photos directly from the editor. Try different enhancement types
+          to see which works best for your listings.
+        </AlertDescription>
+      </Alert>
+
+      <div className="flex justify-between mt-8">
+        <Button variant="outline" onClick={onBack} disabled={disabled}>
+          Back
+        </Button>
+        <Button onClick={onNext} disabled={disabled}>
+          Continue
         </Button>
       </div>
     </div>

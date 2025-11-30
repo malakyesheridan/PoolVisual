@@ -1,10 +1,13 @@
-import { BarChart3, Users, Building2, Shield, Activity } from 'lucide-react';
+import { BarChart3, Users, Building2, Shield, Activity, Briefcase, FileText, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type AdminSection = 
   | 'overview' 
   | 'users' 
   | 'organizations' 
+  | 'jobs'
+  | 'quotes'
+  | 'materials'
   | 'audit-logs';
 
 interface AdminSidebarProps {
@@ -21,6 +24,9 @@ const sections: Array<{
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'organizations', label: 'Organizations', icon: Building2 },
+  { id: 'jobs', label: 'Jobs', icon: Briefcase },
+  { id: 'quotes', label: 'Quotes', icon: FileText },
+  { id: 'materials', label: 'Materials', icon: Package },
   { id: 'audit-logs', label: 'Audit Logs', icon: Activity },
 ];
 

@@ -51,6 +51,15 @@ export const orgs = pgTable("orgs", {
   address: text("address"),
   brandColors: jsonb("brand_colors"),
   industry: text("industry"), // Industry/trade type: pool, landscaping, building, electrical, plumbing, real_estate, other
+  subscriptionPlanId: uuid("subscription_plan_id"),
+  subscriptionStatus: text("subscription_status").default("trial"),
+  subscriptionTier: text("subscription_tier").default("t1"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStartedAt: timestamp("subscription_started_at"),
+  subscriptionExpiresAt: timestamp("subscription_expires_at"),
+  subscriptionTrialEndsAt: timestamp("subscription_trial_ends_at"),
+  industryLocked: boolean("industry_locked").default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -104,6 +113,48 @@ export const userOnboarding = pgTable("user_onboarding", {
   firstJobId: uuid("first_job_id").references(() => jobs.id),
   firstPhotoId: uuid("first_photo_id").references(() => photos.id),
   completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Subscription Plans
+export const subscriptionPlans = pgTable("subscription_plans", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  planKey: text("plan_key").notNull().unique(),
+  name: text("name").notNull(),
+  industry: text("industry").notNull(),
+  tier: text("tier").notNull(),
+  priceMonthly: numeric("price_monthly", { precision: 10, scale: 2 }),
+  priceYearly: numeric("price_yearly", { precision: 10, scale: 2 }),
+  stripePriceIdMonthly: text("stripe_price_id_monthly"),
+  stripePriceIdYearly: text("stripe_price_id_yearly"),
+  features: jsonb("features").default(sql`'{}'::jsonb`),
+  isActive: boolean("is_active").default(true),
+  displayOrder: integer("display_order").default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Subscription History
+export const subscriptionHistory = pgTable("subscription_history", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  planId: uuid("plan_id").references(() => subscriptionPlans.id),
+  eventType: text("event_type").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  fromTier: text("from_tier"),
+  toTier: text("to_tier"),
+  stripeEventId: text("stripe_event_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  metadata: jsonb("metadata").default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Admin Industry Preferences
+export const adminIndustryPreferences = pgTable("admin_industry_preferences", {
+  userId: uuid("user_id").references(() => users.id).primaryKey(),
+  preferredIndustry: text("preferred_industry"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -615,6 +666,12 @@ export type TradeCategoryMapping = typeof tradeCategoryMapping.$inferSelect;
 export type InsertTradeCategoryMapping = typeof tradeCategoryMapping.$inferInsert;
 export type UserOnboarding = typeof userOnboarding.$inferSelect;
 export type InsertUserOnboarding = typeof userOnboarding.$inferInsert;
+export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
+export type InsertSubscriptionPlan = typeof subscriptionPlans.$inferInsert;
+export type SubscriptionHistory = typeof subscriptionHistory.$inferSelect;
+export type InsertSubscriptionHistory = typeof subscriptionHistory.$inferInsert;
+export type AdminIndustryPreference = typeof adminIndustryPreferences.$inferSelect;
+export type InsertAdminIndustryPreference = typeof adminIndustryPreferences.$inferInsert;
 
 // Calibration metadata schema
 export const CalibrationMetaSchema = z.object({

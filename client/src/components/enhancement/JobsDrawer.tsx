@@ -11,6 +11,11 @@ import { JobCard } from './JobCard';
 import { useEditorStore } from '../../new_editor/store';
 import { useMaskStore } from '../../maskcore/store';
 import { toast } from '../../lib/toast';
+import { useOnboarding } from '../../hooks/useOnboarding';
+import { useOrgStore } from '../../stores/orgStore';
+import { Textarea } from '../ui/textarea';
+import { Label } from '../ui/label';
+import { Sunset, Home, Eraser } from 'lucide-react';
 
 interface JobsDrawerProps {
   onClose?: () => void;
@@ -18,6 +23,8 @@ interface JobsDrawerProps {
 }
 
 export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
+  const { industry } = useOnboarding();
+  const { currentOrg } = useOrgStore();
   const { 
     setInitial, 
     upsertJob, 
@@ -38,6 +45,53 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     setGroupBy
   } = useEnhancementStore();
   
+  // Get valid modes based on industry
+  const getValidModes = (): Array<
+    'add_pool' | 'add_decoration' | 'blend_materials' | 
+    'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal'
+  > => {
+    const effectiveIndustry = currentOrg?.industry || industry;
+    if (effectiveIndustry === 'real_estate') {
+      return ['image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'];
+    }
+    return ['add_pool', 'add_decoration', 'blend_materials'];
+  };
+
+  // Get enhancement type label
+  const getEnhancementTypeLabel = (mode?: string): string => {
+    const labels: Record<string, string> = {
+      // Trades
+      'add_pool': 'Add Pool',
+      'add_decoration': 'Add Decoration',
+      'blend_materials': 'Blend Materials',
+      // Real Estate
+      'image_enhancement': 'Image Enhancement',
+      'day_to_dusk': 'Day to Dusk',
+      'stage_room': 'Virtual Staging',
+      'item_removal': 'Item Removal',
+    };
+    return labels[mode || ''] || 'Enhancement';
+  };
+
+  // Get enhancement type icon
+  const getEnhancementTypeIcon = (mode?: string) => {
+    const icons: Record<string, any> = {
+      'add_pool': Waves,
+      'add_decoration': SparklesIcon,
+      'blend_materials': Palette,
+      'image_enhancement': Sparkles,
+      'day_to_dusk': Sunset,
+      'stage_room': Home,
+      'item_removal': Eraser,
+    };
+    return icons[mode || ''] || Sparkles;
+  };
+  
+  // Add prompt state
+  const [userPrompt, setUserPrompt] = useState<string>('');
+  const [showPromptInput, setShowPromptInput] = useState(false);
+  const [promptError, setPromptError] = useState<string | null>(null);
+  
   const [isCreating, setIsCreating] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | undefined>();
   const [showFilters, setShowFilters] = useState(false);
@@ -50,7 +104,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     maskCount: number;
     materials: Array<{ id: string; name?: string }>;
     imageDimensions: { width: number; height: number };
-    mode: 'add_pool' | 'add_decoration' | 'blend_materials';
+    mode: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal';
     payload: any | null; // Will be created on confirm
     masks: any[]; // Store masks for payload creation
     effectivePhotoId: string;
@@ -301,7 +355,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, showFilters]);
 
-  const handleCreateEnhancement = async (mode: 'add_pool' | 'add_decoration' | 'blend_materials') => {
+  const handleCreateEnhancement = async (mode: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal') => {
     const currentState = useEditorStore.getState();
     const currentImageUrl = currentState.imageUrl;
     const photoSpace = currentState.photoSpace;
@@ -527,6 +581,28 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       }));
       
       console.log(`[JobsDrawer] 🔍 FINAL PAYLOAD MASKS (being sent to API):`, JSON.stringify(payloadMasks, null, 2));
+      
+      // Check if masks are required for this mode
+      const effectiveIndustry = currentOrg?.industry || industry;
+      const masksRequired = effectiveIndustry !== 'real_estate';
+      
+      if (masksRequired && masks.length === 0) {
+        toast.error('Masks required', {
+          description: 'Please create at least one mask before enhancing.',
+        });
+        setIsCreating(false);
+        return;
+      }
+
+      // Validate prompt if provided
+      if (showPromptInput && userPrompt) {
+        if (userPrompt.length > 500) {
+          setPromptError('Prompt must be under 500 characters');
+          setIsCreating(false);
+          return;
+        }
+        setPromptError(null);
+      }
       
       // NEW: Export composite (background image + Konva masks) - what user sees
       // Use data URL for preview immediately, upload only on confirm
@@ -762,14 +838,22 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       }
       
       // Map mode value to match n8n workflow expectations
-      // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
-      // Client uses: 'blend_materials' (plural), 'add_decoration', 'add_pool'
-      const modeMapping: Record<string, string> = {
-        'blend_materials': 'blend_material',
-        'add_decoration': 'add_decoration',
-        'add_pool': 'add_pool'
-      };
-      const n8nMode = modeMapping[previewData.mode] || 'add_decoration';
+      // Trades: 'blend_material' (singular), 'add_decoration', 'add_pool'
+      // Real Estate: pass through as-is
+      const effectiveIndustry = currentOrg?.industry || industry;
+      let n8nMode: string = previewData.mode;
+      if (effectiveIndustry !== 'real_estate') {
+        const modeMapping: Record<string, string> = {
+          'blend_materials': 'blend_material',
+          'add_decoration': 'add_decoration',
+          'add_pool': 'add_pool'
+        };
+        n8nMode = modeMapping[previewData.mode] || 'add_decoration';
+      }
+      
+      // Check if masks are required for this mode
+      const effectiveIndustryForPayload = currentOrg?.industry || industry;
+      const masksRequiredForPayload = effectiveIndustryForPayload !== 'real_estate';
       
       // Create payload - mode must be at top level for n8n workflow routing
       const payload: any = {
@@ -777,11 +861,13 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         photoId: previewData.effectivePhotoId,
         imageUrl: previewData.currentImageUrl, // Original image (for reference)
         inputHash: `enhancement-${Date.now()}`,
-        masks: previewData.masks,
+        masks: masksRequiredForPayload ? previewData.masks : [], // Only include if required
         mode: n8nMode, // Top-level mode field (required by n8n workflow for routing)
         options: {
-          ...previewData.jobContext ? { jobId: previewData.jobContext.jobId } : {}
+          ...previewData.jobContext ? { jobId: previewData.jobContext.jobId } : {},
+          userPrompt: showPromptInput && userPrompt ? userPrompt : undefined, // Include user prompt if provided
         },
+        userPrompt: showPromptInput && userPrompt ? userPrompt : undefined, // Also at top level for API
         calibration: 1000,
         width: previewData.photoSpace.imgW || 2000,
         height: previewData.photoSpace.imgH || 1500,
@@ -896,25 +982,6 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     return date.toLocaleDateString();
   };
   
-  // Helper to get enhancement type label
-  const getEnhancementTypeLabel = (mode?: string): string => {
-    switch (mode) {
-      case 'add_pool': return 'Add Pool';
-      case 'add_decoration': return 'Add Decoration';
-      case 'blend_materials': return 'Blend Materials';
-      default: return 'Enhancement';
-    }
-  };
-  
-  // Helper to get enhancement type icon
-  const getEnhancementTypeIcon = (mode?: string) => {
-    switch (mode) {
-      case 'add_pool': return Waves;
-      case 'add_decoration': return SparklesIcon;
-      case 'blend_materials': return Palette;
-      default: return Sparkles;
-    }
-  };
   
   // Handle Apply to Canvas with preloading
   const handleApplyToCanvas = async (job: Job) => {
@@ -1184,37 +1251,102 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
             <label className="text-sm font-semibold text-gray-900 mb-3 block">
               Select Enhancement Type
             </label>
-            <div className="grid grid-cols-3 gap-3">
-              <button
-                onClick={() => handleCreateEnhancement('add_pool')}
-                disabled={isCreating}
-                className="flex flex-col items-center justify-center gap-2 px-3 py-4 bg-primary/5 border border-primary/20 rounded-lg hover:bg-primary/10 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm"
-              >
-                <Waves className="w-5 h-5 text-primary" />
-                <span className="font-medium text-sm text-gray-900">Add Pool</span>
-                <span className="text-xs text-gray-600 text-center leading-tight">Add a realistic pool to your design</span>
-              </button>
-              
-              <button
-                onClick={() => handleCreateEnhancement('add_decoration')}
-                disabled={isCreating}
-                className="flex flex-col items-center justify-center gap-2 px-3 py-4 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 hover:border-purple-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm"
-              >
-                <SparklesIcon className="w-5 h-5 text-purple-600" />
-                <span className="font-medium text-sm text-gray-900">Add Decoration</span>
-                <span className="text-xs text-gray-600 text-center leading-tight">Add furniture and decor elements</span>
-              </button>
-              
-              <button
-                onClick={() => handleCreateEnhancement('blend_materials')}
-                disabled={isCreating}
-                className="flex flex-col items-center justify-center gap-2 px-3 py-4 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 hover:border-green-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm"
-              >
-                <Palette className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-sm text-gray-900">Blend Materials</span>
-                <span className="text-xs text-gray-600 text-center leading-tight">Blend materials realistically into scene</span>
-              </button>
+            <div className={`grid gap-3 ${getValidModes().length === 3 ? 'grid-cols-3' : getValidModes().length === 4 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+              {getValidModes().map((mode) => {
+                const Icon = getEnhancementTypeIcon(mode);
+                const label = getEnhancementTypeLabel(mode);
+                const descriptions: Record<string, string> = {
+                  'add_pool': 'Add a realistic pool to your design',
+                  'add_decoration': 'Add furniture and decor',
+                  'blend_materials': 'Blend materials seamlessly',
+                  'image_enhancement': 'Enhance image quality and colors',
+                  'day_to_dusk': 'Transform day photos to dusk',
+                  'stage_room': 'Add virtual furniture and staging',
+                  'item_removal': 'Remove unwanted objects',
+                };
+                const colors: Record<string, string> = {
+                  'add_pool': 'bg-primary/5 border-primary/20 hover:bg-primary/10 hover:border-blue-300 text-primary',
+                  'add_decoration': 'bg-purple-50 border-purple-200 hover:bg-purple-100 hover:border-purple-300 text-purple-600',
+                  'blend_materials': 'bg-green-50 border-green-200 hover:bg-green-100 hover:border-green-300 text-green-600',
+                  'image_enhancement': 'bg-blue-50 border-blue-200 hover:bg-blue-100 hover:border-blue-300 text-blue-600',
+                  'day_to_dusk': 'bg-orange-50 border-orange-200 hover:bg-orange-100 hover:border-orange-300 text-orange-600',
+                  'stage_room': 'bg-indigo-50 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300 text-indigo-600',
+                  'item_removal': 'bg-red-50 border-red-200 hover:bg-red-100 hover:border-red-300 text-red-600',
+                };
+                return (
+                  <button
+                    key={mode}
+                    onClick={() => handleCreateEnhancement(mode)}
+                    disabled={isCreating}
+                    className={`flex flex-col items-center justify-center gap-2 px-3 py-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-150 hover:shadow-sm ${colors[mode] || 'bg-gray-50 border-gray-200'}`}
+                  >
+                    <Icon className="w-5 h-5" />
+                    <span className="font-medium text-sm text-gray-900">{label}</span>
+                    <span className="text-xs text-gray-600 text-center leading-tight">{descriptions[mode] || ''}</span>
+                  </button>
+                );
+              })}
             </div>
+            
+            {/* Prompt Input Toggle */}
+            <div className="flex items-center justify-between mt-4">
+              <Label htmlFor="show-prompt" className="flex items-center gap-2 cursor-pointer">
+                <input
+                  id="show-prompt"
+                  type="checkbox"
+                  checked={showPromptInput}
+                  onChange={(e) => {
+                    setShowPromptInput(e.target.checked);
+                    if (!e.target.checked) {
+                      setUserPrompt('');
+                      setPromptError(null);
+                    }
+                  }}
+                  className="rounded"
+                />
+                <span className="text-sm">Add custom prompt (Advanced)</span>
+              </Label>
+            </div>
+            
+            {/* Prompt Input */}
+            {showPromptInput && (
+              <div className="mt-4 space-y-2">
+                <Label htmlFor="user-prompt">
+                  Custom Prompt (Optional)
+                  <span className="text-xs text-slate-500 ml-2">
+                    Describe how you want to enhance the image
+                  </span>
+                </Label>
+                <Textarea
+                  id="user-prompt"
+                  value={userPrompt}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setUserPrompt(value);
+                    if (value.length > 500) {
+                      setPromptError('Prompt must be under 500 characters');
+                    } else {
+                      setPromptError(null);
+                    }
+                  }}
+                  placeholder="e.g., 'Make the sky more dramatic with warm sunset colors'"
+                  maxLength={500}
+                  rows={3}
+                  className={promptError ? 'border-destructive' : ''}
+                />
+                <div className="flex items-center justify-between text-xs">
+                  <span className={promptError ? 'text-destructive' : 'text-slate-500'}>
+                    {userPrompt.length}/500 characters
+                  </span>
+                  {promptError && (
+                    <span className="text-destructive">{promptError}</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500">
+                  Adding a prompt gives you more control over the enhancement result.
+                </p>
+              </div>
+            )}
           </div>
           
           {isCreating && (
@@ -1319,6 +1451,8 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           materials={previewData.materials}
           imageDimensions={previewData.imageDimensions}
           mode={previewData.mode}
+          userPrompt={userPrompt}
+          showPromptInput={showPromptInput}
           onConfirm={handleConfirmPreview}
           onCancel={handleCancelPreview}
           loading={isCreating}
