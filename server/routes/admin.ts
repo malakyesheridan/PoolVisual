@@ -641,12 +641,12 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
     // Get all quotes for those jobs (quotes are linked to jobs, so query by job IDs)
     const jobIds = jobs.map(job => job.id);
     const { inArray } = await import('drizzle-orm');
-    const quotes = jobIds.length > 0
+    const userQuotes = jobIds.length > 0
       ? await db.select().from(quotes).where(inArray(quotes.jobId, jobIds)).orderBy(desc(quotes.createdAt))
       : [];
     
     // Get all photos for those jobs
-    const photos = jobIds.length > 0
+    const userPhotos = jobIds.length > 0
       ? await db.select().from(photos).where(inArray(photos.jobId, jobIds)).orderBy(desc(photos.createdAt))
       : [];
     
@@ -670,19 +670,19 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
     // Calculate usage stats
     const usageStats = {
       totalJobs: jobs.length,
-      totalQuotes: quotes.length,
-      totalPhotos: photos.length,
+      totalQuotes: userQuotes.length,
+      totalPhotos: userPhotos.length,
       jobsThisMonth: jobs.filter(j => {
         const created = new Date(j.createdAt);
         const now = new Date();
         return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
       }).length,
-      quotesThisMonth: quotes.filter(q => {
+      quotesThisMonth: userQuotes.filter(q => {
         const created = new Date(q.createdAt);
         const now = new Date();
         return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
       }).length,
-      photosThisMonth: photos.filter((p: any) => {
+      photosThisMonth: userPhotos.filter((p: any) => {
         const created = new Date(p.createdAt);
         const now = new Date();
         return created.getMonth() === now.getMonth() && created.getFullYear() === now.getFullYear();
@@ -708,8 +708,8 @@ adminRouter.get('/users/:id', async (req: AdminRequest, res) => {
       },
       organizations: userOrgs,
       jobs: jobs.slice(0, 50), // Limit to recent 50
-      quotes: quotes.slice(0, 50), // Limit to recent 50
-      photos: photos.slice(0, 100), // Limit to recent 100
+      quotes: userQuotes.slice(0, 50), // Limit to recent 50
+      photos: userPhotos.slice(0, 100), // Limit to recent 100
       onboarding,
       sessions: sessions.slice(0, 10),
       securityEvents: securityEvents.slice(0, 20),
