@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
-  Loader2, Building2, Users, CreditCard, DollarSign, Calendar, Mail, 
+  Loader2, Building2, Users, CreditCard, DollarSign, Calendar, Mail, Phone, MapPin,
   ExternalLink, CheckCircle2, Clock, AlertTriangle, Settings
 } from 'lucide-react';
 import { useLocation } from 'wouter';
