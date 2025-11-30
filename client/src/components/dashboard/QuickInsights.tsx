@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { AlertCircle, TrendingUp, Clock, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface QuickInsightsProps {
   jobs: any[];
@@ -18,6 +19,7 @@ interface QuickInsightsProps {
 
 export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsightsProps) {
   const [, navigate] = useLocation();
+  const { projects, project, quote, quotes: quotesTerm, createQuote } = useIndustryTerm();
   
   // Group quotes by jobId for quick lookup
   const quotesByJobId = new Map<string, any[]>();
@@ -57,11 +59,11 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
   if (jobsNeedingQuote.length > 0) {
     insights.push({
       type: 'quote',
-      message: `${jobsNeedingQuote.length} ${jobsNeedingQuote.length === 1 ? 'project needs' : 'projects need'} a quote`,
+      message: `${jobsNeedingQuote.length} ${jobsNeedingQuote.length === 1 ? `${project} needs` : `${projects} need`} a ${quote.toLowerCase()}`,
       icon: AlertCircle,
       color: 'text-primary',
       bgColor: 'bg-primary/5',
-      action: 'Create Quote',
+      action: createQuote,
       jobs: jobsNeedingQuote,
       onClick: () => {
         // Navigate to the first job that needs a quote, or show a list
@@ -78,7 +80,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
   if (jobsPendingResponse.length > 0) {
     insights.push({
       type: 'pending',
-      message: `${jobsPendingResponse.length} ${jobsPendingResponse.length === 1 ? 'quote is' : 'quotes are'} pending client response`,
+      message: `${jobsPendingResponse.length} ${jobsPendingResponse.length === 1 ? `${quote} is` : `${quotesTerm} are`} pending client response`,
       icon: Clock,
       color: 'text-orange-600',
       bgColor: 'bg-orange-50',
@@ -91,7 +93,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
   if (jobsReadyToSchedule.length > 0) {
     insights.push({
       type: 'ready',
-      message: `${jobsReadyToSchedule.length} ${jobsReadyToSchedule.length === 1 ? 'project is' : 'projects are'} ready to schedule`,
+      message: `${jobsReadyToSchedule.length} ${jobsReadyToSchedule.length === 1 ? `${project} is` : `${projects} are`} ready to schedule`,
       icon: CheckCircle2,
       color: 'text-green-600',
       bgColor: 'bg-green-50',

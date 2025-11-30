@@ -10,6 +10,7 @@ import { ChevronDown, Maximize2 } from "lucide-react";
 import { Link } from "wouter";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/brand/Logo";
+import { useIndustryTerm } from "@/hooks/useIndustryTerm";
 
 interface TopNavigationProps {
   currentPage?: string;
@@ -21,6 +22,7 @@ interface TopNavigationProps {
 
 export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
   const { user, logout } = useAuthStore();
+  const { jobs, quotes } = useIndustryTerm();
 
   const getInitials = (name: string) => {
     return name
@@ -48,7 +50,7 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             }`} 
             data-testid="link-dashboard"
           >
-            Jobs
+            {jobs}
           </Link>
           <Link 
             href="/new-editor"
@@ -81,7 +83,7 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             }`} 
             data-testid="link-quotes"
           >
-            Quotes
+            {quotes}
           </Link>
         </nav>
       </div>

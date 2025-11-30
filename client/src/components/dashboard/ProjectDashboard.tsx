@@ -11,6 +11,7 @@ import { useProjectStore } from '../../stores/projectStore';
 import { useStatusSyncStore } from '../../stores/statusSyncStore';
 import { useMaterialUsageStore } from '../../stores/materialUsageStore';
 import { useOrgStore } from '../../stores/orgStore';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 import { ProjectOverviewCards } from './ProjectOverviewCards';
 import { ActivityFeed } from './ActivityFeed';
 import { RecentWork } from './RecentWork';
@@ -62,6 +63,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
   const { project, isLoading, error } = useProjectStore();
   const { notifications } = useStatusSyncStore();
   const { projectSummaries } = useMaterialUsageStore();
+  const { project: projectTerm, projects: projectsTerm, createJob } = useIndustryTerm();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
@@ -157,8 +159,8 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div className="mb-4 sm:mb-0">
-            <h1 className="text-3xl font-bold text-slate-900 mb-2">Project Dashboard</h1>
-            <p className="text-slate-600 text-lg">Manage and track your pool renovation projects</p>
+            <h1 className="text-3xl font-bold text-slate-900 mb-2">{projectTerm} Dashboard</h1>
+            <p className="text-slate-600 text-lg">Manage and track your {projectsTerm.toLowerCase()}</p>
           </div>
           
           <div className="flex items-center gap-3">
@@ -169,7 +171,7 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
             
             <Button onClick={() => navigate('/jobs/new')} className="bg-primary hover:bg-primary/90 shadow-lg hover:shadow-xl transition-all duration-200">
               <Plus className="w-4 h-4 mr-2" />
-              New Project
+              {createJob}
             </Button>
           </div>
         </div>

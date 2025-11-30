@@ -42,6 +42,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { formatCurrency } from "@/lib/measurement-utils";
+import { getIndustryTerm } from "@/lib/industry-terminology";
 
 export default function Quotes() {
   const [, params] = useRoute('/quotes/:id');
@@ -59,6 +60,12 @@ export default function Quotes() {
   const { toast } = useToast();
 
   const { data: orgs = [] } = useOrgs();
+  const { currentOrg } = useOrgStore();
+  
+  // Get industry-specific terminology
+  const quoteTerm = getIndustryTerm(currentOrg?.industry, 'quote');
+  const quotesTerm = getIndustryTerm(currentOrg?.industry, 'quotes');
+  const createQuoteText = getIndustryTerm(currentOrg?.industry, 'createQuote');
 
   const { data: quote, isLoading: quoteLoading } = useQuery({
     queryKey: ['/api/quotes', quoteId],
@@ -411,8 +418,8 @@ export default function Quotes() {
     onSuccess: (quote) => {
       queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
       toast({
-        title: "Quote created",
-        description: "The quote has been created successfully.",
+        title: `${quoteTerm} created`,
+        description: `The ${quoteTerm.toLowerCase()} has been created successfully.`,
       });
       navigate(`/quotes/${quote.id}`);
     },
@@ -538,7 +545,7 @@ export default function Quotes() {
             <h1 className="text-2xl font-bold text-slate-900 mb-4">Quote not found</h1>
             <Button onClick={() => navigate('/quotes')}>
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Quotes
+              Back to {quotesTerm}
             </Button>
           </div>
         </div>
@@ -684,7 +691,7 @@ export default function Quotes() {
         <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
           <div className="flex items-center justify-between">
             <h1 className="font-semibold mobile-text-lg" data-testid="text-page-title">
-              Quotes
+              {quotesTerm}
             </h1>
             <Button 
               data-testid="button-new-quote"
@@ -703,7 +710,7 @@ export default function Quotes() {
         <div className="hidden md:flex items-center justify-between gap-3 mb-4">
           <div>
             <h1 className="text-2xl font-semibold text-slate-900" data-testid="text-page-title-desktop">
-              Quotes
+              {quotesTerm}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
               Manage, send, and track your project quotes
@@ -731,7 +738,7 @@ export default function Quotes() {
               disabled={createQuoteMutation.isPending}
             >
               <Plus className="w-4 h-4 mr-2" />
-              New Quote
+              {createQuoteText}
             </Button>
           </div>
         </div>
@@ -823,7 +830,7 @@ export default function Quotes() {
         {/* Recent Quotes Section */}
         <div className="mt-2 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/60">
-            <h2 className="text-sm font-semibold text-slate-900">Recent Quotes</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Recent {quotesTerm}</h2>
             <p className="text-xs text-slate-500">Your most recent activity</p>
           </div>
           

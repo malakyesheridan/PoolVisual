@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { ProjectCard } from './ProjectCard';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface ProjectListProps {
   jobs: any[];
@@ -14,6 +15,7 @@ interface ProjectListProps {
 }
 
 export function ProjectList({ jobs, onView, onCreateNew, limit }: ProjectListProps) {
+  const { projects } = useIndustryTerm();
   const displayJobs = limit ? jobs.slice(0, limit) : jobs;
   const hasMore = limit ? jobs.length > limit : false;
 
@@ -31,7 +33,7 @@ export function ProjectList({ jobs, onView, onCreateNew, limit }: ProjectListPro
       {hasMore && (
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Showing {displayJobs.length} of {jobs.length} projects
+            Showing {displayJobs.length} of {jobs.length} {projects.toLowerCase()}
           </p>
         </div>
       )}

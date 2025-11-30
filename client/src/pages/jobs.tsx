@@ -44,6 +44,7 @@ import { ClientInfoModal } from "@/components/jobs/ClientInfoModal";
 import { EmptyState } from "@/components/common/EmptyState";
 import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
 import { formatDistanceToNow } from "date-fns";
+import { getIndustryTerm } from "@/lib/industry-terminology";
 
 export default function Jobs() {
   const [, params] = useRoute('/jobs/:id');
@@ -59,6 +60,12 @@ export default function Jobs() {
   const queryClient = useQueryClient();
 
   const { data: orgs = [] } = useOrgs();
+  const { currentOrg } = useOrgStore();
+  
+  // Get industry-specific terminology
+  const jobTerm = getIndustryTerm(currentOrg?.industry, 'job');
+  const jobsTerm = getIndustryTerm(currentOrg?.industry, 'jobs');
+  const createJobText = getIndustryTerm(currentOrg?.industry, 'createJob');
 
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['/api/jobs', selectedOrgId],
@@ -226,7 +233,7 @@ export default function Jobs() {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-slate-900" data-testid="text-page-title">
-              Jobs
+              {jobsTerm}
             </h1>
           <div className={`w-1.5 h-1.5 rounded-full ${
             jobHealthStatus === 'healthy' ? 'bg-green-500' : 'bg-yellow-500'
@@ -239,7 +246,7 @@ export default function Jobs() {
           data-testid="button-new-job"
         >
           <Plus className="w-3.5 h-3.5 mr-1.5" />
-              New Job
+              {createJobText}
             </Button>
         </div>
 
@@ -249,7 +256,7 @@ export default function Jobs() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
             <Input
-              placeholder="Search jobs by client or address..."
+              placeholder={`Search ${jobsTerm.toLowerCase()} by client or address...`}
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10 rounded-full border border-slate-200 bg-slate-50 focus:bg-white px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:ring-primary transition-all duration-150"

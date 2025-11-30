@@ -25,6 +25,7 @@ import {
   Clock,
   Star
 } from 'lucide-react';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface ActionCenterProps {
   jobs: any[];
@@ -76,21 +77,22 @@ const ActionButton = ({ title, description, icon: Icon, onClick, variant = 'seco
 };
 
 export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: ActionCenterProps) {
+  const { project, projects, quote, quotes: quotesTerm, createJob, createQuote, uploadPhoto } = useIndustryTerm();
   const hasJobs = jobs.length > 0;
   const hasQuotes = quotes.length > 0;
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
 
   const quickActions = [
     {
-      title: 'New Project',
-      description: 'Start a new pool visualization',
+      title: createJob,
+      description: `Start a new ${project.toLowerCase()}`,
       icon: Plus,
       onClick: () => onNavigate('/jobs/new'),
       variant: 'primary' as const
     },
     {
-      title: 'Upload Photo',
-      description: 'Add photos to existing project',
+      title: uploadPhoto,
+      description: `Add photos to existing ${project.toLowerCase()}`,
       icon: Upload,
       onClick: () => onNavigate('/jobs'),
       variant: 'secondary' as const,
@@ -105,8 +107,8 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
       disabled: !hasJobs
     },
     {
-      title: 'Generate Quote',
-      description: 'Create professional quotes',
+      title: `Generate ${quote}`,
+      description: `Create professional ${quotesTerm.toLowerCase()}`,
       icon: FileText,
       onClick: () => onNavigate('/quotes'),
       variant: 'secondary' as const,
@@ -116,8 +118,8 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
 
   const workflowActions = [
     {
-      title: 'Send Quote',
-      description: 'Email quote to client',
+      title: `Send ${quote}`,
+      description: `Email ${quote.toLowerCase()} to client`,
       icon: Send,
       onClick: () => onNavigate('/quotes'),
       variant: 'accent' as const,
@@ -126,7 +128,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
     },
     {
       title: 'Export PDF',
-      description: 'Download quote as PDF',
+      description: `Download ${quote.toLowerCase()} as PDF`,
       icon: Download,
       onClick: () => onNavigate('/quotes'),
       variant: 'secondary' as const,
@@ -134,7 +136,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
     },
     {
       title: 'View Analytics',
-      description: 'Project performance metrics',
+      description: `${project} performance metrics`,
       icon: BarChart3,
       onClick: () => onNavigate('/dashboard'),
       variant: 'secondary' as const,

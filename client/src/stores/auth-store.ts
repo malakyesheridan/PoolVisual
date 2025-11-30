@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useOnboardingStore } from './onboardingStore'; // CORRECTED: Import for logout cleanup
 
 interface User {
   id: string;
@@ -26,6 +27,8 @@ export const useAuthStore = create<AuthState>()(
         set({ user, isAuthenticated: true });
       },
       logout: () => {
+        // CORRECTED: Clear onboarding store on logout
+        useOnboardingStore.getState().clearOnboarding();
         set({ user: null, isAuthenticated: false });
       },
     }),

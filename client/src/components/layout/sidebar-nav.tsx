@@ -10,51 +10,53 @@ import {
   Edit3,
   BarChart3
 } from "lucide-react";
+import { useIndustryTerm } from "@/hooks/useIndustryTerm";
 
 interface SidebarNavProps {
   className?: string;
 }
 
-const navigation = [
-  {
-    name: 'Dashboard',
-    href: '/dashboard',
-    icon: Home,
-  },
-  {
-    name: 'Jobs',
-    href: '/jobs',
-    icon: Briefcase,
-  },
-  {
-    name: 'Canvas Editor',
-    href: '/new-editor',
-    icon: Edit3,
-  },
-  {
-    name: 'Library',
-    href: '/library',
-    icon: Package,
-  },
-  {
-    name: 'Quotes',
-    href: '/quotes',
-    icon: FileText,
-  },
-  {
-    name: 'Analytics',
-    href: '/analytics',
-    icon: BarChart3,
-  },
-  {
-    name: 'Settings',
-    href: '/settings',
-    icon: Settings,
-  },
-];
-
 export function SidebarNav({ className }: SidebarNavProps) {
   const [location] = useLocation();
+  const { jobs, quotes } = useIndustryTerm();
+  
+  const navigation = [
+    {
+      name: 'Dashboard',
+      href: '/dashboard',
+      icon: Home,
+    },
+    {
+      name: jobs,
+      href: '/jobs',
+      icon: Briefcase,
+    },
+    {
+      name: 'Canvas Editor',
+      href: '/new-editor',
+      icon: Edit3,
+    },
+    {
+      name: 'Library',
+      href: '/library',
+      icon: Package,
+    },
+    {
+      name: quotes,
+      href: '/quotes',
+      icon: FileText,
+    },
+    {
+      name: 'Analytics',
+      href: '/analytics',
+      icon: BarChart3,
+    },
+    {
+      name: 'Settings',
+      href: '/settings',
+      icon: Settings,
+    },
+  ];
 
   return (
     <nav className={cn("flex flex-col space-y-1 p-4", className)} data-testid="sidebar-navigation">

@@ -8,6 +8,7 @@ import {
   FileText,
   Home
 } from 'lucide-react';
+import { useIndustryTerm } from '@/hooks/useIndustryTerm';
 
 interface NavItem {
   href: string;
@@ -15,31 +16,32 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const navItems: NavItem[] = [
-  {
-    href: '/dashboard',
-    label: 'Jobs',
-    icon: Briefcase
-  },
-  {
-    href: '/new-editor',
-    label: 'Editor',
-    icon: Edit
-  },
-  {
-    href: '/library',
-    label: 'Library',
-    icon: Package
-  },
-  {
-    href: '/quotes',
-    label: 'Quotes',
-    icon: FileText
-  }
-];
-
 export function BottomNav() {
   const [location] = useLocation();
+  const { jobs, quotes } = useIndustryTerm();
+  
+  const navItems: NavItem[] = [
+    {
+      href: '/dashboard',
+      label: jobs,
+      icon: Briefcase
+    },
+    {
+      href: '/new-editor',
+      label: 'Editor',
+      icon: Edit
+    },
+    {
+      href: '/library',
+      label: 'Library',
+      icon: Package
+    },
+    {
+      href: '/quotes',
+      label: quotes,
+      icon: FileText
+    }
+  ];
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 safe-bottom z-50">

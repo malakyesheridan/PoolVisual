@@ -16,6 +16,7 @@ import { RecentActivityCompact } from './RecentActivityCompact';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, Plus, Eye } from 'lucide-react';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface SimplifiedDashboardProps {
   className?: string;
@@ -25,6 +26,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
+  const { projects, createJob } = useIndustryTerm();
   // Use centralized org store
   const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
 
@@ -102,7 +104,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8">
           <div className="mb-4 sm:mb-0">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-            <p className="text-gray-600">Overview of your pool renovation projects</p>
+            <p className="text-gray-600">Overview of your {projects.toLowerCase()}</p>
           </div>
           
           <Button 
@@ -110,7 +112,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
             className="bg-primary hover:bg-primary/90 text-white rounded-lg px-5 py-2 shadow-md hover:shadow-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Project
+            {createJob}
           </Button>
         </div>
 
@@ -137,7 +139,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
         {/* Recent Projects Section */}
         <div className="mt-8">
         <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Recent Projects</h2>
+            <h2 className="text-xl font-semibold text-gray-900">Recent {projects}</h2>
           {filteredJobs.length > 0 && (
             <Button
               variant="ghost"

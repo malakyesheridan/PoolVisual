@@ -4,7 +4,6 @@
  * Uses the same data source as the Jobs page for consistency
  */
 
-import React from 'react';
 import { Card, CardContent } from '../ui/card';
 import { 
   Briefcase, 
@@ -15,6 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/measurement-utils';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface MetricCardsProps {
   jobs: any[];
@@ -31,6 +31,8 @@ export function MetricCards({
   error = null,
   className = '' 
 }: MetricCardsProps) {
+  const { projects, quote } = useIndustryTerm();
+  
   // Calculate metrics from real job data (same logic as Jobs page)
   const totalProjects = jobs.length;
   
@@ -57,14 +59,14 @@ export function MetricCards({
 
   const metrics = [
     {
-      title: "Total Projects",
+      title: `Total ${projects}`,
       value: totalProjects,
       icon: Briefcase,
       color: "text-primary",
       bgColor: "bg-primary/5"
     },
     {
-      title: "Active Projects", 
+      title: `Active ${projects}`, 
       value: activeProjects,
       icon: Activity,
       color: "text-green-600",
@@ -88,18 +90,19 @@ export function MetricCards({
 
   // Get microtext descriptions
   const getMicrotext = (metric: typeof metrics[0]) => {
-    switch (metric.title) {
-      case "Total Projects":
-        return "All time projects";
-      case "Active Projects":
-        return "In progress";
-      case "This Month":
-        return "New this month";
-      case "Total Value":
-        return "Quote value";
-      default:
-        return "";
+    if (metric.title === `Total ${projects}`) {
+      return `All time ${projects.toLowerCase()}`;
     }
+    if (metric.title === `Active ${projects}`) {
+      return "In progress";
+    }
+    if (metric.title === "This Month") {
+      return "New this month";
+    }
+    if (metric.title === "Total Value") {
+      return `${quote} value`;
+    }
+    return "";
   };
 
   // Show loading state

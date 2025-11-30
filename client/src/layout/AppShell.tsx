@@ -3,6 +3,7 @@ import React from 'react';
 import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
+import { useIndustryTerm } from '@/hooks/useIndustryTerm';
 import { 
   Home, 
   Briefcase, 
@@ -158,14 +159,15 @@ function NotificationsBell() {
 export function AppShell({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { user, logout } = useAuthStore();
+  const { jobs, quotes } = useIndustryTerm();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
-    { to: '/jobs', label: 'Jobs', icon: Briefcase },
+    { to: '/jobs', label: jobs, icon: Briefcase },
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/library', label: 'Library', icon: Package },
-    { to: '/quotes', label: 'Quotes', icon: FileText },
+    { to: '/quotes', label: quotes, icon: FileText },
     ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 

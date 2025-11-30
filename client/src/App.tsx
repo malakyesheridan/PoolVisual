@@ -40,8 +40,8 @@ const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
 const AdminDashboard = React.lazy(() => import("@/pages/admin/AdminDashboard"));
 const Onboarding = React.lazy(() => import("@/pages/Onboarding"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
-import { useQuery } from "@tanstack/react-query";
-import { apiClient } from "@/lib/api-client";
+// CORRECTED: Import the hook instead of using duplicate query
+import { useOnboarding } from '@/hooks/useOnboarding';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -56,13 +56,8 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/login" />;
   }
 
-  // Check onboarding status (only for authenticated users)
-  const { data: onboarding, isLoading: onboardingLoading } = useQuery({
-    queryKey: ['/api/onboarding/status'],
-    queryFn: () => apiClient.getOnboardingStatus(),
-    enabled: isAuthenticated,
-    retry: false,
-  });
+  // CORRECTED: Use hook instead of duplicate query
+  const { onboarding, isLoading: onboardingLoading } = useOnboarding();
 
   // Show loading state while checking onboarding
   if (onboardingLoading) {

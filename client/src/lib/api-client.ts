@@ -1,3 +1,6 @@
+// CORRECTED: Import types
+import { OnboardingData } from '@/types/onboarding';
+
 class ApiClient {
   private baseURL: string;
 
@@ -132,18 +135,19 @@ class ApiClient {
   }
 
   // Onboarding methods
-  async getOnboardingStatus() {
-    return this.request<any>('/onboarding/status');
+  // CORRECTED: Properly typed onboarding methods
+  async getOnboardingStatus(): Promise<OnboardingData> {
+    return this.request<OnboardingData>('/onboarding/status');
   }
 
-  async updateOnboarding(data: { step: string; responses?: any }) {
-    return this.request<any>('/onboarding/update', {
+  async updateOnboarding(data: { step: string; responses?: any }): Promise<OnboardingData> {
+    return this.request<OnboardingData>('/onboarding/update', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  async completeOnboarding() {
+  async completeOnboarding(): Promise<{ ok: boolean }> {
     return this.request<{ ok: boolean }>('/onboarding/complete', {
       method: 'POST',
     });

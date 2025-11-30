@@ -18,6 +18,7 @@ import {
   Target
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface ProjectPipelineProps {
   jobs: any[];
@@ -81,6 +82,8 @@ const ProjectCard = ({ project, onView, onEdit }: ProjectCardProps) => (
 );
 
 export function ProjectPipeline({ jobs, onView, onEdit, className = '' }: ProjectPipelineProps) {
+  const { projects, quote, quotes } = useIndustryTerm();
+  
   // Group jobs by status
   const projectsByStage = {
     'new': jobs.filter(job => job.status === 'new'),
@@ -92,7 +95,7 @@ export function ProjectPipeline({ jobs, onView, onEdit, className = '' }: Projec
   const stages = [
     { 
       key: 'new', 
-      title: 'New Projects', 
+      title: `New ${projects}`, 
       icon: Circle, 
       color: 'text-primary',
       bgColor: 'bg-primary/5',
@@ -108,7 +111,7 @@ export function ProjectPipeline({ jobs, onView, onEdit, className = '' }: Projec
     },
     { 
       key: 'sent', 
-      title: 'Quotes Sent', 
+      title: `${quotes} Sent`, 
       icon: AlertCircle, 
       color: 'text-purple-600',
       bgColor: 'bg-purple-50',
