@@ -344,7 +344,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/onboarding/status", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const onboarding = await storage.getUserOnboarding(req.user.id);
-      // Return default if no onboarding record exists (for existing users)
+      // Return default if no onboarding record exists (for existing users or if table doesn't exist)
       res.json(onboarding || { 
         step: 'welcome', 
         completed: false, 
@@ -352,7 +352,16 @@ export async function registerRoutes(app: Express): Promise<void> {
       });
     } catch (error) {
       console.error('[onboarding/status] Error:', error);
-      res.status(500).json({ error: (error as Error).message });
+      // If error is due to missing table, return default instead of 500
+      const errorMessage = (error as Error).message;
+      if (errorMessage.includes('user_onboarding') || (error as any)?.code === '42P01') {
+        return res.json({ 
+          step: 'welcome', 
+          completed: false, 
+          responses: {} 
+        });
+      }
+      res.status(500).json({ error: errorMessage });
     }
   });
 

@@ -332,8 +332,50 @@ export class PostgresStorage implements IStorage {
   }
 
   async getOrg(id: string): Promise<Org | undefined> {
-    const [org] = await ensureDb().select().from(orgs).where(eq(orgs.id, id));
-    return org;
+    try {
+      const [org] = await ensureDb().select().from(orgs).where(eq(orgs.id, id));
+      if (org) {
+        // If industry column doesn't exist yet, default to 'pool'
+        return {
+          ...org,
+          industry: org.industry || 'pool'
+        };
+      }
+      return org;
+    } catch (error: any) {
+      // If the industry column doesn't exist, try selecting without it
+      if (error?.message?.includes('industry') || error?.code === '42703') {
+        console.warn('[getOrg] Industry column not found, using fallback query');
+        try {
+          const [org] = await ensureDb()
+            .select({
+              id: orgs.id,
+              name: orgs.name,
+              logoUrl: orgs.logoUrl,
+              abn: orgs.abn,
+              contactEmail: orgs.contactEmail,
+              contactPhone: orgs.contactPhone,
+              address: orgs.address,
+              brandColors: orgs.brandColors,
+              createdAt: orgs.createdAt,
+            })
+            .from(orgs)
+            .where(eq(orgs.id, id));
+          
+          if (org) {
+            return {
+              ...org,
+              industry: 'pool' // Default to pool for backward compatibility
+            } as Org;
+          }
+          return undefined;
+        } catch (fallbackError) {
+          console.error('[getOrg] Fallback query also failed:', fallbackError);
+          throw error; // Throw original error
+        }
+      }
+      throw error;
+    }
   }
 
   async updateOrg(id: string, updates: Partial<InsertOrg>): Promise<Org> {
@@ -368,21 +410,67 @@ export class PostgresStorage implements IStorage {
   }
 
   async getUserOrgs(userId: string): Promise<Org[]> {
-    const result = await ensureDb()
-      .select({ org: orgs })
-      .from(orgMembers)
-      .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
-      .where(eq(orgMembers.userId, userId));
-    
-    // Deduplicate by org ID in case of multiple memberships in same org
-    const orgMap = new Map<string, Org>();
-    result.forEach((r) => {
-      if (r.org && r.org.id) {
-        orgMap.set(r.org.id, r.org);
+    try {
+      const result = await ensureDb()
+        .select({ org: orgs })
+        .from(orgMembers)
+        .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
+        .where(eq(orgMembers.userId, userId));
+      
+      // Deduplicate by org ID in case of multiple memberships in same org
+      const orgMap = new Map<string, Org>();
+      result.forEach((r) => {
+        if (r.org && r.org.id) {
+          // If industry column doesn't exist yet (migration not run), default to 'pool'
+          const org = {
+            ...r.org,
+            industry: r.org.industry || 'pool'
+          };
+          orgMap.set(org.id, org);
+        }
+      });
+      
+      return Array.from(orgMap.values());
+    } catch (error: any) {
+      // If the industry column doesn't exist, try selecting without it
+      if (error?.message?.includes('industry') || error?.code === '42703') {
+        console.warn('[getUserOrgs] Industry column not found, using fallback query');
+        try {
+          // Fallback: Select specific columns excluding industry
+          const result = await ensureDb()
+            .select({
+              id: orgs.id,
+              name: orgs.name,
+              logoUrl: orgs.logoUrl,
+              abn: orgs.abn,
+              contactEmail: orgs.contactEmail,
+              contactPhone: orgs.contactPhone,
+              address: orgs.address,
+              brandColors: orgs.brandColors,
+              createdAt: orgs.createdAt,
+            })
+            .from(orgMembers)
+            .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
+            .where(eq(orgMembers.userId, userId));
+          
+          const orgMap = new Map<string, Org>();
+          result.forEach((r) => {
+            if (r.id) {
+              orgMap.set(r.id, {
+                ...r,
+                industry: 'pool' // Default to pool for backward compatibility
+              } as Org);
+            }
+          });
+          
+          return Array.from(orgMap.values());
+        } catch (fallbackError) {
+          console.error('[getUserOrgs] Fallback query also failed:', fallbackError);
+          throw error; // Throw original error
+        }
       }
-    });
-    
-    return Array.from(orgMap.values());
+      throw error;
+    }
   }
 
   async getOrgMember(userId: string, orgId: string): Promise<OrgMember | undefined> {
@@ -811,79 +899,125 @@ export class PostgresStorage implements IStorage {
 
   // Trade Category methods
   async getTradeCategories(industry: string): Promise<TradeCategoryMapping[]> {
-    return await ensureDb()
-      .select()
-      .from(tradeCategoryMapping)
-      .where(and(
-        eq(tradeCategoryMapping.industry, industry),
-        eq(tradeCategoryMapping.isActive, true)
-      ))
-      .orderBy(asc(tradeCategoryMapping.displayOrder));
+    try {
+      return await ensureDb()
+        .select()
+        .from(tradeCategoryMapping)
+        .where(and(
+          eq(tradeCategoryMapping.industry, industry),
+          eq(tradeCategoryMapping.isActive, true)
+        ))
+        .orderBy(asc(tradeCategoryMapping.displayOrder));
+    } catch (error: any) {
+      // If the trade_category_mapping table doesn't exist yet (migration not run), return empty array
+      if (error?.message?.includes('trade_category_mapping') || error?.code === '42P01') {
+        console.warn('[getTradeCategories] Table not found, returning empty array (migration may not be run)');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getCategoryLabel(industry: string, categoryKey: string): Promise<string | null> {
-    const [mapping] = await ensureDb()
-      .select()
-      .from(tradeCategoryMapping)
-      .where(and(
-        eq(tradeCategoryMapping.industry, industry),
-        eq(tradeCategoryMapping.categoryKey, categoryKey),
-        eq(tradeCategoryMapping.isActive, true)
-      ))
-      .limit(1);
-    
-    return mapping?.categoryLabel || null;
+    try {
+      const [mapping] = await ensureDb()
+        .select()
+        .from(tradeCategoryMapping)
+        .where(and(
+          eq(tradeCategoryMapping.industry, industry),
+          eq(tradeCategoryMapping.categoryKey, categoryKey),
+          eq(tradeCategoryMapping.isActive, true)
+        ))
+        .limit(1);
+      
+      return mapping?.categoryLabel || null;
+    } catch (error: any) {
+      // If the trade_category_mapping table doesn't exist yet (migration not run), return null
+      if (error?.message?.includes('trade_category_mapping') || error?.code === '42P01') {
+        console.warn('[getCategoryLabel] Table not found, returning null (migration may not be run)');
+        return null;
+      }
+      throw error;
+    }
   }
 
   // User Onboarding methods
   async getUserOnboarding(userId: string): Promise<UserOnboarding | null> {
-    const [onboarding] = await ensureDb()
-      .select()
-      .from(userOnboarding)
-      .where(eq(userOnboarding.userId, userId))
-      .limit(1);
-    
-    return onboarding || null;
+    try {
+      const [onboarding] = await ensureDb()
+        .select()
+        .from(userOnboarding)
+        .where(eq(userOnboarding.userId, userId))
+        .limit(1);
+      
+      return onboarding || null;
+    } catch (error: any) {
+      // If the user_onboarding table doesn't exist yet (migration not run), return null
+      if (error?.message?.includes('user_onboarding') || error?.code === '42P01') {
+        console.warn('[getUserOnboarding] Table not found, returning null (migration may not be run)');
+        return null;
+      }
+      throw error;
+    }
   }
 
   async updateUserOnboarding(userId: string, updates: Partial<InsertUserOnboarding>): Promise<UserOnboarding> {
-    const existing = await this.getUserOnboarding(userId);
-    
-    if (existing) {
-      const [updated] = await ensureDb()
-        .update(userOnboarding)
-        .set({
-          ...updates,
-          updatedAt: new Date()
-        })
-        .where(eq(userOnboarding.userId, userId))
-        .returning();
+    try {
+      const existing = await this.getUserOnboarding(userId);
       
-      if (!updated) {
-        throw new Error('Failed to update user onboarding');
+      if (existing) {
+        const [updated] = await ensureDb()
+          .update(userOnboarding)
+          .set({
+            ...updates,
+            updatedAt: new Date()
+          })
+          .where(eq(userOnboarding.userId, userId))
+          .returning();
+        
+        if (!updated) {
+          throw new Error('Failed to update user onboarding');
+        }
+        
+        return updated;
+      } else {
+        // Create new onboarding record
+        const [created] = await ensureDb()
+          .insert(userOnboarding)
+          .values({
+            userId,
+            step: updates.step || 'welcome',
+            completed: updates.completed || false,
+            responses: updates.responses || {},
+            firstJobId: updates.firstJobId,
+            firstPhotoId: updates.firstPhotoId,
+            completedAt: updates.completedAt,
+          })
+          .returning();
+        
+        if (!created) {
+          throw new Error('Failed to create user onboarding');
+        }
+        
+        return created;
       }
-      
-      return updated;
-    } else {
-      // Create new onboarding record
-      const [created] = await ensureDb()
-        .insert(userOnboarding)
-        .values({
+    } catch (error: any) {
+      // If the user_onboarding table doesn't exist yet (migration not run), return a default object
+      if (error?.message?.includes('user_onboarding') || error?.code === '42P01') {
+        console.warn('[updateUserOnboarding] Table not found, returning default (migration may not be run)');
+        return {
           userId,
           step: updates.step || 'welcome',
           completed: updates.completed || false,
           responses: updates.responses || {},
-          firstJobId: updates.firstJobId,
-          firstPhotoId: updates.firstPhotoId,
-          completedAt: updates.completedAt,
-        })
-        .returning();
-      
-      if (!created) {
-        throw new Error('Failed to create user onboarding');
+          firstJobId: updates.firstJobId || null,
+          firstPhotoId: updates.firstPhotoId || null,
+          completedAt: updates.completedAt || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        } as UserOnboarding;
       }
-      
-      return created;
+      throw error;
     }
   }
 
