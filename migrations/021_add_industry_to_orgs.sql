@@ -14,9 +14,16 @@ WHERE industry IS NULL;
 -- Create index for faster queries
 CREATE INDEX IF NOT EXISTS idx_orgs_industry ON orgs(industry);
 
--- Add constraint for valid industries
+-- Add constraint for valid industries (drop first if exists, then add)
+DO $$ 
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'check_industry') THEN
+    ALTER TABLE orgs DROP CONSTRAINT check_industry;
+  END IF;
+END $$;
+
 ALTER TABLE orgs 
-ADD CONSTRAINT IF NOT EXISTS check_industry 
+ADD CONSTRAINT check_industry 
 CHECK (industry IS NULL OR industry IN ('pool', 'landscaping', 'building', 'electrical', 'plumbing', 'real_estate', 'other'));
 
 -- Add comment for documentation
