@@ -1,56 +1,14 @@
-import { useState, useRef, startTransition } from 'react';
+import { useRef } from 'react';
 import { Button } from '../components/ui/button';
-import { Plus, Package, FileText } from 'lucide-react';
+import { Plus, Package } from 'lucide-react';
 import { MaterialsTab } from '../components/library/MaterialsTab';
-import { TemplatesTab } from '../components/library/TemplatesTab';
-
-type TabType = 'materials' | 'templates';
 
 export default function Library() {
-  const [activeTab, setActiveTab] = useState<TabType>('materials');
-  
   // Refs to communicate with tab components
   const materialsTabRef = useRef<{ triggerAdd: () => void }>(null);
-  const templatesTabRef = useRef<{ triggerAdd: () => void }>(null);
-
-  const tabs = [
-    {
-      id: 'materials' as TabType,
-      label: 'Materials',
-      icon: Package,
-      description: 'Pool renovation materials and pricing'
-    },
-    {
-      id: 'templates' as TabType,
-      label: 'Templates',
-      icon: FileText,
-      description: 'Pre-designed pool templates'
-    }
-  ];
-
-  const getAddButtonText = () => {
-    switch (activeTab) {
-      case 'materials':
-        return 'Add Material';
-      case 'templates':
-        return 'Add Template';
-      default:
-        return 'Add Item';
-    }
-  };
 
   const handleAddClick = () => {
-    // Trigger the appropriate tab's add functionality
-    switch (activeTab) {
-      case 'materials':
-        materialsTabRef.current?.triggerAdd();
-        break;
-      case 'templates':
-        templatesTabRef.current?.triggerAdd();
-        break;
-      default:
-        console.log(`Add ${activeTab} clicked - no handler`);
-    }
+    materialsTabRef.current?.triggerAdd();
   };
 
   return (
@@ -80,7 +38,7 @@ export default function Library() {
                 Library
               </h1>
               <p className="text-slate-600 mt-1">
-                Manage your pool renovation materials, assets, and templates
+                Manage your pool renovation materials and assets
               </p>
             </div>
             
@@ -90,49 +48,16 @@ export default function Library() {
                 data-testid="button-add-item-desktop"
               >
                 <Plus className="w-4 h-4 mr-2" />
-                {getAddButtonText()}
+                Add Material
               </Button>
             </div>
           </div>
 
-          {/* Tab Navigation */}
-          <div className="mt-6 flex items-center gap-8 border-b border-slate-200">
-            <nav className="-mb-px flex space-x-8">
-              {tabs.map((tab) => {
-                const Icon = tab.icon;
-                const isActive = activeTab === tab.id;
-                
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => {
-                      startTransition(() => {
-                        setActiveTab(tab.id);
-                      });
-                    }}
-                    className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm transition-colors ${
-                      isActive
-                        ? 'border-primary text-primary'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
-                    }`}
-                    data-testid={`tab-${tab.id}`}
-                  >
-                    <Icon className="w-4 h-4 mr-2" />
-                    {tab.label}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
         </header>
 
-        {/* Tab Content */}
+        {/* Content */}
         <div className="tab-content">
-          {activeTab === 'materials' ? (
-            <MaterialsTab ref={materialsTabRef} />
-          ) : (
-            <TemplatesTab ref={templatesTabRef} />
-          )}
+          <MaterialsTab ref={materialsTabRef} />
         </div>
       </div>
     </div>
