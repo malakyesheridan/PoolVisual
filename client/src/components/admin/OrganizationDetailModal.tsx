@@ -42,6 +42,10 @@ export function OrganizationDetailModal({ orgId, open, onClose }: OrganizationDe
     return (
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Loading Organization Details</DialogTitle>
+            <DialogDescription>Please wait while we fetch the organization information.</DialogDescription>
+          </DialogHeader>
           <div className="flex items-center justify-center min-h-[400px]">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
@@ -54,6 +58,10 @@ export function OrganizationDetailModal({ orgId, open, onClose }: OrganizationDe
     return (
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>Error Loading Organization</DialogTitle>
+            <DialogDescription>There was an error loading the organization details. Please try again.</DialogDescription>
+          </DialogHeader>
           <div className="text-center text-red-600">
             <AlertTriangle className="h-8 w-8 mx-auto mb-4" />
             <p>Error loading organization details</p>
