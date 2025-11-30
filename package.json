@@ -28,6 +28,7 @@
     "test:system-masks": "npx tsx ./test-system-mask-query.ts",
     "db:migrate:system-masks": "npx tsx ./scripts/runMigration.ts",
     "db:migrate:multi-trade": "npx tsx ./scripts/runMultiTradeMigrations.ts",
+    "admin:grant": "npx tsx ./scripts/grantAdminPrivileges.ts",
     "tokens:generate": "tsx scripts/generate-tailwind-config.ts",
     "tokens:generate-css": "tsx scripts/generate-css-variables.ts",
     "tokens:watch": "chokidar 'client/src/design-tokens/**/*.ts' -c 'npm run tokens:generate && npm run tokens:generate-css'",
