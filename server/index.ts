@@ -80,9 +80,11 @@ app.use(async (req, res, next) => {
 });
 
 // Database context middleware (for RLS policies)
-import { setDbUserContext, clearDbUserContext } from './middleware/auth.js';
-app.use(setDbUserContext);
-app.use(clearDbUserContext);
+// NOTE: Temporarily disabled - Neon HTTP doesn't support session variables
+// Routes will need to wrap storage calls with DbContext.withUserContext()
+// import { setDbUserContext, clearDbUserContext } from './middleware/auth.js';
+// app.use(setDbUserContext);
+// app.use(clearDbUserContext);
 
 // Dev mode: Auto-authenticate for testing (development only)
 if (process.env.NODE_ENV === 'development' || process.env.ENABLE_DEV_AUTH === '1') {

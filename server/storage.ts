@@ -480,55 +480,51 @@ export class PostgresStorage implements IStorage {
 
   async getUserOrgs(userId: string): Promise<Org[]> {
     try {
-      const result = await ensureDb()
-        .select({ org: orgs })
-        .from(orgMembers)
-        .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
-        .where(eq(orgMembers.userId, userId));
+      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+      const result = await ensureDb().execute(
+        sql`SELECT * FROM system_get_user_orgs(${userId}::UUID)`
+      );
       
-      // Deduplicate by org ID in case of multiple memberships in same org
-      const orgMap = new Map<string, Org>();
-      result.forEach((r) => {
-        if (r.org && r.org.id) {
-          // If industry column doesn't exist yet (migration not run), default to 'pool'
-          const org = {
-            ...r.org,
-            industry: r.org.industry || 'pool'
-          };
-          orgMap.set(org.id, org);
-        }
-      });
+      const rows = (result as any).rows || result;
+      // Convert result to Org format
+      const orgs: Org[] = rows.map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        industry: row.industry || 'pool',
+        subscriptionStatus: row.subscription_status,
+        subscriptionTier: row.subscription_tier,
+        industryLocked: row.industry_locked,
+        createdAt: row.created_at,
+        // Add other fields with defaults
+        logoUrl: null,
+        abn: null,
+        contactEmail: null,
+        contactPhone: null,
+        address: null,
+        brandColors: null,
+      }));
       
-      return Array.from(orgMap.values());
+      return orgs;
     } catch (error: any) {
-      // If the industry column doesn't exist, try selecting without it
-      if (error?.message?.includes('industry') || error?.code === '42703') {
-        console.warn('[getUserOrgs] Industry column not found, using fallback query');
+      // If the function doesn't exist, try fallback
+      if (error?.message?.includes('system_get_user_orgs') || error?.code === '42883') {
+        console.warn('[getUserOrgs] Function not found, using fallback query');
         try {
-          // Fallback: Select specific columns excluding industry
+          // Fallback: Direct query (may fail due to RLS, but try anyway)
           const result = await ensureDb()
-            .select({
-              id: orgs.id,
-              name: orgs.name,
-              logoUrl: orgs.logoUrl,
-              abn: orgs.abn,
-              contactEmail: orgs.contactEmail,
-              contactPhone: orgs.contactPhone,
-              address: orgs.address,
-              brandColors: orgs.brandColors,
-              createdAt: orgs.createdAt,
-            })
+            .select({ org: orgs })
             .from(orgMembers)
             .innerJoin(orgs, eq(orgMembers.orgId, orgs.id))
             .where(eq(orgMembers.userId, userId));
           
           const orgMap = new Map<string, Org>();
           result.forEach((r) => {
-            if (r.id) {
-              orgMap.set(r.id, {
-                ...r,
-                industry: 'pool' // Default to pool for backward compatibility
-              } as Org);
+            if (r.org && r.org.id) {
+              const org = {
+                ...r.org,
+                industry: r.org.industry || 'pool'
+              };
+              orgMap.set(org.id, org);
             }
           });
           
@@ -730,12 +726,18 @@ export class PostgresStorage implements IStorage {
 
   async getAllMaterials(): Promise<Material[]> {
     try {
-      return await ensureDb().select().from(materials)
-        .where(eq(materials.isActive, true))
-        .orderBy(desc(materials.createdAt));
+      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+      return await this.getMaterialsSystem(undefined, undefined);
     } catch (error) {
       console.error('[Storage] Failed to get all materials:', error);
-      throw new Error(`Failed to get materials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fallback to direct query if system function fails
+      try {
+        return await ensureDb().select().from(materials)
+          .where(eq(materials.isActive, true))
+          .orderBy(desc(materials.createdAt));
+      } catch (fallbackError) {
+        throw new Error(`Failed to get materials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     }
   }
 
@@ -749,38 +751,91 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]> {
-    let conditions = [eq(materials.isActive, true)];
-    
-    // Filter by organization if provided
-    if (orgId) {
-      conditions.push(eq(materials.orgId, orgId));
-    } else {
-      // If no orgId, return global materials (orgId is null)
-      conditions.push(sql`${materials.orgId} IS NULL`);
-    }
-    
-    // Filter by category if provided
-    if (category) {
-      conditions.push(eq(materials.category, category as any));
-    }
-    
-    // NEW: Filter by industry if provided (optional, backward compatible)
-    // This filters materials to only those with categories valid for the industry
-    if (industry) {
-      const tradeCategories = await this.getTradeCategories(industry);
-      const categoryKeys = tradeCategories.map(c => c.categoryKey);
-      if (categoryKeys.length > 0) {
-        // Filter materials to only those with categories valid for this industry
-        // Use inArray for proper SQL array handling with Drizzle
-        conditions.push(inArray(materials.category, categoryKeys));
-      } else {
-        // If no categories found for industry, return empty array
-        return [];
+  // Helper to get materials using system function (bypasses RLS)
+  private async getMaterialsSystem(orgId?: string, category?: string): Promise<Material[]> {
+    try {
+      const result = await ensureDb().execute(
+        sql`SELECT * FROM system_get_materials(
+          ${orgId || null}::UUID,
+          ${category || null}::TEXT,
+          NULL::TEXT
+        )`
+      );
+      
+      const rows = (result as any).rows || result;
+      return rows.map((row: any) => ({
+        id: row.id,
+        orgId: row.org_id,
+        name: row.name,
+        sku: row.sku,
+        category: row.category,
+        unit: row.unit,
+        price: row.price ? parseFloat(row.price.toString()) : null,
+        imageUrl: row.image_url,
+        textureUrl: row.texture_url,
+        isActive: row.is_active,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      })) as Material[];
+    } catch (error: any) {
+      // If function doesn't exist, fall back to direct query
+      if (error?.message?.includes('system_get_materials') || error?.code === '42883') {
+        throw new Error('system_get_materials function not found - run migration 027');
       }
+      throw error;
     }
-    
-    return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
+  }
+
+  async getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]> {
+    try {
+      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+      let allMaterials = await this.getMaterialsSystem(orgId, category);
+      
+      // Filter by industry if provided (client-side filter since system function doesn't support it yet)
+      if (industry) {
+        const tradeCategories = await this.getTradeCategories(industry);
+        const categoryKeys = tradeCategories.map(c => c.categoryKey);
+        if (categoryKeys.length > 0) {
+          allMaterials = allMaterials.filter(m => 
+            m.category && categoryKeys.includes(m.category as any)
+          );
+        } else {
+          // If no categories found for industry, return empty array
+          return [];
+        }
+      }
+      
+      // Sort by creation date (descending)
+      return allMaterials.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+    } catch (error: any) {
+      // Fallback to direct query if system function fails
+      console.warn('[getMaterials] System function failed, using direct query:', error?.message);
+      let conditions = [eq(materials.isActive, true)];
+      
+      if (orgId) {
+        conditions.push(eq(materials.orgId, orgId));
+      } else {
+        conditions.push(sql`${materials.orgId} IS NULL`);
+      }
+      
+      if (category) {
+        conditions.push(eq(materials.category, category as any));
+      }
+      
+      if (industry) {
+        const tradeCategories = await this.getTradeCategories(industry);
+        const categoryKeys = tradeCategories.map(c => c.categoryKey);
+        if (categoryKeys.length > 0) {
+          conditions.push(inArray(materials.category, categoryKeys));
+        } else {
+          return [];
+        }
+      }
+      
+      return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
+    }
   }
 
   async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
@@ -1013,17 +1068,33 @@ export class PostgresStorage implements IStorage {
   // User Onboarding methods
   async getUserOnboarding(userId: string): Promise<UserOnboarding | null> {
     try {
-      const [onboarding] = await ensureDb()
-        .select()
-        .from(userOnboarding)
-        .where(eq(userOnboarding.userId, userId))
-        .limit(1);
+      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+      const result = await ensureDb().execute(
+        sql`SELECT * FROM system_get_user_onboarding(${userId}::UUID)`
+      );
       
-      return onboarding || null;
+      const rows = (result as any).rows || result;
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          step: row.step,
+          completed: row.completed,
+          responses: row.responses,
+          firstJobId: row.first_job_id,
+          firstPhotoId: row.first_photo_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        } as UserOnboarding;
+      }
+      
+      return null;
     } catch (error: any) {
       // If the user_onboarding table doesn't exist yet (migration not run), return null
-      if (error?.message?.includes('user_onboarding') || error?.code === '42P01') {
-        console.warn('[getUserOnboarding] Table not found, returning null (migration may not be run)');
+      if (error?.message?.includes('user_onboarding') || error?.code === '42P01' || 
+          error?.message?.includes('system_get_user_onboarding')) {
+        console.warn('[getUserOnboarding] Table or function not found, returning null (migration may not be run)');
         return null;
       }
       throw error;
@@ -1032,48 +1103,40 @@ export class PostgresStorage implements IStorage {
 
   async updateUserOnboarding(userId: string, updates: Partial<InsertUserOnboarding>): Promise<UserOnboarding> {
     try {
-      const existing = await this.getUserOnboarding(userId);
+      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+      const result = await ensureDb().execute(
+        sql`SELECT * FROM system_update_user_onboarding(
+          ${userId}::UUID,
+          ${updates.step || 'welcome'}::TEXT,
+          ${JSON.stringify(updates.responses || {})}::JSONB,
+          ${updates.completed || false}::BOOLEAN,
+          ${updates.firstJobId || null}::UUID,
+          ${updates.firstPhotoId || null}::UUID
+        )`
+      );
       
-      if (existing) {
-        const [updated] = await ensureDb()
-          .update(userOnboarding)
-          .set({
-            ...updates,
-            updatedAt: new Date()
-          })
-          .where(eq(userOnboarding.userId, userId))
-          .returning();
-        
-        if (!updated) {
-          throw new Error('Failed to update user onboarding');
-        }
-        
-        return updated;
-      } else {
-        // Create new onboarding record
-        const [created] = await ensureDb()
-          .insert(userOnboarding)
-          .values({
-            userId,
-            step: updates.step || 'welcome',
-            completed: updates.completed || false,
-            responses: updates.responses || {},
-            firstJobId: updates.firstJobId,
-            firstPhotoId: updates.firstPhotoId,
-            completedAt: updates.completedAt,
-          })
-          .returning();
-        
-        if (!created) {
-          throw new Error('Failed to create user onboarding');
-        }
-        
-        return created;
+      const rows = (result as any).rows || result;
+      if (rows && rows.length > 0) {
+        const row = rows[0];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          step: row.step,
+          completed: row.completed,
+          responses: row.responses,
+          firstJobId: row.first_job_id,
+          firstPhotoId: row.first_photo_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+        } as UserOnboarding;
       }
+      
+      throw new Error('Failed to update user onboarding');
     } catch (error: any) {
       // If the user_onboarding table doesn't exist yet (migration not run), return a default object
-      if (error?.message?.includes('user_onboarding') || error?.code === '42P01') {
-        console.warn('[updateUserOnboarding] Table not found, returning default (migration may not be run)');
+      if (error?.message?.includes('user_onboarding') || error?.code === '42P01' || 
+          error?.message?.includes('system_update_user_onboarding')) {
+        console.warn('[updateUserOnboarding] Table or function not found, returning default (migration may not be run)');
         return {
           userId,
           step: updates.step || 'welcome',
@@ -1091,14 +1154,10 @@ export class PostgresStorage implements IStorage {
   }
 
   async completeUserOnboarding(userId: string): Promise<void> {
-    await ensureDb()
-      .update(userOnboarding)
-      .set({
-        completed: true,
-        completedAt: new Date(),
-        updatedAt: new Date()
-      })
-      .where(eq(userOnboarding.userId, userId));
+    // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+    await ensureDb().execute(
+      sql`SELECT system_complete_user_onboarding(${userId}::UUID)`
+    );
   }
 
   // User Preferences methods

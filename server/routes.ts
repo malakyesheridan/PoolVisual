@@ -1449,7 +1449,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Materials endpoints
-  app.get("/api/materials", async (req: AuthenticatedRequest, res: any) => {
+  app.get("/api/materials", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const { orgId, category, q, industry } = req.query;
       if (!orgId) {
