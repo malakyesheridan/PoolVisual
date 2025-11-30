@@ -391,22 +391,60 @@ export class PostgresStorage implements IStorage {
   }
 
   async createOrg(insertOrg: InsertOrg, userId: string): Promise<Org> {
-    const [org] = await ensureDb().insert(orgs).values(insertOrg).returning();
-    if (!org) throw new Error("Failed to create organization");
-    
-    // Create org member record for owner
-    await ensureDb().insert(orgMembers).values({
-      orgId: org.id,
-      userId,
-      role: "owner"
-    });
-    
-    // Create default settings
-    await ensureDb().insert(settings).values({
-      orgId: org.id
-    });
-    
-    return org;
+    try {
+      const [org] = await ensureDb().insert(orgs).values(insertOrg).returning();
+      if (!org) throw new Error("Failed to create organization");
+      
+      // Create org member record for owner
+      await ensureDb().insert(orgMembers).values({
+        orgId: org.id,
+        userId,
+        role: "owner"
+      });
+      
+      // Create default settings
+      await ensureDb().insert(settings).values({
+        orgId: org.id
+      });
+      
+      // Ensure industry is set (default to 'pool' if not provided or if column doesn't exist)
+      return {
+        ...org,
+        industry: org.industry || insertOrg.industry || 'pool'
+      };
+    } catch (error: any) {
+      // If the industry column doesn't exist, try creating without it
+      if (error?.message?.includes('industry') || error?.code === '42703') {
+        console.warn('[createOrg] Industry column not found, creating org without industry field');
+        const { industry, ...orgWithoutIndustry } = insertOrg;
+        try {
+          const [org] = await ensureDb().insert(orgs).values(orgWithoutIndustry).returning();
+          if (!org) throw new Error("Failed to create organization");
+          
+          // Create org member record for owner
+          await ensureDb().insert(orgMembers).values({
+            orgId: org.id,
+            userId,
+            role: "owner"
+          });
+          
+          // Create default settings
+          await ensureDb().insert(settings).values({
+            orgId: org.id
+          });
+          
+          // Return org with default industry
+          return {
+            ...org,
+            industry: 'pool' // Default to pool for backward compatibility
+          } as Org;
+        } catch (fallbackError) {
+          console.error('[createOrg] Fallback creation also failed:', fallbackError);
+          throw error; // Throw original error
+        }
+      }
+      throw error;
+    }
   }
 
   async getUserOrgs(userId: string): Promise<Org[]> {
