@@ -63,10 +63,28 @@ export default function JobsNew() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
+    <div className="min-h-screen bg-slate-50 pb-20 md:pb-0">
+      <div className="max-w-3xl mx-auto px-4 md:px-6 py-4 md:py-8">
+        {/* Mobile Header */}
+        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => navigate('/jobs')}
+              data-testid="button-back-mobile"
+              className="hover:bg-slate-100 tap-target"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <h1 className="font-semibold mobile-text-lg" data-testid="text-page-title-mobile">
+              Create New Job
+            </h1>
+          </div>
+        </div>
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center gap-4 mb-8">
           <Button 
             variant="ghost" 
             size="icon"
@@ -167,14 +185,14 @@ export default function JobsNew() {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-6 border-t border-slate-200">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3 pt-6 border-t border-slate-200">
                   <Button 
                     type="button"
                     variant="outline"
                     onClick={() => navigate('/jobs')}
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-cancel"
-                    className="min-w-[100px]"
+                    className="min-w-[100px] h-11 md:h-auto tap-target"
                   >
                     Cancel
                   </Button>
@@ -183,7 +201,7 @@ export default function JobsNew() {
                     type="submit"
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-create-job"
-                    className="min-w-[140px] bg-primary hover:bg-primary/90 text-white"
+                    className="min-w-[140px] h-11 md:h-auto bg-primary hover:bg-primary/90 text-white tap-target"
                   >
                     {isSubmitting || createJobMutation.isPending ? (
                       <>

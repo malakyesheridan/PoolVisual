@@ -213,12 +213,12 @@ export default function Onboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 pb-20 md:pb-4">
       <Card className="w-full max-w-2xl">
         <CardHeader>
           <div className="space-y-2">
-            <CardTitle className="text-2xl">Welcome to EasyFlow Studio</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl md:text-2xl mobile-text-xl">Welcome to EasyFlow Studio</CardTitle>
+            <CardDescription className="mobile-text-base">
               Let's get you set up in just a few steps
             </CardDescription>
           </div>

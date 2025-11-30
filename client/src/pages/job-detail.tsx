@@ -418,13 +418,44 @@ export default function JobDetail() {
   };
 
   return (
-    <div className="bg-slate-50">      
-      <div className="max-w-4xl mx-auto px-6 py-8">
-        <div className="mb-6">
+    <div className="bg-slate-50 pb-20 md:pb-0">      
+      <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
+        {/* Mobile Header */}
+        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={() => navigate('/dashboard')}
+                data-testid="button-back-mobile"
+                className="tap-target"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <h1 className="font-semibold mobile-text-lg" data-testid="text-client-name-mobile">
+                {job.clientName}
+              </h1>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={handleEditJob} 
+              data-testid="button-edit-job-mobile"
+              className="tap-target"
+            >
+              <Edit className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Desktop Breadcrumbs */}
+        <div className="hidden md:block mb-6">
           <Breadcrumbs items={breadcrumbs} />
         </div>
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+
+        {/* Desktop Header */}
+        <div className="hidden md:flex items-center justify-between mb-8">
           <div className="flex items-center gap-4">
             <Button 
               variant="ghost" 
@@ -466,9 +497,11 @@ export default function JobDetail() {
                   data-testid="button-upload-photo"
                   onClick={handleUploadClick}
                   disabled={uploadPhotoMutation.isPending}
+                  className="h-11 md:h-auto tap-target"
                 >
                   <Upload className="w-4 h-4 mr-2" />
-                  {uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}
+                  <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
+                  <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
                 </Button>
               </CardHeader>
               <CardContent>

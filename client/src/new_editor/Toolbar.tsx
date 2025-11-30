@@ -1683,8 +1683,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
 
   return (
     <TooltipProvider>
-      <div className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100" role="toolbar" aria-label="Canvas Editor Toolbar">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 md:gap-4 px-3 md:px-6 py-2 md:py-3">
+      <div className="bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100 safe-top" role="toolbar" aria-label="Canvas Editor Toolbar">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2 md:gap-4 px-2 md:px-6 py-2 md:py-3">
           {/* Left Section: File Operations */}
           <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
             {/* File Dropdown Menu */}
@@ -2057,8 +2057,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           </div>
         </div>
         
-        {/* Progress Indicator */}
-        <div className="px-6 py-2 border-t border-gray-100 bg-gray-50/50" role="progressbar" aria-label="Workflow Progress">
+        {/* Progress Indicator - Hide on mobile to reduce clutter */}
+        <div className="hidden md:block px-6 py-2 border-t border-gray-100 bg-gray-50/50" role="progressbar" aria-label="Workflow Progress">
           <div className="flex items-center gap-2">
             {workflowSteps.map((step, index) => (
               <React.Fragment key={step.id}>

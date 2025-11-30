@@ -44,11 +44,34 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   });
   
   // Sidebar collapsed/expanded state with localStorage persistence
-  // Default to OPEN by default - user can manually toggle
+  // Default to CLOSED on mobile, OPEN on desktop
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(() => {
     const saved = localStorage.getItem('poolVisual-sidebarOpen');
-    return saved ? saved === 'true' : true; // Default to OPEN
+    if (saved !== null) return saved === 'true';
+    // Default: closed on mobile, open on desktop
+    return typeof window !== 'undefined' && window.innerWidth >= 768;
   });
+  
+  // Track window size for responsive behavior
+  const [isMobile, setIsMobile] = React.useState(() => 
+    typeof window !== 'undefined' && window.innerWidth < 768
+  );
+  
+  React.useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // Auto-close sidebar on mobile, auto-open on desktop
+      if (mobile && isSidebarOpen) {
+        setIsSidebarOpen(false);
+      } else if (!mobile && !isSidebarOpen) {
+        setIsSidebarOpen(true);
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [isSidebarOpen]);
   
   // Resize state
   const [isResizing, setIsResizing] = React.useState(false);
@@ -1024,16 +1047,18 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
           />
       
-      <div className="flex-1 flex overflow-hidden min-h-0 gap-4 p-2 md:p-4 relative">
-        {/* Canvas viewport container - fixed size assuming sidebar is always open */}
+      <div className="flex-1 flex overflow-hidden min-h-0 gap-0 md:gap-4 p-0 md:p-2 lg:p-4 relative">
+        {/* Canvas viewport container - full width on mobile, adjusted for sidebar on desktop */}
         <div 
           ref={containerRef}
-          className="relative bg-white rounded-xl shadow-md min-h-0"
+          className="relative bg-white md:rounded-xl shadow-md min-h-0 w-full md:w-auto"
           style={{
             position: 'relative',
             overflow: 'hidden',
-            // Canvas size assumes sidebar is always open - fixed width calculation
-            width: `calc(100% - ${isSidebarOpen ? sidebarWidth + 20 : 20}px)`, // sidebar width + gap + padding (mobile: full width)
+            // Mobile: full width, Desktop: adjust for sidebar
+            width: isMobile 
+              ? '100%' 
+              : `calc(100% - ${isSidebarOpen ? sidebarWidth + 20 : 20}px)`,
             flexShrink: 0,
             // Prevent horizontal scroll during zoom
             overflowX: 'hidden'
@@ -1093,7 +1118,7 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
           <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
             <SheetTrigger asChild>
               <button
-                className="fixed top-1/2 right-4 -translate-y-1/2 z-50 p-3 rounded-lg bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all tap-target"
+                className="fixed bottom-20 right-4 z-50 p-3 rounded-full bg-white shadow-lg border border-gray-200 hover:bg-gray-50 transition-all tap-target safe-bottom"
                 aria-label="Open sidebar"
                 title="Open sidebar"
               >

@@ -84,19 +84,28 @@ export default function Settings() {
       )}
       
       {/* Main Content */}
-      <div className="flex-1 min-w-0 overflow-y-auto">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          {/* Header */}
-          <div className="flex items-center gap-3 mb-8">
+      <div className="flex-1 min-w-0 overflow-y-auto pb-20 md:pb-0">
+        {/* Mobile Header */}
+        <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-10">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
               onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="tap-target"
             >
               {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </Button>
-            <SettingsIcon className="w-8 h-8 text-slate-600 hidden md:block" />
+            <h1 className="font-semibold mobile-text-lg" data-testid="text-page-title-mobile">
+              Settings
+            </h1>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
+          {/* Desktop Header */}
+          <div className="hidden md:flex items-center gap-3 mb-8">
+            <SettingsIcon className="w-8 h-8 text-slate-600" />
             <div>
               <h1 className="text-2xl font-bold text-slate-900" data-testid="text-page-title">
                 Settings
