@@ -16,14 +16,6 @@ interface MaterialLibraryProps {
   onMaterialSelect?: (materialId: string) => void;
 }
 
-const materialCategories = [
-  { id: 'coping', label: 'Coping', shortLabel: 'Coping' },
-  { id: 'waterline_tile', label: 'Waterline Tile', shortLabel: 'Waterline' },
-  { id: 'interior', label: 'Interior Finish', shortLabel: 'Interior' },
-  { id: 'paving', label: 'Paving', shortLabel: 'Paving' },
-  { id: 'fencing', label: 'Fencing', shortLabel: 'Fencing' },
-];
-
 export function MaterialLibrary({ orgId, onMaterialSelect }: MaterialLibraryProps) {
   const [activeCategory, setActiveCategory] = useState('coping');
   const [searchTerm, setSearchTerm] = useState('');
@@ -32,10 +24,37 @@ export function MaterialLibrary({ orgId, onMaterialSelect }: MaterialLibraryProp
   const [brightness, setBrightness] = useState([0]);
   
   const { selectedMaterial, setSelectedMaterial } = useCanvasStore();
+  
+  // Get org industry for dynamic categories
+  const { currentOrg } = useOrgStore();
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array
+  const materialCategories = tradeCategories.map(cat => ({
+    id: cat.categoryKey,
+    label: cat.categoryLabel,
+    shortLabel: cat.categoryLabel,
+  }));
+  
+  // Set default category if available
+  useEffect(() => {
+    if (materialCategories.length > 0 && !materialCategories.find(c => c.id === activeCategory)) {
+      setActiveCategory(materialCategories[0].id);
+    }
+  }, [materialCategories, activeCategory]);
 
   const { data: materials = [], isLoading } = useQuery({
-    queryKey: ['/api/materials', orgId, activeCategory],
-    queryFn: () => apiClient.getMaterials(orgId, activeCategory),
+    queryKey: ['/api/materials', orgId, activeCategory, industry],
+    queryFn: () => apiClient.getMaterials(orgId, activeCategory, undefined, industry),
     enabled: !!orgId,
   });
 

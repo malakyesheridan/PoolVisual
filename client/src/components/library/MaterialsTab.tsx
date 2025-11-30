@@ -11,19 +11,14 @@ import { ensureLoaded, getAll, Material as UnifiedMaterial, getSourceInfo } from
 import { useMaterialsStore } from '../../state/materialsStore';
 import { materialsEventBus } from '../../lib/materialsEventBus';
 import { getProxiedTextureUrl } from '../../lib/textureProxy';
-
-const categories = [
-  { value: 'all', label: 'All Categories' },
-  { value: 'coping', label: 'Coping' },
-  { value: 'waterline_tile', label: 'Waterline Tile' },
-  { value: 'interior', label: 'Interior' },
-  { value: 'paving', label: 'Paving' },
-  { value: 'fencing', label: 'Fencing' },
-];
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../lib/api-client';
+import { useOrgStore } from '../../stores/orgStore';
+import { getDefaultCategoriesForIndustry } from '../../lib/materialCategories';
 
 export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, ref) => {
   const [search, setSearch] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'coping' | 'waterline_tile' | 'interior' | 'paving' | 'fencing'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<UnifiedMaterial | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
@@ -31,6 +26,28 @@ export const MaterialsTab = forwardRef<{ triggerAdd: () => void }, {}>((props, r
   const [testMode, setTestMode] = useState(false);
   const [materials, setMaterials] = useState<Record<string, UnifiedMaterial>>({});
   const [sourceInfo, setSourceInfo] = useState<{ type: string; url?: string; error?: string }>({ type: 'loading' });
+  
+  // Get org industry for dynamic categories
+  const { currentOrg } = useOrgStore();
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array with 'all' option
+  const categories = [
+    { value: 'all', label: 'All Categories' },
+    ...tradeCategories.map(cat => ({
+      value: cat.categoryKey,
+      label: cat.categoryLabel,
+    })),
+  ];
   
   // Use materials store for CRUD operations
   const { items: storeMaterials, hydrateMerge, upsert, delete: deleteFromStore } = useMaterialsStore();

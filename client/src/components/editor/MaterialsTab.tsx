@@ -3,9 +3,8 @@
  * Provides material selection and attachment functionality
  */
 
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, Package, Info } from 'lucide-react';
@@ -14,15 +13,9 @@ import { useEditorStore } from '@/stores/editorSlice';
 import { useEditorStore as useNewEditorStore } from '@/state/editorStore';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest } from '@/lib/queryClient';
-
-const MATERIAL_CATEGORIES = [
-  { id: 'coping', label: 'Coping', description: 'Pool edge materials' },
-  { id: 'waterline_tile', label: 'Waterline Tiles', description: 'Waterline finishing' },
-  { id: 'interior', label: 'Interior Finish', description: 'Pool interior surfaces' },
-  { id: 'paving', label: 'Paving', description: 'Surrounding surfaces' },
-  { id: 'fencing', label: 'Fencing', description: 'Safety barriers' }
-] as const;
+import { apiClient } from '@/lib/api-client';
+import { useOrgStore } from '@/stores/orgStore';
+import { getDefaultCategoriesForIndustry } from '@/lib/materialCategories';
 
 interface MaterialCardProps {
   material: Material;
@@ -115,9 +108,49 @@ function MaterialCard({ material, isSelected, onSelect, isAttaching }: MaterialC
 
 export function MaterialsTab() {
   const { toast } = useToast();
-  const [selectedCategory, setSelectedCategory] = useState<string>('coping');
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [isAttaching, setIsAttaching] = useState(false);
+  
+  // Get org industry for dynamic categories
+  const { currentOrg, selectedOrgId } = useOrgStore();
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array with descriptions
+  const MATERIAL_CATEGORIES = tradeCategories.length > 0 
+    ? tradeCategories.map(cat => ({
+        id: cat.categoryKey,
+        label: cat.categoryLabel,
+        description: cat.categoryLabel, // Use label as description for now
+      }))
+    : getDefaultCategoriesForIndustry(industry).map(cat => ({
+        id: cat.categoryKey,
+        label: cat.categoryLabel,
+        description: cat.categoryLabel,
+      }));
+  
+  // Initialize selectedCategory with first available category
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    MATERIAL_CATEGORIES.length > 0 ? MATERIAL_CATEGORIES[0]?.id || 'coping' : 'coping'
+  );
+  
+  // Update selectedCategory when categories change
+  useEffect(() => {
+    if (MATERIAL_CATEGORIES.length > 0) {
+      const firstCategory = MATERIAL_CATEGORIES[0];
+      if (firstCategory && !MATERIAL_CATEGORIES.find(c => c.id === selectedCategory)) {
+        setSelectedCategory(firstCategory.id);
+      }
+    }
+  }, [MATERIAL_CATEGORIES.length, selectedCategory]);
   
   const { 
     masks,
@@ -128,16 +161,16 @@ export function MaterialsTab() {
   const applyMaterialToSelected = useNewEditorStore(s => s.applyMaterialToSelected);
   
   // For now, just use the first mask if any are available, or the selected one
-  const currentMask = selectedMaskId ? masks.find(m => m.id === selectedMaskId) : masks[0];
+  const currentMask = selectedMaskId ? masks?.find((m: any) => m.id === selectedMaskId) : masks?.[0];
 
   // Fetch materials for the selected category
   const { data: materials, isLoading, error } = useQuery({
-    queryKey: ['/api/materials', selectedCategory],
+    queryKey: ['/api/materials', selectedOrgId, selectedCategory, industry],
     queryFn: async () => {
-      // Since we don't have orgId easily accessible, we'll need to get it
-      // For now, return empty array - this will be implemented when backend is fixed
-      return [];
-    }
+      if (!selectedOrgId || !selectedCategory) return [];
+      return apiClient.getMaterials(selectedOrgId, selectedCategory, undefined, industry);
+    },
+    enabled: !!selectedOrgId && !!selectedCategory,
   });
 
   // Handle material selection and attachment
@@ -157,7 +190,7 @@ export function MaterialsTab() {
         setIsAttaching(true);
         // Apply material using new robust system
         if (applyMaterialToSelected && typeof applyMaterialToSelected === 'function') {
-          applyMaterialToSelected(material);
+          applyMaterialToSelected(material as any);
         } else {
           // Fallback to direct material application
           const store = useEditorStore.getState();

@@ -12,6 +12,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import { useOrgStore } from '@/stores/orgStore';
+import { getDefaultCategoriesForIndustry } from '@/lib/materialCategories';
 
 interface MaterialPickerProps {
   isOpen: boolean;
@@ -27,23 +31,42 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
   
   const store = useEditorStore();
   const { attachMaterial } = store || {};
+  
+  // Get org industry for dynamic categories
+  const { currentOrg, selectedOrgId } = useOrgStore();
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry && isOpen,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array with 'all' option
+  const categories = [
+    { id: 'all', label: 'All Materials' },
+    ...tradeCategories.map(cat => ({
+      id: cat.categoryKey,
+      label: cat.categoryLabel,
+    })),
+  ];
 
   // Load materials on component mount
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && selectedOrgId) {
       loadMaterials();
     }
-  }, [isOpen]);
+  }, [isOpen, selectedOrgId, selectedCategory, industry]);
 
   const loadMaterials = async () => {
+    if (!selectedOrgId) return;
     setIsLoading(true);
     try {
-      // TODO: Replace with actual API call
-      const response = await fetch(`/api/materials?search=${searchTerm}&category=${selectedCategory}`);
-      if (response.ok) {
-        const materialsData = await response.json();
-        setMaterials(materialsData);
-      }
+      const materialsData = await apiClient.getMaterials(selectedOrgId, selectedCategory === 'all' ? undefined : selectedCategory, searchTerm || undefined, industry);
+      setMaterials(materialsData || []);
     } catch (error) {
       console.error('Failed to load materials:', error);
     } finally {
@@ -60,19 +83,10 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
 
   const filteredMaterials = materials.filter(material => {
     const matchesSearch = material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         material.sku.toLowerCase().includes(searchTerm.toLowerCase());
+                         material.sku?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || material.category === selectedCategory;
     return matchesSearch && matchesCategory && material.isActive;
   });
-
-  const categories = [
-    { id: 'all', label: 'All Materials' },
-    { id: 'coping', label: 'Coping' },
-    { id: 'waterline_tile', label: 'Waterline Tiles' },
-    { id: 'interior', label: 'Interior Finishes' },
-    { id: 'paving', label: 'Paving' },
-    { id: 'fencing', label: 'Fencing' }
-  ];
 
   if (!isOpen) return null;
 

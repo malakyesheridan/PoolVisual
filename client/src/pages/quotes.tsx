@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgs } from "@/hooks/useOrgs";
+import { useOrgStore } from "@/stores/orgStore";
 import { 
   ArrowLeft, 
   Search, 
@@ -48,7 +49,8 @@ export default function Quotes() {
   const quoteId = params?.id;
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
   const [showJobSelectionModal, setShowJobSelectionModal] = useState(false);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [isEditingQuoteName, setIsEditingQuoteName] = useState(false);
@@ -488,10 +490,21 @@ export default function Quotes() {
     });
   };
 
-  // Auto-select first org if available
-  if (!selectedOrgId && orgs.length > 0) {
-    setSelectedOrgId(orgs[0].id);
-  }
+  // Auto-select first org if available and update store
+  useEffect(() => {
+    if (!selectedOrgId && orgs.length > 0) {
+      setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
+      // If selected org no longer exists, select first available
+      setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId) {
+      // Update current org if it exists
+      const current = orgs.find(o => o.id === selectedOrgId);
+      if (current) setCurrentOrg(current);
+    }
+  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
 
   const getStatusColor = (status: string) => {
     switch (status) {

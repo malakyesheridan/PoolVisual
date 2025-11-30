@@ -47,7 +47,22 @@ export default function Login() {
       const response = await apiClient.login(data.email, data.password);
       if (response.ok && response.user) {
         login(response.user);
-        navigate('/dashboard');
+        
+        // Check onboarding status (only for new users)
+        try {
+          const onboarding = await apiClient.getOnboardingStatus();
+          // Only redirect if onboarding exists and is incomplete
+          // Existing users (no onboarding record) go to dashboard
+          if (onboarding && !onboarding.completed) {
+            navigate('/onboarding');
+          } else {
+            navigate('/dashboard');
+          }
+        } catch (error) {
+          // If onboarding check fails, assume user is existing and go to dashboard
+          console.warn('Onboarding check failed, assuming existing user:', error);
+          navigate('/dashboard');
+        }
       } else {
         setError(response.error || 'Login failed');
       }
@@ -70,15 +85,30 @@ export default function Login() {
     setError(null);
 
     try {
+      // For now, default to 'pool' industry (can be updated in onboarding)
       const response = await apiClient.register(
         data.email, 
         data.username, 
         data.password,
-        data.orgName || undefined // Pass orgName if provided, otherwise undefined
+        data.orgName || undefined, // Pass orgName if provided, otherwise undefined
+        'pool' // Default industry, can be updated in onboarding
       );
       if (response.ok) {
         login(response.user);
-        navigate('/dashboard');
+        
+        // Check if onboarding needed
+        try {
+          const onboarding = await apiClient.getOnboardingStatus();
+          if (!onboarding?.completed) {
+            navigate('/onboarding');
+          } else {
+            navigate('/dashboard');
+          }
+        } catch (error) {
+          // If onboarding check fails, assume new user and go to onboarding
+          console.warn('Onboarding check failed, redirecting to onboarding:', error);
+          navigate('/onboarding');
+        }
       } else {
         setError('Registration failed');
       }

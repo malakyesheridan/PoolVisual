@@ -250,6 +250,19 @@ export async function registerRoutes(app: Express): Promise<void> {
       
       const user = await storage.createUser(userToCreate);
 
+      // Auto-create organization for the user with industry support
+      // Get industry from request body, default to 'pool' for backward compatibility
+      const industry = req.body.industry || 'pool';
+      const orgName = req.body.orgName || userData.username;
+      
+      const org = await storage.createOrg(
+        { 
+          name: orgName,
+          industry: industry // NEW: Set industry during org creation
+        },
+        user.id
+      );
+
       // Log security event
       const { AuthAuditService } = await import('./lib/authAuditService.js');
       // Extract IP address (handle x-forwarded-for as string or array)
@@ -273,7 +286,8 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       res.json({ 
         ok: true,
-        user: { id: user.id, email: user.email, username: user.username }
+        user: { id: user.id, email: user.email, username: user.username },
+        org: { id: org.id, name: org.name, industry: org.industry } // Include org in response
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -285,6 +299,92 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       console.error('[auth/register] DB error:', error);
       res.status(500).json({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  // Trade Category endpoints
+  // GET /api/trade-categories/:industry - Get categories for a specific industry
+  app.get("/api/trade-categories/:industry", async (req: any, res: any) => {
+    try {
+      const { industry } = req.params;
+      if (!industry) {
+        return res.status(400).json({ error: "Industry parameter is required" });
+      }
+      
+      const categories = await storage.getTradeCategories(industry);
+      res.json(categories);
+    } catch (error) {
+      console.error('[trade-categories] Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // GET /api/trade-categories/:industry/:categoryKey/label - Get label for a specific category
+  app.get("/api/trade-categories/:industry/:categoryKey/label", async (req: any, res: any) => {
+    try {
+      const { industry, categoryKey } = req.params;
+      if (!industry || !categoryKey) {
+        return res.status(400).json({ error: "Industry and categoryKey parameters are required" });
+      }
+      
+      const label = await storage.getCategoryLabel(industry, categoryKey);
+      if (!label) {
+        return res.status(404).json({ error: "Category label not found" });
+      }
+      
+      res.json({ industry, categoryKey, label });
+    } catch (error) {
+      console.error('[trade-categories/label] Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // Onboarding endpoints
+  // GET /api/onboarding/status - Get onboarding status for current user
+  app.get("/api/onboarding/status", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const onboarding = await storage.getUserOnboarding(req.user.id);
+      // Return default if no onboarding record exists (for existing users)
+      res.json(onboarding || { 
+        step: 'welcome', 
+        completed: false, 
+        responses: {} 
+      });
+    } catch (error) {
+      console.error('[onboarding/status] Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // POST /api/onboarding/update - Update onboarding progress
+  app.post("/api/onboarding/update", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { step, responses } = req.body;
+      
+      if (!step) {
+        return res.status(400).json({ error: "Step is required" });
+      }
+      
+      const onboarding = await storage.updateUserOnboarding(req.user.id, {
+        step,
+        responses: responses || {},
+      });
+      
+      res.json(onboarding);
+    } catch (error) {
+      console.error('[onboarding/update] Error:', error);
+      res.status(500).json({ error: (error as Error).message });
+    }
+  });
+
+  // POST /api/onboarding/complete - Mark onboarding as completed
+  app.post("/api/onboarding/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      await storage.completeUserOnboarding(req.user.id);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error('[onboarding/complete] Error:', error);
+      res.status(500).json({ error: (error as Error).message });
     }
   });
 
@@ -1324,7 +1424,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Materials endpoints
   app.get("/api/materials", async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { orgId, category, q } = req.query;
+      const { orgId, category, q, industry } = req.query;
       if (!orgId) {
         return res.status(400).json({ message: "orgId parameter is required" });
       }
@@ -1337,7 +1437,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied to this organization" });
       }
 
-      let materials = await storage.getMaterials(orgId as string, category as string);
+      let materials = await storage.getMaterials(orgId as string, category as string, industry as string);
       
       // Apply search filter
       if (q) {

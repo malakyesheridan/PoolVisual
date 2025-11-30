@@ -6,20 +6,42 @@ import { Button } from '@/components/ui/button';
 import { Search, Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMaterialsStore } from '@/stores/materialsSlice';
-
-const categories = [
-  { id: 'waterline_tile', label: 'Waterline' },
-  { id: 'coping', label: 'Coping' },
-  { id: 'interior', label: 'Interior' },
-  { id: 'paving', label: 'Paving' },
-  { id: 'fencing', label: 'Fencing' }
-];
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api-client';
+import { useOrgStore } from '@/stores/orgStore';
+import { getDefaultCategoriesForIndustry } from '@/lib/materialCategories';
 
 export function MaterialGrid() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('waterline_tile');
   
   const materialsStore = useMaterialsStore();
+  
+  // Get org industry for dynamic categories
+  const { currentOrg } = useOrgStore();
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array
+  const categories = tradeCategories.map(cat => ({
+    id: cat.categoryKey,
+    label: cat.categoryLabel,
+  }));
+  
+  // Set default category if available
+  useEffect(() => {
+    if (categories.length > 0 && !categories.find(c => c.id === selectedCategory)) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, selectedCategory]);
 
   // Load materials when category changes
   useEffect(() => {

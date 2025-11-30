@@ -5,7 +5,7 @@ import {
   User, 
   InsertUser, 
   Org, 
-  InsertOrg,
+  InsertOrg, 
   Job, 
   InsertJob, 
   Photo, 
@@ -20,11 +20,17 @@ import {
   InsertQuoteItem,
   CalibrationMeta,
   Settings,
+  TradeCategoryMapping,
+  InsertTradeCategoryMapping,
+  UserOnboarding,
+  InsertUserOnboarding,
   users,
   orgs,
   orgMembers,
   settings,
   userPreferences,
+  tradeCategoryMapping,
+  userOnboarding,
   jobs,
   photos,
   materials,
@@ -43,7 +49,7 @@ import {
   type AdminAction,
   type InsertAdminAction
 } from "../shared/schema.js";
-import { eq, desc, and, sql, gte, ne } from "drizzle-orm";
+import { eq, desc, and, sql, gte, ne, asc, inArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
@@ -115,7 +121,7 @@ export interface IStorage {
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
-  getMaterials(orgId?: string, category?: string): Promise<Material[]>;
+  getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]>;
   getMaterial(id: string): Promise<Material | null>;
   createMaterial(material: InsertMaterial): Promise<Material>;
   updateMaterial(id: string, material: Partial<Material>): Promise<Material>;
@@ -142,6 +148,15 @@ export interface IStorage {
   // Settings
   getOrgSettings(orgId: string): Promise<Settings | undefined>;
   updateOrgSettings(orgId: string, updates: Partial<Settings>): Promise<Settings>;
+  
+  // Trade Categories
+  getTradeCategories(industry: string): Promise<TradeCategoryMapping[]>;
+  getCategoryLabel(industry: string, categoryKey: string): Promise<string | null>;
+  
+  // User Onboarding
+  getUserOnboarding(userId: string): Promise<UserOnboarding | null>;
+  updateUserOnboarding(userId: string, updates: Partial<InsertUserOnboarding>): Promise<UserOnboarding>;
+  completeUserOnboarding(userId: string): Promise<void>;
   
   // Authentication & Security
   updateUser(id: string, updates: Partial<User>): Promise<User>;
@@ -577,7 +592,7 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getMaterials(orgId?: string, category?: string): Promise<Material[]> {
+  async getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]> {
     let conditions = [eq(materials.isActive, true)];
     
     // Filter by organization if provided
@@ -591,6 +606,21 @@ export class PostgresStorage implements IStorage {
     // Filter by category if provided
     if (category) {
       conditions.push(eq(materials.category, category as any));
+    }
+    
+    // NEW: Filter by industry if provided (optional, backward compatible)
+    // This filters materials to only those with categories valid for the industry
+    if (industry) {
+      const tradeCategories = await this.getTradeCategories(industry);
+      const categoryKeys = tradeCategories.map(c => c.categoryKey);
+      if (categoryKeys.length > 0) {
+        // Filter materials to only those with categories valid for this industry
+        // Use inArray for proper SQL array handling with Drizzle
+        conditions.push(inArray(materials.category, categoryKeys));
+      } else {
+        // If no categories found for industry, return empty array
+        return [];
+      }
     }
     
     return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
@@ -777,6 +807,95 @@ export class PostgresStorage implements IStorage {
       validityDays: setting.validityDays,
       pdfTerms: setting.pdfTerms ?? undefined
     };
+  }
+
+  // Trade Category methods
+  async getTradeCategories(industry: string): Promise<TradeCategoryMapping[]> {
+    return await ensureDb()
+      .select()
+      .from(tradeCategoryMapping)
+      .where(and(
+        eq(tradeCategoryMapping.industry, industry),
+        eq(tradeCategoryMapping.isActive, true)
+      ))
+      .orderBy(asc(tradeCategoryMapping.displayOrder));
+  }
+
+  async getCategoryLabel(industry: string, categoryKey: string): Promise<string | null> {
+    const [mapping] = await ensureDb()
+      .select()
+      .from(tradeCategoryMapping)
+      .where(and(
+        eq(tradeCategoryMapping.industry, industry),
+        eq(tradeCategoryMapping.categoryKey, categoryKey),
+        eq(tradeCategoryMapping.isActive, true)
+      ))
+      .limit(1);
+    
+    return mapping?.categoryLabel || null;
+  }
+
+  // User Onboarding methods
+  async getUserOnboarding(userId: string): Promise<UserOnboarding | null> {
+    const [onboarding] = await ensureDb()
+      .select()
+      .from(userOnboarding)
+      .where(eq(userOnboarding.userId, userId))
+      .limit(1);
+    
+    return onboarding || null;
+  }
+
+  async updateUserOnboarding(userId: string, updates: Partial<InsertUserOnboarding>): Promise<UserOnboarding> {
+    const existing = await this.getUserOnboarding(userId);
+    
+    if (existing) {
+      const [updated] = await ensureDb()
+        .update(userOnboarding)
+        .set({
+          ...updates,
+          updatedAt: new Date()
+        })
+        .where(eq(userOnboarding.userId, userId))
+        .returning();
+      
+      if (!updated) {
+        throw new Error('Failed to update user onboarding');
+      }
+      
+      return updated;
+    } else {
+      // Create new onboarding record
+      const [created] = await ensureDb()
+        .insert(userOnboarding)
+        .values({
+          userId,
+          step: updates.step || 'welcome',
+          completed: updates.completed || false,
+          responses: updates.responses || {},
+          firstJobId: updates.firstJobId,
+          firstPhotoId: updates.firstPhotoId,
+          completedAt: updates.completedAt,
+        })
+        .returning();
+      
+      if (!created) {
+        throw new Error('Failed to create user onboarding');
+      }
+      
+      return created;
+    }
+  }
+
+  async completeUserOnboarding(userId: string): Promise<void> {
+    await ensureDb()
+      .update(userOnboarding)
+      .set({
+        completed: true,
+        completedAt: new Date(),
+        updatedAt: new Date()
+      })
+      .where(eq(userOnboarding.userId, userId));
   }
 
   // User Preferences methods

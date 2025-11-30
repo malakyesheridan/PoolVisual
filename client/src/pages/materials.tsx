@@ -12,6 +12,8 @@ import { useAuthStore } from "@/stores/auth-store";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgs } from "@/hooks/useOrgs";
+import { useOrgStore } from "@/stores/orgStore";
+import { getDefaultCategoriesForIndustry } from "@/lib/materialCategories";
 import { 
   Plus, 
   Search, 
@@ -29,13 +31,7 @@ import {
 import { useMaterialsStore } from "@/stores/materialsStore";
 import { MaterialsProbe } from "../components/materials/MaterialsProbe";
 
-const materialCategories = [
-  { value: 'coping', label: 'Coping' },
-  { value: 'waterline_tile', label: 'Waterline Tile' },
-  { value: 'interior', label: 'Interior Finish' },
-  { value: 'paving', label: 'Paving' },
-  { value: 'fencing', label: 'Fencing' },
-];
+// Material categories will be loaded dynamically based on org industry
 
 const materialUnits = [
   { value: 'm2', label: 'Square Meters (m²)' },
@@ -46,7 +42,8 @@ const materialUnits = [
 export default function Materials() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, currentOrg } = useOrgStore();
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [texturePreview, setTexturePreview] = useState<string | null>(null);
@@ -88,10 +85,28 @@ export default function Materials() {
 
   // Use shared hook for orgs
   const { data: orgs = [] } = useOrgs();
+  
+  // Get org industry for dynamic categories
+  const industry = currentOrg?.industry || 'pool';
+  
+  // Fetch dynamic categories from API with fallback
+  const { data: tradeCategories = [] } = useQuery({
+    queryKey: ['/api/trade-categories', industry],
+    queryFn: () => apiClient.getTradeCategories(industry),
+    enabled: !!industry,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: getDefaultCategoriesForIndustry(industry),
+  });
+  
+  // Build categories array
+  const materialCategories = tradeCategories.map(cat => ({
+    value: cat.categoryKey,
+    label: cat.categoryLabel,
+  }));
 
   const { data: materials = [], isLoading } = useQuery({
-    queryKey: ['/api/materials', selectedOrgId, selectedCategory],
-    queryFn: () => selectedOrgId ? apiClient.getMaterials(selectedOrgId, selectedCategory) : Promise.resolve([]),
+    queryKey: ['/api/materials', selectedOrgId, selectedCategory, industry],
+    queryFn: () => selectedOrgId ? apiClient.getMaterials(selectedOrgId, selectedCategory, undefined, industry) : Promise.resolve([]),
     enabled: !!selectedOrgId,
     staleTime: 2 * 60 * 1000, // 2 minutes - materials don't change frequently
   });

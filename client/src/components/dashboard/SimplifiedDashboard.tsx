@@ -8,6 +8,7 @@ import { useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../lib/api-client';
 import { useOrgs } from '../../hooks/useOrgs';
+import { useOrgStore } from '../../stores/orgStore';
 import { MetricCards } from './MetricCards';
 import { ProjectList } from './ProjectList';
 import { QuickInsights } from './QuickInsights';
@@ -24,17 +25,27 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
 
   // Fetch organizations (using shared hook)
   const { data: orgs = [] } = useOrgs();
 
-  // Auto-select first org if available (matching Jobs page logic exactly)
+  // Auto-select first org if available and update store
   useEffect(() => {
     if (!selectedOrgId && orgs.length > 0) {
       setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
+      // If selected org no longer exists, select first available
+      setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId) {
+      // Update current org if it exists
+      const current = orgs.find(o => o.id === selectedOrgId);
+      if (current) setCurrentOrg(current);
     }
-  }, [selectedOrgId, orgs]);
+  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
 
   // Fetch jobs for the selected organization (optimized - no N+1 queries)
   const { data: jobs = [], isLoading: jobsLoading, error: jobsError } = useQuery({

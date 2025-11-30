@@ -6,22 +6,33 @@ import { UserPreferencesSettings } from "@/components/settings/UserPreferencesSe
 import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
 import { NotificationsSettings } from "@/components/settings/NotificationsSettings";
 import { useOrgs } from "@/hooks/useOrgs";
+import { useOrgStore } from "@/stores/orgStore";
 import { Settings as SettingsIcon, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function Settings() {
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { data: orgs = [] } = useOrgs();
 
-  // Auto-select first org if available
+  // Auto-select first org if available and update store
   useEffect(() => {
     if (!selectedOrgId && orgs.length > 0) {
       setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
+      // If selected org no longer exists, select first available
+      setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId) {
+      // Update current org if it exists
+      const current = orgs.find(o => o.id === selectedOrgId);
+      if (current) setCurrentOrg(current);
     }
-  }, [selectedOrgId, orgs.length]);
+  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
 
   const renderActiveSection = () => {
     switch (activeSection) {

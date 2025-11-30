@@ -1,5 +1,3 @@
-import { useAuthStore } from '@/stores/auth-store';
-
 class ApiClient {
   private baseURL: string;
 
@@ -82,10 +80,10 @@ class ApiClient {
     });
   }
 
-  async register(email: string, username: string, password: string, orgName?: string) {
-    return this.request<{ ok: boolean; user: any }>('/auth/register', {
+  async register(email: string, username: string, password: string, orgName?: string, industry?: string) {
+    return this.request<{ ok: boolean; user: any; org?: any }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, username, password, orgName }),
+      body: JSON.stringify({ email, username, password, orgName, industry: industry || 'pool' }),
     });
   }
 
@@ -131,6 +129,33 @@ class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(data),
     });
+  }
+
+  // Onboarding methods
+  async getOnboardingStatus() {
+    return this.request<any>('/onboarding/status');
+  }
+
+  async updateOnboarding(data: { step: string; responses?: any }) {
+    return this.request<any>('/onboarding/update', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async completeOnboarding() {
+    return this.request<{ ok: boolean }>('/onboarding/complete', {
+      method: 'POST',
+    });
+  }
+
+  // Trade category methods
+  async getTradeCategories(industry: string) {
+    return this.request<any[]>(`/trade-categories/${industry}`);
+  }
+
+  async getCategoryLabel(industry: string, categoryKey: string) {
+    return this.request<{ industry: string; categoryKey: string; label: string }>(`/trade-categories/${industry}/${categoryKey}/label`);
   }
 
   async getOrg(orgId: string) {
@@ -249,10 +274,11 @@ class ApiClient {
   }
 
   // Materials
-  async getMaterials(orgId: string, category?: string, search?: string) {
+  async getMaterials(orgId: string, category?: string, search?: string, industry?: string) {
     const params = new URLSearchParams({ orgId });
     if (category) params.append('category', category);
     if (search) params.append('q', search);
+    if (industry) params.append('industry', industry);
     return this.request<any[]>(`/materials?${params}`);
   }
 

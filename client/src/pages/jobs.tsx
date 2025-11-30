@@ -10,6 +10,7 @@ import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgs } from "@/hooks/useOrgs";
+import { useOrgStore } from "@/stores/orgStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,7 +51,8 @@ export default function Jobs() {
   const jobId = params?.id;
   
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
   const [clientInfoModalOpen, setClientInfoModalOpen] = useState(false);
   const [selectedJobForClientInfo, setSelectedJobForClientInfo] = useState<any>(null);
   const { toast } = useToast();

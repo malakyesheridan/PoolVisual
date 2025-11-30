@@ -50,6 +50,7 @@ export const orgs = pgTable("orgs", {
   contactPhone: text("contact_phone"),
   address: text("address"),
   brandColors: jsonb("brand_colors"),
+  industry: text("industry"), // Industry/trade type: pool, landscaping, building, electrical, plumbing, real_estate, other
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -79,6 +80,30 @@ export const userPreferences = pgTable("user_preferences", {
   measurementUnits: text("measurement_units").default("metric").notNull(),
   language: text("language").default("en").notNull(),
   theme: text("theme").default("light").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Trade category mapping
+export const tradeCategoryMapping = pgTable("trade_category_mapping", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  industry: text("industry").notNull(),
+  categoryKey: text("category_key").notNull(),
+  categoryLabel: text("category_label").notNull(),
+  displayOrder: integer("display_order").default(0),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// User onboarding
+export const userOnboarding = pgTable("user_onboarding", {
+  userId: uuid("user_id").references(() => users.id).primaryKey(),
+  step: text("step").default("welcome").notNull(),
+  completed: boolean("completed").default(false),
+  responses: jsonb("responses").default(sql`'{}'::jsonb`),
+  firstJobId: uuid("first_job_id").references(() => jobs.id),
+  firstPhotoId: uuid("first_photo_id").references(() => photos.id),
+  completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -586,6 +611,10 @@ export type Quote = typeof quotes.$inferSelect;
 export type InsertQuote = z.infer<typeof insertQuoteSchema>;
 export type QuoteItem = typeof quoteItems.$inferSelect;
 export type InsertQuoteItem = z.infer<typeof insertQuoteItemSchema>;
+export type TradeCategoryMapping = typeof tradeCategoryMapping.$inferSelect;
+export type InsertTradeCategoryMapping = typeof tradeCategoryMapping.$inferInsert;
+export type UserOnboarding = typeof userOnboarding.$inferSelect;
+export type InsertUserOnboarding = typeof userOnboarding.$inferInsert;
 
 // Calibration metadata schema
 export const CalibrationMetaSchema = z.object({

@@ -38,18 +38,54 @@ const Library = React.lazy(() => import("@/pages/Library"));
 const ForgotPassword = React.lazy(() => import("@/pages/forgot-password"));
 const ResetPassword = React.lazy(() => import("@/pages/reset-password"));
 const AdminDashboard = React.lazy(() => import("@/pages/admin/AdminDashboard"));
+const Onboarding = React.lazy(() => import("@/pages/Onboarding"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "@/lib/api-client";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const currentPath = window.location.pathname;
   
   // Dev bypass for canvas-editor-v2 and new-editor
-  if (process.env.NODE_ENV === 'development' && (window.location.pathname === '/canvas-editor-v2' || window.location.pathname === '/new-editor')) {
+  if (process.env.NODE_ENV === 'development' && (currentPath === '/canvas-editor-v2' || currentPath === '/new-editor')) {
     return <>{children}</>;
   }
   
   if (!isAuthenticated) {
     return <Redirect to="/login" />;
+  }
+
+  // Check onboarding status (only for authenticated users)
+  const { data: onboarding, isLoading: onboardingLoading } = useQuery({
+    queryKey: ['/api/onboarding/status'],
+    queryFn: () => apiClient.getOnboardingStatus(),
+    enabled: isAuthenticated,
+    retry: false,
+  });
+
+  // Show loading state while checking onboarding
+  if (onboardingLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-sm text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If onboarding exists and is not completed, redirect to onboarding
+  // Only redirect if not already on onboarding page
+  // Existing users (no onboarding record) skip onboarding
+  if (onboarding && !onboarding.completed && currentPath !== '/onboarding') {
+    return <Redirect to="/onboarding" />;
+  }
+
+  // If on onboarding page but onboarding is completed, redirect to dashboard
+  if (currentPath === '/onboarding' && onboarding?.completed) {
+    return <Redirect to="/dashboard" />;
   }
   
   return <>{children}</>;
@@ -183,6 +219,14 @@ function ProtectedRouter() {
             <ProtectedRoute>
               <Suspense fallback={<PageLoader />}>
                 <Settings />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/onboarding">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <Onboarding />
               </Suspense>
             </ProtectedRoute>
           </Route>

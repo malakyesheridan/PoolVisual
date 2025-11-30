@@ -10,6 +10,7 @@ import { apiClient } from '../../lib/api-client';
 import { useProjectStore } from '../../stores/projectStore';
 import { useStatusSyncStore } from '../../stores/statusSyncStore';
 import { useMaterialUsageStore } from '../../stores/materialUsageStore';
+import { useOrgStore } from '../../stores/orgStore';
 import { ProjectOverviewCards } from './ProjectOverviewCards';
 import { ActivityFeed } from './ActivityFeed';
 import { RecentWork } from './RecentWork';
@@ -65,7 +66,8 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
   const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'recent' | 'suggestions' | 'deadlines' | 'collaboration' | 'filtering' | 'notifications'>('overview');
-  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  // Use centralized org store
+  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
 
   // Fetch organizations
   const { data: orgs = [] } = useQuery({
@@ -73,12 +75,21 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
     queryFn: () => apiClient.getMyOrgs(),
   });
 
-  // Auto-select first org if only one exists
+  // Auto-select first org if only one exists and update store
   useEffect(() => {
     if (orgs.length === 1 && !selectedOrgId) {
       setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
+      // If selected org no longer exists, select first available
+      setSelectedOrgId(orgs[0].id);
+      setCurrentOrg(orgs[0]);
+    } else if (orgs.length > 0 && selectedOrgId) {
+      // Update current org if it exists
+      const current = orgs.find(o => o.id === selectedOrgId);
+      if (current) setCurrentOrg(current);
     }
-  }, [orgs, selectedOrgId]);
+  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
 
   // Fetch jobs for the selected organization
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
