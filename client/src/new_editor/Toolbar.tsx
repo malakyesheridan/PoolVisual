@@ -934,6 +934,22 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       useMaskStore.setState({ masks: {}, selectedId: null, draft: null });
       console.log('[Toolbar] Cleared masks for new photo load');
 
+      // Helper to check if URL is external (for CORS handling)
+      const isExternalUrl = (url: string): boolean => {
+        try {
+          const urlObj = new URL(url, window.location.origin);
+          const currentOrigin = window.location.origin;
+          return urlObj.origin !== currentOrigin;
+        } catch {
+          return false;
+        }
+      };
+
+      // Use proxy for external URLs to avoid CORS errors (same as exportCanvasToBlob)
+      const urlToLoad = isExternalUrl(imageUrl)
+        ? `/api/texture?url=${encodeURIComponent(imageUrl)}`
+        : imageUrl;
+
       // Load image to get natural dimensions
       const img = new Image();
       img.crossOrigin = 'anonymous';

@@ -777,7 +777,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const jobIdArray = jobIds ? (jobIds as string).split(',').filter(Boolean) : null;
 
       // Use optimized batch query to fetch all canvas status in one go
-      const { executeQuery } = await import('./lib/db.js');
+      const { executeQuery } = await import('./lib/dbHelpers.js');
       
       // Build query to get all canvas status efficiently
       let query = `
