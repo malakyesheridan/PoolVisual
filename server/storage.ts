@@ -1077,13 +1077,13 @@ export class PostgresStorage implements IStorage {
       if (rows && rows.length > 0) {
         const row = rows[0];
         return {
-          id: row.id,
           userId: row.user_id,
           step: row.step,
           completed: row.completed,
           responses: row.responses,
           firstJobId: row.first_job_id,
           firstPhotoId: row.first_photo_id,
+          completedAt: row.completed_at,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         } as UserOnboarding;
@@ -1119,13 +1119,13 @@ export class PostgresStorage implements IStorage {
       if (rows && rows.length > 0) {
         const row = rows[0];
         return {
-          id: row.id,
           userId: row.user_id,
           step: row.step,
           completed: row.completed,
           responses: row.responses,
           firstJobId: row.first_job_id,
           firstPhotoId: row.first_photo_id,
+          completedAt: row.completed_at,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         } as UserOnboarding;

@@ -6,29 +6,35 @@
 -- PART 1: User Onboarding Functions
 -- ============================================
 
+-- Drop existing functions first (to allow return type changes)
+DROP FUNCTION IF EXISTS system_get_user_onboarding(UUID);
+DROP FUNCTION IF EXISTS system_update_user_onboarding(UUID, TEXT, JSONB, BOOLEAN, UUID, UUID);
+DROP FUNCTION IF EXISTS system_complete_user_onboarding(UUID);
+
 -- Get user onboarding (bypasses RLS)
+-- NOTE: user_onboarding table uses user_id as PRIMARY KEY (no separate id column)
 CREATE OR REPLACE FUNCTION system_get_user_onboarding(user_uuid UUID)
 RETURNS TABLE(
-  id UUID,
   user_id UUID,
   step TEXT,
   completed BOOLEAN,
   responses JSONB,
   first_job_id UUID,
   first_photo_id UUID,
+  completed_at TIMESTAMP,
   created_at TIMESTAMP,
   updated_at TIMESTAMP
 ) AS $$
 BEGIN
   RETURN QUERY
   SELECT 
-    uo.id,
     uo.user_id,
     uo.step,
     uo.completed,
     uo.responses,
     uo.first_job_id,
     uo.first_photo_id,
+    uo.completed_at,
     uo.created_at,
     uo.updated_at
   FROM user_onboarding uo
@@ -38,6 +44,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Update user onboarding (bypasses RLS)
+-- NOTE: user_onboarding table uses user_id as PRIMARY KEY (no separate id column)
 CREATE OR REPLACE FUNCTION system_update_user_onboarding(
   user_uuid UUID,
   step_value TEXT,
@@ -47,18 +54,16 @@ CREATE OR REPLACE FUNCTION system_update_user_onboarding(
   first_photo_id_value UUID DEFAULT NULL
 )
 RETURNS TABLE(
-  id UUID,
   user_id UUID,
   step TEXT,
   completed BOOLEAN,
   responses JSONB,
   first_job_id UUID,
   first_photo_id UUID,
+  completed_at TIMESTAMP,
   created_at TIMESTAMP,
   updated_at TIMESTAMP
 ) AS $$
-DECLARE
-  result_row RECORD;
 BEGIN
   -- Update or insert
   INSERT INTO user_onboarding (user_id, step, completed, responses, first_job_id, first_photo_id, updated_at)
@@ -70,10 +75,22 @@ BEGIN
     responses = EXCLUDED.responses,
     first_job_id = COALESCE(EXCLUDED.first_job_id, user_onboarding.first_job_id),
     first_photo_id = COALESCE(EXCLUDED.first_photo_id, user_onboarding.first_photo_id),
-    updated_at = NOW()
-  RETURNING * INTO result_row;
+    updated_at = NOW();
   
-  RETURN QUERY SELECT * FROM user_onboarding WHERE user_id = user_uuid;
+  -- Return the updated/inserted record (qualify column names to avoid ambiguity)
+  RETURN QUERY 
+  SELECT 
+    uo.user_id,
+    uo.step,
+    uo.completed,
+    uo.responses,
+    uo.first_job_id,
+    uo.first_photo_id,
+    uo.completed_at,
+    uo.created_at,
+    uo.updated_at
+  FROM user_onboarding uo
+  WHERE uo.user_id = user_uuid;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
