@@ -23,9 +23,9 @@ interface TopUpPack {
 }
 
 const TOP_UP_PACKS: TopUpPack[] = [
-  { priceId: 'price_1SZEy4ldjngDSU32bqsKASsp', credits: 25, price: 9.99 },
-  { priceId: 'price_1SZEyZIdjngDSU32vRaAQVnr', credits: 100, price: 29.99, popular: true },
-  { priceId: 'price_1SZEzDIdjngDSU327RDMd5zR', credits: 300, price: 79.99 },
+  { priceId: 'price_1SZEy4ldjngDSU32bqsKASsp', credits: 25, price: 25.00 },
+  { priceId: 'price_1SZEyZIdjngDSU32vRaAQVnr', credits: 100, price: 75.00, popular: true },
+  { priceId: 'price_1SZEzDldjngDSU327RDMd5zR', credits: 300, price: 199.00 },
 ];
 
 export function UpgradeModal({ 

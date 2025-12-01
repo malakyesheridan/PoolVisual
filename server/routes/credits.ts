@@ -55,7 +55,11 @@ router.post('/topup/checkout', authenticateSession, async (req, res) => {
     // Initialize Stripe
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      return res.status(500).json({ ok: false, error: 'Stripe not configured' });
+      logger.error({ msg: 'Stripe not configured - STRIPE_SECRET_KEY missing' });
+      return res.status(500).json({ 
+        ok: false, 
+        error: 'Stripe payment processing is not configured. Please contact support.' 
+      });
     }
 
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-12-18.acacia' });
@@ -122,7 +126,8 @@ router.post('/topup/webhook', async (req, res) => {
     const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!stripeSecretKey || !webhookSecret) {
-      return res.status(500).json({ error: 'Stripe not configured' });
+      logger.error({ msg: 'Stripe not configured - missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET' });
+      return res.status(500).json({ error: 'Stripe payment processing is not configured. Please contact support.' });
     }
 
     const stripe = new Stripe(stripeSecretKey, { apiVersion: '2024-12-18.acacia' });

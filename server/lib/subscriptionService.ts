@@ -337,7 +337,8 @@ export class SubscriptionService {
 
     // Real Stripe checkout for non-placeholder plans
     if (!this.stripe) {
-      throw new Error('Stripe not configured');
+      logger.error({ msg: 'Stripe not configured - STRIPE_SECRET_KEY missing' });
+      throw new Error('Stripe payment processing is not configured. Please contact support.');
     }
 
     if (!priceId) {

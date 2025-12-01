@@ -332,9 +332,9 @@ export async function resetMonthlyCredits(userId: string, monthlyCredits: number
  */
 export function getCreditsFromPriceId(priceId: string): number | null {
   const topUpMap: Record<string, number> = {
-    'price_1SZEzDIdjngDSU327RDMd5zR': 300,  // 300 credits
-    'price_1SZEyZIdjngDSU32vRaAQVnr': 100,  // 100 credits
-    'price_1SZEy4ldjngDSU32bqsKASsp': 25,   // 25 credits
+    'price_1SZEzDldjngDSU327RDMd5zR': 300,  // 300 credits - $199 AUD
+    'price_1SZEyZIdjngDSU32vRaAQVnr': 100,  // 100 credits - $75 AUD
+    'price_1SZEy4ldjngDSU32bqsKASsp': 25,   // 25 credits - $25 AUD
   };
 
   return topUpMap[priceId] || null;
@@ -345,20 +345,20 @@ export function getCreditsFromPriceId(priceId: string): number | null {
  */
 export function getPlanFromPriceId(priceId: string): { planKey: string; monthlyCredits: number; productId: string } | null {
   const planMap: Record<string, { planKey: string; monthlyCredits: number; productId: string }> = {
-    // Business plan
-    'price_1SZEwWIdjngDSU32r6dTKkUw': {
+    // Business plan - $995 AUD/month
+    'price_1SZEWWIdjngDSU32r6dTKkUw': {
       planKey: 'easyflow_business',
       monthlyCredits: 1700,
       productId: 'prod_TWHVnh2JLmnL4v',
     },
-    // Pro plan
-    'price_1SZEvMIdjngDSU32RI4i4XRH': {
+    // Pro plan - $299 AUD/month
+    'price_1SZEvMldjngDSU32RI4i4XRH': {
       planKey: 'easyflow_pro',
       monthlyCredits: 500,
       productId: 'prod_TWHUq6G3UulAdY',
     },
-    // Solo plan
-    'price_1SZEuUldjngDSU32y8uKNbVn': {
+    // Solo plan - $149 AUD/month
+    'price_1SZEuUIdjngDSU32y8uKNbVn': {
       planKey: 'easyflow_solo',
       monthlyCredits: 250,
       productId: 'prod_TWHTdDZapUAjGA',
@@ -379,9 +379,9 @@ export function getProductIdFromPriceId(priceId: string): string | null {
 
   // Check top-up products
   const topUpProductMap: Record<string, string> = {
-    'price_1SZEzDIdjngDSU327RDMd5zR': 'prod_TWHYlbC5XFDweh',  // 300 credits
-    'price_1SZEyZIdjngDSU32vRaAQVnr': 'prod_TWHXbtNDnmZxCZ',  // 100 credits
-    'price_1SZEy4ldjngDSU32bqsKASsp': 'prod_TWHXqzR4SR3s19',  // 25 credits
+    'price_1SZEzDldjngDSU327RDMd5zR': 'prod_TWHYIbC5XFDweh',  // 300 credits - $199 AUD
+    'price_1SZEyZIdjngDSU32vRaAQVnr': 'prod_TWHXbtNDnmZxCZ',  // 100 credits - $75 AUD
+    'price_1SZEy4ldjngDSU32bqsKASsp': 'prod_TWHXqzR4SR3s19',  // 25 credits - $25 AUD
   };
 
   return topUpProductMap[priceId] || null;

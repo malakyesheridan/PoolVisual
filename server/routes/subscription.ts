@@ -144,7 +144,8 @@ router.post('/webhook', async (req, res) => {
   try {
     const stripe = (subscriptionService as any).stripe; // Access private property
     if (!stripe) {
-      return res.status(500).json({ error: 'Stripe not configured' });
+      logger.error({ msg: 'Stripe not configured - STRIPE_SECRET_KEY missing' });
+      return res.status(500).json({ error: 'Stripe payment processing is not configured. Please contact support.' });
     }
 
     const sig = req.headers['stripe-signature'];
