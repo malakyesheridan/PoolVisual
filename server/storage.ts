@@ -706,33 +706,17 @@ export class PostgresStorage implements IStorage {
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
     try {
-      // Filter out property detail fields if they don't exist in the database yet
-      // Only include fields that are safe to update (base job fields)
-      const safeUpdates: any = {};
-      const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
-      
-      // Always include base fields
-      for (const field of baseFields) {
-        if (field in updates) {
-          safeUpdates[field] = (updates as any)[field];
-        }
-      }
-      
-      // Handle propertyDetailsJson separately (it's a JSONB column)
-      if ('propertyDetailsJson' in updates) {
-        safeUpdates.propertyDetailsJson = updates.propertyDetailsJson;
-      }
-      
+      // Include all fields from updates (both base and property detail fields)
       const [job] = await ensureDb()
         .update(jobs)
-        .set(safeUpdates)
+        .set(updates)
         .where(eq(jobs.id, id))
         .returning();
       if (!job) throw new Error("Failed to update job");
       return job;
     } catch (error: any) {
       // If update fails due to missing columns, try with only base fields
-      if (error?.message?.includes('does not exist') || error?.message?.includes('property_details_json') || error?.code === '42703') {
+      if (error?.message?.includes('does not exist') || error?.code === '42703') {
         console.warn('[updateJob] Some columns may not exist, trying with base fields only');
         const baseUpdates: any = {};
         const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
