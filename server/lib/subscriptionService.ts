@@ -367,7 +367,7 @@ export class SubscriptionService {
       throw new Error('User not found');
     }
 
-    // Create or get Stripe customer
+    // Create or get Stripe customer - validate customer exists
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await this.stripe.customers.create({
@@ -379,6 +379,28 @@ export class SubscriptionService {
       });
       customerId = customer.id;
       await storage.updateUser(userId, { stripeCustomerId: customerId });
+    } else {
+      // Verify customer exists in Stripe, create new one if it doesn't
+      try {
+        await this.stripe.customers.retrieve(customerId);
+      } catch (error: any) {
+        // Customer doesn't exist (e.g., was created in test mode, deleted, or wrong account)
+        logger.warn({
+          msg: 'Stripe customer not found, creating new one',
+          userId,
+          oldCustomerId: customerId,
+          error: error.message,
+        });
+        const customer = await this.stripe.customers.create({
+          email: user.email,
+          name: user.username,
+          metadata: {
+            userId: user.id,
+          },
+        });
+        customerId = customer.id;
+        await storage.updateUser(userId, { stripeCustomerId: customerId });
+      }
     }
 
     // Create checkout session

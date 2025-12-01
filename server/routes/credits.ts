@@ -82,6 +82,28 @@ router.post('/topup/checkout', authenticateSession, async (req, res) => {
       });
       customerId = customer.id;
       await storage.updateUser(user.id, { stripeCustomerId: customerId });
+    } else {
+      // Verify customer exists in Stripe, create new one if it doesn't
+      try {
+        await stripe.customers.retrieve(customerId);
+      } catch (error: any) {
+        // Customer doesn't exist (e.g., was created in test mode, deleted, or wrong account)
+        logger.warn({
+          msg: 'Stripe customer not found, creating new one',
+          userId: user.id,
+          oldCustomerId: customerId,
+          error: error.message,
+        });
+        const customer = await stripe.customers.create({
+          email: userRecord.email,
+          name: userRecord.username,
+          metadata: {
+            userId: user.id,
+          },
+        });
+        customerId = customer.id;
+        await storage.updateUser(user.id, { stripeCustomerId: customerId });
+      }
     }
 
     // Create checkout session
