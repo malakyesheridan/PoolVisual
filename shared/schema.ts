@@ -380,7 +380,7 @@ export const webhookDedupe = pgTable("webhook_dedupe", {
 // Property notes (for real estate)
 export const propertyNotes = pgTable("property_notes", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  jobId: uuid("job_id").references(() => jobs.id).onDelete("cascade").notNull(),
+  jobId: uuid("job_id").references(() => jobs.id).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   noteText: text("note_text").notNull(),
   tags: text("tags").array().default(sql`'{}'::text[]`),
@@ -414,7 +414,7 @@ export const opportunities = pgTable("opportunities", {
 // Opportunity follow-ups
 export const opportunityFollowups = pgTable("opportunity_followups", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
   taskText: text("task_text").notNull(),
   dueDate: timestamp("due_date"),
   completed: boolean("completed").default(false).notNull(),
@@ -431,7 +431,7 @@ export const opportunityFollowups = pgTable("opportunity_followups", {
 // Opportunity notes
 export const opportunityNotes = pgTable("opportunity_notes", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   noteText: text("note_text").notNull(),
   noteType: text("note_type").default("general"),
@@ -442,7 +442,7 @@ export const opportunityNotes = pgTable("opportunity_notes", {
 // Opportunity activities
 export const opportunityActivities = pgTable("opportunity_activities", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   activityType: text("activity_type").notNull(),
   activityTitle: text("activity_title").notNull(),
@@ -454,7 +454,7 @@ export const opportunityActivities = pgTable("opportunity_activities", {
 // Opportunity documents
 export const opportunityDocuments = pgTable("opportunity_documents", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
   userId: uuid("user_id").references(() => users.id).notNull(),
   fileName: text("file_name").notNull(),
   fileUrl: text("file_url").notNull(),
