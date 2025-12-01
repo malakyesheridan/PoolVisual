@@ -56,7 +56,7 @@ const PLANS: Plan[] = [
       'Preset Library',
       'Before/After Slideshow',
     ],
-    stripePriceIdMonthly: 'price_1SZRIGEdvdAX5C3ketcnQIeO',
+    stripePriceIdMonthly: 'price_1SZRiGEdvdAX5C3ketcnQIeO',
   },
   {
     key: 'business',

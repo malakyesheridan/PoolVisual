@@ -352,13 +352,13 @@ export function getPlanFromPriceId(priceId: string): { planKey: string; monthlyC
       productId: 'prod_TWUhmEZK3biO3P',
     },
     // Business plan - Yearly: $9995 AUD/year
-    'price_1SZTI8EdvdAX5C3kPun5h2kj': {
+    'price_1SZTl8EdvdAX5C3kPun5h2kj': {
       planKey: 'easyflow_business',
       monthlyCredits: 1700,
       productId: 'prod_TWWoG67txbpdNL',
     },
     // Pro plan - Monthly: $299 AUD/month
-    'price_1SZRIGEdvdAX5C3ketcnQIeO': {
+    'price_1SZRiGEdvdAX5C3ketcnQIeO': {
       planKey: 'easyflow_pro',
       monthlyCredits: 500,
       productId: 'prod_TWUhgM8JYrdA9y',
@@ -404,7 +404,7 @@ export function getProductIdFromPriceId(priceId: string): string | null {
 
   // Also check yearly subscription products
   const yearlyProductMap: Record<string, string> = {
-    'price_1SZTI8EdvdAX5C3kPun5h2kj': 'prod_TWWoG67txbpdNL',  // Business yearly
+    'price_1SZTl8EdvdAX5C3kPun5h2kj': 'prod_TWWoG67txbpdNL',  // Business yearly
     'price_1SZTk7EdvdAX5C3kzS23TQES': 'prod_TWWnUH3BQx71YL',  // Pro yearly
     'price_1SZTjjEdvdAX5C3k1pZ1sEuz': 'prod_TWWnwF0MnDHgyS',  // Solo yearly
   };

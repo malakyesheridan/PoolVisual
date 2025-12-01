@@ -37,7 +37,7 @@ STRIPE_WEBHOOK_SECRET_TOPUP=whsec_...
   - Product ID: `prod_TWUhmEZK3biO3P`
   - Monthly Credits: 1700
   
-- **Pro Plan** - `price_1SZRIGEdvdAX5C3ketcnQIeO` - $299.00 AUD/month
+- **Pro Plan** - `price_1SZRiGEdvdAX5C3ketcnQIeO` - $299.00 AUD/month
   - Product ID: `prod_TWUhgM8JYrdA9y`
   - Monthly Credits: 500
   
@@ -46,7 +46,7 @@ STRIPE_WEBHOOK_SECRET_TOPUP=whsec_...
   - Monthly Credits: 250
 
 #### Yearly Plans
-- **Business Plan (Yearly)** - `price_1SZTI8EdvdAX5C3kPun5h2kj` - $9,995.00 AUD/year
+- **Business Plan (Yearly)** - `price_1SZTl8EdvdAX5C3kPun5h2kj` - $9,995.00 AUD/year
   - Product ID: `prod_TWWoG67txbpdNL`
   - Monthly Credits: 1700
   
