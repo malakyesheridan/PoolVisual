@@ -36,11 +36,12 @@ interface Plan {
   key: 'solo' | 'pro' | 'business';
   name: string;
   monthlyPrice: number;
-  yearlyPrice: number;
+  yearlyPrice: number; // Monthly equivalent when billed yearly
+  yearlyTotal: number; // Total yearly price
   monthlyCredits: number;
   features: Array<{ text: string; icon: any }>;
   stripePriceIdMonthly: string;
-  stripePriceIdYearly?: string;
+  stripePriceIdYearly: string;
 }
 
 const PLANS: Plan[] = [
@@ -48,7 +49,8 @@ const PLANS: Plan[] = [
     key: 'solo',
     name: 'Solo',
     monthlyPrice: 149,
-    yearlyPrice: 119.2,
+    yearlyPrice: 124.17, // $1,490 / 12 months
+    yearlyTotal: 1490,
     monthlyCredits: 250,
     features: [
       { text: '250 credits/month', icon: Sparkles },
@@ -59,12 +61,14 @@ const PLANS: Plan[] = [
       { text: 'Email Support', icon: Headphones },
     ],
     stripePriceIdMonthly: 'price_1SZRhzEdvdAX5C3kg43xSFBd',
+    stripePriceIdYearly: 'price_1SZTjjEdvdAX5C3k1pZ1sEuz',
   },
   {
     key: 'pro',
     name: 'Pro',
     monthlyPrice: 299,
-    yearlyPrice: 239.2,
+    yearlyPrice: 249.92, // $2,999 / 12 months
+    yearlyTotal: 2999,
     monthlyCredits: 500,
     features: [
       { text: '500 credits/month', icon: Sparkles },
@@ -76,12 +80,14 @@ const PLANS: Plan[] = [
       { text: 'Priority Email Support', icon: Headphones },
     ],
     stripePriceIdMonthly: 'price_1SZRiGEdvdAX5C3ketcnQIeO',
+    stripePriceIdYearly: 'price_1SZTk7EdvdAX5C3kzS23TQES',
   },
   {
     key: 'business',
     name: 'Business',
     monthlyPrice: 995,
-    yearlyPrice: 796,
+    yearlyPrice: 832.92, // $9,995 / 12 months
+    yearlyTotal: 9995,
     monthlyCredits: 1700,
     features: [
       { text: '1700 credits/month', icon: Sparkles },
@@ -93,6 +99,7 @@ const PLANS: Plan[] = [
       { text: 'Custom Integrations', icon: Layers },
     ],
     stripePriceIdMonthly: 'price_1SZRiaEdvdAX5C3kEekpnwAR',
+    stripePriceIdYearly: 'price_1SZTl8EdvdAX5C3kPun5h2kj',
   },
 ];
 
@@ -321,7 +328,7 @@ export default function Subscribe() {
                   
                   {billingPeriod === 'yearly' && (
                     <p className="text-sm text-slate-500 mb-3">
-                      Billed yearly ({formatPrice(Math.round(plan.yearlyPrice * 12))}/year)
+                      Billed yearly ({formatPrice(plan.yearlyTotal)}/year)
                     </p>
                   )}
                   
