@@ -17,7 +17,8 @@ import {
   Bell,
   Shield,
   Menu,
-  X
+  X,
+  CreditCard
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -168,6 +169,7 @@ export function AppShell({ children }: PropsWithChildren) {
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: quotes, icon: FileText },
+    { to: '/billing', label: 'Billing', icon: CreditCard },
     ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
@@ -297,6 +299,12 @@ export function AppShell({ children }: PropsWithChildren) {
                         </p>
                       </div>
                     </div>
+                    <DropdownMenuItem asChild>
+                      <Link href="/billing" className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        Billing & Credits
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/settings" className="flex items-center gap-2">

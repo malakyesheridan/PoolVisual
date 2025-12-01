@@ -19,6 +19,7 @@ import { Sunset, Home, Eraser } from 'lucide-react';
 import { checkFeatureAccess, getUpgradeMessage } from '../../lib/featureAccess';
 import { CreditDeductionModal } from '../credits/CreditDeductionModal';
 import { apiClient } from '../../lib/api-client';
+import { useLocation } from 'wouter';
 
 interface JobsDrawerProps {
   onClose?: () => void;
@@ -28,6 +29,7 @@ interface JobsDrawerProps {
 export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const { industry } = useOnboarding();
   const { user } = useAuthStore();
+  const [, setLocation] = useLocation();
   const { 
     setInitial, 
     upsertJob, 
@@ -996,7 +998,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           action: {
             label: 'Purchase Credits',
             onClick: () => {
-              window.dispatchEvent(new CustomEvent('openUpgradeModal', { detail: { mode: 'topup' } }));
+              setLocation('/billing');
             }
           },
           duration: 10000
