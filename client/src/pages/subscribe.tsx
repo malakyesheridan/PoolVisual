@@ -4,16 +4,13 @@ import { useAuthStore } from '@/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
-import { Check, Loader2, AlertCircle, CreditCard, Building2, Home, X } from 'lucide-react';
+import { Check, Loader2, AlertCircle, CreditCard, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/lib/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-type Industry = 'trades' | 'real_estate';
 type BillingPeriod = 'monthly' | 'yearly';
 
 interface Plan {
@@ -87,10 +84,9 @@ const FEATURE_COMPARISON = [
 
 export default function Subscribe() {
   const [, navigate] = useLocation();
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   
   // State
-  const [selectedIndustry, setSelectedIndustry] = useState<Industry>('trades');
   const [selectedPlan, setSelectedPlan] = useState<'solo' | 'pro' | 'business' | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [processing, setProcessing] = useState(false);
@@ -101,13 +97,6 @@ export default function Subscribe() {
   useEffect(() => {
     checkExistingSubscription();
   }, []);
-
-  // Save industry selection to user profile
-  useEffect(() => {
-    if (user && selectedIndustry && user.industryType !== selectedIndustry) {
-      saveIndustrySelection();
-    }
-  }, [selectedIndustry, user]);
 
   const checkExistingSubscription = async () => {
     try {
@@ -122,20 +111,6 @@ export default function Subscribe() {
     } catch (err) {
       // Ignore errors - user might not have subscription yet
       console.log('No existing subscription or error checking:', err);
-    }
-  };
-
-  const saveIndustrySelection = async () => {
-    if (!user) return;
-    try {
-      // Map 'trades' to 'pool' for database constraint (database doesn't allow 'trades')
-      const dbIndustryType = selectedIndustry === 'trades' ? 'pool' : selectedIndustry;
-      // Update user's industry type via API
-      await apiClient.updateUserProfile({ industryType: dbIndustryType });
-      // Update local store with the original selection (for UI purposes)
-      setUser({ ...user, industryType: selectedIndustry });
-    } catch (err) {
-      console.error('Failed to save industry selection:', err);
     }
   };
 
@@ -210,57 +185,6 @@ export default function Subscribe() {
             Select the perfect plan for your business. All plans include a 14-day free trial.
           </p>
         </div>
-
-        {/* Industry Selection */}
-        <Card className="mb-8 border-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              Select Your Industry
-            </CardTitle>
-            <CardDescription>
-              Choose the industry that best matches your business (this affects app behavior, not pricing)
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RadioGroup
-              value={selectedIndustry}
-              onValueChange={(v) => setSelectedIndustry(v as Industry)}
-              className="flex gap-6"
-            >
-              <Label
-                htmlFor="trades"
-                className={`flex flex-col items-center p-6 border-2 rounded-lg cursor-pointer transition-all ${
-                  selectedIndustry === 'trades'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <RadioGroupItem value="trades" id="trades" className="sr-only" />
-                <Building2 className="h-8 w-8 mb-2 text-slate-600" />
-                <span className="font-semibold text-lg">Trades</span>
-                <span className="text-sm text-slate-500 mt-1">
-                  Pool, Landscaping, Building, etc.
-                </span>
-              </Label>
-              <Label
-                htmlFor="real_estate"
-                className={`flex flex-col items-center p-6 border-2 rounded-lg cursor-pointer transition-all ${
-                  selectedIndustry === 'real_estate'
-                    ? 'border-primary bg-primary/5'
-                    : 'border-slate-200 hover:border-slate-300'
-                }`}
-              >
-                <RadioGroupItem value="real_estate" id="real_estate" className="sr-only" />
-                <Home className="h-8 w-8 mb-2 text-slate-600" />
-                <span className="font-semibold text-lg">Real Estate</span>
-                <span className="text-sm text-slate-500 mt-1">
-                  Agents, Photographers, Staging
-                </span>
-              </Label>
-            </RadioGroup>
-          </CardContent>
-        </Card>
 
         {/* Billing Period Toggle */}
         <div className="flex justify-center mb-8">
