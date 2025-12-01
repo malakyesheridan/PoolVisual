@@ -19,7 +19,6 @@ import {
   Shield, 
   Headphones, 
   Download,
-  Infinity,
   FileText,
   Palette,
   Wand2
@@ -94,9 +93,7 @@ const PLANS: Plan[] = [
       { text: 'All Pro features included', icon: Check },
       { text: 'White-Label Export', icon: Shield },
       { text: 'Priority Processing Queue', icon: Zap },
-      { text: 'API Access', icon: Infinity },
       { text: 'Dedicated Support', icon: Headphones },
-      { text: 'Custom Integrations', icon: Layers },
     ],
     stripePriceIdMonthly: 'price_1SZRiaEdvdAX5C3kEekpnwAR',
     stripePriceIdYearly: 'price_1SZTl8EdvdAX5C3kPun5h2kj',
@@ -115,8 +112,6 @@ const FEATURE_COMPARISON = [
   { feature: 'Before/After Slideshow Export', solo: false, pro: true, business: true },
   { feature: 'White-Label Export', solo: false, pro: false, business: true },
   { feature: 'Priority Processing Queue', solo: false, pro: false, business: true },
-  { feature: 'API Access', solo: false, pro: false, business: true },
-  { feature: 'Custom Integrations', solo: false, pro: false, business: true },
   { feature: 'Email Support', solo: true, pro: true, business: true },
   { feature: 'Priority Support', solo: false, pro: true, business: true },
   { feature: 'Dedicated Support', solo: false, pro: false, business: true },
@@ -212,14 +207,14 @@ export default function Subscribe() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 mb-6">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-900 mb-6 shadow-lg">
             <Sparkles className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent mb-4">
+          <h1 className="text-5xl font-bold text-slate-900 mb-4">
             Choose Your Plan
           </h1>
           <p className="text-xl text-slate-600 max-w-2xl mx-auto">
@@ -236,7 +231,7 @@ export default function Subscribe() {
               onClick={() => setBillingPeriod('monthly')}
               className={`px-8 transition-all ${
                 billingPeriod === 'monthly' 
-                  ? 'bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-md hover:shadow-lg' 
+                  ? 'bg-slate-900 text-white shadow-md hover:shadow-lg hover:bg-slate-800' 
                   : 'hover:bg-slate-50'
               }`}
             >
@@ -248,7 +243,7 @@ export default function Subscribe() {
               onClick={() => setBillingPeriod('yearly')}
               className={`px-8 transition-all ${
                 billingPeriod === 'yearly' 
-                  ? 'bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-md hover:shadow-lg' 
+                  ? 'bg-slate-900 text-white shadow-md hover:shadow-lg hover:bg-slate-800' 
                   : 'hover:bg-slate-50'
               }`}
             >
@@ -281,18 +276,18 @@ export default function Subscribe() {
                 key={plan.key}
                 className={`relative transition-all duration-300 cursor-pointer group ${
                   isSelected
-                    ? 'border-2 border-blue-500 shadow-2xl scale-105 ring-4 ring-blue-500/20'
+                    ? 'border-2 border-slate-900 shadow-2xl scale-105 ring-4 ring-slate-900/10'
                     : 'border-slate-200 shadow-lg hover:shadow-xl hover:scale-[1.02]'
                 } ${
                   isPopular 
-                    ? 'ring-2 ring-blue-500/30 bg-gradient-to-b from-white to-blue-50/20' 
+                    ? 'ring-2 ring-slate-900/10 bg-gradient-to-b from-white to-slate-50/50' 
                     : 'bg-white'
                 } ${isCurrentPlan ? 'opacity-75' : ''}`}
                 onClick={() => !isCurrentPlan && setSelectedPlan(plan.key)}
               >
                 {isPopular && (
                   <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
-                    <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-1.5 text-sm font-semibold shadow-lg">
+                    <Badge className="bg-slate-900 text-white px-4 py-1.5 text-sm font-semibold shadow-lg">
                       ⭐ Most Popular
                     </Badge>
                   </div>
@@ -307,18 +302,18 @@ export default function Subscribe() {
                 
                 <CardHeader className="pb-6 pt-8">
                   <div className="flex items-center justify-between mb-4">
-                    <CardTitle className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                    <CardTitle className="text-3xl font-bold text-slate-900">
                       {plan.name}
                     </CardTitle>
                     {isPopular && (
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                      <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center shadow-lg">
                         <Zap className="h-6 w-6 text-white" />
                       </div>
                     )}
                   </div>
                   
                   <div className="flex items-baseline gap-2 mb-2">
-                    <span className="text-5xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                    <span className="text-5xl font-bold text-slate-900">
                       {formatPrice(price)}
                     </span>
                     <span className="text-lg text-slate-500 font-medium">
@@ -332,8 +327,8 @@ export default function Subscribe() {
                     </p>
                   )}
                   
-                  <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
-                    <Sparkles className="h-4 w-4 text-blue-600" />
+                  <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                    <Sparkles className="h-4 w-4 text-slate-700" />
                     <p className="text-sm font-semibold text-slate-700">
                       {plan.monthlyCredits} credits/month
                     </p>
@@ -348,8 +343,8 @@ export default function Subscribe() {
                       const Icon = feature.icon;
                       return (
                         <li key={idx} className="flex items-start gap-3 group/item">
-                          <div className="mt-0.5 p-1.5 rounded-md bg-gradient-to-br from-blue-100 to-purple-100 group-hover/item:scale-110 transition-transform">
-                            <Icon className="h-4 w-4 text-blue-600" />
+                          <div className="mt-0.5 p-1.5 rounded-md bg-slate-100 group-hover/item:scale-110 transition-transform">
+                            <Icon className="h-4 w-4 text-slate-700" />
                           </div>
                           <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
                             {feature.text}
@@ -362,7 +357,7 @@ export default function Subscribe() {
                   <Button
                     className={`w-full h-12 text-base font-semibold transition-all duration-300 ${
                       isSelected
-                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl'
+                        ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-lg hover:shadow-xl'
                         : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md hover:shadow-lg'
                     }`}
                     onClick={(e) => {
@@ -401,12 +396,12 @@ export default function Subscribe() {
 
         {/* Feature Comparison Table */}
         <Card className="mb-8 border-2 shadow-xl bg-white">
-          <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50/30 border-b">
+          <CardHeader className="bg-gradient-to-r from-slate-50 to-slate-100 border-b">
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+              <div className="p-2 rounded-lg bg-slate-900">
                 <Layers className="h-5 w-5 text-white" />
               </div>
-              <CardTitle className="text-2xl font-bold">Feature Comparison</CardTitle>
+              <CardTitle className="text-2xl font-bold text-slate-900">Feature Comparison</CardTitle>
             </div>
             <CardDescription className="text-base">
               Compare all features across our plans to find the perfect fit
