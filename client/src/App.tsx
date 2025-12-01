@@ -45,7 +45,7 @@ const SubscribeSuccess = React.lazy(() => import("@/pages/subscribe-success"));
 const Billing = React.lazy(() => import("@/pages/billing"));
 import { initMaterialsOnce, attachMaterialsFocusRefresh } from "@/app/initMaterials";
 // CORRECTED: Import the hook instead of using duplicate query
-import { useOnboarding } from '@/hooks/useOnboarding';
+import { IndustrySelectionModal } from '@/components/IndustrySelectionModal';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -60,34 +60,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/login" />;
   }
 
-  // CORRECTED: Use hook instead of duplicate query
-  const { onboarding, isLoading: onboardingLoading } = useOnboarding();
-
-  // Show loading state while checking onboarding
-  if (onboardingLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <p className="mt-4 text-sm text-gray-600">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // If onboarding exists and is not completed, redirect to onboarding
-  // Only redirect if not already on onboarding page
-  // Existing users (no onboarding record) skip onboarding
-  if (onboarding && !onboarding.completed && currentPath !== '/onboarding') {
-    return <Redirect to="/onboarding" />;
-  }
-
-  // If on onboarding page but onboarding is completed, redirect to dashboard
-  if (currentPath === '/onboarding' && onboarding?.completed) {
-    return <Redirect to="/dashboard" />;
-  }
+  // Show industry selection modal if needed (non-blocking)
+  // The modal will handle showing/hiding based on user.industryType
   
-  return <>{children}</>;
+  return (
+    <>
+      <IndustrySelectionModal />
+      {children}
+    </>
+  );
 }
 
 function ProtectedRouter() {
