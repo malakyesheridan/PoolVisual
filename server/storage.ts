@@ -2174,9 +2174,15 @@ async function initializeStorage() {
       console.log('[Storage] Using PostgresStorage');
       storage = new PostgresStorage();
       
-      // Test database connection synchronously during initialization
-      await ensureDb().select().from(materials).limit(1);
-      console.log('[Storage] Database connection test passed');
+      // Test database connection - but don't crash if it fails
+      try {
+        await ensureDb().select().from(materials).limit(1);
+        console.log('[Storage] Database connection test passed');
+      } catch (testError: any) {
+        // Log but don't throw - allow function to start even if DB test fails
+        console.warn('[Storage] Database connection test failed, but continuing:', testError?.message);
+        // Still use PostgresStorage - individual queries will handle errors
+      }
     }
   } catch (error) {
     console.error('[Storage] Failed to initialize PostgresStorage, falling back to MockStorage:', error);
@@ -2184,9 +2190,17 @@ async function initializeStorage() {
   }
 }
 
-// Initialize storage synchronously
+// Initialize storage - wrap in try-catch to prevent unhandled rejections
 (async () => {
-  await initializeStorage();
+  try {
+    await initializeStorage();
+  } catch (error) {
+    console.error('[Storage] Critical initialization error, using MockStorage:', error);
+    // Ensure storage is set even if initialization fails
+    if (!storage) {
+      storage = new MockStorage();
+    }
+  }
 })();
 
 export { storage };
