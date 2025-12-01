@@ -32,7 +32,7 @@ const PLANS: Plan[] = [
     key: 'solo',
     name: 'Solo',
     monthlyPrice: 149,
-    yearlyPrice: 119, // 20% off: 149 * 0.8 = 119.2
+    yearlyPrice: 119.2, // 20% off: 149 * 0.8 = 119.2
     monthlyCredits: 250,
     features: [
       '250 credits/month',
@@ -46,7 +46,7 @@ const PLANS: Plan[] = [
     key: 'pro',
     name: 'Pro',
     monthlyPrice: 299,
-    yearlyPrice: 239, // 20% off: 299 * 0.8 = 239.2
+    yearlyPrice: 239.2, // 20% off: 299 * 0.8 = 239.2
     monthlyCredits: 500,
     features: [
       '500 credits/month',
@@ -335,7 +335,7 @@ export default function Subscribe() {
                   </div>
                   {billingPeriod === 'yearly' && (
                     <p className="text-sm text-slate-500 mt-1">
-                      Billed yearly ({formatPrice(plan.yearlyPrice * 12)}/year)
+                      Billed yearly ({formatPrice(Math.round(plan.yearlyPrice * 12))}/year)
                     </p>
                   )}
                   <p className="text-xs text-slate-400 mt-2">
