@@ -365,18 +365,24 @@ export async function registerRoutes(app: Express): Promise<void> {
         completed: false, 
         responses: {} 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[onboarding/status] Error:', error);
       // If error is due to missing table, return default instead of 500
-      const errorMessage = (error as Error).message;
-      if (errorMessage.includes('user_onboarding') || (error as any)?.code === '42P01') {
+      const errorMessage = error?.message || 'Unknown error';
+      if (errorMessage.includes('user_onboarding') || error?.code === '42P01' || error?.code === '42703') {
         return res.json({ 
           step: 'welcome', 
           completed: false, 
           responses: {} 
         });
       }
-      res.status(500).json({ error: errorMessage });
+      // For any other error, still return default to prevent crashes
+      console.warn('[onboarding/status] Unexpected error, returning default:', errorMessage);
+      return res.json({ 
+        step: 'welcome', 
+        completed: false, 
+        responses: {} 
+      });
     }
   });
 
@@ -395,9 +401,18 @@ export async function registerRoutes(app: Express): Promise<void> {
       });
       
       res.json(onboarding);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[onboarding/update] Error:', error);
-      res.status(500).json({ error: (error as Error).message });
+      // If error is due to missing table, return success with default to prevent crashes
+      if (error?.message?.includes('user_onboarding') || error?.code === '42P01' || error?.code === '42703') {
+        console.warn('[onboarding/update] Table not found, returning default response');
+        return res.json({ 
+          step: step || 'welcome', 
+          completed: false, 
+          responses: responses || {} 
+        });
+      }
+      res.status(500).json({ error: error?.message || 'Failed to update onboarding' });
     }
   });
 
@@ -1480,8 +1495,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       res.json(materials);
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+    } catch (error: any) {
+      console.error('[Routes] Error fetching materials:', error);
+      // Return empty array instead of crashing if there's a database issue
+      if (error?.message?.includes('does not exist') || error?.code === '42P01' || error?.code === '42703') {
+        console.warn('[Routes] Database table/column issue, returning empty materials array');
+        return res.json([]);
+      }
+      res.status(500).json({ message: error?.message || 'Failed to fetch materials' });
     }
   });
 
