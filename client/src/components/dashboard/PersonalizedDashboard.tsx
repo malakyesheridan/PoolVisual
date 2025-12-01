@@ -12,7 +12,6 @@ import { useEnabledFeatures } from '@/hooks/useFeatureFlag';
 import { getFilteredWidgets } from './DashboardWidgets';
 import { getIndustryTerm } from '@/lib/industry-terminology';
 import { apiClient } from '@/lib/api-client';
-import { useOrgStore } from '@/stores/orgStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Palette, Briefcase } from 'lucide-react';
@@ -25,21 +24,18 @@ import { UserRole } from '@/types/onboarding';
 export function PersonalizedDashboard() {
   const { industry, role, useCase, experience } = useOnboarding();
   const enabledFeatures = useEnabledFeatures();
-  const { selectedOrgId } = useOrgStore();
   const [, navigate] = useLocation();
   
-  // Fetch jobs and quotes for widgets
+  // Fetch jobs and quotes for widgets (user-centric)
   const { data: jobs = [] } = useQuery({
-    queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
     staleTime: 1 * 60 * 1000,
   });
   
   const { data: quotes = [] } = useQuery({
-    queryKey: ['/api/quotes', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/quotes'],
+    queryFn: () => apiClient.getQuotes(),
     staleTime: 1 * 60 * 1000,
   });
   

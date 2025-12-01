@@ -10,13 +10,13 @@ import { MaterialCard } from "./material-card";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useCanvasStore } from "@/stores/canvas-store";
+import { useAuthStore } from "@/stores/auth-store";
 
 interface MaterialLibraryProps {
-  orgId: string;
   onMaterialSelect?: (materialId: string) => void;
 }
 
-export function MaterialLibrary({ orgId, onMaterialSelect }: MaterialLibraryProps) {
+export function MaterialLibrary({ onMaterialSelect }: MaterialLibraryProps) {
   const [activeCategory, setActiveCategory] = useState('coping');
   const [searchTerm, setSearchTerm] = useState('');
   const [scale, setScale] = useState([1]);
@@ -25,9 +25,9 @@ export function MaterialLibrary({ orgId, onMaterialSelect }: MaterialLibraryProp
   
   const { selectedMaterial, setSelectedMaterial } = useCanvasStore();
   
-  // Get org industry for dynamic categories
-  const { currentOrg } = useOrgStore();
-  const industry = currentOrg?.industry || 'pool';
+  // Get user industry for dynamic categories (user-centric)
+  const { user } = useAuthStore();
+  const industry = user?.industryType || 'pool';
   
   // Fetch dynamic categories from API with fallback
   const { data: tradeCategories = [] } = useQuery({
@@ -52,10 +52,10 @@ export function MaterialLibrary({ orgId, onMaterialSelect }: MaterialLibraryProp
     }
   }, [materialCategories, activeCategory]);
 
+  // Fetch materials for current user (user-centric architecture)
   const { data: materials = [], isLoading } = useQuery({
-    queryKey: ['/api/materials', orgId, activeCategory, industry],
-    queryFn: () => apiClient.getMaterials(orgId, activeCategory, undefined, industry),
-    enabled: !!orgId,
+    queryKey: ['/api/materials', activeCategory, industry],
+    queryFn: () => apiClient.getMaterials(activeCategory, undefined, industry),
   });
 
   const filteredMaterials = materials.filter(material =>

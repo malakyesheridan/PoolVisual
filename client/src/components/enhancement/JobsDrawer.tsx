@@ -12,10 +12,13 @@ import { useEditorStore } from '../../new_editor/store';
 import { useMaskStore } from '../../maskcore/store';
 import { toast } from '../../lib/toast';
 import { useOnboarding } from '../../hooks/useOnboarding';
-import { useOrgStore } from '../../stores/orgStore';
+import { useAuthStore } from '../../stores/auth-store';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Sunset, Home, Eraser } from 'lucide-react';
+import { checkFeatureAccess, getUpgradeMessage } from '../../lib/featureAccess';
+import { CreditDeductionModal } from '../credits/CreditDeductionModal';
+import { apiClient } from '../../lib/api-client';
 
 interface JobsDrawerProps {
   onClose?: () => void;
@@ -24,7 +27,7 @@ interface JobsDrawerProps {
 
 export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const { industry } = useOnboarding();
-  const { currentOrg } = useOrgStore();
+  const { user } = useAuthStore();
   const { 
     setInitial, 
     upsertJob, 
@@ -50,7 +53,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     'add_pool' | 'add_decoration' | 'blend_materials' | 
     'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal'
   > => {
-    const effectiveIndustry = currentOrg?.industry || industry;
+    const effectiveIndustry = user?.industryType || industry;
     if (effectiveIndustry === 'real_estate') {
       return ['image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'];
     }
@@ -91,6 +94,14 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const [userPrompt, setUserPrompt] = useState<string>('');
   const [showPromptInput, setShowPromptInput] = useState(false);
   const [promptError, setPromptError] = useState<string | null>(null);
+  
+  // Credit state
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [showCreditModal, setShowCreditModal] = useState(false);
+  const [pendingEnhancement, setPendingEnhancement] = useState<{
+    mode: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal';
+    hasMask: boolean;
+  } | null>(null);
   
   const [isCreating, setIsCreating] = useState(false);
   const [activeJobId, setActiveJobId] = useState<string | undefined>();
@@ -264,6 +275,20 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     return () => clearTimeout(timer);
   }, [debouncedSearchQuery, setSearchQuery, setCurrentPage]);
 
+  // Load credit balance on mount
+  useEffect(() => {
+    loadCreditBalance();
+  }, []);
+
+  const loadCreditBalance = async () => {
+    try {
+      const response = await apiClient.getCreditBalance();
+      setCreditBalance(response.balance.total);
+    } catch (error) {
+      console.error('Failed to load credit balance:', error);
+    }
+  };
+
   // Load jobs on mount
   useEffect(() => {
     setIsLoading(true);
@@ -377,6 +402,31 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
     
     if (isCreating) return;
+
+    // Check if masks are required and exist
+    const effectiveIndustry = user?.industryType || industry;
+    const masksRequired = effectiveIndustry !== 'real_estate';
+    const maskStore = useMaskStore.getState();
+    const localMasks = Object.values(maskStore.masks || {});
+    const hasMask = localMasks.length > 0;
+
+    // Check credits before proceeding
+    if (creditBalance !== null) {
+      try {
+        const creditResponse = await apiClient.calculateCredits(mode, hasMask);
+        const requiredCredits = creditResponse.credits;
+        
+        if (creditBalance < requiredCredits) {
+          // Show credit modal or upgrade prompt
+          setPendingEnhancement({ mode, hasMask });
+          setShowCreditModal(true);
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to calculate credits:', error);
+        // Continue anyway - server will check
+      }
+    }
     
     setIsCreating(true);
     const effectivePhotoId = currentState.jobContext?.photoId || '134468b9-648e-4eb1-8434-d7941289fccf';
@@ -583,7 +633,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       console.log(`[JobsDrawer] 🔍 FINAL PAYLOAD MASKS (being sent to API):`, JSON.stringify(payloadMasks, null, 2));
       
       // Check if masks are required for this mode
-      const effectiveIndustry = currentOrg?.industry || industry;
+      const effectiveIndustry = user?.industryType || industry;
       const masksRequired = effectiveIndustry !== 'real_estate';
       
       if (masksRequired && masks.length === 0) {
@@ -840,7 +890,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // Map mode value to match n8n workflow expectations
       // Trades: 'blend_material' (singular), 'add_decoration', 'add_pool'
       // Real Estate: pass through as-is
-      const effectiveIndustry = currentOrg?.industry || industry;
+      const effectiveIndustry = user?.industryType || industry;
       let n8nMode: string = previewData.mode;
       if (effectiveIndustry !== 'real_estate') {
         const modeMapping: Record<string, string> = {
@@ -852,7 +902,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       }
       
       // Check if masks are required for this mode
-      const effectiveIndustryForPayload = currentOrg?.industry || industry;
+      const effectiveIndustryForPayload = user?.industryType || industry;
       const masksRequiredForPayload = effectiveIndustryForPayload !== 'real_estate';
       
       // Create payload - mode must be at top level for n8n workflow routing
@@ -931,11 +981,29 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // This will update the job with database timestamps, but our formatDate
       // function now handles timezone issues and invalid dates properly
       getRecentJobs(100).then(d => setInitial(d.jobs)).catch(() => {});
+      
+      // Refresh credit balance after enhancement
+      loadCreditBalance();
     } catch (error: any) {
       console.error('Failed to create enhancement:', error);
       
+      // Handle insufficient credits (402)
+      if (error.status === 402 || error.statusCode === 402 || error.error === 'INSUFFICIENT_CREDITS') {
+        const required = error.required || 0;
+        const balance = error.balance || 0;
+        toast.error('Insufficient Credits', {
+          description: `You need ${required} credits but only have ${balance}. Please purchase more credits.`,
+          action: {
+            label: 'Purchase Credits',
+            onClick: () => {
+              window.dispatchEvent(new CustomEvent('openUpgradeModal', { detail: { mode: 'topup' } }));
+            }
+          },
+          duration: 10000
+        });
+      } 
       // Handle usage limit exceeded (402)
-      if (error.code === 'USAGE_LIMIT_EXCEEDED' || error.details) {
+      else if (error.code === 'USAGE_LIMIT_EXCEEDED' || error.details) {
         const details = error.details || {};
         toast.error('Usage Limit Exceeded', {
           description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining.`,
@@ -955,6 +1023,18 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       setIsCreating(false);
       setPreviewData(null);
     }
+  };
+
+  const handleConfirmCreditDeduction = async () => {
+    if (!pendingEnhancement) return;
+    setShowCreditModal(false);
+    await handleCreateEnhancement(pendingEnhancement.mode);
+    setPendingEnhancement(null);
+  };
+
+  const handleCancelCreditDeduction = () => {
+    setShowCreditModal(false);
+    setPendingEnhancement(null);
   };
 
   const handleCancelPreview = () => {
@@ -1456,6 +1536,19 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           onConfirm={handleConfirmPreview}
           onCancel={handleCancelPreview}
           loading={isCreating}
+        />
+      )}
+
+      {/* Credit Deduction Modal */}
+      {pendingEnhancement && creditBalance !== null && (
+        <CreditDeductionModal
+          open={showCreditModal}
+          onOpenChange={setShowCreditModal}
+          enhancementType={pendingEnhancement.mode}
+          hasMask={pendingEnhancement.hasMask}
+          currentBalance={creditBalance}
+          onConfirm={handleConfirmCreditDeduction}
+          onCancel={handleCancelCreditDeduction}
         />
       )}
     </aside>

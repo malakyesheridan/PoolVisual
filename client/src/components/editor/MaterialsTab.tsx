@@ -14,7 +14,7 @@ import { useEditorStore as useNewEditorStore } from '@/state/editorStore';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { useOrgStore } from '@/stores/orgStore';
+import { useAuthStore } from '@/stores/auth-store';
 import { getDefaultCategoriesForIndustry } from '@/lib/materialCategories';
 
 interface MaterialCardProps {
@@ -111,9 +111,9 @@ export function MaterialsTab() {
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
   const [isAttaching, setIsAttaching] = useState(false);
   
-  // Get org industry for dynamic categories
-  const { currentOrg, selectedOrgId } = useOrgStore();
-  const industry = currentOrg?.industry || 'pool';
+  // Get user industry for dynamic categories (user-centric)
+  const { user } = useAuthStore();
+  const industry = user?.industryType || 'pool';
   
   // Fetch dynamic categories from API with fallback
   const { data: tradeCategories = [] } = useQuery({
@@ -163,14 +163,14 @@ export function MaterialsTab() {
   // For now, just use the first mask if any are available, or the selected one
   const currentMask = selectedMaskId ? masks?.find((m: any) => m.id === selectedMaskId) : masks?.[0];
 
-  // Fetch materials for the selected category
+  // Fetch materials for the selected category (user-centric)
   const { data: materials, isLoading, error } = useQuery({
-    queryKey: ['/api/materials', selectedOrgId, selectedCategory, industry],
+    queryKey: ['/api/materials', selectedCategory, industry],
     queryFn: async () => {
-      if (!selectedOrgId || !selectedCategory) return [];
-      return apiClient.getMaterials(selectedOrgId, selectedCategory, undefined, industry);
+      if (!selectedCategory) return [];
+      return apiClient.getMaterials(selectedCategory, undefined, industry);
     },
-    enabled: !!selectedOrgId && !!selectedCategory,
+    enabled: !!selectedCategory,
   });
 
   // Handle material selection and attachment

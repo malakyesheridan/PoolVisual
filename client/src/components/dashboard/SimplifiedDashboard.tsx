@@ -27,41 +27,18 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
   const { projects, createJob } = useIndustryTerm();
-  // Use centralized org store
-  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
 
-  // Fetch organizations (using shared hook)
-  const { data: orgs = [] } = useOrgs();
-
-  // Auto-select first org if available and update store
-  useEffect(() => {
-    if (!selectedOrgId && orgs.length > 0) {
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
-      // If selected org no longer exists, select first available
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId) {
-      // Update current org if it exists
-      const current = orgs.find(o => o.id === selectedOrgId);
-      if (current) setCurrentOrg(current);
-    }
-  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
-
-  // Fetch jobs for the selected organization (optimized - no N+1 queries)
+  // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading: jobsLoading, error: jobsError } = useQuery({
-    queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
     staleTime: 1 * 60 * 1000, // 1 minute
   });
 
-  // Fetch quotes for metrics calculation
+  // Fetch quotes for metrics calculation (user-centric)
   const { data: quotes = [], isLoading: quotesLoading, error: quotesError } = useQuery({
-    queryKey: ['/api/quotes', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/quotes'],
+    queryFn: () => apiClient.getQuotes(),
     staleTime: 1 * 60 * 1000, // 1 minute
   });
 
@@ -181,19 +158,6 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
               />
             </div>
             
-            {orgs.length > 1 && (
-              <select
-                value={selectedOrgId || ''}
-                onChange={(e) => setSelectedOrgId(e.target.value)}
-                  className="px-4 py-2.5 md:py-2 h-11 md:h-auto border border-gray-200 rounded-lg bg-white text-sm mobile-text-base focus:border-primary focus:ring-primary transition-all duration-150 tap-target"
-              >
-                {orgs.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-            )}
             
             <div className="flex gap-2 flex-wrap">
                 {['All', 'Active', 'Completed', 'Draft'].map((status) => {

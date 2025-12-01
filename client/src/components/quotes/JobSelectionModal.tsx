@@ -11,22 +11,21 @@ interface JobSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectJob: (jobId: string) => void;
-  selectedOrgId: string | null;
 }
 
 export function JobSelectionModal({
   open,
   onOpenChange,
   onSelectJob,
-  selectedOrgId,
 }: JobSelectionModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
+  // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId && open,
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
+    enabled: open,
   });
 
   const getStatusColor = (status: string) => {

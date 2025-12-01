@@ -9,8 +9,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { useToast } from "@/hooks/use-toast";
-import { useOrgs } from "@/hooks/useOrgs";
-import { useOrgStore } from "@/stores/orgStore";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,37 +50,33 @@ export default function Jobs() {
   const jobId = params?.id;
   
   const [searchTerm, setSearchTerm] = useState('');
-  // Use centralized org store
-  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
   const [clientInfoModalOpen, setClientInfoModalOpen] = useState(false);
   const [selectedJobForClientInfo, setSelectedJobForClientInfo] = useState<any>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  const { data: orgs = [] } = useOrgs();
-  const { currentOrg } = useOrgStore();
+  const { user } = useAuthStore();
   
-  // Get industry-specific terminology
-  const jobTerm = getIndustryTerm(currentOrg?.industry, 'job');
-  const jobsTerm = getIndustryTerm(currentOrg?.industry, 'jobs');
-  const createJobText = getIndustryTerm(currentOrg?.industry, 'createJob');
+  // Get industry-specific terminology from user (user-centric)
+  const userIndustry = user?.industryType || 'pool';
+  const jobTerm = getIndustryTerm(userIndustry, 'job');
+  const jobsTerm = getIndustryTerm(userIndustry, 'jobs');
+  const createJobText = getIndustryTerm(userIndustry, 'createJob');
 
+  // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading } = useQuery({
-    queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
     staleTime: 1 * 60 * 1000, // 1 minute - jobs list changes infrequently
   });
 
   // Fetch canvas work status using optimized batch endpoint (replaces N+1 queries)
   const { data: canvasStatusMap = {}, isLoading: isLoadingCanvasStatus } = useQuery({
-    queryKey: ['/api/jobs/canvas-status', selectedOrgId, jobs.map(j => j.id).sort().join(',')],
+    queryKey: ['/api/jobs/canvas-status', jobs.map(j => j.id).sort().join(',')],
     queryFn: async () => {
-      if (!selectedOrgId || jobs.length === 0) return {};
+      if (jobs.length === 0) return {};
       
       // Use batch endpoint to fetch all canvas status in one request
       const canvasStatus = await apiClient.getJobsCanvasStatus(
-        selectedOrgId,
         jobs.map(j => j.id)
       );
       
@@ -92,7 +86,7 @@ export default function Jobs() {
         return acc;
       }, {});
     },
-    enabled: !!selectedOrgId && jobs.length > 0,
+    enabled: jobs.length > 0,
     staleTime: 2 * 60 * 1000, // 2 minutes - canvas status doesn't change frequently
   });
 
@@ -109,12 +103,6 @@ export default function Jobs() {
     }));
   }, [jobs, canvasStatusMap]);
 
-  // Auto-select first org if available (use effect to avoid render issues)
-  useEffect(() => {
-    if (!selectedOrgId && orgs.length > 0) {
-      setSelectedOrgId(orgs[0].id);
-    }
-  }, [orgs.length, selectedOrgId]);
 
   // Memoize filtered jobs to prevent unnecessary recalculations
   const filteredJobs = useMemo(() => {
@@ -286,21 +274,6 @@ export default function Jobs() {
               aria-label="Search jobs"
             />
           </div>
-          
-          {orgs.length > 1 && (
-            <select
-              value={selectedOrgId || ''}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="px-3 py-2.5 md:py-1.5 h-11 md:h-9 border border-slate-200 rounded-full bg-white text-sm text-slate-900 focus:border-primary focus:ring-primary transition-all duration-150 tap-target"
-              data-testid="select-organization"
-            >
-              {orgs.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
-          )}
           
           <Button 
             variant="outline" 

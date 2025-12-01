@@ -237,16 +237,16 @@ class ApiClient {
   }
 
   // Jobs
-  async getJobsCanvasStatus(orgId: string, jobIds?: string[]) {
-    const params = new URLSearchParams({ orgId });
+  async getJobsCanvasStatus(jobIds?: string[]) {
+    const params = new URLSearchParams();
     if (jobIds && jobIds.length > 0) {
       params.append('jobIds', jobIds.join(','));
     }
     return this.request<any[]>(`/jobs/canvas-status?${params.toString()}`);
   }
 
-  async getJobs(orgId: string, filters?: { status?: string; q?: string }) {
-    const params = new URLSearchParams({ orgId });
+  async getJobs(filters?: { status?: string; q?: string }) {
+    const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.q) params.append('q', filters.q);
     
@@ -341,8 +341,8 @@ class ApiClient {
   }
 
   // Materials
-  async getMaterials(orgId: string, category?: string, search?: string, industry?: string) {
-    const params = new URLSearchParams({ orgId });
+  async getMaterials(category?: string, search?: string, industry?: string) {
+    const params = new URLSearchParams();
     if (category) params.append('category', category);
     if (search) params.append('q', search);
     if (industry) params.append('industry', industry);
@@ -409,8 +409,8 @@ class ApiClient {
     return this.request<any[]>(`/quotes/${quoteId}/items`);
   }
 
-  async getQuotes(orgId: string, filters?: { status?: string; jobId?: string }) {
-    const params = new URLSearchParams({ orgId });
+  async getQuotes(filters?: { status?: string; jobId?: string }) {
+    const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.jobId) params.append('jobId', filters.jobId);
     
@@ -643,6 +643,42 @@ class ApiClient {
       queue: boolean;
       version?: string;
     }>('/health');
+  }
+
+  // Credit methods
+  async getCreditBalance() {
+    return this.request<{ ok: boolean; balance: { total: number; subscriptionCredits: number; topUpCredits: number; usedThisMonth: number } }>('/credits/balance', {
+      method: 'GET',
+    });
+  }
+
+  async createTopUpCheckout(priceId: string) {
+    return this.request<{ ok: boolean; url: string; sessionId: string; credits: number }>('/credits/topup/checkout', {
+      method: 'POST',
+      body: JSON.stringify({ priceId }),
+    });
+  }
+
+  async calculateCredits(enhancementType: string, hasMask: boolean) {
+    const params = new URLSearchParams();
+    params.append('enhancementType', enhancementType);
+    params.append('hasMask', hasMask.toString());
+    return this.request<{ ok: boolean; enhancementType: string; hasMask: boolean; credits: number }>(`/credits/calculate?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  // Feature access methods
+  async getFeatureAccess() {
+    return this.request<{ ok: boolean; features: { brushTool: boolean; maskedPrompts: boolean; presetLibrary: boolean; beforeAfterExport: boolean; whiteLabel: boolean; priorityQueue: boolean } }>('/features/access', {
+      method: 'GET',
+    });
+  }
+
+  async checkFeatureAccess(feature: string) {
+    return this.request<{ ok: boolean; hasAccess: boolean; feature: string }>(`/features/${feature}`, {
+      method: 'GET',
+    });
   }
 
   // AI endpoints (stubs for future features)

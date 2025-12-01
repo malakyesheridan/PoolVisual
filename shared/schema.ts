@@ -38,6 +38,26 @@ export const users = pgTable("users", {
   // Admin fields
   isAdmin: boolean("is_admin").default(false).notNull(),
   adminPermissions: jsonb("admin_permissions").default(sql`'[]'::jsonb`),
+  // Personalization fields (from migration 028)
+  industryType: text("industry_type"),
+  creditsBalance: numeric("credits_balance", { precision: 20, scale: 0 }).default("0"),
+  trialCreditsGranted: boolean("trial_credits_granted").default(false),
+  trialStartedAt: timestamp("trial_started_at"),
+  // Subscription fields (user-level)
+  subscriptionPlanId: uuid("subscription_plan_id").references(() => subscriptionPlans.id),
+  subscriptionStatus: text("subscription_status").default("trial"),
+  subscriptionTier: text("subscription_tier").default("t1"),
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  subscriptionStartedAt: timestamp("subscription_started_at"),
+  subscriptionExpiresAt: timestamp("subscription_expires_at"),
+  subscriptionTrialEndsAt: timestamp("subscription_trial_ends_at"),
+  // Settings fields (user-level, migrated from org settings)
+  currencyCode: text("currency_code").default("AUD"),
+  taxRate: numeric("tax_rate", { precision: 5, scale: 4 }).default("0.10"),
+  depositDefaultPct: numeric("deposit_default_pct", { precision: 5, scale: 4 }).default("0.30"),
+  validityDays: integer("validity_days").default(30),
+  pdfTerms: text("pdf_terms"),
 });
 
 // Organizations
@@ -138,7 +158,8 @@ export const subscriptionPlans = pgTable("subscription_plans", {
 // Subscription History
 export const subscriptionHistory = pgTable("subscription_history", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id), // Deprecated, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id), // User who owns this subscription history
   planId: uuid("plan_id").references(() => subscriptionPlans.id),
   eventType: text("event_type").notNull(),
   fromStatus: text("from_status"),
@@ -162,7 +183,8 @@ export const adminIndustryPreferences = pgTable("admin_industry_preferences", {
 // Materials
 export const materials = pgTable("materials", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: uuid("org_id").references(() => orgs.id),
+  orgId: uuid("org_id").references(() => orgs.id), // Deprecated, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id), // NULL = global material, UUID = user-specific
   supplier: text("supplier").default("PoolTile"),
   sourceUrl: text("source_url"),
   name: text("name").notNull(),
@@ -192,7 +214,8 @@ export const materials = pgTable("materials", {
 // Labor rules
 export const laborRules = pgTable("labor_rules", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id), // Deprecated, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id).notNull(), // User who owns this labor rule
   category: text("category").notNull(),
   name: text("name").notNull(),
   ruleType: laborRuleTypeEnum("rule_type").notNull(),
@@ -206,13 +229,14 @@ export const laborRules = pgTable("labor_rules", {
 // Jobs
 export const jobs = pgTable("jobs", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id), // Deprecated, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id).notNull(), // User who owns this job
   clientName: text("client_name").notNull(),
   clientPhone: text("client_phone"),
   clientEmail: text("client_email"),
   address: text("address"),
   status: jobStatusEnum("status").default("new").notNull(),
-  createdBy: uuid("created_by").references(() => orgMembers.id).notNull(),
+  createdBy: uuid("created_by").references(() => orgMembers.id), // Deprecated, kept for backward compatibility
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -247,7 +271,8 @@ export const masks = pgTable("masks", {
   elevationM: numeric("elevation_m", { precision: 10, scale: 2 }).default(0), // Elevation in meters
   zIndex: integer("z_index").default(0), // Rendering order for z-buffer
   isStepped: boolean("is_stepped").default(false), // Whether this mask represents stepped geometry
-  createdBy: uuid("created_by").references(() => orgMembers.id).notNull(),
+  createdBy: uuid("created_by").references(() => orgMembers.id), // Deprecated, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id).notNull(), // User who owns this mask
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -317,8 +342,8 @@ export const notifications = pgTable("notifications", {
 // Audit logs
 export const auditLogs = pgTable("audit_logs", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
-  orgId: uuid("org_id").references(() => orgs.id).notNull(),
-  userId: uuid("user_id").references(() => users.id),
+  orgId: uuid("org_id").references(() => orgs.id), // Optional, kept for backward compatibility
+  userId: uuid("user_id").references(() => users.id), // User who performed the action
   action: text("action").notNull(),
   entity: text("entity").notNull(),
   payloadJson: jsonb("payload_json"),
@@ -343,11 +368,15 @@ export const insertOrgSchema = createInsertSchema(orgs).omit({
 });
 
 export const insertJobSchema = createInsertSchema(jobs, {
-  createdBy: z.string().uuid().optional() // Override to make optional
+  createdBy: z.string().uuid().optional(), // Deprecated
+  orgId: z.string().uuid().optional(), // Deprecated
+  userId: z.string().uuid().optional() // Will be set from session
 }).omit({ 
   id: true, 
   createdAt: true,
-  createdBy: true
+  createdBy: true,
+  orgId: true,
+  userId: true // Will be set from session in API
 });
 
 export const insertPhotoSchema = createInsertSchema(photos).omit({ 

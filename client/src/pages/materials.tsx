@@ -11,8 +11,6 @@ import { apiClient } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useOrgs } from "@/hooks/useOrgs";
-import { useOrgStore } from "@/stores/orgStore";
 import { getDefaultCategoriesForIndustry } from "@/lib/materialCategories";
 import { 
   Plus, 
@@ -42,8 +40,7 @@ const materialUnits = [
 export default function Materials() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
-  // Use centralized org store
-  const { selectedOrgId, setSelectedOrgId, currentOrg } = useOrgStore();
+  const { user } = useAuthStore();
   const [showAddForm, setShowAddForm] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [texturePreview, setTexturePreview] = useState<string | null>(null);
@@ -83,11 +80,8 @@ export default function Materials() {
 
   const { toast } = useToast();
 
-  // Use shared hook for orgs
-  const { data: orgs = [] } = useOrgs();
-  
-  // Get org industry for dynamic categories
-  const industry = currentOrg?.industry || 'pool';
+  // Get user industry for dynamic categories (user-centric)
+  const industry = user?.industryType || 'pool';
   
   // Fetch dynamic categories from API with fallback
   const { data: tradeCategories = [] } = useQuery({
@@ -104,10 +98,10 @@ export default function Materials() {
     label: cat.categoryLabel,
   }));
 
+  // Fetch materials for current user (user-centric architecture)
   const { data: materials = [], isLoading } = useQuery({
-    queryKey: ['/api/materials', selectedOrgId, selectedCategory, industry],
-    queryFn: () => selectedOrgId ? apiClient.getMaterials(selectedOrgId, selectedCategory, undefined, industry) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/materials', selectedCategory, industry],
+    queryFn: () => apiClient.getMaterials(selectedCategory, undefined, industry),
     staleTime: 2 * 60 * 1000, // 2 minutes - materials don't change frequently
   });
 
@@ -119,7 +113,7 @@ export default function Materials() {
       const { createMaterialForce } = await import('@/lib/materialsForceApi');
       const payload = {
         ...data,
-        orgId: selectedOrgId,
+        // orgId is deprecated, but kept for backward compatibility
         imageUrlFallback: !data.texture_url && imageUrl ? imageUrl : undefined
       };
       
@@ -180,10 +174,6 @@ export default function Materials() {
     },
   });
 
-  // Auto-select first org if available
-  if (!selectedOrgId && orgs.length > 0) {
-    setSelectedOrgId(orgs[0].id);
-  }
 
   const filteredMaterials = materials.filter(material =>
     material.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -225,7 +215,7 @@ export default function Materials() {
       textureUrl: texturePreview || null,
       thumbnailUrl: texturePreview || null,
       fileKey: fileKey,
-      orgId: selectedOrgId
+      // orgId is deprecated, removed for user-centric architecture
     };
 
     createMaterialMutation.mutate(materialData);
@@ -628,20 +618,6 @@ export default function Materials() {
             </SelectContent>
           </Select>
           
-          {orgs.length > 1 && (
-            <Select value={selectedOrgId || ''} onValueChange={setSelectedOrgId}>
-              <SelectTrigger className="w-48" data-testid="select-organization">
-                <SelectValue placeholder="Select Organization" />
-              </SelectTrigger>
-              <SelectContent>
-                {orgs.map((org) => (
-                  <SelectItem key={org.id} value={org.id}>
-                    {org.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">

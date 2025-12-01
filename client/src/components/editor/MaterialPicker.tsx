@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
-import { useOrgStore } from '@/stores/orgStore';
+import { useAuthStore } from '@/stores/auth-store';
 import { getDefaultCategoriesForIndustry } from '@/lib/materialCategories';
 
 interface MaterialPickerProps {
@@ -32,9 +32,9 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
   const store = useEditorStore();
   const { attachMaterial } = store || {};
   
-  // Get org industry for dynamic categories
-  const { currentOrg, selectedOrgId } = useOrgStore();
-  const industry = currentOrg?.industry || 'pool';
+  // Get user industry for dynamic categories (user-centric)
+  const { user } = useAuthStore();
+  const industry = user?.industryType || 'pool';
   
   // Fetch dynamic categories from API with fallback
   const { data: tradeCategories = [] } = useQuery({
@@ -54,18 +54,17 @@ export function MaterialPicker({ isOpen, onClose, selectedMaskId }: MaterialPick
     })),
   ];
 
-  // Load materials on component mount
+  // Load materials on component mount (user-centric)
   useEffect(() => {
-    if (isOpen && selectedOrgId) {
+    if (isOpen) {
       loadMaterials();
     }
-  }, [isOpen, selectedOrgId, selectedCategory, industry]);
+  }, [isOpen, selectedCategory, industry, searchTerm]);
 
   const loadMaterials = async () => {
-    if (!selectedOrgId) return;
     setIsLoading(true);
     try {
-      const materialsData = await apiClient.getMaterials(selectedOrgId, selectedCategory === 'all' ? undefined : selectedCategory, searchTerm || undefined, industry);
+      const materialsData = await apiClient.getMaterials(selectedCategory === 'all' ? undefined : selectedCategory, searchTerm || undefined, industry);
       setMaterials(materialsData || []);
     } catch (error) {
       console.error('Failed to load materials:', error);

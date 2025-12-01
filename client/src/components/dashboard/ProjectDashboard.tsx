@@ -10,7 +10,6 @@ import { apiClient } from '../../lib/api-client';
 import { useProjectStore } from '../../stores/projectStore';
 import { useStatusSyncStore } from '../../stores/statusSyncStore';
 import { useMaterialUsageStore } from '../../stores/materialUsageStore';
-import { useOrgStore } from '../../stores/orgStore';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 import { ProjectOverviewCards } from './ProjectOverviewCards';
 import { ActivityFeed } from './ActivityFeed';
@@ -68,43 +67,17 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
   const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'recent' | 'suggestions' | 'deadlines' | 'collaboration' | 'filtering' | 'notifications'>('overview');
-  // Use centralized org store
-  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
 
-  // Fetch organizations
-  const { data: orgs = [] } = useQuery({
-    queryKey: ['/api/me/orgs'],
-    queryFn: () => apiClient.getMyOrgs(),
-  });
-
-  // Auto-select first org if only one exists and update store
-  useEffect(() => {
-    if (orgs.length === 1 && !selectedOrgId) {
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
-      // If selected org no longer exists, select first available
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId) {
-      // Update current org if it exists
-      const current = orgs.find(o => o.id === selectedOrgId);
-      if (current) setCurrentOrg(current);
-    }
-  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
-
-  // Fetch jobs for the selected organization
+  // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading: jobsLoading } = useQuery({
-    queryKey: ['/api/jobs', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getJobs(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
   });
 
-  // Fetch quotes for metrics calculation
+  // Fetch quotes for metrics calculation (user-centric)
   const { data: quotes = [] } = useQuery({
-    queryKey: ['/api/quotes', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/quotes'],
+    queryFn: () => apiClient.getQuotes(),
   });
 
   const startGuidedTour = () => {
@@ -221,19 +194,6 @@ export function ProjectDashboard({ className = '' }: ProjectDashboardProps) {
               />
             </div>
             
-            {orgs.length > 1 && (
-              <select
-                value={selectedOrgId || ''}
-                onChange={(e) => setSelectedOrgId(e.target.value)}
-                className="px-4 py-2 border border-slate-200 rounded-lg bg-white text-sm focus:border-primary focus:ring-primary"
-              >
-                {orgs.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.name}
-                  </option>
-                ))}
-              </select>
-            )}
             
             <div className="flex gap-2 flex-wrap">
               {['All', 'Active', 'Completed', 'Draft'].map((status) => (

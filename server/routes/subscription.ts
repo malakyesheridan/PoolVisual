@@ -32,19 +32,28 @@ router.get('/plans/:industry', authenticateSession, async (req, res) => {
 
 /**
  * GET /api/subscription/status
- * Get current org subscription status
+ * Get current user subscription status
  */
 router.get('/status', authenticateSession, async (req, res) => {
   try {
     const user = (req as any).session.user;
-    const org = await storage.getOrgByUserId(user.id);
-    
-    if (!org) {
-      return res.status(404).json({ ok: false, error: 'Organization not found' });
+    if (!user?.id) {
+      return res.status(401).json({ ok: false, error: 'Authentication required' });
     }
 
-    const subscription = await subscriptionService.getOrgSubscription(org.id);
-    res.json({ ok: true, subscription });
+    const subscription = await subscriptionService.getUserSubscription(user.id);
+    
+    // Get credit balance
+    const { creditService } = await import('../lib/creditService.js');
+    const creditBalance = await creditService.getCreditBalance(user.id);
+    
+    res.json({ 
+      ok: true, 
+      subscription: {
+        ...subscription,
+        creditBalance: creditBalance.total,
+      }
+    });
   } catch (error: any) {
     logger.error({ msg: 'Failed to get subscription status', err: error });
     res.status(500).json({ ok: false, error: 'Failed to get subscription status' });
@@ -58,6 +67,10 @@ router.get('/status', authenticateSession, async (req, res) => {
 router.post('/checkout', authenticateSession, async (req, res) => {
   try {
     const user = (req as any).session.user;
+    if (!user?.id) {
+      return res.status(401).json({ ok: false, error: 'Authentication required' });
+    }
+
     const { planKey, billingPeriod } = req.body;
 
     if (!planKey || !billingPeriod) {
@@ -74,13 +87,8 @@ router.post('/checkout', authenticateSession, async (req, res) => {
       });
     }
 
-    const org = await storage.getOrgByUserId(user.id);
-    if (!org) {
-      return res.status(404).json({ ok: false, error: 'Organization not found' });
-    }
-
     const session = await subscriptionService.createCheckoutSession(
-      org.id,
+      user.id,
       planKey,
       billingPeriod
     );
@@ -102,19 +110,24 @@ router.post('/checkout', authenticateSession, async (req, res) => {
 
 /**
  * GET /api/subscription/features/:feature
- * Check if org has access to a feature
+ * Check if user has access to a feature (deprecated - use /api/features/:feature)
  */
 router.get('/features/:feature', authenticateSession, async (req, res) => {
   try {
     const user = (req as any).session.user;
-    const { feature } = req.params;
-    const org = await storage.getOrgByUserId(user.id);
-    
-    if (!org) {
-      return res.status(404).json({ ok: false, error: 'Organization not found' });
+    if (!user?.id) {
+      return res.status(401).json({ ok: false, error: 'Authentication required' });
     }
 
-    const hasAccess = await subscriptionService.canAccessFeature(org.id, feature);
+    const { feature } = req.params;
+    const userRecord = await storage.getUser(user.id);
+    
+    if (!userRecord) {
+      return res.status(404).json({ ok: false, error: 'User not found' });
+    }
+
+    const { checkFeatureAccess } = await import('../lib/featureAccessService.js');
+    const hasAccess = checkFeatureAccess(userRecord, feature);
     res.json({ ok: true, hasAccess });
   } catch (error: any) {
     logger.error({ msg: 'Failed to check feature access', err: error });

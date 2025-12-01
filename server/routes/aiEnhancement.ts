@@ -8,6 +8,8 @@ import { storage } from '../storage.js';
 import { storageService } from '../lib/storageService.js';
 import { enhancementQueue } from '../jobs/aiEnhancementQueue.js';
 import { CreditsManager } from '../lib/creditsManager.js';
+import { creditService } from '../lib/creditService.js';
+import { logger } from '../lib/logger.js';
 import { generateCacheKey } from '../lib/cacheNormalizer.js';
 import { verifyWebhookSignature } from '../middleware/hmacVerification.js';
 import { checkEnhancementUsage } from '../middleware/usageCheck.js';
@@ -149,7 +151,10 @@ router.post('/upload-url', authenticateSession, async (req, res) => {
 // router.post('/', authenticateSession, rateLimiters.enhancement, checkEnhancementUsage, async (req, res) => {
 router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res) => {
   try {
-    const user = req.session.user;
+    const user = (req as any).session?.user;
+    if (!user?.id) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
     
     // Log the incoming request to debug mask issues
     console.log('[Create Enhancement] Received request:', {
@@ -183,29 +188,39 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       return res.status(400).json({ message: 'tenantId, imageUrl, inputHash are required' });
     }
 
-    // Get org to check industry
-    const org = await storage.getOrg(tenantId);
-    if (!org) {
-      return res.status(404).json({ message: 'Organization not found' });
+    // Get user record to check industry (prefer user.industryType over org.industry)
+    const userRecord = await storage.getUser(user.id);
+    if (!userRecord) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Get industry from user or fallback to org
+    let industry: string | null = userRecord.industryType || null;
+    if (!industry) {
+      // Fallback to org industry for backward compatibility
+      const org = await storage.getOrg(tenantId);
+      if (org) {
+        industry = org.industry;
+      }
     }
 
     // Validate mode based on industry
-    const validModes = getValidEnhancementModes(org.industry);
+    const validModes = getValidEnhancementModes(industry);
     if (mode && !validModes.includes(mode)) {
       return res.status(400).json({ 
-        message: `Invalid enhancement mode for ${org.industry} industry`,
+        message: `Invalid enhancement mode for ${industry || 'unknown'} industry`,
         validModes,
         providedMode: mode
       });
     }
 
     // Check if masks are required for this mode
-    const masksRequired = areMasksRequiredForMode(mode, org.industry);
+    const masksRequired = areMasksRequiredForMode(mode, industry);
     if (masksRequired && (!masks || masks.length === 0)) {
       return res.status(400).json({ 
         message: 'Masks are required for this enhancement mode',
         mode,
-        industry: org.industry
+        industry: industry || 'unknown'
       });
     }
 
@@ -282,22 +297,21 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       });
     }
 
-    // Estimate & reserve credits (fallback MP if no dims)
-    const imageMP = width && height ? ((width * height) / 1_000_000) : 8;
-    const estimatedCost = CreditsManager.estimateCost({
-      imageMegapixels: imageMP,
-      regionCount: masks.length,
-      hasControlNets: true
-    });
+    // Calculate credits required for this enhancement
+    // Map enhancement mode to credit type
+    const hasMask = masks && masks.length > 0;
+    const enhancementType = mode || options?.mode || 'basic';
+    const requiredCredits = creditService.calculateCredits(enhancementType, hasMask);
 
-    // TODO: Implement transaction-based credit reservation
-    const reserved = true;
-    const newBalance = 1000000;
-    if (!reserved) {
+    // Check if user has enough credits
+    const hasEnough = await creditService.hasEnoughCredits(user.id, requiredCredits);
+    if (!hasEnough) {
+      const balance = await creditService.getCreditBalance(user.id);
       return res.status(402).json({
         message: 'Insufficient credits',
-        required: estimatedCost,
-        balance: newBalance
+        required: requiredCredits,
+        balance: balance.total,
+        error: 'INSUFFICIENT_CREDITS'
       });
     }
 
@@ -339,7 +353,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
           process.env.SAFE_MODE === '1' ? 'test-model' : 'sdxl',
           cacheKey,
           null, // provider_idempotency_key (will be set when provider acks)
-          estimatedCost
+          requiredCredits * 1000 // Convert to microdollars for compatibility (legacy field)
         ]
       );
 
@@ -470,6 +484,44 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       return res.status(500).json({ message: 'Failed to create job' });
     }
 
+    // Deduct credits after job creation
+    try {
+      const deductionResult = await creditService.deductCredits(
+        user.id,
+        enhancementType,
+        hasMask,
+        jobId
+      );
+
+      if (!deductionResult.success) {
+        // Job was created but credits couldn't be deducted - this is a critical error
+        // In production, you might want to cancel the job or have a background process handle this
+        logger.error({
+          msg: 'Failed to deduct credits after job creation',
+          userId: user.id,
+          jobId,
+          requiredCredits,
+        });
+        // Continue anyway - job is already created, credits will be handled separately
+      } else {
+        logger.info({
+          msg: 'Credits deducted for enhancement',
+          userId: user.id,
+          jobId,
+          creditsDeducted: deductionResult.creditsDeducted,
+          newBalance: deductionResult.newBalance,
+        });
+      }
+    } catch (creditError) {
+      // Log error but don't fail the request - job is already created
+      logger.error({
+        msg: 'Error deducting credits',
+        err: creditError,
+        userId: user.id,
+        jobId,
+      });
+    }
+
     // CRITICAL FIX: Trigger outbox processor AFTER transaction completes
     // Add small delay to ensure database commit is visible across instances
     // This is especially important in Vercel serverless where:
@@ -551,7 +603,10 @@ router.get('/', authenticateSession, async (req, res) => {
 router.get('/:id', authenticateSession, async (req, res) => {
   try {
     const jobId = req.params.id;
-    const user = req.session.user;
+    const user = (req as any).session?.user;
+    if (!user?.id) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
     
     const rows = await executeQuery(
       `SELECT 
@@ -656,12 +711,30 @@ router.post('/:id/cancel', authenticateSession, async (req, res) => {
     }
 
     // Refund credits
-    const refund = rows[0].reserved_cost_micros || rows[0].cost_micros || 0;
-    if (refund > 0) {
-      await executeQuery(
-        `UPDATE orgs SET credits_balance = credits_balance + $1, credits_updated_at = NOW() WHERE id = $2`,
-        [refund, rows[0].tenant_id]
-      );
+    // Get enhancement type and mask info from job options
+    const jobOptions = rows[0].options ? (typeof rows[0].options === 'string' ? JSON.parse(rows[0].options) : rows[0].options) : {};
+    const enhancementType = jobOptions.mode || 'basic';
+    const hasMask = rows[0].masks && (typeof rows[0].masks === 'string' ? JSON.parse(rows[0].masks) : rows[0].masks).length > 0;
+    const creditsToRefund = creditService.calculateCredits(enhancementType, hasMask);
+    
+    if (creditsToRefund > 0) {
+      try {
+        await creditService.refundCredits(
+          user.id,
+          creditsToRefund,
+          jobId,
+          'Job canceled by user'
+        );
+      } catch (refundError) {
+        logger.error({
+          msg: 'Failed to refund credits on cancel',
+          err: refundError,
+          userId: user.id,
+          jobId,
+          creditsToRefund,
+        });
+        // Continue - don't fail the cancel operation
+      }
     }
 
     SSEManager.emit(jobId, { 
@@ -1196,6 +1269,48 @@ router.post('/:id/callback', async (req, res) => {
       [jobId, nextStatus, nextProgress, errorMessage, errorCode]
     );
 
+    // If status is 'failed', refund credits
+    if (nextStatus === 'failed') {
+      try {
+        // Get job details to determine credits to refund
+        const jobRows = await executeQuery(
+          `SELECT user_id, options, masks FROM ai_enhancement_jobs WHERE id = $1`,
+          [jobId]
+        );
+        
+        if (jobRows.length > 0) {
+          const job = jobRows[0];
+          const jobOptions = job.options ? (typeof job.options === 'string' ? JSON.parse(job.options) : job.options) : {};
+          const enhancementType = jobOptions.mode || 'basic';
+          const hasMask = job.masks && (typeof job.masks === 'string' ? JSON.parse(job.masks) : job.masks).length > 0;
+          const creditsToRefund = creditService.calculateCredits(enhancementType, hasMask);
+          
+          if (creditsToRefund > 0 && job.user_id) {
+            await creditService.refundCredits(
+              job.user_id,
+              creditsToRefund,
+              jobId,
+              errorMessage || 'Enhancement job failed'
+            );
+            logger.info({
+              msg: 'Credits refunded for failed enhancement',
+              userId: job.user_id,
+              jobId,
+              creditsRefunded: creditsToRefund,
+              errorMessage,
+            });
+          }
+        }
+      } catch (refundError) {
+        logger.error({
+          msg: 'Failed to refund credits on enhancement failure',
+          err: refundError,
+          jobId,
+        });
+        // Don't fail the callback - continue processing
+      }
+    }
+
     // Save variants if provided and status is completed
     // Handle both formats: variants array OR urls array (from n8n workflow)
     if (nextStatus === 'completed') {
@@ -1482,12 +1597,14 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
 
 /**
  * Get valid enhancement modes for an industry
+ * Maps to credit types: basic, sky, staging, brush, material, decorate, custom
  */
 function getValidEnhancementModes(industry: string | null): string[] {
   if (industry === 'real_estate') {
+    // Real Estate modes map to: basic, sky, staging, brush
     return ['image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'];
   }
-  // Default to trades modes
+  // Trades modes map to: material, decorate, custom (with mask)
   return ['add_pool', 'add_decoration', 'blend_materials'];
 }
 

@@ -18,8 +18,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useOrgs } from "@/hooks/useOrgs";
-import { useOrgStore } from "@/stores/orgStore";
+import { useAuthStore } from "@/stores/auth-store";
 import { 
   ArrowLeft, 
   Search, 
@@ -50,22 +49,19 @@ export default function Quotes() {
   const quoteId = params?.id;
   
   const [searchTerm, setSearchTerm] = useState('');
-  // Use centralized org store
-  const { selectedOrgId, setSelectedOrgId, setCurrentOrg } = useOrgStore();
   const [showJobSelectionModal, setShowJobSelectionModal] = useState(false);
   const [showPDFPreview, setShowPDFPreview] = useState(false);
   const [isEditingQuoteName, setIsEditingQuoteName] = useState(false);
   const [quoteNameValue, setQuoteNameValue] = useState('');
   const [deleteConfirmQuoteId, setDeleteConfirmQuoteId] = useState<string | null>(null);
   const { toast } = useToast();
-
-  const { data: orgs = [] } = useOrgs();
-  const { currentOrg } = useOrgStore();
+  const { user } = useAuthStore();
   
-  // Get industry-specific terminology
-  const quoteTerm = getIndustryTerm(currentOrg?.industry, 'quote');
-  const quotesTerm = getIndustryTerm(currentOrg?.industry, 'quotes');
-  const createQuoteText = getIndustryTerm(currentOrg?.industry, 'createQuote');
+  // Get industry-specific terminology from user (user-centric)
+  const userIndustry = user?.industryType || 'pool';
+  const quoteTerm = getIndustryTerm(userIndustry, 'quote');
+  const quotesTerm = getIndustryTerm(userIndustry, 'quotes');
+  const createQuoteText = getIndustryTerm(userIndustry, 'createQuote');
 
   const { data: quote, isLoading: quoteLoading } = useQuery({
     queryKey: ['/api/quotes', quoteId],
@@ -74,10 +70,10 @@ export default function Quotes() {
     staleTime: 30 * 1000, // 30 seconds
   });
 
+  // Fetch quotes for current user (user-centric architecture)
   const { data: quotes = [], isLoading: quotesLoading } = useQuery({
-    queryKey: ['/api/quotes', selectedOrgId],
-    queryFn: () => selectedOrgId ? apiClient.getQuotes(selectedOrgId) : Promise.resolve([]),
-    enabled: !!selectedOrgId,
+    queryKey: ['/api/quotes'],
+    queryFn: () => apiClient.getQuotes(),
     staleTime: 1 * 60 * 1000, // 1 minute
   });
 
@@ -95,7 +91,7 @@ export default function Quotes() {
     mutationFn: (id: string) => apiClient.recalculateQuote(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       toast({
         title: "Quote recalculated",
         description: "All totals have been updated.",
@@ -200,7 +196,7 @@ export default function Quotes() {
     mutationFn: (data: any) => apiClient.updateQuote(quoteId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       setIsEditingQuoteName(false);
       toast({
         title: "Quote updated",
@@ -243,7 +239,7 @@ export default function Quotes() {
   const deleteQuoteMutation = useMutation({
     mutationFn: (id: string) => apiClient.deleteQuote(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       setDeleteConfirmQuoteId(null);
       toast({
         title: "Quote deleted",
@@ -311,7 +307,7 @@ export default function Quotes() {
         }
       }
 
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       toast({
         title: "Quote duplicated",
         description: "The quote has been duplicated successfully.",
@@ -416,7 +412,7 @@ export default function Quotes() {
       return apiClient.createQuote(quoteData);
     },
     onSuccess: (quote) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       toast({
         title: `${quoteTerm} created`,
         description: `The ${quoteTerm.toLowerCase()} has been created successfully.`,
@@ -433,14 +429,6 @@ export default function Quotes() {
   });
 
   const handleNewQuote = () => {
-    if (!selectedOrgId) {
-      toast({
-        title: "No organization selected",
-        description: "Please select an organization first.",
-        variant: "destructive",
-      });
-      return;
-    }
     setShowJobSelectionModal(true);
   };
 
@@ -453,7 +441,7 @@ export default function Quotes() {
       apiClient.sendQuote(quoteId, clientEmail),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId] });
-      queryClient.invalidateQueries({ queryKey: ['/api/quotes', selectedOrgId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       toast({
         title: "Quote sent",
         description: "The quote has been sent successfully.",
@@ -497,21 +485,6 @@ export default function Quotes() {
     });
   };
 
-  // Auto-select first org if available and update store
-  useEffect(() => {
-    if (!selectedOrgId && orgs.length > 0) {
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId && !orgs.find(o => o.id === selectedOrgId)) {
-      // If selected org no longer exists, select first available
-      setSelectedOrgId(orgs[0].id);
-      setCurrentOrg(orgs[0]);
-    } else if (orgs.length > 0 && selectedOrgId) {
-      // Update current org if it exists
-      const current = orgs.find(o => o.id === selectedOrgId);
-      if (current) setCurrentOrg(current);
-    }
-  }, [orgs, selectedOrgId, setSelectedOrgId, setCurrentOrg]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -756,20 +729,6 @@ export default function Quotes() {
             />
           </div>
           
-          {orgs.length > 1 && (
-            <select
-              value={selectedOrgId || ''}
-              onChange={(e) => setSelectedOrgId(e.target.value)}
-              className="w-full md:w-auto px-3 py-2 border border-slate-300 rounded-lg bg-white text-sm h-11 md:h-auto"
-              data-testid="select-organization"
-            >
-              {orgs.map((org) => (
-                <option key={org.id} value={org.id}>
-                  {org.name}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
 
         {/* Stats Row */}
@@ -1079,7 +1038,6 @@ export default function Quotes() {
         open={showJobSelectionModal}
         onOpenChange={setShowJobSelectionModal}
         onSelectJob={handleSelectJob}
-        selectedOrgId={selectedOrgId}
       />
 
       {/* Delete Confirmation Dialog */}

@@ -139,6 +139,16 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.use('/api/subscription', subscriptionRoutes);
   console.log('✅ Subscription routes registered');
   
+  // Register credit routes
+  const { creditRoutes } = await import('./routes/credits.js');
+  app.use('/api/credits', creditRoutes);
+  console.log('✅ Credit routes registered');
+  
+  // Register feature routes
+  const { featureRoutes } = await import('./routes/features.js');
+  app.use('/api/features', featureRoutes);
+  console.log('✅ Feature routes registered');
+  
   // Texture proxy (must be early to avoid auth middleware conflicts)
   registerTextureProxyRoutes(app);
   
@@ -596,15 +606,20 @@ export async function registerRoutes(app: Express): Promise<void> {
       const updates = req.body;
       const updatedOrg = await storage.updateOrg(orgId, updates);
 
-      // If branding was updated, invalidate PDF cache for all quotes in this org
+      // If branding was updated, invalidate PDF cache for all quotes for this user
+      // Note: This is deprecated since orgs are no longer used for data ownership
+      // Keeping for backward compatibility but will be removed in future
       if (updates.brandColors || updates.logoUrl) {
         try {
           const { pdfGenerator } = await import('./lib/pdfGenerator.js');
-          // Get all quotes for this org and invalidate their cache
-          const quotes = await storage.getQuotes(orgId);
-          await Promise.all(
-            quotes.map(quote => pdfGenerator.invalidateCache(quote.id).catch(() => {}))
-          );
+          // Get all quotes for user's org (legacy) and invalidate their cache
+          const userOrgs = await storage.getUserOrgs(req.user.id);
+          if (userOrgs.length > 0) {
+            const quotes = await storage.getQuotes(req.user.id);
+            await Promise.all(
+              quotes.map(quote => pdfGenerator.invalidateCache(quote.id).catch(() => {}))
+            );
+          }
         } catch (error) {
           console.warn('[Routes] Failed to invalidate PDF cache after branding update:', error);
         }
@@ -699,34 +714,16 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "clientName is required" });
       }
       
-      // Get user's organizations (should be just one for now)
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      if (userOrgs.length === 0) {
-        return res.status(400).json({ 
-          message: "No organization found. Please contact support." 
-        });
-      }
-      
-      // Use the first (and only) org for now
-      const userOrg = userOrgs[0];
-      
-      // Get the user's org member ID for this organization
-      const orgMember = await storage.getOrgMember(req.user.id, userOrg.id);
-      if (!orgMember) {
-        return res.status(403).json({ message: "User is not a member of this organization" });
-      }
-      
+      // Create job with user_id (user-centric architecture)
       const jobData = {
         clientName,
         clientPhone: clientPhone || null,
         clientEmail: clientEmail || null,
         address: address || null,
-        orgId: userOrg.id, // Auto-use user's org
         status: status || 'new',
-        createdBy: orgMember.id
       };
 
-      const job = await storage.createJob(jobData);
+      const job = await storage.createJob(jobData, req.user.id);
       res.json(job);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -741,20 +738,10 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/jobs", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { orgId, status, q } = req.query;
-      if (!orgId) {
-        return res.status(400).json({ message: "orgId parameter is required" });
-      }
+      const { status, q } = req.query;
 
-      // Verify org access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === orgId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied to this organization" });
-      }
-
-      let jobs = await storage.getJobs(orgId as string);
+      // Get jobs for current user (user-centric architecture)
+      let jobs = await storage.getJobs(req.user.id);
       
       // Apply filters
       if (status) {
@@ -778,18 +765,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Batch endpoint for canvas status - optimized to reduce N+1 queries
   app.get("/api/jobs/canvas-status", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { orgId, jobIds } = req.query;
-      if (!orgId) {
-        return res.status(400).json({ message: "orgId parameter is required" });
-      }
-
-      // Verify org access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === orgId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied to this organization" });
-      }
+      const { jobIds } = req.query;
 
       // Parse jobIds if provided (comma-separated)
       const jobIdArray = jobIds ? (jobIds as string).split(',').filter(Boolean) : null;
@@ -800,8 +776,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { jobs, photos, masks } = await import('../../shared/schema.js');
       const { sql, max, and, inArray } = await import('drizzle-orm');
       
-      // Build query using Drizzle
-      const conditions = [sql`${jobs.orgId} = ${orgId}::uuid`];
+      // Build query using Drizzle (user-centric - filter by userId)
+      const conditions = [sql`${jobs.userId} = ${req.user.id}::uuid`];
       if (jobIdArray && jobIdArray.length > 0) {
         conditions.push(inArray(jobs.id, jobIdArray));
       }
@@ -1447,20 +1423,10 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Materials endpoints
   app.get("/api/materials", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { orgId, category, q, industry } = req.query;
-      if (!orgId) {
-        return res.status(400).json({ message: "orgId parameter is required" });
-      }
+      const { category, q, industry } = req.query;
 
-      // Verify org access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === orgId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied to this organization" });
-      }
-
-      let materials = await storage.getMaterials(orgId as string, category as string, industry as string);
+      // Get materials for current user (global + user-specific)
+      let materials = await storage.getMaterials(req.user.id, category as string, industry as string);
       
       // Apply search filter
       if (q) {
@@ -1481,17 +1447,9 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const materialData = insertMaterialSchema.parse(req.body);
       
-      if (materialData.orgId) {
-        // Verify org access
-        const userOrgs = await storage.getUserOrgs(req.user.id);
-        const hasAccess = userOrgs.some(org => org.id === materialData.orgId);
-        
-        if (!hasAccess) {
-          return res.status(403).json({ message: "Access denied to this organization" });
-        }
-      }
-
-      const material = await storage.createMaterial(materialData);
+      // Create material for current user (or global if userId not set)
+      // orgId is deprecated but kept for backward compatibility
+      const material = await storage.createMaterial(materialData, req.user.id);
       res.json(material);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1571,14 +1529,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
-      
-      if (!hasAccess) {
+      // Check if user owns this job
+      if (job.userId !== req.user.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const mask = await storage.createMask(maskData);
+      const mask = await storage.createMask(maskData, req.user.id);
       res.json(mask);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1609,10 +1565,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
-      
-      if (!hasAccess) {
+      // Check if user owns this job
+      if (job.userId !== req.user.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1646,10 +1600,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
-      
-      if (!hasAccess) {
+      // Check if user owns this job
+      if (job.userId !== req.user.id) {
         return res.status(403).json({ message: "Access denied" });
       }
       
@@ -1673,25 +1625,14 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Quotes endpoints
   app.get("/api/quotes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { orgId, status, jobId } = req.query;
-      
-      if (!orgId || typeof orgId !== 'string') {
-        return res.status(400).json({ message: "orgId is required" });
-      }
+      const { status, jobId } = req.query;
 
-      // Verify organization access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === orgId);
-      
-      if (!hasAccess) {
-        return res.status(403).json({ message: "Access denied to this organization" });
-      }
-
+      // Get quotes for current user (user-centric architecture)
       const filters: { status?: string; jobId?: string } = {};
       if (status && typeof status === 'string') filters.status = status;
       if (jobId && typeof jobId === 'string') filters.jobId = jobId;
 
-      const quotes = await storage.getQuotes(orgId, filters);
+      const quotes = await storage.getQuotes(req.user.id, filters);
       res.json(quotes);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -1702,16 +1643,14 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const quoteData = insertQuoteSchema.parse(req.body);
       
-      // Verify job access
+      // Verify job access (user must own the job)
       const job = await storage.getJob(quoteData.jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
-      
-      if (!hasAccess) {
+      // Check if user owns this job
+      if (job.userId !== req.user.id) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -1740,14 +1679,14 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Quote not found" });
       }
 
-      // Verify access through job
+      // Verify access through job (user must own the job)
       const job = await storage.getJob(quote.jobId);
       if (!job) {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Check if user owns this job
+      const hasAccess = job.userId === req.user.id;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });

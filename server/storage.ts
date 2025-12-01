@@ -112,9 +112,9 @@ export interface IStorage {
   createOrgMember(orgId: string, userId: string, role?: string): Promise<OrgMember>;
   
   // Jobs
-  createJob(job: InsertJob): Promise<Job>;
+  createJob(job: InsertJob, userId: string): Promise<Job>;
   getJob(id: string): Promise<Job | undefined>;
-  getJobs(orgId: string): Promise<Job[]>;
+  getJobs(userId: string): Promise<Job[]>;
   
   // Photos
   createPhoto(photo: InsertPhoto): Promise<Photo>;
@@ -130,14 +130,14 @@ export interface IStorage {
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
-  getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]>;
+  getMaterials(userId?: string, category?: string, industry?: string): Promise<Material[]>;
   getMaterial(id: string): Promise<Material | null>;
-  createMaterial(material: InsertMaterial): Promise<Material>;
+  createMaterial(material: InsertMaterial, userId?: string): Promise<Material>;
   updateMaterial(id: string, material: Partial<Material>): Promise<Material>;
   deleteMaterial(id: string): Promise<void>;
   
   // Masks
-  createMask(mask: InsertMask): Promise<Mask>;
+  createMask(mask: InsertMask, userId: string): Promise<Mask>;
   getMask(id: string): Promise<Mask | null>;
   getMasksByPhoto(photoId: string): Promise<Mask[]>;
   deleteMask(id: string): Promise<void>;
@@ -146,7 +146,7 @@ export interface IStorage {
   createQuote(quote: InsertQuote): Promise<Quote>;
   getQuote(id: string): Promise<Quote | undefined>;
   getQuoteByToken(token: string): Promise<Quote | undefined>;
-  getQuotes(orgId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]>;
+  getQuotes(userId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]>;
   addQuoteItem(item: InsertQuoteItem): Promise<QuoteItem>;
   getQuoteItems(quoteId: string): Promise<QuoteItem[]>;
   updateQuoteItem(itemId: string, updates: Partial<QuoteItem>): Promise<QuoteItem>;
@@ -176,6 +176,10 @@ export interface IStorage {
   // Org by Stripe
   getOrgByStripeSubscription(subscriptionId: string): Promise<Org | null>;
   getOrgByStripeCustomer(customerId: string): Promise<Org | null>;
+  
+  // User by Stripe
+  getUserByStripeSubscription(subscriptionId: string): Promise<User | null>;
+  getUserByStripeCustomer(customerId: string): Promise<User | null>;
   
   // Admin Industry Preferences
   upsertAdminIndustryPreference(userId: string, industry: string): Promise<void>;
@@ -571,8 +575,11 @@ export class PostgresStorage implements IStorage {
     return orgMember;
   }
 
-  async createJob(insertJob: InsertJob): Promise<Job> {
-    const [job] = await ensureDb().insert(jobs).values(insertJob).returning();
+  async createJob(insertJob: InsertJob, userId: string): Promise<Job> {
+    const [job] = await ensureDb().insert(jobs).values({
+      ...insertJob,
+      userId // Set user_id from parameter
+    }).returning();
     if (!job) throw new Error("Failed to create job");
     return job;
   }
@@ -582,8 +589,8 @@ export class PostgresStorage implements IStorage {
     return job;
   }
 
-  async getJobs(orgId: string): Promise<Job[]> {
-    return await ensureDb().select().from(jobs).where(eq(jobs.orgId, orgId)).orderBy(desc(jobs.createdAt));
+  async getJobs(userId: string): Promise<Job[]> {
+    return await ensureDb().select().from(jobs).where(eq(jobs.userId, userId)).orderBy(desc(jobs.createdAt));
   }
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
@@ -786,10 +793,21 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getMaterials(orgId?: string, category?: string, industry?: string): Promise<Material[]> {
+  async getMaterials(userId?: string, category?: string, industry?: string): Promise<Material[]> {
     try {
       // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
-      let allMaterials = await this.getMaterialsSystem(orgId, category);
+      // Note: system function may still use orgId, but we'll filter by userId in fallback
+      let allMaterials = await this.getMaterialsSystem(undefined, category);
+      
+      // Filter by user: show global materials (userId IS NULL) OR user's own materials
+      if (userId) {
+        allMaterials = allMaterials.filter(m => 
+          !m.userId || m.userId === userId // Global materials OR user's materials
+        );
+      } else {
+        // If no userId provided, only show global materials
+        allMaterials = allMaterials.filter(m => !m.userId);
+      }
       
       // Filter by industry if provided (client-side filter since system function doesn't support it yet)
       if (industry) {
@@ -814,10 +832,14 @@ export class PostgresStorage implements IStorage {
       console.warn('[getMaterials] System function failed, using direct query:', error?.message);
       let conditions = [eq(materials.isActive, true)];
       
-      if (orgId) {
-        conditions.push(eq(materials.orgId, orgId));
+      // Filter by user: global materials (userId IS NULL) OR user's materials
+      if (userId) {
+        conditions.push(
+          sql`(${materials.userId} IS NULL OR ${materials.userId} = ${userId}::UUID)`
+        );
       } else {
-        conditions.push(sql`${materials.orgId} IS NULL`);
+        // If no userId, only show global materials
+        conditions.push(sql`${materials.userId} IS NULL`);
       }
       
       if (category) {
@@ -838,11 +860,14 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async createMaterial(insertMaterial: InsertMaterial): Promise<Material> {
+  async createMaterial(insertMaterial: InsertMaterial, userId?: string): Promise<Material> {
     try {
-      const [material] = await ensureDb().insert(materials).values(insertMaterial).returning();
+      const [material] = await ensureDb().insert(materials).values({
+        ...insertMaterial,
+        userId: userId || null // Set userId if provided, otherwise NULL (global material)
+      }).returning();
       if (!material) throw new Error("Failed to create material");
-      console.log('[materials] created id=' + material.id + ' name=' + material.name);
+      console.log('[materials] created id=' + material.id + ' name=' + material.name + ' userId=' + (userId || 'global'));
       return material;
     } catch (error) {
       console.error('[Storage] Failed to create material:', error);
@@ -866,8 +891,11 @@ export class PostgresStorage implements IStorage {
       .where(eq(materials.id, id));
   }
 
-  async createMask(insertMask: InsertMask): Promise<Mask> {
-    const [mask] = await ensureDb().insert(masks).values(insertMask).returning();
+  async createMask(insertMask: InsertMask, userId: string): Promise<Mask> {
+    const [mask] = await ensureDb().insert(masks).values({
+      ...insertMask,
+      userId // Set user_id from parameter
+    }).returning();
     if (!mask) throw new Error("Failed to create mask");
     return mask;
   }
@@ -904,8 +932,8 @@ export class PostgresStorage implements IStorage {
     return quote;
   }
 
-  async getQuotes(orgId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]> {
-    let conditions = [eq(jobs.orgId, orgId)];
+  async getQuotes(userId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]> {
+    let conditions = [eq(jobs.userId, userId)];
     
     if (filters?.status) {
       conditions.push(eq(quotes.status, filters.status as any));
@@ -1507,6 +1535,26 @@ export class PostgresStorage implements IStorage {
       .select()
       .from(orgs)
       .where(eq(orgs.stripeCustomerId, customerId))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  async getUserByStripeSubscription(subscriptionId: string): Promise<User | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.stripeSubscriptionId, subscriptionId))
+      .limit(1);
+    return result[0] || null;
+  }
+
+  async getUserByStripeCustomer(customerId: string): Promise<User | null> {
+    const db = ensureDb();
+    const result = await db
+      .select()
+      .from(users)
+      .where(eq(users.stripeCustomerId, customerId))
       .limit(1);
     return result[0] || null;
   }

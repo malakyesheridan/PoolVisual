@@ -3,7 +3,6 @@ import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
-import { useOrgStore } from '@/stores/orgStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -58,7 +57,6 @@ const getOnboardingSteps = (industry: string | undefined): Array<{
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const { user } = useAuthStore();
-  const { currentOrg, setCurrentOrg } = useOrgStore();
   const queryClient = useQueryClient();
 
   // Use refs to prevent race conditions with server state
@@ -67,8 +65,8 @@ export default function Onboarding() {
   const [responses, setResponses] = useState<OnboardingResponses>({});
   const [isNavigating, setIsNavigating] = useState(false);
 
-  // Use org industry if available, otherwise onboarding industry
-  const effectiveIndustry = currentOrg?.industry || responses.industry || 'pool';
+  // Use user industry if available, otherwise onboarding industry (user-centric)
+  const effectiveIndustry = user?.industryType || responses.industry || 'pool';
   const steps = getOnboardingSteps(effectiveIndustry);
   const currentStep = steps[currentStepIndex]?.id || 'welcome';
 
@@ -93,27 +91,20 @@ export default function Onboarding() {
     },
   });
 
-  // Update org industry mutation
-  const updateOrgIndustryMutation = useMutation({
+  // Update user industry mutation (user-centric)
+  const updateUserIndustryMutation = useMutation({
     mutationFn: async (industry: string) => {
-      if (!currentOrg?.id) {
-        // Get user's orgs if we don't have currentOrg
-        const orgs = await apiClient.getMyOrgs();
-        if (orgs.length > 0) {
-          const org = await apiClient.getOrg(orgs[0].id);
-          await apiClient.updateOrg(orgs[0].id, { industry });
-          return { ...org, industry };
-        }
-        return null;
-      } else {
-        await apiClient.updateOrg(currentOrg.id, { industry });
-        return { ...currentOrg, industry };
-      }
+      // Update user's industryType
+      await apiClient.updateUserProfile({ industryType: industry });
+      // Refresh user data
+      const updatedUser = await apiClient.getUserProfile();
+      return updatedUser;
     },
-    onSuccess: (updatedOrg) => {
-      if (updatedOrg) {
-        setCurrentOrg(updatedOrg);
-        queryClient.invalidateQueries({ queryKey: ['/api/me/orgs'] });
+    onSuccess: (updatedUser) => {
+      if (updatedUser) {
+        // Update auth store with new user data
+        useAuthStore.getState().setUser(updatedUser);
+        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
       }
     },
   });
@@ -171,13 +162,8 @@ export default function Onboarding() {
     }, 500); // 500ms debounce
   }, [responses, currentStepIndex, steps, updateOnboardingMutation]);
 
-  // Update industry and save to org
+  // Update industry and save to user (user-centric)
   const handleIndustrySelect = useCallback(async (industry: string) => {
-    // Don't update if industry is locked
-    if (currentOrg?.industryLocked) {
-      return;
-    }
-
     setResponses(prev => ({ ...prev, industry }));
     
     // Update onboarding immediately
@@ -186,11 +172,9 @@ export default function Onboarding() {
       responses: { ...responses, industry },
     });
 
-    // Update org industry (only if not locked)
-    if (!currentOrg?.industryLocked) {
-      updateOrgIndustryMutation.mutate(industry);
-    }
-  }, [responses, currentStepIndex, steps, currentOrg, updateOnboardingMutation, updateOrgIndustryMutation]);
+    // Update user industryType (user-centric architecture)
+    updateUserIndustryMutation.mutate(industry);
+  }, [responses, currentStepIndex, steps, updateOnboardingMutation, updateUserIndustryMutation]);
 
   const handleNext = useCallback(async () => {
     if (isNavigating) return;
@@ -281,8 +265,7 @@ export default function Onboarding() {
                 onSelect={handleIndustrySelect}
                 onNext={handleNext}
                 onBack={handleBack}
-                disabled={isNavigating || currentOrg?.industryLocked}
-                industryLocked={currentOrg?.industryLocked}
+                disabled={isNavigating}
               />
             )}
             {currentStep === 'questionnaire' && (
@@ -372,41 +355,10 @@ function IndustrySelectionStep({
   onNext: () => void | Promise<void>;
   onBack: () => void | Promise<void>;
   disabled?: boolean;
-  industryLocked?: boolean;
+  industryLocked?: boolean; // Deprecated, kept for backward compatibility
 }) {
-  const { currentOrg } = useOrgStore();
-
-  // If industry is locked, show read-only
-  if (industryLocked && currentOrg?.industry) {
-    const industryLabels: Record<string, string> = {
-      pool: 'Pool',
-      landscaping: 'Landscaping',
-      building: 'Building',
-      electrical: 'Electrical',
-      plumbing: 'Plumbing',
-      real_estate: 'Real Estate',
-      other: 'Other',
-    };
-    return (
-      <div className="space-y-6">
-        <Alert>
-          <Info className="h-4 w-4" />
-          <AlertDescription>
-            Your industry is set to <strong>{industryLabels[currentOrg.industry] || currentOrg.industry}</strong> based on your subscription plan.
-            This cannot be changed.
-          </AlertDescription>
-        </Alert>
-        <div className="flex justify-between mt-8">
-          <Button variant="outline" onClick={onBack} disabled={disabled}>
-            Back
-          </Button>
-          <Button onClick={onNext} disabled={disabled}>
-            Continue
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  // Industry is no longer locked (user-centric architecture)
+  // Users can change their industry at any time
 
   const industries = [
     { id: 'pool', label: 'Pool Renovation', icon: '🏊' },

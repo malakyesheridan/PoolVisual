@@ -6,6 +6,7 @@
 import { storage } from '../storage.js';
 import { logger } from './logger.js';
 import Stripe from 'stripe';
+import { creditService } from './creditService.js';
 
 export interface SubscriptionPlan {
   id: string;
@@ -31,7 +32,8 @@ export interface SubscriptionPlan {
 
 export interface SubscriptionHistoryEntry {
   id: string;
-  orgId: string;
+  orgId: string | null; // Deprecated, kept for backward compatibility
+  userId: string | null; // User who owns this subscription history
   planId: string | null;
   eventType: 'created' | 'activated' | 'updated' | 'canceled' | 'expired' | 
              'payment_succeeded' | 'payment_failed' | 'trial_started' | 'trial_ended';
@@ -81,10 +83,10 @@ export class SubscriptionService {
   }
 
   /**
-   * Assign plan to organization
+   * Assign plan to user (replaces assignPlanToOrg)
    */
-  async assignPlanToOrg(
-    orgId: string,
+  async assignPlanToUser(
+    userId: string,
     planKey: string,
     stripeCustomerId?: string,
     stripeSubscriptionId?: string
@@ -95,30 +97,37 @@ export class SubscriptionService {
         throw new Error(`Plan not found: ${planKey}`);
       }
 
-      const org = await storage.getOrg(orgId);
-      if (!org) {
-        throw new Error(`Organization not found: ${orgId}`);
+      const user = await storage.getUser(userId);
+      if (!user) {
+        throw new Error(`User not found: ${userId}`);
       }
 
-      const previousStatus = org.subscriptionStatus || 'trial';
-      const previousTier = org.subscriptionTier || 't1';
+      const previousStatus = user.subscriptionStatus || 'trial';
+      const previousTier = user.subscriptionTier || 't1';
 
-      // Update org
-      await storage.updateOrg(orgId, {
+      // Get monthly credits for this plan
+      const monthlyCredits = this.getMonthlyCreditsForPlan(planKey);
+
+      // Update user
+      await storage.updateUser(userId, {
         subscriptionPlanId: plan.id,
         subscriptionTier: plan.tier,
         subscriptionStatus: 'active',
-        industry: plan.industry,
-        industryLocked: true, // Lock industry when plan is assigned
-        stripeCustomerId: stripeCustomerId || org.stripeCustomerId,
-        stripeSubscriptionId: stripeSubscriptionId || org.stripeSubscriptionId,
+        industryType: plan.industry,
+        stripeCustomerId: stripeCustomerId || user.stripeCustomerId,
+        stripeSubscriptionId: stripeSubscriptionId || user.stripeSubscriptionId,
         subscriptionStartedAt: new Date(),
         subscriptionExpiresAt: this.calculateExpirationDate('yearly'), // Default to yearly
       });
 
+      // Allocate initial monthly credits
+      if (monthlyCredits > 0) {
+        await creditService.resetMonthlyCredits(userId, monthlyCredits);
+      }
+
       // Record history
       await this.recordHistory({
-        orgId,
+        userId,
         planId: plan.id,
         eventType: 'activated',
         fromStatus: previousStatus,
@@ -126,21 +135,22 @@ export class SubscriptionService {
         fromTier: previousTier,
         toTier: plan.tier,
         stripeSubscriptionId: stripeSubscriptionId || undefined,
-        metadata: { planKey },
+        metadata: { planKey, monthlyCredits },
       });
 
       logger.info({
-        msg: 'Plan assigned to org',
-        orgId,
+        msg: 'Plan assigned to user',
+        userId,
         planKey,
         tier: plan.tier,
         industry: plan.industry,
+        monthlyCredits,
       });
     } catch (error) {
       logger.error({
         msg: 'Failed to assign plan',
         err: error,
-        orgId,
+        userId,
         planKey,
       });
       throw error;
@@ -148,72 +158,40 @@ export class SubscriptionService {
   }
 
   /**
-   * Check if org has access to a feature
+   * Get monthly credits for a plan
    */
-  async canAccessFeature(orgId: string, feature: string): Promise<boolean> {
-    try {
-      const org = await storage.getOrg(orgId);
-      if (!org?.subscriptionPlanId) {
-        return false;
-      }
-
-      const plan = await storage.getSubscriptionPlan(org.subscriptionPlanId);
-      if (!plan || !plan.isActive) {
-        return false;
-      }
-
-      const features = plan.features as any;
-      
-      // Check direct feature flag
-      if (features[feature] === true) {
-        return true;
-      }
-
-      // Check if feature is in array (e.g., enhancements)
-      if (Array.isArray(features[feature]) && features[feature].length > 0) {
-        return true;
-      }
-
-      // Special case: materials for real estate T3
-      if (feature === 'materials' && org.industry === 'real_estate' && org.subscriptionTier === 't3') {
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      logger.error({
-        msg: 'Failed to check feature access',
-        err: error,
-        orgId,
-        feature,
-      });
-      return false;
-    }
+  private getMonthlyCreditsForPlan(planKey: string): number {
+    const planCredits: Record<string, number> = {
+      'easyflow_solo': 250,
+      'easyflow_pro': 500,
+      'easyflow_business': 1700,
+    };
+    return planCredits[planKey] || 0;
   }
 
   /**
-   * Get org subscription status
+   * Get user subscription status
    */
-  async getOrgSubscription(orgId: string): Promise<{
+  async getUserSubscription(userId: string): Promise<{
     plan: SubscriptionPlan | null;
     status: string;
     tier: string;
     expiresAt: Date | null;
   }> {
-    const org = await storage.getOrg(orgId);
-    if (!org) {
-      throw new Error('Organization not found');
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error('User not found');
     }
 
-    const plan = org.subscriptionPlanId
-      ? await storage.getSubscriptionPlan(org.subscriptionPlanId)
+    const plan = user.subscriptionPlanId
+      ? await storage.getSubscriptionPlan(user.subscriptionPlanId)
       : null;
 
     return {
       plan,
-      status: org.subscriptionStatus || 'trial',
-      tier: org.subscriptionTier || 't1',
-      expiresAt: org.subscriptionExpiresAt || null,
+      status: user.subscriptionStatus || 'trial',
+      tier: user.subscriptionTier || 't1',
+      expiresAt: user.subscriptionExpiresAt || null,
     };
   }
 
@@ -221,7 +199,8 @@ export class SubscriptionService {
    * Record subscription history
    */
   private async recordHistory(data: {
-    orgId: string;
+    userId?: string;
+    orgId?: string; // Deprecated, kept for backward compatibility
     planId: string | null;
     eventType: SubscriptionHistoryEntry['eventType'];
     fromStatus?: string | null;
@@ -234,7 +213,8 @@ export class SubscriptionService {
   }): Promise<void> {
     try {
       await storage.createSubscriptionHistory({
-        orgId: data.orgId,
+        userId: data.userId || null,
+        orgId: data.orgId || null, // Deprecated
         planId: data.planId,
         eventType: data.eventType,
         fromStatus: data.fromStatus || null,
@@ -283,7 +263,7 @@ export class SubscriptionService {
    * Create Stripe checkout session (or skip for placeholder plans)
    */
   async createCheckoutSession(
-    orgId: string,
+    userId: string,
     planKey: string,
     billingPeriod: 'monthly' | 'yearly'
   ): Promise<{ url: string; sessionId: string; isPlaceholder?: boolean }> {
@@ -292,29 +272,48 @@ export class SubscriptionService {
       throw new Error('Plan not found');
     }
 
+    // Use creditService to get plan details from price ID
+    const priceId = billingPeriod === 'monthly'
+      ? plan.stripePriceIdMonthly
+      : plan.stripePriceIdYearly;
+
+    if (priceId) {
+      const planDetails = creditService.getPlanFromPriceId(priceId);
+      if (planDetails) {
+        // Update planKey if it differs
+        if (planDetails.planKey !== planKey) {
+          logger.warn({
+            msg: 'Plan key mismatch',
+            provided: planKey,
+            fromPriceId: planDetails.planKey,
+          });
+        }
+      }
+    }
+
     // Check if this is a placeholder plan
     if (this.isPlaceholderPlan(plan, billingPeriod)) {
       // For placeholder plans, directly assign the plan without Stripe
       logger.info({
         msg: 'Placeholder plan selected - skipping Stripe checkout',
-        orgId,
+        userId,
         planKey,
         billingPeriod,
       });
 
       // Assign plan directly
-      await this.assignPlanToOrg(orgId, planKey);
+      await this.assignPlanToUser(userId, planKey);
 
       // Set expiration date for placeholder plans (1 year for yearly, 1 month for monthly)
       const expirationDate = this.calculateExpirationDate(billingPeriod);
-      await storage.updateOrg(orgId, {
+      await storage.updateUser(userId, {
         subscriptionExpiresAt: expirationDate,
         subscriptionStartedAt: new Date(),
       });
 
       // Record activation
       await this.recordHistory({
-        orgId,
+        userId,
         planId: plan.id,
         eventType: 'activated',
         fromStatus: 'trial',
@@ -341,31 +340,27 @@ export class SubscriptionService {
       throw new Error('Stripe not configured');
     }
 
-    const priceId = billingPeriod === 'monthly'
-      ? plan.stripePriceIdMonthly
-      : plan.stripePriceIdYearly;
-
     if (!priceId) {
       throw new Error(`Price ID not found for ${billingPeriod} billing`);
     }
 
-    const org = await storage.getOrg(orgId);
-    if (!org) {
-      throw new Error('Organization not found');
+    const user = await storage.getUser(userId);
+    if (!user) {
+      throw new Error('User not found');
     }
 
     // Create or get Stripe customer
-    let customerId = org.stripeCustomerId;
+    let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await this.stripe.customers.create({
-        email: org.contactEmail || undefined,
-        name: org.name,
+        email: user.email,
+        name: user.username,
         metadata: {
-          orgId: org.id,
+          userId: user.id,
         },
       });
       customerId = customer.id;
-      await storage.updateOrg(orgId, { stripeCustomerId: customerId });
+      await storage.updateUser(userId, { stripeCustomerId: customerId });
     }
 
     // Create checkout session
@@ -381,13 +376,13 @@ export class SubscriptionService {
       success_url: `${process.env.APP_URL || 'http://localhost:5001'}/subscribe/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.APP_URL || 'http://localhost:5001'}/subscribe?canceled=true`,
       metadata: {
-        orgId: org.id,
+        userId: user.id,
         planKey: planKey,
         billingPeriod: billingPeriod,
       },
       subscription_data: {
         metadata: {
-          orgId: org.id,
+          userId: user.id,
           planKey: planKey,
         },
       },
@@ -426,16 +421,16 @@ export class SubscriptionService {
   }
 
   private async handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
-    const orgId = session.metadata?.orgId;
+    const userId = session.metadata?.userId;
     const planKey = session.metadata?.planKey;
 
-    if (!orgId || !planKey) {
+    if (!userId || !planKey) {
       logger.error({ msg: 'Missing metadata in checkout session', sessionId: session.id });
       return;
     }
 
-    await this.assignPlanToOrg(
-      orgId,
+    await this.assignPlanToUser(
+      userId,
       planKey,
       session.customer as string,
       session.subscription as string
@@ -443,23 +438,23 @@ export class SubscriptionService {
   }
 
   private async handleSubscriptionUpdated(subscription: Stripe.Subscription): Promise<void> {
-    const orgId = subscription.metadata?.orgId;
-    if (!orgId) return;
+    const userId = subscription.metadata?.userId;
+    if (!userId) return;
 
-    const org = await storage.getOrg(orgId);
-    if (!org) return;
+    const user = await storage.getUser(userId);
+    if (!user) return;
 
     const status = subscription.status;
     const mappedStatus = this.mapStripeStatus(status);
 
-    await storage.updateOrg(orgId, {
+    await storage.updateUser(userId, {
       subscriptionStatus: mappedStatus,
       stripeSubscriptionId: subscription.id,
     });
 
     await this.recordHistory({
-      orgId,
-      planId: org.subscriptionPlanId || null,
+      userId,
+      planId: user.subscriptionPlanId || null,
       eventType: 'updated',
       toStatus: mappedStatus,
       stripeEventId: subscription.id,
@@ -469,15 +464,15 @@ export class SubscriptionService {
   }
 
   private async handleSubscriptionDeleted(subscription: Stripe.Subscription): Promise<void> {
-    const orgId = subscription.metadata?.orgId;
-    if (!orgId) return;
+    const userId = subscription.metadata?.userId;
+    if (!userId) return;
 
-    await storage.updateOrg(orgId, {
+    await storage.updateUser(userId, {
       subscriptionStatus: 'canceled',
     });
 
     await this.recordHistory({
-      orgId,
+      userId,
       planId: null,
       eventType: 'canceled',
       toStatus: 'canceled',
@@ -490,13 +485,26 @@ export class SubscriptionService {
     const subscriptionId = invoice.subscription as string;
     if (!subscriptionId) return;
 
-    // Find org by subscription ID
-    const org = await storage.getOrgByStripeSubscription(subscriptionId);
-    if (!org) return;
+    // Find user by subscription ID
+    const user = await this.getUserByStripeSubscription(subscriptionId);
+    if (!user) return;
+
+    // Get plan to determine monthly credits
+    const plan = user.subscriptionPlanId
+      ? await storage.getSubscriptionPlan(user.subscriptionPlanId)
+      : null;
+
+    if (plan) {
+      // Reset monthly credits on payment succeeded
+      const monthlyCredits = this.getMonthlyCreditsForPlan(plan.planKey);
+      if (monthlyCredits > 0) {
+        await creditService.resetMonthlyCredits(user.id, monthlyCredits);
+      }
+    }
 
     await this.recordHistory({
-      orgId: org.id,
-      planId: org.subscriptionPlanId || null,
+      userId: user.id,
+      planId: user.subscriptionPlanId || null,
       eventType: 'payment_succeeded',
       stripeEventId: invoice.id,
       stripeSubscriptionId: subscriptionId,
@@ -508,21 +516,34 @@ export class SubscriptionService {
     const subscriptionId = invoice.subscription as string;
     if (!subscriptionId) return;
 
-    const org = await storage.getOrgByStripeSubscription(subscriptionId);
-    if (!org) return;
+    const user = await this.getUserByStripeSubscription(subscriptionId);
+    if (!user) return;
 
-    await storage.updateOrg(org.id, {
+    await storage.updateUser(user.id, {
       subscriptionStatus: 'past_due',
     });
 
     await this.recordHistory({
-      orgId: org.id,
-      planId: org.subscriptionPlanId || null,
+      userId: user.id,
+      planId: user.subscriptionPlanId || null,
       eventType: 'payment_failed',
       toStatus: 'past_due',
       stripeEventId: invoice.id,
       stripeSubscriptionId: subscriptionId,
     });
+  }
+
+  /**
+   * Get user by Stripe subscription ID
+   */
+  private async getUserByStripeSubscription(subscriptionId: string) {
+    try {
+      const user = await storage.getUserByStripeSubscription(subscriptionId);
+      return user || null;
+    } catch (error) {
+      logger.error({ msg: 'Failed to get user by subscription ID', err: error, subscriptionId });
+      return null;
+    }
   }
 
   private mapStripeStatus(status: string): 'trial' | 'active' | 'past_due' | 'canceled' | 'expired' {
