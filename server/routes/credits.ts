@@ -123,10 +123,11 @@ router.post('/topup/checkout', authenticateSession, async (req, res) => {
 router.post('/topup/webhook', async (req, res) => {
   try {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    // Use separate webhook secret for top-ups
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET_TOPUP || process.env.STRIPE_WEBHOOK_SECRET;
 
     if (!stripeSecretKey || !webhookSecret) {
-      logger.error({ msg: 'Stripe not configured - missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET' });
+      logger.error({ msg: 'Stripe not configured - missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET_TOPUP' });
       return res.status(500).json({ error: 'Stripe payment processing is not configured. Please contact support.' });
     }
 

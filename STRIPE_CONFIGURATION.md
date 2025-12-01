@@ -8,33 +8,39 @@ Add these to your `.env` file:
 
 ```bash
 # Stripe Secret Key (from Stripe Dashboard > Developers > API keys)
-STRIPE_SECRET_KEY=sk_live_...  # or sk_test_... for testing
+STRIPE_SECRET_KEY=sk_test_...  # or sk_live_... for production
 
-# Stripe Webhook Secret (from Stripe Dashboard > Developers > Webhooks)
+# Stripe Public Key (for frontend if needed)
+VITE_STRIPE_PUBLIC_KEY=pk_test_...  # or pk_live_... for production
+
+# Subscription Webhook Secret (from /api/subscription/webhook endpoint)
 STRIPE_WEBHOOK_SECRET=whsec_...
 
-# Optional: Stripe Public Key (for frontend if needed)
-VITE_STRIPE_PUBLIC_KEY=pk_live_...  # or pk_test_... for testing
+# Top-Up Webhook Secret (from /api/credits/topup/webhook endpoint)
+STRIPE_WEBHOOK_SECRET_TOPUP=whsec_...
 ```
 
 ## Configured Price IDs
 
 ### Credit Top-Ups (One-time purchases)
-- **300 Credits** - `price_1SZEzDldjngDSU327RDMd5zR` - $199.00 AUD
-- **100 Credits** - `price_1SZEyZIdjngDSU32vRaAQVnr` - $75.00 AUD (Most Popular)
-- **25 Credits** - `price_1SZEy4ldjngDSU32bqsKASsp` - $25.00 AUD
+- **300 Credits** - `price_1SZRjuEdvdAX5C3kF5PzjpMb` - $199.00 AUD
+  - Product ID: `prod_TWUj0L0LbCseYc`
+- **100 Credits** - `price_1SZRjYEdvdAX5C3kmNRNfHPi` - $75.00 AUD (Most Popular)
+  - Product ID: `prod_TWUjIWUJ5I1uCY`
+- **25 Credits** - `price_1SZRjEEdvdAX5C3kdERuir64` - $25.00 AUD
+  - Product ID: `prod_TWUiiGAGwSb03w`
 
 ### Subscription Plans (Monthly recurring)
-- **Business Plan** - `price_1SZEWWIdjngDSU32r6dTKkUw` - $995.00 AUD/month
-  - Product ID: `prod_TWHVnh2JLmnL4v`
+- **Business Plan** - `price_1SZRiaEdvdAX5C3kEekpnwAR` - $995.00 AUD/month
+  - Product ID: `prod_TWUhmEZK3biO3P`
   - Monthly Credits: 1700
   
-- **Pro Plan** - `price_1SZEvMldjngDSU32RI4i4XRH` - $299.00 AUD/month
-  - Product ID: `prod_TWHUq6G3UulAdY`
+- **Pro Plan** - `price_1SZRIGEdvdAX5C3ketcnQIeO` - $299.00 AUD/month
+  - Product ID: `prod_TWUhgM8JYrdA9y`
   - Monthly Credits: 500
   
-- **Solo Plan** - `price_1SZEuUIdjngDSU32y8uKNbVn` - $149.00 AUD/month
-  - Product ID: `prod_TWHTdDZapUAjGA`
+- **Solo Plan** - `price_1SZRhzEdvdAX5C3kg43xSFBd` - $149.00 AUD/month
+  - Product ID: `prod_TWUha7Rt7ef4Br`
   - Monthly Credits: 250
 
 ## Webhook Configuration
