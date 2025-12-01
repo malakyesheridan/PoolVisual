@@ -238,11 +238,11 @@ export default function Subscribe() {
     return isNaN(numPrice) ? null : numPrice;
   };
 
-  const formatPrice = (price: number | null | string): string => {
+  const formatPrice = (price: number | null | string | undefined): string => {
     if (price === null || price === undefined) return 'Contact us';
     // Ensure price is a number
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-    if (isNaN(numPrice)) return 'Contact us';
+    const numPrice = typeof price === 'string' ? parseFloat(price) : Number(price);
+    if (isNaN(numPrice) || !isFinite(numPrice)) return 'Contact us';
     return `$${numPrice.toFixed(2)}`;
   };
 
@@ -435,11 +435,17 @@ export default function Subscribe() {
                         </span>
                       )}
                     </div>
-                    {billingPeriod === 'yearly' && price !== null && plan.priceMonthly && (
-                      <p className="text-sm text-slate-500 mt-1">
-                        ${(typeof plan.priceMonthly === 'number' ? plan.priceMonthly : parseFloat(String(plan.priceMonthly))) * 12).toFixed(2)} billed monthly
-                      </p>
-                    )}
+                    {billingPeriod === 'yearly' && price !== null && plan.priceMonthly && (() => {
+                      const monthlyPrice = typeof plan.priceMonthly === 'number' 
+                        ? plan.priceMonthly 
+                        : (typeof plan.priceMonthly === 'string' ? parseFloat(plan.priceMonthly) : 0);
+                      const yearlyEquivalent = !isNaN(monthlyPrice) ? monthlyPrice * 12 : 0;
+                      return yearlyEquivalent > 0 ? (
+                        <p className="text-sm text-slate-500 mt-1">
+                          ${yearlyEquivalent.toFixed(2)} billed monthly
+                        </p>
+                      ) : null;
+                    })()}
                   </CardHeader>
                   <CardContent>
                     <Separator className="mb-4" />

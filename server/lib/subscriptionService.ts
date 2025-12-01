@@ -64,11 +64,22 @@ export class SubscriptionService {
     try {
       const plans = await storage.getSubscriptionPlans(industry);
       // Convert numeric strings to numbers (PostgreSQL numeric type returns as string)
-      const normalizedPlans = plans.map(plan => ({
-        ...plan,
-        priceMonthly: plan.priceMonthly ? (typeof plan.priceMonthly === 'string' ? parseFloat(plan.priceMonthly) : plan.priceMonthly) : null,
-        priceYearly: plan.priceYearly ? (typeof plan.priceYearly === 'string' ? parseFloat(plan.priceYearly) : plan.priceYearly) : null,
-      }));
+      const normalizedPlans = plans.map(plan => {
+        const normalizePrice = (price: any): number | null => {
+          if (price === null || price === undefined) return null;
+          if (typeof price === 'number') return isNaN(price) ? null : price;
+          if (typeof price === 'string') {
+            const parsed = parseFloat(price);
+            return isNaN(parsed) ? null : parsed;
+          }
+          return null;
+        };
+        return {
+          ...plan,
+          priceMonthly: normalizePrice(plan.priceMonthly),
+          priceYearly: normalizePrice(plan.priceYearly),
+        };
+      });
       return normalizedPlans.filter(p => p.isActive).sort((a, b) => a.displayOrder - b.displayOrder);
     } catch (error) {
       logger.error({ msg: 'Failed to get plans', err: error, industry });
