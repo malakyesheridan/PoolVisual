@@ -4,7 +4,26 @@ import { useAuthStore } from '@/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Check, Loader2, AlertCircle, CreditCard, X } from 'lucide-react';
+import { 
+  Check, 
+  Loader2, 
+  AlertCircle, 
+  CreditCard, 
+  X, 
+  Sparkles, 
+  Brush, 
+  Layers, 
+  Image, 
+  Film, 
+  Zap, 
+  Shield, 
+  Headphones, 
+  Download,
+  Infinity,
+  FileText,
+  Palette,
+  Wand2
+} from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
@@ -17,11 +36,11 @@ interface Plan {
   key: 'solo' | 'pro' | 'business';
   name: string;
   monthlyPrice: number;
-  yearlyPrice: number; // Monthly equivalent when billed yearly
+  yearlyPrice: number;
   monthlyCredits: number;
-  features: string[];
+  features: Array<{ text: string; icon: any }>;
   stripePriceIdMonthly: string;
-  stripePriceIdYearly?: string; // Will be added when yearly plans are created
+  stripePriceIdYearly?: string;
 }
 
 const PLANS: Plan[] = [
@@ -29,13 +48,15 @@ const PLANS: Plan[] = [
     key: 'solo',
     name: 'Solo',
     monthlyPrice: 149,
-    yearlyPrice: 119.2, // 20% off: 149 * 0.8 = 119.2
+    yearlyPrice: 119.2,
     monthlyCredits: 250,
     features: [
-      '250 credits/month',
-      'Basic Enhancements',
-      'Custom Prompts',
-      'Credit Top-Ups',
+      { text: '250 credits/month', icon: Sparkles },
+      { text: 'AI Image Enhancements', icon: Wand2 },
+      { text: 'Custom Prompts', icon: FileText },
+      { text: 'Credit Top-Ups Available', icon: CreditCard },
+      { text: 'Standard Export Formats', icon: Download },
+      { text: 'Email Support', icon: Headphones },
     ],
     stripePriceIdMonthly: 'price_1SZRhzEdvdAX5C3kg43xSFBd',
   },
@@ -43,15 +64,16 @@ const PLANS: Plan[] = [
     key: 'pro',
     name: 'Pro',
     monthlyPrice: 299,
-    yearlyPrice: 239.2, // 20% off: 299 * 0.8 = 239.2
+    yearlyPrice: 239.2,
     monthlyCredits: 500,
     features: [
-      '500 credits/month',
-      'All Solo features',
-      'Brush Tool',
-      'Masked Prompts',
-      'Preset Library',
-      'Before/After Slideshow',
+      { text: '500 credits/month', icon: Sparkles },
+      { text: 'All Solo features included', icon: Check },
+      { text: 'Advanced Brush Tool', icon: Brush },
+      { text: 'Masked Prompts & Selections', icon: Layers },
+      { text: 'Preset Library Access', icon: Palette },
+      { text: 'Before/After Slideshow', icon: Film },
+      { text: 'Priority Email Support', icon: Headphones },
     ],
     stripePriceIdMonthly: 'price_1SZRiGEdvdAX5C3ketcnQIeO',
   },
@@ -59,13 +81,16 @@ const PLANS: Plan[] = [
     key: 'business',
     name: 'Business',
     monthlyPrice: 995,
-    yearlyPrice: 796, // 20% off: 995 * 0.8 = 796
+    yearlyPrice: 796,
     monthlyCredits: 1700,
     features: [
-      '1700 credits/month',
-      'All Pro features',
-      'White-Label Export',
-      'Priority Queue Access',
+      { text: '1700 credits/month', icon: Sparkles },
+      { text: 'All Pro features included', icon: Check },
+      { text: 'White-Label Export', icon: Shield },
+      { text: 'Priority Processing Queue', icon: Zap },
+      { text: 'API Access', icon: Infinity },
+      { text: 'Dedicated Support', icon: Headphones },
+      { text: 'Custom Integrations', icon: Layers },
     ],
     stripePriceIdMonthly: 'price_1SZRiaEdvdAX5C3kEekpnwAR',
   },
@@ -73,13 +98,23 @@ const PLANS: Plan[] = [
 
 const FEATURE_COMPARISON = [
   { feature: 'Monthly Credits', solo: '250', pro: '500', business: '1700' },
+  { feature: 'AI Image Enhancements', solo: true, pro: true, business: true },
   { feature: 'Custom Prompts', solo: true, pro: true, business: true },
-  { feature: 'Brush Tool', solo: false, pro: true, business: true },
-  { feature: 'Masked Prompts', solo: false, pro: true, business: true },
-  { feature: 'Staging Preset Library (Real Estate)', solo: false, pro: true, business: true },
+  { feature: 'Credit Top-Ups', solo: true, pro: true, business: true },
+  { feature: 'Standard Export Formats', solo: true, pro: true, business: true },
+  { feature: 'Advanced Brush Tool', solo: false, pro: true, business: true },
+  { feature: 'Masked Prompts & Selections', solo: false, pro: true, business: true },
+  { feature: 'Preset Library Access', solo: false, pro: true, business: true },
   { feature: 'Before/After Slideshow Export', solo: false, pro: true, business: true },
   { feature: 'White-Label Export', solo: false, pro: false, business: true },
-  { feature: 'Priority Queue', solo: false, pro: false, business: true },
+  { feature: 'Priority Processing Queue', solo: false, pro: false, business: true },
+  { feature: 'API Access', solo: false, pro: false, business: true },
+  { feature: 'Custom Integrations', solo: false, pro: false, business: true },
+  { feature: 'Email Support', solo: true, pro: true, business: true },
+  { feature: 'Priority Support', solo: false, pro: true, business: true },
+  { feature: 'Dedicated Support', solo: false, pro: false, business: true },
+  { feature: '14-Day Free Trial', solo: true, pro: true, business: true },
+  { feature: 'Cancel Anytime', solo: true, pro: true, business: true },
 ];
 
 export default function Subscribe() {
@@ -109,7 +144,6 @@ export default function Subscribe() {
         });
       }
     } catch (err) {
-      // Ignore errors - user might not have subscription yet
       console.log('No existing subscription or error checking:', err);
     }
   };
@@ -130,7 +164,6 @@ export default function Subscribe() {
     setError(null);
 
     try {
-      // Map plan key to Stripe plan key format
       const planKeyMap: Record<string, string> = {
         solo: 'easyflow_solo',
         pro: 'easyflow_pro',
@@ -142,14 +175,12 @@ export default function Subscribe() {
         throw new Error('Invalid plan selected');
       }
 
-      // Create Stripe checkout session
       const response = await apiClient.createCheckoutSession({
         planKey: stripePlanKey,
         billingPeriod,
       });
 
       if (response.ok && response.url) {
-        // Redirect to Stripe checkout
         window.location.href = response.url;
       } else {
         setError(response.error || 'Failed to create checkout session');
@@ -174,26 +205,33 @@ export default function Subscribe() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-100 py-12 px-4">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-slate-900 mb-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 mb-6">
+            <Sparkles className="h-8 w-8 text-white" />
+          </div>
+          <h1 className="text-5xl font-bold bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 bg-clip-text text-transparent mb-4">
             Choose Your Plan
           </h1>
-          <p className="text-lg text-slate-600 max-w-2xl mx-auto">
+          <p className="text-xl text-slate-600 max-w-2xl mx-auto">
             Select the perfect plan for your business. All plans include a 14-day free trial.
           </p>
         </div>
 
         {/* Billing Period Toggle */}
-        <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center gap-2 p-1 bg-white border-2 border-slate-200 rounded-lg shadow-sm">
+        <div className="flex justify-center mb-10">
+          <div className="inline-flex items-center gap-2 p-1.5 bg-white border-2 border-slate-200 rounded-xl shadow-lg">
             <Button
               variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setBillingPeriod('monthly')}
-              className={`px-6 ${billingPeriod === 'monthly' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
+              className={`px-8 transition-all ${
+                billingPeriod === 'monthly' 
+                  ? 'bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-md hover:shadow-lg' 
+                  : 'hover:bg-slate-50'
+              }`}
             >
               Monthly
             </Button>
@@ -201,10 +239,14 @@ export default function Subscribe() {
               variant={billingPeriod === 'yearly' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setBillingPeriod('yearly')}
-              className={`px-6 ${billingPeriod === 'yearly' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
+              className={`px-8 transition-all ${
+                billingPeriod === 'yearly' 
+                  ? 'bg-gradient-to-r from-slate-900 to-slate-800 text-white shadow-md hover:shadow-lg' 
+                  : 'hover:bg-slate-50'
+              }`}
             >
               Yearly
-              <Badge variant="secondary" className="ml-2 text-xs bg-green-100 text-green-800">
+              <Badge variant="secondary" className="ml-2 text-xs bg-gradient-to-r from-green-500 to-emerald-600 text-white border-0">
                 Save 20%
               </Badge>
             </Button>
@@ -220,7 +262,7 @@ export default function Subscribe() {
         )}
 
         {/* Three-Card Pricing Layout */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           {PLANS.map((plan) => {
             const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
             const isSelected = selectedPlan === plan.key;
@@ -230,57 +272,92 @@ export default function Subscribe() {
             return (
               <Card
                 key={plan.key}
-                className={`relative transition-all ${
+                className={`relative transition-all duration-300 cursor-pointer group ${
                   isSelected
-                    ? 'border-primary border-2 shadow-lg scale-105'
-                    : 'border-slate-200 shadow-md'
-                } ${isPopular ? 'ring-2 ring-primary/20' : ''} ${isCurrentPlan ? 'opacity-75' : ''}`}
+                    ? 'border-2 border-blue-500 shadow-2xl scale-105 ring-4 ring-blue-500/20'
+                    : 'border-slate-200 shadow-lg hover:shadow-xl hover:scale-[1.02]'
+                } ${
+                  isPopular 
+                    ? 'ring-2 ring-blue-500/30 bg-gradient-to-b from-white to-blue-50/20' 
+                    : 'bg-white'
+                } ${isCurrentPlan ? 'opacity-75' : ''}`}
                 onClick={() => !isCurrentPlan && setSelectedPlan(plan.key)}
               >
                 {isPopular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <Badge className="bg-primary text-white">Most Popular</Badge>
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+                    <Badge className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-4 py-1.5 text-sm font-semibold shadow-lg">
+                      ⭐ Most Popular
+                    </Badge>
                   </div>
                 )}
                 {isCurrentPlan && (
-                  <div className="absolute top-4 right-4">
-                    <Badge variant="outline" className="bg-slate-100">
+                  <div className="absolute top-4 right-4 z-10">
+                    <Badge variant="outline" className="bg-slate-100 border-slate-300 font-medium">
                       Current Plan
                     </Badge>
                   </div>
                 )}
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-2xl mb-2">{plan.name}</CardTitle>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold">
+                
+                <CardHeader className="pb-6 pt-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <CardTitle className="text-3xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
+                      {plan.name}
+                    </CardTitle>
+                    {isPopular && (
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                        <Zap className="h-6 w-6 text-white" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex items-baseline gap-2 mb-2">
+                    <span className="text-5xl font-bold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                       {formatPrice(price)}
                     </span>
-                    <span className="text-slate-500">
-                      /{billingPeriod === 'monthly' ? 'month' : 'month'}
+                    <span className="text-lg text-slate-500 font-medium">
+                      /month
                     </span>
                   </div>
+                  
                   {billingPeriod === 'yearly' && (
-                    <p className="text-sm text-slate-500 mt-1">
+                    <p className="text-sm text-slate-500 mb-3">
                       Billed yearly ({formatPrice(Math.round(plan.yearlyPrice * 12))}/year)
                     </p>
                   )}
-                  <p className="text-xs text-slate-400 mt-2">
-                    {plan.monthlyCredits} credits/month
-                  </p>
+                  
+                  <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-100">
+                    <Sparkles className="h-4 w-4 text-blue-600" />
+                    <p className="text-sm font-semibold text-slate-700">
+                      {plan.monthlyCredits} credits/month
+                    </p>
+                  </div>
                 </CardHeader>
-                <CardContent>
-                  <Separator className="mb-4" />
-                  <ul className="space-y-3 mb-6">
-                    {plan.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start gap-2 text-sm text-slate-700">
-                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
+                
+                <CardContent className="pt-0">
+                  <Separator className="mb-6" />
+                  
+                  <ul className="space-y-4 mb-8">
+                    {plan.features.map((feature, idx) => {
+                      const Icon = feature.icon;
+                      return (
+                        <li key={idx} className="flex items-start gap-3 group/item">
+                          <div className="mt-0.5 p-1.5 rounded-md bg-gradient-to-br from-blue-100 to-purple-100 group-hover/item:scale-110 transition-transform">
+                            <Icon className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
+                            {feature.text}
+                          </span>
+                        </li>
+                      );
+                    })}
                   </ul>
+                  
                   <Button
-                    className="w-full"
-                    variant={isSelected ? 'default' : 'outline'}
+                    className={`w-full h-12 text-base font-semibold transition-all duration-300 ${
+                      isSelected
+                        ? 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl'
+                        : 'bg-slate-900 hover:bg-slate-800 text-white shadow-md hover:shadow-lg'
+                    }`}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (!isCurrentPlan) {
@@ -295,15 +372,15 @@ export default function Subscribe() {
                   >
                     {processing && isSelected ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                         Processing...
                       </>
                     ) : isCurrentPlan ? (
                       'Current Plan'
                     ) : isSelected ? (
                       <>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Selected – Continue
+                        <CreditCard className="mr-2 h-5 w-5" />
+                        Continue to Checkout
                       </>
                     ) : (
                       'Select Plan'
@@ -316,59 +393,95 @@ export default function Subscribe() {
         </div>
 
         {/* Feature Comparison Table */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Feature Comparison</CardTitle>
-            <CardDescription>
-              Compare features across all plans
+        <Card className="mb-8 border-2 shadow-xl bg-white">
+          <CardHeader className="bg-gradient-to-r from-slate-50 to-blue-50/30 border-b">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+                <Layers className="h-5 w-5 text-white" />
+              </div>
+              <CardTitle className="text-2xl font-bold">Feature Comparison</CardTitle>
+            </div>
+            <CardDescription className="text-base">
+              Compare all features across our plans to find the perfect fit
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[200px]">Feature</TableHead>
-                    <TableHead className="text-center">Solo</TableHead>
-                    <TableHead className="text-center">Pro</TableHead>
-                    <TableHead className="text-center">Business</TableHead>
+                  <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
+                    <TableHead className="w-[250px] font-semibold text-slate-900">Feature</TableHead>
+                    <TableHead className="text-center font-semibold text-slate-900">Solo</TableHead>
+                    <TableHead className="text-center font-semibold text-slate-900">Pro</TableHead>
+                    <TableHead className="text-center font-semibold text-slate-900">Business</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {FEATURE_COMPARISON.map((row, idx) => (
-                    <TableRow key={idx}>
-                      <TableCell className="font-medium">{row.feature}</TableCell>
-                      <TableCell className="text-center">
+                    <TableRow 
+                      key={idx} 
+                      className={`hover:bg-slate-50/50 transition-colors ${
+                        idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'
+                      }`}
+                    >
+                      <TableCell className="font-medium text-slate-700 py-4">
+                        {row.feature}
+                      </TableCell>
+                      <TableCell className="text-center py-4">
                         {typeof row.solo === 'boolean' ? (
                           row.solo ? (
-                            <Check className="h-5 w-5 text-green-600 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-green-100">
+                                <Check className="h-5 w-5 text-green-600" />
+                              </div>
+                            </div>
                           ) : (
-                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-slate-100">
+                                <X className="h-5 w-5 text-slate-300" />
+                              </div>
+                            </div>
                           )
                         ) : (
-                          row.solo
+                          <span className="font-semibold text-slate-700">{row.solo}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-4">
                         {typeof row.pro === 'boolean' ? (
                           row.pro ? (
-                            <Check className="h-5 w-5 text-green-600 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-green-100">
+                                <Check className="h-5 w-5 text-green-600" />
+                              </div>
+                            </div>
                           ) : (
-                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-slate-100">
+                                <X className="h-5 w-5 text-slate-300" />
+                              </div>
+                            </div>
                           )
                         ) : (
-                          row.pro
+                          <span className="font-semibold text-slate-700">{row.pro}</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-center">
+                      <TableCell className="text-center py-4">
                         {typeof row.business === 'boolean' ? (
                           row.business ? (
-                            <Check className="h-5 w-5 text-green-600 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-green-100">
+                                <Check className="h-5 w-5 text-green-600" />
+                              </div>
+                            </div>
                           ) : (
-                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                            <div className="flex justify-center">
+                              <div className="p-1.5 rounded-full bg-slate-100">
+                                <X className="h-5 w-5 text-slate-300" />
+                              </div>
+                            </div>
                           )
                         ) : (
-                          row.business
+                          <span className="font-semibold text-slate-700">{row.business}</span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -380,12 +493,15 @@ export default function Subscribe() {
         </Card>
 
         {/* Footer Info */}
-        <div className="text-center text-sm text-slate-500 max-w-3xl mx-auto">
-          <p className="mb-2">
-            Cancel anytime. 14-day free trial included.
-          </p>
-          <p>
-            No payment is collected until trial ends.
+        <div className="text-center space-y-3 max-w-3xl mx-auto">
+          <div className="flex items-center justify-center gap-2 text-slate-600">
+            <Shield className="h-5 w-5 text-green-600" />
+            <p className="text-base font-medium">
+              Cancel anytime. 14-day free trial included.
+            </p>
+          </div>
+          <p className="text-sm text-slate-500">
+            No payment is collected until trial ends. All plans include full feature access during trial.
           </p>
         </div>
       </div>
