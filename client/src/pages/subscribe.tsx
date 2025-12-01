@@ -128,9 +128,11 @@ export default function Subscribe() {
   const saveIndustrySelection = async () => {
     if (!user) return;
     try {
+      // Map 'trades' to 'pool' for database constraint (database doesn't allow 'trades')
+      const dbIndustryType = selectedIndustry === 'trades' ? 'pool' : selectedIndustry;
       // Update user's industry type via API
-      await apiClient.updateUserProfile({ industryType: selectedIndustry });
-      // Update local store
+      await apiClient.updateUserProfile({ industryType: dbIndustryType });
+      // Update local store with the original selection (for UI purposes)
       setUser({ ...user, industryType: selectedIndustry });
     } catch (err) {
       console.error('Failed to save industry selection:', err);
