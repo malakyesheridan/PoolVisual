@@ -348,13 +348,13 @@ export function getPlanFromPriceId(priceId: string): { planKey: string; monthlyC
     // Business plan - Monthly: $995 AUD/month
     'price_1SZRiaEdvdAX5C3kEekpnwAR': {
       planKey: 'easyflow_business',
-      monthlyCredits: 1700,
+      monthlyCredits: 2500,
       productId: 'prod_TWUhmEZK3biO3P',
     },
     // Business plan - Yearly: $9995 AUD/year
     'price_1SZTl8EdvdAX5C3kPun5h2kj': {
       planKey: 'easyflow_business',
-      monthlyCredits: 1700,
+      monthlyCredits: 2500,
       productId: 'prod_TWWoG67txbpdNL',
     },
     // Pro plan - Monthly: $299 AUD/month

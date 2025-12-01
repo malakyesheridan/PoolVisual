@@ -181,7 +181,7 @@ export class SubscriptionService {
     const planCredits: Record<string, number> = {
       'easyflow_solo': 250,
       'easyflow_pro': 500,
-      'easyflow_business': 1700,
+      'easyflow_business': 2500,
     };
     return planCredits[planKey] || 0;
   }

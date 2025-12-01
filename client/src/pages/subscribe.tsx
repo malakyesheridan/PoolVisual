@@ -87,9 +87,9 @@ const PLANS: Plan[] = [
     monthlyPrice: 995,
     yearlyPrice: 832.92, // $9,995 / 12 months
     yearlyTotal: 9995,
-    monthlyCredits: 1700,
+    monthlyCredits: 2500,
     features: [
-      { text: '1700 credits/month', icon: Sparkles },
+      { text: '2500 credits/month', icon: Sparkles },
       { text: 'All Pro features included', icon: Check },
       { text: 'White-Label Export', icon: Shield },
       { text: 'Priority Processing Queue', icon: Zap },
@@ -101,7 +101,7 @@ const PLANS: Plan[] = [
 ];
 
 const FEATURE_COMPARISON = [
-  { feature: 'Monthly Credits', solo: '250', pro: '500', business: '1700' },
+  { feature: 'Monthly Credits', solo: '250', pro: '500', business: '2500' },
   { feature: 'AI Image Enhancements', solo: true, pro: true, business: true },
   { feature: 'Custom Prompts', solo: true, pro: true, business: true },
   { feature: 'Credit Top-Ups', solo: true, pro: true, business: true },
