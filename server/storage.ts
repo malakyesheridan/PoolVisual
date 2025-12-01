@@ -30,6 +30,18 @@ import {
   InsertSubscriptionHistory,
   AdminIndustryPreference,
   InsertAdminIndustryPreference,
+  PropertyNote,
+  InsertPropertyNote,
+  Opportunity,
+  InsertOpportunity,
+  OpportunityFollowup,
+  InsertOpportunityFollowup,
+  OpportunityNote,
+  InsertOpportunityNote,
+  OpportunityActivity,
+  InsertOpportunityActivity,
+  OpportunityDocument,
+  InsertOpportunityDocument,
   users,
   orgs,
   orgMembers,
@@ -46,6 +58,12 @@ import {
   masks,
   quotes,
   quoteItems,
+  propertyNotes,
+  opportunities,
+  opportunityFollowups,
+  opportunityNotes,
+  opportunityActivities,
+  opportunityDocuments,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -119,14 +137,49 @@ export interface IStorage {
   // Photos
   createPhoto(photo: InsertPhoto): Promise<Photo>;
   getPhoto(id: string): Promise<Photo | undefined>;
-  getJobPhotos(jobId: string): Promise<Photo[]>;
+  getJobPhotos(jobId: string, category?: 'marketing' | 'renovation_buyer'): Promise<Photo[]>;
   updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }): Promise<Photo>;
+  updatePhotoCategory(id: string, category: 'marketing' | 'renovation_buyer'): Promise<Photo>;
   deletePhoto(id: string): Promise<void>;
   updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: CalibrationMeta): Promise<Photo>;
   updatePhotoCalibrationV2(photoId: string, calibration: { ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number }): Promise<Photo>;
   getPhotoCalibration(photoId: string): Promise<{ ppm: number; samples: CalibrationMeta['samples']; stdevPct?: number } | null>;
   updatePhotoComposite(photoId: string, compositeUrl: string): Promise<Photo>;
   clearPhotoComposite(photoId: string): Promise<void>;
+  
+  // Property Notes (for real estate)
+  getPropertyNotes(jobId: string): Promise<any[]>;
+  createPropertyNote(data: { jobId: string; userId: string; noteText: string; tags?: string[] }): Promise<any>;
+  updatePropertyNote(id: string, data: { noteText?: string; tags?: string[] }): Promise<any>;
+  deletePropertyNote(id: string): Promise<void>;
+  
+  // Opportunities (for real estate)
+  createOpportunity(opportunity: any): Promise<any>;
+  getOpportunity(id: string): Promise<any | undefined>;
+  getOpportunities(userId: string, filters?: any): Promise<any[]>;
+  updateOpportunity(id: string, updates: any): Promise<any>;
+  deleteOpportunity(id: string): Promise<void>;
+  
+  // Opportunity Follow-ups
+  getOpportunityFollowups(opportunityId: string): Promise<any[]>;
+  createOpportunityFollowup(data: any): Promise<any>;
+  updateOpportunityFollowup(id: string, updates: any): Promise<any>;
+  deleteOpportunityFollowup(id: string): Promise<void>;
+  
+  // Opportunity Notes
+  getOpportunityNotes(opportunityId: string): Promise<any[]>;
+  createOpportunityNote(data: any): Promise<any>;
+  updateOpportunityNote(id: string, updates: any): Promise<any>;
+  deleteOpportunityNote(id: string): Promise<void>;
+  
+  // Opportunity Activities
+  getOpportunityActivities(opportunityId: string): Promise<any[]>;
+  createOpportunityActivity(data: any): Promise<any>;
+  
+  // Opportunity Documents
+  getOpportunityDocuments(opportunityId: string): Promise<any[]>;
+  createOpportunityDocument(data: any): Promise<any>;
+  deleteOpportunityDocument(id: string): Promise<void>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -614,8 +667,25 @@ export class PostgresStorage implements IStorage {
     return photo;
   }
 
-  async getJobPhotos(jobId: string): Promise<Photo[]> {
-    return await ensureDb().select().from(photos).where(eq(photos.jobId, jobId));
+  async getJobPhotos(jobId: string, category?: 'marketing' | 'renovation_buyer'): Promise<Photo[]> {
+    const conditions = [eq(photos.jobId, jobId)];
+    if (category) {
+      conditions.push(eq(photos.photoCategory, category));
+    }
+    return await ensureDb()
+      .select()
+      .from(photos)
+      .where(and(...conditions));
+  }
+  
+  async updatePhotoCategory(id: string, category: 'marketing' | 'renovation_buyer'): Promise<Photo> {
+    const [photo] = await ensureDb()
+      .update(photos)
+      .set({ photoCategory: category })
+      .where(eq(photos.id, id))
+      .returning();
+    if (!photo) throw new Error("Failed to update photo category");
+    return photo;
   }
 
   async updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }): Promise<Photo> {
@@ -1446,6 +1516,219 @@ export class PostgresStorage implements IStorage {
     }
     
     return await query;
+  }
+
+  // Property Notes methods
+  async getPropertyNotes(jobId: string): Promise<PropertyNote[]> {
+    return await ensureDb()
+      .select()
+      .from(propertyNotes)
+      .where(eq(propertyNotes.jobId, jobId))
+      .orderBy(desc(propertyNotes.createdAt));
+  }
+
+  async createPropertyNote(data: { jobId: string; userId: string; noteText: string; tags?: string[] }): Promise<PropertyNote> {
+    const [note] = await ensureDb()
+      .insert(propertyNotes)
+      .values({
+        jobId: data.jobId,
+        userId: data.userId,
+        noteText: data.noteText,
+        tags: data.tags || [],
+        updatedAt: new Date(),
+      })
+      .returning();
+    if (!note) throw new Error("Failed to create property note");
+    return note;
+  }
+
+  async updatePropertyNote(id: string, data: { noteText?: string; tags?: string[] }): Promise<PropertyNote> {
+    const updates: any = { updatedAt: new Date() };
+    if (data.noteText !== undefined) updates.noteText = data.noteText;
+    if (data.tags !== undefined) updates.tags = data.tags;
+    
+    const [note] = await ensureDb()
+      .update(propertyNotes)
+      .set(updates)
+      .where(eq(propertyNotes.id, id))
+      .returning();
+    if (!note) throw new Error("Failed to update property note");
+    return note;
+  }
+
+  async deletePropertyNote(id: string): Promise<void> {
+    await ensureDb()
+      .delete(propertyNotes)
+      .where(eq(propertyNotes.id, id));
+  }
+
+  // Opportunities methods
+  async createOpportunity(opportunity: InsertOpportunity): Promise<Opportunity> {
+    const [opp] = await ensureDb()
+      .insert(opportunities)
+      .values({
+        ...opportunity,
+        updatedAt: new Date(),
+      })
+      .returning();
+    if (!opp) throw new Error("Failed to create opportunity");
+    return opp;
+  }
+
+  async getOpportunity(id: string): Promise<Opportunity | undefined> {
+    const [opp] = await ensureDb()
+      .select()
+      .from(opportunities)
+      .where(eq(opportunities.id, id));
+    return opp;
+  }
+
+  async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string }): Promise<Opportunity[]> {
+    const conditions = [eq(opportunities.userId, userId)];
+    if (filters?.status) {
+      conditions.push(eq(opportunities.status, filters.status));
+    }
+    if (filters?.pipelineStage) {
+      conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
+    }
+    
+    return await ensureDb()
+      .select()
+      .from(opportunities)
+      .where(and(...conditions))
+      .orderBy(desc(opportunities.createdAt));
+  }
+
+  async updateOpportunity(id: string, updates: Partial<Opportunity>): Promise<Opportunity> {
+    const [opp] = await ensureDb()
+      .update(opportunities)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(opportunities.id, id))
+      .returning();
+    if (!opp) throw new Error("Failed to update opportunity");
+    return opp;
+  }
+
+  async deleteOpportunity(id: string): Promise<void> {
+    await ensureDb()
+      .delete(opportunities)
+      .where(eq(opportunities.id, id));
+  }
+
+  // Opportunity Follow-ups
+  async getOpportunityFollowups(opportunityId: string): Promise<OpportunityFollowup[]> {
+    return await ensureDb()
+      .select()
+      .from(opportunityFollowups)
+      .where(eq(opportunityFollowups.opportunityId, opportunityId))
+      .orderBy(asc(opportunityFollowups.taskOrder), asc(opportunityFollowups.dueDate));
+  }
+
+  async createOpportunityFollowup(data: InsertOpportunityFollowup): Promise<OpportunityFollowup> {
+    const [followup] = await ensureDb()
+      .insert(opportunityFollowups)
+      .values({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .returning();
+    if (!followup) throw new Error("Failed to create opportunity follow-up");
+    return followup;
+  }
+
+  async updateOpportunityFollowup(id: string, updates: Partial<OpportunityFollowup>): Promise<OpportunityFollowup> {
+    const [followup] = await ensureDb()
+      .update(opportunityFollowups)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(opportunityFollowups.id, id))
+      .returning();
+    if (!followup) throw new Error("Failed to update opportunity follow-up");
+    return followup;
+  }
+
+  async deleteOpportunityFollowup(id: string): Promise<void> {
+    await ensureDb()
+      .delete(opportunityFollowups)
+      .where(eq(opportunityFollowups.id, id));
+  }
+
+  // Opportunity Notes
+  async getOpportunityNotes(opportunityId: string): Promise<OpportunityNote[]> {
+    return await ensureDb()
+      .select()
+      .from(opportunityNotes)
+      .where(eq(opportunityNotes.opportunityId, opportunityId))
+      .orderBy(desc(opportunityNotes.createdAt));
+  }
+
+  async createOpportunityNote(data: InsertOpportunityNote): Promise<OpportunityNote> {
+    const [note] = await ensureDb()
+      .insert(opportunityNotes)
+      .values({
+        ...data,
+        updatedAt: new Date(),
+      })
+      .returning();
+    if (!note) throw new Error("Failed to create opportunity note");
+    return note;
+  }
+
+  async updateOpportunityNote(id: string, updates: Partial<OpportunityNote>): Promise<OpportunityNote> {
+    const [note] = await ensureDb()
+      .update(opportunityNotes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(opportunityNotes.id, id))
+      .returning();
+    if (!note) throw new Error("Failed to update opportunity note");
+    return note;
+  }
+
+  async deleteOpportunityNote(id: string): Promise<void> {
+    await ensureDb()
+      .delete(opportunityNotes)
+      .where(eq(opportunityNotes.id, id));
+  }
+
+  // Opportunity Activities
+  async getOpportunityActivities(opportunityId: string): Promise<OpportunityActivity[]> {
+    return await ensureDb()
+      .select()
+      .from(opportunityActivities)
+      .where(eq(opportunityActivities.opportunityId, opportunityId))
+      .orderBy(desc(opportunityActivities.createdAt));
+  }
+
+  async createOpportunityActivity(data: InsertOpportunityActivity): Promise<OpportunityActivity> {
+    const [activity] = await ensureDb()
+      .insert(opportunityActivities)
+      .values(data)
+      .returning();
+    if (!activity) throw new Error("Failed to create opportunity activity");
+    return activity;
+  }
+
+  // Opportunity Documents
+  async getOpportunityDocuments(opportunityId: string): Promise<OpportunityDocument[]> {
+    return await ensureDb()
+      .select()
+      .from(opportunityDocuments)
+      .where(eq(opportunityDocuments.opportunityId, opportunityId))
+      .orderBy(desc(opportunityDocuments.createdAt));
+  }
+
+  async createOpportunityDocument(data: InsertOpportunityDocument): Promise<OpportunityDocument> {
+    const [doc] = await ensureDb()
+      .insert(opportunityDocuments)
+      .values(data)
+      .returning();
+    if (!doc) throw new Error("Failed to create opportunity document");
+    return doc;
+  }
+
+  async deleteOpportunityDocument(id: string): Promise<void> {
+    await ensureDb()
+      .delete(opportunityDocuments)
+      .where(eq(opportunityDocuments.id, id));
   }
 
   // Subscription Plans methods

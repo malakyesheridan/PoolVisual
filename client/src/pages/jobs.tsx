@@ -43,6 +43,8 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
 import { formatDistanceToNow } from "date-fns";
 import { getIndustryTerm } from "@/lib/industry-terminology";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { formatCurrency } from "@/lib/measurement-utils";
 
 export default function Jobs() {
   const [, params] = useRoute('/jobs/:id');
@@ -61,6 +63,7 @@ export default function Jobs() {
   const jobTerm = getIndustryTerm(userIndustry, 'job');
   const jobsTerm = getIndustryTerm(userIndustry, 'jobs');
   const createJobText = getIndustryTerm(userIndustry, 'createJob');
+  const isRealEstate = useIsRealEstate();
 
   // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading } = useQuery({
@@ -455,6 +458,31 @@ export default function Jobs() {
                               </Badge>
                             )}
                           </div>
+                          {/* Property Details for Real Estate */}
+                          {isRealEstate && (job.bedrooms || job.bathrooms || job.estimatedPrice) && (
+                            <div className="flex items-center gap-3 mb-1 text-xs text-slate-600">
+                              {job.bedrooms && (
+                                <span>{job.bedrooms} bed{job.bedrooms !== 1 ? 's' : ''}</span>
+                              )}
+                              {job.bathrooms && (
+                                <span>{parseFloat(job.bathrooms.toString())} bath{parseFloat(job.bathrooms.toString()) !== 1 ? 's' : ''}</span>
+                              )}
+                              {job.garageSpaces && (
+                                <span>{job.garageSpaces} garage{job.garageSpaces !== 1 ? 's' : ''}</span>
+                              )}
+                              {job.estimatedPrice && (
+                                <span className="font-medium text-slate-900">
+                                  {formatCurrency(parseFloat(job.estimatedPrice.toString()))}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {job.address && (
+                            <p className="text-xs md:text-xs mobile-text-base text-slate-500 truncate" data-testid={`text-address-${job.id}`}>
+                              <MapPin className="w-3 h-3 inline mr-1" />
+                              {job.address}
+                            </p>
+                          )}
                           <p className="text-xs md:text-xs mobile-text-base text-slate-500" data-testid={`text-created-${job.id}`}>
                             Updated {formatDistanceToNow(new Date(job.canvasWorkProgress.lastCanvasWork || job.createdAt), { addSuffix: true })}
                           </p>

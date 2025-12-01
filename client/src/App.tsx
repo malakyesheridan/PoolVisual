@@ -31,6 +31,7 @@ const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page")
 const NewEditor = React.lazy(() => import("@/new_editor/NewEditor").then(m => ({ default: m.NewEditor })));
 const JobsNew = React.lazy(() => import("@/pages/jobs-new"));
 const Quotes = React.lazy(() => import("@/pages/quotes"));
+const Opportunities = React.lazy(() => import("@/pages/opportunities"));
 const ShareQuote = React.lazy(() => import("@/pages/share-quote"));
 const Settings = React.lazy(() => import("@/pages/settings"));
 const MaterialsNew = React.lazy(() => import("@/pages/MaterialsNew"));
@@ -209,6 +210,22 @@ function ProtectedRouter() {
             <ProtectedRoute>
               <Suspense fallback={<PageLoader />}>
                 <Quotes />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/opportunities">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <Opportunities />
+              </Suspense>
+            </ProtectedRoute>
+          </Route>
+          
+          <Route path="/opportunities/:id">
+            <ProtectedRoute>
+              <Suspense fallback={<PageLoader />}>
+                <Opportunities />
               </Suspense>
             </ProtectedRoute>
           </Route>

@@ -884,7 +884,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         user: req.user?.id 
       });
       
-      const { jobId, width, height, exifData } = req.body;
+      const { jobId, width, height, exifData, photoCategory } = req.body;
       
       if (!req.file) {
         return res.status(400).json({ message: "Photo file is required" });
@@ -1035,6 +1035,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         width: finalWidth,
         height: finalHeight,
         exifJson: exifData ? JSON.parse(exifData) : null,
+        photoCategory: photoCategory || 'marketing', // Default to 'marketing' for backward compatibility
       };
 
       console.log('Creating photo with data:', photoData);
@@ -1318,6 +1319,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/jobs/:id/photos", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const jobId = req.params.id;
+      const category = req.query.category as 'marketing' | 'renovation_buyer' | undefined;
+      
       if (!jobId) {
         return res.status(400).json({ message: "Job ID is required" });
       }
@@ -1335,8 +1338,47 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const photos = await storage.getJobPhotos(jobId);
+      const photos = await storage.getJobPhotos(jobId, category);
       res.json(photos);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Update photo category
+  app.put("/api/photos/:id/category", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const photoId = req.params.id;
+      const { category } = req.body;
+
+      if (!photoId) {
+        return res.status(400).json({ message: "Photo ID is required" });
+      }
+
+      if (!category || !['marketing', 'renovation_buyer'].includes(category)) {
+        return res.status(400).json({ message: "Valid category is required (marketing or renovation_buyer)" });
+      }
+
+      // Verify photo access
+      const photo = await storage.getPhoto(photoId);
+      if (!photo) {
+        return res.status(404).json({ message: "Photo not found" });
+      }
+
+      const job = await storage.getJob(photo.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updatedPhoto = await storage.updatePhotoCategory(photoId, category);
+      res.json(updatedPhoto);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -2625,6 +2667,469 @@ export async function registerRoutes(app: Express): Promise<void> {
     } catch (error) {
       console.error('[Stripe Webhook] Error:', error);
       res.status(400).json({ message: 'Webhook error' });
+    }
+  });
+
+  // Property Notes endpoints (for real estate)
+  app.get("/api/jobs/:id/notes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const notes = await storage.getPropertyNotes(jobId);
+      res.json(notes);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/jobs/:id/notes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      const { noteText, tags } = req.body;
+
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+      if (!noteText || !noteText.trim()) {
+        return res.status(400).json({ message: "Note text is required" });
+      }
+
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const note = await storage.createPropertyNote({
+        jobId,
+        userId: req.user.id,
+        noteText: noteText.trim(),
+        tags: tags || [],
+      });
+      res.json(note);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/notes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const noteId = req.params.id;
+      const { noteText, tags } = req.body;
+
+      if (!noteId) {
+        return res.status(400).json({ message: "Note ID is required" });
+      }
+
+      const note = await storage.updatePropertyNote(noteId, {
+        noteText: noteText?.trim(),
+        tags,
+      });
+      res.json(note);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/notes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const noteId = req.params.id;
+      if (!noteId) {
+        return res.status(400).json({ message: "Note ID is required" });
+      }
+
+      await storage.deletePropertyNote(noteId);
+      res.json({ message: "Note deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Opportunities endpoints (for real estate)
+  app.get("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const filters: any = {};
+      if (req.query.status) filters.status = req.query.status;
+      if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
+
+      const opportunities = await storage.getOpportunities(req.user.id, filters);
+      res.json(opportunities);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.get("/api/opportunities/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity) {
+        return res.status(404).json({ message: "Opportunity not found" });
+      }
+
+      // Verify access
+      if (opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      res.json(opportunity);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { clientName, clientPhone, clientEmail, propertyAddress, propertyJobId, status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes } = req.body;
+
+      if (!clientName || !clientName.trim()) {
+        return res.status(400).json({ message: "Client name is required" });
+      }
+
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const opportunity = await storage.createOpportunity({
+        userId: req.user.id,
+        orgId: userOrgs[0]?.id,
+        clientName: clientName.trim(),
+        clientPhone,
+        clientEmail,
+        propertyAddress,
+        propertyJobId,
+        status: status || 'new',
+        pipelineStage: pipelineStage || 'new',
+        estimatedValue,
+        probabilityPct: probabilityPct || 0,
+        expectedCloseDate,
+        source,
+        notes,
+        createdBy: req.user.id,
+      });
+      res.json(opportunity);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/opportunities/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity) {
+        return res.status(404).json({ message: "Opportunity not found" });
+      }
+
+      if (opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updated = await storage.updateOpportunity(opportunityId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/opportunities/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity) {
+        return res.status(404).json({ message: "Opportunity not found" });
+      }
+
+      if (opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deleteOpportunity(opportunityId);
+      res.json({ message: "Opportunity deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Opportunity Follow-ups
+  app.get("/api/opportunities/:id/followups", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const followups = await storage.getOpportunityFollowups(opportunityId);
+      res.json(followups);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities/:id/followups", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const { taskText, dueDate, assignedTo, taskOrder, isRecurring, recurrencePattern } = req.body;
+
+      if (!taskText || !taskText.trim()) {
+        return res.status(400).json({ message: "Task text is required" });
+      }
+
+      const opportunity = await storage.getOpportunity(opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const followup = await storage.createOpportunityFollowup({
+        opportunityId,
+        taskText: taskText.trim(),
+        dueDate: dueDate ? new Date(dueDate) : null,
+        assignedTo,
+        taskOrder: taskOrder || 0,
+        isRecurring: isRecurring || false,
+        recurrencePattern,
+      });
+      res.json(followup);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/followups/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const followupId = req.params.id;
+      const followup = await storage.updateOpportunityFollowup(followupId, req.body);
+      res.json(followup);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/followups/:id/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const followupId = req.params.id;
+      const followup = await storage.updateOpportunityFollowup(followupId, {
+        completed: true,
+        completedAt: new Date(),
+        completedBy: req.user.id,
+      });
+      res.json(followup);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/followups/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const followupId = req.params.id;
+      await storage.deleteOpportunityFollowup(followupId);
+      res.json({ message: "Follow-up deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Opportunity Notes
+  app.get("/api/opportunities/:id/notes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const notes = await storage.getOpportunityNotes(opportunityId);
+      res.json(notes);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities/:id/notes", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const { noteText, noteType } = req.body;
+
+      if (!noteText || !noteText.trim()) {
+        return res.status(400).json({ message: "Note text is required" });
+      }
+
+      const opportunity = await storage.getOpportunity(opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const note = await storage.createOpportunityNote({
+        opportunityId,
+        userId: req.user.id,
+        noteText: noteText.trim(),
+        noteType: noteType || 'general',
+      });
+      res.json(note);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/opportunity-notes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const noteId = req.params.id;
+      const note = await storage.updateOpportunityNote(noteId, req.body);
+      res.json(note);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/opportunity-notes/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const noteId = req.params.id;
+      await storage.deleteOpportunityNote(noteId);
+      res.json({ message: "Note deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Opportunity Activities
+  app.get("/api/opportunities/:id/activities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const activities = await storage.getOpportunityActivities(opportunityId);
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities/:id/activities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const { activityType, activityTitle, activityDescription, activityData } = req.body;
+
+      if (!activityType || !activityTitle) {
+        return res.status(400).json({ message: "Activity type and title are required" });
+      }
+
+      const opportunity = await storage.getOpportunity(opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const activity = await storage.createOpportunityActivity({
+        opportunityId,
+        userId: req.user.id,
+        activityType,
+        activityTitle,
+        activityDescription,
+        activityData: activityData || {},
+      });
+      res.json(activity);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Opportunity Documents
+  app.get("/api/opportunities/:id/documents", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const documents = await storage.getOpportunityDocuments(opportunityId);
+      res.json(documents);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities/:id/documents", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const { fileName, fileUrl, fileType, fileSize, description } = req.body;
+
+      if (!fileName || !fileUrl) {
+        return res.status(400).json({ message: "File name and URL are required" });
+      }
+
+      const opportunity = await storage.getOpportunity(opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const document = await storage.createOpportunityDocument({
+        opportunityId,
+        userId: req.user.id,
+        fileName,
+        fileUrl,
+        fileType,
+        fileSize,
+        description,
+      });
+      res.json(document);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/opportunity-documents/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const documentId = req.params.id;
+      await storage.deleteOpportunityDocument(documentId);
+      res.json({ message: "Document deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Pipeline view
+  app.get("/api/opportunities/pipeline", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunities = await storage.getOpportunities(req.user.id);
+      // Group by pipeline stage
+      const pipeline: Record<string, any[]> = {};
+      opportunities.forEach(opp => {
+        const stage = opp.pipelineStage || 'new';
+        if (!pipeline[stage]) {
+          pipeline[stage] = [];
+        }
+        pipeline[stage].push(opp);
+      });
+      res.json(pipeline);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
     }
   });
   

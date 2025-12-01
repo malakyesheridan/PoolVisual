@@ -12,6 +12,7 @@ export const maskTypeEnum = pgEnum("mask_type", ["area", "linear", "waterline_ba
 export const quoteStatusEnum = pgEnum("quote_status", ["draft", "sent", "accepted", "declined"]);
 export const quoteItemKindEnum = pgEnum("quote_item_kind", ["material", "labor", "adjustment"]);
 export const laborRuleTypeEnum = pgEnum("labor_rule_type", ["flat", "per_m2", "per_lm", "tiered"]);
+export const photoCategoryEnum = pgEnum("photo_category", ["marketing", "renovation_buyer"]);
 
 // Users table
 export const users = pgTable("users", {
@@ -238,6 +239,25 @@ export const jobs = pgTable("jobs", {
   status: jobStatusEnum("status").default("new").notNull(),
   createdBy: uuid("created_by").references(() => orgMembers.id), // Deprecated, kept for backward compatibility
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Property details (for real estate)
+  bedrooms: integer("bedrooms"),
+  bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
+  garageSpaces: integer("garage_spaces"),
+  estimatedPrice: numeric("estimated_price", { precision: 12, scale: 2 }),
+  propertyType: text("property_type"),
+  landSizeM2: numeric("land_size_m2", { precision: 10, scale: 2 }),
+  interiorSizeM2: numeric("interior_size_m2", { precision: 10, scale: 2 }),
+  yearBuilt: integer("year_built"),
+  yearRenovated: integer("year_renovated"),
+  propertyStatus: text("property_status"),
+  listingDate: timestamp("listing_date"),
+  mlsNumber: text("mls_number"),
+  propertyDescription: text("property_description"),
+  propertyFeatures: jsonb("property_features").default(sql`'[]'::jsonb`),
+  propertyCondition: text("property_condition"),
+  hoaFees: numeric("hoa_fees", { precision: 10, scale: 2 }),
+  propertyTaxes: numeric("property_taxes", { precision: 10, scale: 2 }),
+  schoolDistrict: text("school_district"),
 });
 
 // Photos
@@ -252,6 +272,7 @@ export const photos = pgTable("photos", {
   calibrationMetaJson: jsonb("calibration_meta_json"),
   compositeUrl: text("composite_url"), // Cached composite image URL
   compositeGeneratedAt: timestamp("composite_generated_at"), // When composite was last generated
+  photoCategory: photoCategoryEnum("photo_category").default("marketing").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -356,6 +377,93 @@ export const webhookDedupe = pgTable("webhook_dedupe", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+// Property notes (for real estate)
+export const propertyNotes = pgTable("property_notes", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobId: uuid("job_id").references(() => jobs.id).onDelete("cascade").notNull(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  noteText: text("note_text").notNull(),
+  tags: text("tags").array().default(sql`'{}'::text[]`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Opportunities (for real estate CRM)
+export const opportunities = pgTable("opportunities", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id),
+  clientName: text("client_name").notNull(),
+  clientPhone: text("client_phone"),
+  clientEmail: text("client_email"),
+  propertyAddress: text("property_address"),
+  propertyJobId: uuid("property_job_id").references(() => jobs.id),
+  status: text("status").default("new").notNull(),
+  pipelineStage: text("pipeline_stage").default("new"),
+  estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
+  probabilityPct: integer("probability_pct").default(0),
+  expectedCloseDate: timestamp("expected_close_date"),
+  actualCloseDate: timestamp("actual_close_date"),
+  source: text("source"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdBy: uuid("created_by").references(() => users.id).notNull(),
+});
+
+// Opportunity follow-ups
+export const opportunityFollowups = pgTable("opportunity_followups", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  taskText: text("task_text").notNull(),
+  dueDate: timestamp("due_date"),
+  completed: boolean("completed").default(false).notNull(),
+  completedAt: timestamp("completed_at"),
+  completedBy: uuid("completed_by").references(() => users.id),
+  assignedTo: uuid("assigned_to").references(() => users.id),
+  taskOrder: integer("task_order").default(0),
+  isRecurring: boolean("is_recurring").default(false),
+  recurrencePattern: text("recurrence_pattern"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Opportunity notes
+export const opportunityNotes = pgTable("opportunity_notes", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  noteText: text("note_text").notNull(),
+  noteType: text("note_type").default("general"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Opportunity activities
+export const opportunityActivities = pgTable("opportunity_activities", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  activityType: text("activity_type").notNull(),
+  activityTitle: text("activity_title").notNull(),
+  activityDescription: text("activity_description"),
+  activityData: jsonb("activity_data").default(sql`'{}'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+// Opportunity documents
+export const opportunityDocuments = pgTable("opportunity_documents", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).onDelete("cascade").notNull(),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  fileName: text("file_name").notNull(),
+  fileUrl: text("file_url").notNull(),
+  fileType: text("file_type"),
+  fileSize: integer("file_size"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).omit({ 
   id: true, 
@@ -382,6 +490,40 @@ export const insertJobSchema = createInsertSchema(jobs, {
 export const insertPhotoSchema = createInsertSchema(photos).omit({ 
   id: true, 
   createdAt: true 
+});
+
+export const insertPropertyNoteSchema = createInsertSchema(propertyNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOpportunitySchema = createInsertSchema(opportunities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOpportunityFollowupSchema = createInsertSchema(opportunityFollowups).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOpportunityNoteSchema = createInsertSchema(opportunityNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertOpportunityActivitySchema = createInsertSchema(opportunityActivities).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertOpportunityDocumentSchema = createInsertSchema(opportunityDocuments).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertMaterialSchema = createInsertSchema(materials).omit({ 
@@ -701,6 +843,18 @@ export type SubscriptionHistory = typeof subscriptionHistory.$inferSelect;
 export type InsertSubscriptionHistory = typeof subscriptionHistory.$inferInsert;
 export type AdminIndustryPreference = typeof adminIndustryPreferences.$inferSelect;
 export type InsertAdminIndustryPreference = typeof adminIndustryPreferences.$inferInsert;
+export type PropertyNote = typeof propertyNotes.$inferSelect;
+export type InsertPropertyNote = z.infer<typeof insertPropertyNoteSchema>;
+export type Opportunity = typeof opportunities.$inferSelect;
+export type InsertOpportunity = z.infer<typeof insertOpportunitySchema>;
+export type OpportunityFollowup = typeof opportunityFollowups.$inferSelect;
+export type InsertOpportunityFollowup = z.infer<typeof insertOpportunityFollowupSchema>;
+export type OpportunityNote = typeof opportunityNotes.$inferSelect;
+export type InsertOpportunityNote = z.infer<typeof insertOpportunityNoteSchema>;
+export type OpportunityActivity = typeof opportunityActivities.$inferSelect;
+export type InsertOpportunityActivity = z.infer<typeof insertOpportunityActivitySchema>;
+export type OpportunityDocument = typeof opportunityDocuments.$inferSelect;
+export type InsertOpportunityDocument = z.infer<typeof insertOpportunityDocumentSchema>;
 
 // Calibration metadata schema
 export const CalibrationMetaSchema = z.object({

@@ -9,6 +9,7 @@ import {
   Home
 } from 'lucide-react';
 import { useIndustryTerm } from '@/hooks/useIndustryTerm';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
 
 interface NavItem {
   href: string;
@@ -19,6 +20,7 @@ interface NavItem {
 export function BottomNav() {
   const [location] = useLocation();
   const { jobs, quotes } = useIndustryTerm();
+  const isRealEstate = useIsRealEstate();
   
   const navItems: NavItem[] = [
     {
@@ -37,7 +39,7 @@ export function BottomNav() {
       icon: Package
     },
     {
-      href: '/quotes',
+      href: isRealEstate ? '/opportunities' : '/quotes',
       label: quotes,
       icon: FileText
     }

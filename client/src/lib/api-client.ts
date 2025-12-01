@@ -279,10 +279,11 @@ class ApiClient {
     });
   }
 
-  async uploadPhoto(file: File, jobId: string, additionalData?: any) {
+  async uploadPhoto(file: File, jobId: string, category: 'marketing' | 'renovation_buyer' = 'marketing', additionalData?: any) {
     const formData = new FormData();
     formData.append('photo', file);
     formData.append('jobId', jobId);
+    formData.append('photoCategory', category);
     
     if (additionalData?.width) formData.append('width', additionalData.width.toString());
     if (additionalData?.height) formData.append('height', additionalData.height.toString());
@@ -319,8 +320,18 @@ class ApiClient {
     });
   }
 
-  async getJobPhotos(jobId: string) {
-    return this.request<any[]>(`/jobs/${jobId}/photos`);
+  async getJobPhotos(jobId: string, category?: 'marketing' | 'renovation_buyer') {
+    const url = category 
+      ? `/jobs/${jobId}/photos?category=${category}`
+      : `/jobs/${jobId}/photos`;
+    return this.request<any[]>(url);
+  }
+
+  async updatePhotoCategory(photoId: string, category: 'marketing' | 'renovation_buyer') {
+    return this.request(`/photos/${photoId}/category`, {
+      method: 'PUT',
+      body: JSON.stringify({ category }),
+    });
   }
 
   async updatePhotoCalibration(id: string, pixelsPerMeter: number, meta: any) {
@@ -901,6 +912,144 @@ class ApiClient {
     if (options?.adminUserId) params.append('adminUserId', options.adminUserId);
     if (options?.actionType) params.append('actionType', options.actionType);
     return this.request<{ ok: boolean; logs: any[]; pagination: { page: number; limit: number } }>(`/admin/audit-logs?${params.toString()}`);
+  }
+
+  // Property Notes (for real estate)
+  async getPropertyNotes(jobId: string) {
+    return this.request<any[]>(`/jobs/${jobId}/notes`);
+  }
+
+  async createPropertyNote(jobId: string, noteText: string, tags?: string[]) {
+    return this.request(`/jobs/${jobId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ noteText, tags }),
+    });
+  }
+
+  async updatePropertyNote(noteId: string, noteText: string, tags?: string[]) {
+    return this.request(`/notes/${noteId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ noteText, tags }),
+    });
+  }
+
+  async deletePropertyNote(noteId: string) {
+    return this.request(`/notes/${noteId}`, { method: 'DELETE' });
+  }
+
+  // Opportunities (for real estate)
+  async getOpportunities(filters?: { status?: string; pipelineStage?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.pipelineStage) params.append('pipelineStage', filters.pipelineStage);
+    const query = params.toString();
+    return this.request<any[]>(`/opportunities${query ? `?${query}` : ''}`);
+  }
+
+  async getOpportunity(id: string) {
+    return this.request<any>(`/opportunities/${id}`);
+  }
+
+  async createOpportunity(data: any) {
+    return this.request(`/opportunities`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateOpportunity(id: string, data: any) {
+    return this.request(`/opportunities/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteOpportunity(id: string) {
+    return this.request(`/opportunities/${id}`, { method: 'DELETE' });
+  }
+
+  async getOpportunityPipeline() {
+    return this.request<Record<string, any[]>>(`/opportunities/pipeline`);
+  }
+
+  // Opportunity Follow-ups
+  async getOpportunityFollowups(opportunityId: string) {
+    return this.request<any[]>(`/opportunities/${opportunityId}/followups`);
+  }
+
+  async createOpportunityFollowup(opportunityId: string, data: any) {
+    return this.request(`/opportunities/${opportunityId}/followups`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateOpportunityFollowup(id: string, data: any) {
+    return this.request(`/followups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async completeOpportunityFollowup(id: string) {
+    return this.request(`/followups/${id}/complete`, {
+      method: 'PUT',
+    });
+  }
+
+  async deleteOpportunityFollowup(id: string) {
+    return this.request(`/followups/${id}`, { method: 'DELETE' });
+  }
+
+  // Opportunity Notes
+  async getOpportunityNotes(opportunityId: string) {
+    return this.request<any[]>(`/opportunities/${opportunityId}/notes`);
+  }
+
+  async createOpportunityNote(opportunityId: string, noteText: string, noteType?: string) {
+    return this.request(`/opportunities/${opportunityId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ noteText, noteType: noteType || 'general' }),
+    });
+  }
+
+  async updateOpportunityNote(noteId: string, noteText: string, noteType?: string) {
+    return this.request(`/opportunity-notes/${noteId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ noteText, noteType }),
+    });
+  }
+
+  async deleteOpportunityNote(noteId: string) {
+    return this.request(`/opportunity-notes/${noteId}`, { method: 'DELETE' });
+  }
+
+  // Opportunity Activities
+  async getOpportunityActivities(opportunityId: string) {
+    return this.request<any[]>(`/opportunities/${opportunityId}/activities`);
+  }
+
+  async createOpportunityActivity(opportunityId: string, data: any) {
+    return this.request(`/opportunities/${opportunityId}/activities`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Opportunity Documents
+  async getOpportunityDocuments(opportunityId: string) {
+    return this.request<any[]>(`/opportunities/${opportunityId}/documents`);
+  }
+
+  async createOpportunityDocument(opportunityId: string, data: any) {
+    return this.request(`/opportunities/${opportunityId}/documents`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteOpportunityDocument(documentId: string) {
+    return this.request(`/opportunity-documents/${documentId}`, { method: 'DELETE' });
   }
 }
 

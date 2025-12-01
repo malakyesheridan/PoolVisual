@@ -41,6 +41,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { editClientSchema, type EditClientFormData } from "@/lib/form-validation";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { useAuthStore } from "@/stores/auth-store";
+import { PhotoCard } from "@/components/photos/PhotoCard";
+import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm";
+import { PropertyNotes } from "@/components/properties/PropertyNotes";
 
 export default function JobDetail() {
   const [, params] = useRoute('/jobs/:id');
@@ -52,6 +57,8 @@ export default function JobDetail() {
   const [showDeletePhotoConfirm, setShowDeletePhotoConfirm] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [showQuoteEditor, setShowQuoteEditor] = useState(false);
+  const isRealEstate = useIsRealEstate();
+  const { user } = useAuthStore();
 
   const editForm = useForm<EditClientFormData>({
     resolver: zodResolver(editClientSchema),
@@ -77,12 +84,32 @@ export default function JobDetail() {
     staleTime: 30 * 1000, // 30 seconds - quotes can change more frequently
   });
 
-  const { data: photos = [], isLoading: photosLoading } = useQuery({
+  // For real estate: separate queries for marketing and renovation photos
+  // For trades: single query for all photos
+  const { data: allPhotos = [], isLoading: photosLoading } = useQuery({
     queryKey: ['/api/jobs', jobId, 'photos'],
     queryFn: () => jobId ? apiClient.getJobPhotos(jobId) : Promise.resolve([]),
-    enabled: !!jobId,
+    enabled: !!jobId && !isRealEstate,
     staleTime: 1 * 60 * 1000, // 1 minute
   });
+
+  const { data: marketingPhotos = [], isLoading: marketingPhotosLoading } = useQuery({
+    queryKey: ['/api/jobs', jobId, 'photos', 'marketing'],
+    queryFn: () => jobId ? apiClient.getJobPhotos(jobId, 'marketing') : Promise.resolve([]),
+    enabled: !!jobId && isRealEstate,
+    staleTime: 1 * 60 * 1000,
+  });
+
+  const { data: renovationPhotos = [], isLoading: renovationPhotosLoading } = useQuery({
+    queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'],
+    queryFn: () => jobId ? apiClient.getJobPhotos(jobId, 'renovation_buyer') : Promise.resolve([]),
+    enabled: !!jobId && isRealEstate,
+    staleTime: 1 * 60 * 1000,
+  });
+
+  // Use appropriate photos based on industry
+  const photos = isRealEstate ? marketingPhotos : allPhotos;
+  const renovationBuyerPhotos = isRealEstate ? renovationPhotos : [];
 
   // Listen for photo refresh events from the editor
   useEffect(() => {
@@ -119,10 +146,14 @@ export default function JobDetail() {
   });
 
   const uploadPhotoMutation = useMutation({
-    mutationFn: ({ file, jobId }: { file: File; jobId: string }) => 
-      apiClient.uploadPhoto(file, jobId),
+    mutationFn: ({ file, jobId, category }: { file: File; jobId: string; category?: 'marketing' | 'renovation_buyer' }) => 
+      apiClient.uploadPhoto(file, jobId, category || 'marketing'),
     onSuccess: (photo) => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos'] });
+      if (isRealEstate) {
+        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'marketing'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'] });
+      }
       toast({
         title: "Photo uploaded",
         description: "The photo has been uploaded successfully.",
@@ -141,6 +172,10 @@ export default function JobDetail() {
     mutationFn: (photoId: string) => apiClient.deletePhoto(photoId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos'] });
+      if (isRealEstate) {
+        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'marketing'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'] });
+      }
       toast({
         title: "Photo deleted",
         description: "The photo has been deleted successfully.",
@@ -193,11 +228,7 @@ export default function JobDetail() {
   });
 
   const updateJobMutation = useMutation({
-    mutationFn: (data: any) => {
-      // TODO: Implement updateJob API endpoint
-      // For now, just simulate success
-      return Promise.resolve({ ...job, ...data });
-    },
+    mutationFn: (data: any) => apiClient.updateJob(jobId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId] });
       setShowEditModal(false);
@@ -209,6 +240,24 @@ export default function JobDetail() {
     onError: (error) => {
       toast({
         title: "Error updating client info",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updatePropertyDetailsMutation = useMutation({
+    mutationFn: (data: any) => apiClient.updateJob(jobId!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId] });
+      toast({
+        title: "Property details updated",
+        description: "The property details have been updated successfully.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Error updating property details",
         description: error.message,
         variant: "destructive",
       });
@@ -285,16 +334,23 @@ export default function JobDetail() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const renovationFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>, category: 'marketing' | 'renovation_buyer' = 'marketing') => {
     const file = event.target.files?.[0];
     if (file && jobId) {
-      uploadPhotoMutation.mutate({ file, jobId });
+      uploadPhotoMutation.mutate({ file, jobId, category });
     }
+    // Reset input
+    event.target.value = '';
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
+  const handleUploadClick = (category: 'marketing' | 'renovation_buyer' = 'marketing') => {
+    if (category === 'renovation_buyer') {
+      renovationFileInputRef.current?.click();
+    } else {
+      fileInputRef.current?.click();
+    }
   };
 
   if (isLoading) {
@@ -485,42 +541,150 @@ export default function JobDetail() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             
-            {/* Photos Section */}
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="w-5 h-5" />
-                  Photos ({photos.length})
-                </CardTitle>
-                <Button 
-                  size="sm" 
-                  data-testid="button-upload-photo"
-                  onClick={handleUploadClick}
-                  disabled={uploadPhotoMutation.isPending}
-                  className="h-11 md:h-auto tap-target"
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
-                  <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
-                </Button>
-              </CardHeader>
-              <CardContent>
-                {photosLoading ? (
-                  <PhotoGridSkeleton count={6} />
-                ) : photos.length === 0 ? (
-                  <EmptyState
-                    icon={ImageIcon}
-                    title="No photos uploaded yet"
-                    description="Upload photos to get started with canvas editing and measurements. You can apply materials, create masks, and generate accurate measurements."
-                    primaryAction={{
-                      label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
-                      onClick: handleUploadClick,
-                      icon: Upload
-                    }}
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {photos.map((photo) => (
+            {/* Photos Section - Conditional rendering based on industry */}
+            {isRealEstate ? (
+              <>
+                {/* Marketing Photos Section (Real Estate) */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="w-5 h-5" />
+                      Marketing Photos ({marketingPhotos.length})
+                    </CardTitle>
+                    <Button 
+                      size="sm" 
+                      data-testid="button-upload-marketing-photo"
+                      onClick={() => handleUploadClick('marketing')}
+                      disabled={uploadPhotoMutation.isPending}
+                      className="h-11 md:h-auto tap-target"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
+                      <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {marketingPhotosLoading ? (
+                      <PhotoGridSkeleton count={6} />
+                    ) : marketingPhotos.length === 0 ? (
+                      <EmptyState
+                        icon={ImageIcon}
+                        title="No marketing photos uploaded yet"
+                        description="Upload marketing photos for property listings. These photos will be used for marketing and showcasing the property."
+                        primaryAction={{
+                          label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
+                          onClick: () => handleUploadClick('marketing'),
+                          icon: Upload
+                        }}
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {marketingPhotos.map((photo) => (
+                          <PhotoCard 
+                            key={photo.id} 
+                            photo={photo} 
+                            photos={marketingPhotos}
+                            jobId={jobId}
+                            navigate={navigate}
+                            setPreviewPhoto={setPreviewPhoto}
+                            setShowDeletePhotoConfirm={setShowDeletePhotoConfirm}
+                            deletePhotoMutation={deletePhotoMutation}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Renovation / Buyer Photos Section (Real Estate) */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Camera className="w-5 h-5" />
+                      Renovation / Buyer Photos ({renovationPhotos.length})
+                    </CardTitle>
+                    <Button 
+                      size="sm" 
+                      data-testid="button-upload-renovation-photo"
+                      onClick={() => handleUploadClick('renovation_buyer')}
+                      disabled={uploadPhotoMutation.isPending}
+                      className="h-11 md:h-auto tap-target"
+                    >
+                      <Upload className="w-4 h-4 mr-2" />
+                      <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
+                      <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {renovationPhotosLoading ? (
+                      <PhotoGridSkeleton count={6} />
+                    ) : renovationPhotos.length === 0 ? (
+                      <EmptyState
+                        icon={ImageIcon}
+                        title="No renovation/buyer photos uploaded yet"
+                        description="Upload photos showing renovation work or buyer-specific views. These photos are separate from marketing photos."
+                        primaryAction={{
+                          label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
+                          onClick: () => handleUploadClick('renovation_buyer'),
+                          icon: Upload
+                        }}
+                      />
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {renovationPhotos.map((photo) => (
+                          <PhotoCard 
+                            key={photo.id} 
+                            photo={photo} 
+                            photos={renovationPhotos}
+                            jobId={jobId}
+                            navigate={navigate}
+                            setPreviewPhoto={setPreviewPhoto}
+                            setShowDeletePhotoConfirm={setShowDeletePhotoConfirm}
+                            deletePhotoMutation={deletePhotoMutation}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              /* Standard Photos Section (Trades) */
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="w-5 h-5" />
+                    Photos ({photos.length})
+                  </CardTitle>
+                  <Button 
+                    size="sm" 
+                    data-testid="button-upload-photo"
+                    onClick={() => handleUploadClick('marketing')}
+                    disabled={uploadPhotoMutation.isPending}
+                    className="h-11 md:h-auto tap-target"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
+                    <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  {photosLoading ? (
+                    <PhotoGridSkeleton count={6} />
+                  ) : photos.length === 0 ? (
+                    <EmptyState
+                      icon={ImageIcon}
+                      title="No photos uploaded yet"
+                      description="Upload photos to get started with canvas editing and measurements. You can apply materials, create masks, and generate accurate measurements."
+                      primaryAction={{
+                        label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
+                        onClick: () => handleUploadClick('marketing'),
+                        icon: Upload
+                      }}
+                    />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {photos.map((photo) => (
                       <div 
                         key={photo.id}
                         className="border border-slate-200 rounded-lg overflow-hidden hover:shadow-md transition-shadow"
@@ -794,7 +958,51 @@ export default function JobDetail() {
 
           {/* Sidebar */}
           <div className="space-y-6">
-            
+            {/* Property Details (Real Estate Only) */}
+            {isRealEstate && job && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Property Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PropertyDetailsForm
+                    initialData={{
+                      bedrooms: job.bedrooms,
+                      bathrooms: job.bathrooms ? parseFloat(job.bathrooms.toString()) : null,
+                      garageSpaces: job.garageSpaces,
+                      estimatedPrice: job.estimatedPrice ? parseFloat(job.estimatedPrice.toString()) : null,
+                      propertyType: job.propertyType as any,
+                      landSizeM2: job.landSizeM2 ? parseFloat(job.landSizeM2.toString()) : null,
+                      interiorSizeM2: job.interiorSizeM2 ? parseFloat(job.interiorSizeM2.toString()) : null,
+                      yearBuilt: job.yearBuilt,
+                      yearRenovated: job.yearRenovated,
+                      propertyStatus: job.propertyStatus as any,
+                      listingDate: job.listingDate ? new Date(job.listingDate).toISOString().split('T')[0] : null,
+                      mlsNumber: job.mlsNumber,
+                      propertyDescription: job.propertyDescription,
+                      propertyFeatures: job.propertyFeatures as string[] || [],
+                      propertyCondition: job.propertyCondition as any,
+                      hoaFees: job.hoaFees ? parseFloat(job.hoaFees.toString()) : null,
+                      propertyTaxes: job.propertyTaxes ? parseFloat(job.propertyTaxes.toString()) : null,
+                      schoolDistrict: job.schoolDistrict,
+                    }}
+                    onSubmit={async (data) => {
+                      await updatePropertyDetailsMutation.mutateAsync(data);
+                    }}
+                    isLoading={updatePropertyDetailsMutation.isPending}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Property Notes (Real Estate Only) */}
+            {isRealEstate && jobId && (
+              <PropertyNotes jobId={jobId} />
+            )}
+
             {/* Client Information */}
             <Card>
               <CardHeader>
@@ -1042,14 +1250,23 @@ export default function JobDetail() {
         </div>
       )}
       
-      {/* Hidden file input for photo upload */}
+      {/* Hidden file inputs for photo upload */}
       <input
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        onChange={handlePhotoUpload}
+        onChange={(e) => handlePhotoUpload(e, 'marketing')}
         className="hidden"
       />
+      {isRealEstate && (
+        <input
+          ref={renovationFileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={(e) => handlePhotoUpload(e, 'renovation_buyer')}
+          className="hidden"
+        />
+      )}
 
       {/* Edit Client Info Modal */}
       <Modal

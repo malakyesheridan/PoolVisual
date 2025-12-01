@@ -11,6 +11,7 @@ import {
   BarChart3
 } from "lucide-react";
 import { useIndustryTerm } from "@/hooks/useIndustryTerm";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 
 interface SidebarNavProps {
   className?: string;
@@ -19,6 +20,7 @@ interface SidebarNavProps {
 export function SidebarNav({ className }: SidebarNavProps) {
   const [location] = useLocation();
   const { jobs, quotes } = useIndustryTerm();
+  const isRealEstate = useIsRealEstate();
   
   const navigation = [
     {
@@ -43,7 +45,7 @@ export function SidebarNav({ className }: SidebarNavProps) {
     },
     {
       name: quotes,
-      href: '/quotes',
+      href: isRealEstate ? '/opportunities' : '/quotes',
       icon: FileText,
     },
     {
