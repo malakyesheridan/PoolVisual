@@ -345,23 +345,41 @@ export function getCreditsFromPriceId(priceId: string): number | null {
  */
 export function getPlanFromPriceId(priceId: string): { planKey: string; monthlyCredits: number; productId: string } | null {
   const planMap: Record<string, { planKey: string; monthlyCredits: number; productId: string }> = {
-    // Business plan - $995 AUD/month
+    // Business plan - Monthly: $995 AUD/month
     'price_1SZRiaEdvdAX5C3kEekpnwAR': {
       planKey: 'easyflow_business',
       monthlyCredits: 1700,
       productId: 'prod_TWUhmEZK3biO3P',
     },
-    // Pro plan - $299 AUD/month
+    // Business plan - Yearly: $9995 AUD/year
+    'price_1SZTI8EdvdAX5C3kPun5h2kj': {
+      planKey: 'easyflow_business',
+      monthlyCredits: 1700,
+      productId: 'prod_TWWoG67txbpdNL',
+    },
+    // Pro plan - Monthly: $299 AUD/month
     'price_1SZRIGEdvdAX5C3ketcnQIeO': {
       planKey: 'easyflow_pro',
       monthlyCredits: 500,
       productId: 'prod_TWUhgM8JYrdA9y',
     },
-    // Solo plan - $149 AUD/month
+    // Pro plan - Yearly: $2999 AUD/year
+    'price_1SZTk7EdvdAX5C3kzS23TQES': {
+      planKey: 'easyflow_pro',
+      monthlyCredits: 500,
+      productId: 'prod_TWWnUH3BQx71YL',
+    },
+    // Solo plan - Monthly: $149 AUD/month
     'price_1SZRhzEdvdAX5C3kg43xSFBd': {
       planKey: 'easyflow_solo',
       monthlyCredits: 250,
       productId: 'prod_TWUha7Rt7ef4Br',
+    },
+    // Solo plan - Yearly: $1490 AUD/year
+    'price_1SZTjjEdvdAX5C3k1pZ1sEuz': {
+      planKey: 'easyflow_solo',
+      monthlyCredits: 250,
+      productId: 'prod_TWWnwF0MnDHgyS',
     },
   };
 
@@ -384,7 +402,14 @@ export function getProductIdFromPriceId(priceId: string): string | null {
     'price_1SZRjEEdvdAX5C3kdERuir64': 'prod_TWUiiGAGwSb03w',  // 25 credits - $25 AUD
   };
 
-  return topUpProductMap[priceId] || null;
+  // Also check yearly subscription products
+  const yearlyProductMap: Record<string, string> = {
+    'price_1SZTI8EdvdAX5C3kPun5h2kj': 'prod_TWWoG67txbpdNL',  // Business yearly
+    'price_1SZTk7EdvdAX5C3kzS23TQES': 'prod_TWWnUH3BQx71YL',  // Pro yearly
+    'price_1SZTjjEdvdAX5C3k1pZ1sEuz': 'prod_TWWnwF0MnDHgyS',  // Solo yearly
+  };
+
+  return topUpProductMap[priceId] || yearlyProductMap[priceId] || null;
 }
 
 // Export service instance
