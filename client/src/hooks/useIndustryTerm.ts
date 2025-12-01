@@ -2,10 +2,11 @@
  * useIndustryTerm Hook
  * 
  * Convenience hook for getting industry-specific terminology
- * CORRECTED: Uses onboarding data as single source of truth
+ * Checks both user.industryType and onboarding data
  */
 
 import { useOnboarding } from './useOnboarding';
+import { useAuthStore } from '@/stores/auth-store';
 import { getIndustryTerm } from '@/lib/industry-terminology';
 
 /**
@@ -19,7 +20,11 @@ import { getIndustryTerm } from '@/lib/industry-terminology';
  * ```
  */
 export function useIndustryTerm() {
-  const { industry } = useOnboarding();
+  const { user } = useAuthStore();
+  const { industry: onboardingIndustry } = useOnboarding();
+  
+  // Use user.industryType first, fallback to onboarding industry
+  const industry = user?.industryType || onboardingIndustry;
   
   return {
     job: getIndustryTerm(industry, 'job'),
