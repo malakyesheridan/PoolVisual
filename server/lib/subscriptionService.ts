@@ -63,7 +63,13 @@ export class SubscriptionService {
   async getPlansByIndustry(industry: 'trades' | 'real_estate'): Promise<SubscriptionPlan[]> {
     try {
       const plans = await storage.getSubscriptionPlans(industry);
-      return plans.filter(p => p.isActive).sort((a, b) => a.displayOrder - b.displayOrder);
+      // Convert numeric strings to numbers (PostgreSQL numeric type returns as string)
+      const normalizedPlans = plans.map(plan => ({
+        ...plan,
+        priceMonthly: plan.priceMonthly ? (typeof plan.priceMonthly === 'string' ? parseFloat(plan.priceMonthly) : plan.priceMonthly) : null,
+        priceYearly: plan.priceYearly ? (typeof plan.priceYearly === 'string' ? parseFloat(plan.priceYearly) : plan.priceYearly) : null,
+      }));
+      return normalizedPlans.filter(p => p.isActive).sort((a, b) => a.displayOrder - b.displayOrder);
     } catch (error) {
       logger.error({ msg: 'Failed to get plans', err: error, industry });
       throw error;
