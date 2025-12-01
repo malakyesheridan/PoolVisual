@@ -830,6 +830,7 @@ export default function JobDetail() {
                 )}
               </CardContent>
             </Card>
+            )}
 
             {/* Quotes Section */}
             <Card>
