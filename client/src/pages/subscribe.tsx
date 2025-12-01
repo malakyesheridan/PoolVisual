@@ -6,106 +6,134 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { Check, Loader2, AlertCircle, CreditCard, Building2, Home } from 'lucide-react';
+import { Check, Loader2, AlertCircle, CreditCard, Building2, Home, X } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-
-// Helper to check if a plan is a placeholder (test plan)
-const isPlaceholderPlan = (plan: Plan): boolean => {
-  const monthlyId = (plan as any).stripePriceIdMonthly;
-  const yearlyId = (plan as any).stripePriceIdYearly;
-  return monthlyId?.startsWith('placeholder_') || 
-         yearlyId?.startsWith('placeholder_') || false;
-};
 import { Separator } from '@/components/ui/separator';
 import { toast } from '@/lib/toast';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 type Industry = 'trades' | 'real_estate';
 type BillingPeriod = 'monthly' | 'yearly';
 
 interface Plan {
-  id: string;
-  planKey: string;
+  key: 'solo' | 'pro' | 'business';
   name: string;
-  industry: Industry;
-  tier: 't1' | 't2' | 't3';
-  priceMonthly: number | null;
-  priceYearly: number | null;
-  features: {
-    materials?: boolean;
-    quotes?: boolean;
-    enhancements?: string[];
-    bulkOperations?: boolean;
-    apiAccess?: boolean;
-  };
-  isActive: boolean;
-  displayOrder: number;
+  monthlyPrice: number;
+  yearlyPrice: number; // Monthly equivalent when billed yearly
+  monthlyCredits: number;
+  features: string[];
+  stripePriceIdMonthly: string;
+  stripePriceIdYearly?: string; // Will be added when yearly plans are created
 }
 
-interface PlanFeature {
-  label: string;
-  included: boolean;
-  highlight?: boolean;
-}
+const PLANS: Plan[] = [
+  {
+    key: 'solo',
+    name: 'Solo',
+    monthlyPrice: 149,
+    yearlyPrice: 119, // 20% off: 149 * 0.8 = 119.2
+    monthlyCredits: 250,
+    features: [
+      '250 credits/month',
+      'Basic Enhancements',
+      'Custom Prompts',
+      'Credit Top-Ups',
+    ],
+    stripePriceIdMonthly: 'price_1SZRhzEdvdAX5C3kg43xSFBd',
+  },
+  {
+    key: 'pro',
+    name: 'Pro',
+    monthlyPrice: 299,
+    yearlyPrice: 239, // 20% off: 299 * 0.8 = 239.2
+    monthlyCredits: 500,
+    features: [
+      '500 credits/month',
+      'All Solo features',
+      'Brush Tool',
+      'Masked Prompts',
+      'Preset Library',
+      'Before/After Slideshow',
+    ],
+    stripePriceIdMonthly: 'price_1SZRIGEdvdAX5C3ketcnQIeO',
+  },
+  {
+    key: 'business',
+    name: 'Business',
+    monthlyPrice: 995,
+    yearlyPrice: 796, // 20% off: 995 * 0.8 = 796
+    monthlyCredits: 1700,
+    features: [
+      '1700 credits/month',
+      'All Pro features',
+      'White-Label Export',
+      'Priority Queue Access',
+    ],
+    stripePriceIdMonthly: 'price_1SZRiaEdvdAX5C3kEekpnwAR',
+  },
+];
+
+const FEATURE_COMPARISON = [
+  { feature: 'Monthly Credits', solo: '250', pro: '500', business: '1700' },
+  { feature: 'Custom Prompts', solo: true, pro: true, business: true },
+  { feature: 'Brush Tool', solo: false, pro: true, business: true },
+  { feature: 'Masked Prompts', solo: false, pro: true, business: true },
+  { feature: 'Staging Preset Library (Real Estate)', solo: false, pro: true, business: true },
+  { feature: 'Before/After Slideshow Export', solo: false, pro: true, business: true },
+  { feature: 'White-Label Export', solo: false, pro: false, business: true },
+  { feature: 'Priority Queue', solo: false, pro: false, business: true },
+];
 
 export default function Subscribe() {
   const [, navigate] = useLocation();
-  const { user } = useAuthStore();
-  // Removed unused setCurrentOrg - org is updated via API calls
+  const { user, setUser } = useAuthStore();
   
   // State
   const [selectedIndustry, setSelectedIndustry] = useState<Industry>('trades');
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<'solo' | 'pro' | 'business' | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hoveredPlan, setHoveredPlan] = useState<string | null>(null);
-
-  // Load plans when industry changes
-  useEffect(() => {
-    loadPlans(selectedIndustry);
-  }, [selectedIndustry]);
+  const [currentSubscription, setCurrentSubscription] = useState<{ planKey: string; status: string } | null>(null);
 
   // Check if user already has subscription
   useEffect(() => {
     checkExistingSubscription();
   }, []);
 
-  const loadPlans = async (industry: Industry) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await apiClient.getSubscriptionPlans(industry);
-      if (response.ok && response.plans) {
-        setPlans(response.plans);
-        // Auto-select first plan if none selected
-        if (!selectedPlan && response.plans.length > 0) {
-          setSelectedPlan(response.plans[0].planKey);
-        }
-      } else {
-        setError('Failed to load plans. Please try again.');
-      }
-    } catch (err: any) {
-      console.error('Failed to load plans:', err);
-      setError(err.message || 'Failed to load plans. Please refresh the page.');
-    } finally {
-      setLoading(false);
+  // Save industry selection to user profile
+  useEffect(() => {
+    if (user && selectedIndustry && user.industryType !== selectedIndustry) {
+      saveIndustrySelection();
     }
-  };
+  }, [selectedIndustry, user]);
 
   const checkExistingSubscription = async () => {
     try {
       const status = await apiClient.getSubscriptionStatus();
       if (status.ok && status.subscription?.status === 'active') {
-        // User already has active subscription, redirect to dashboard
-        toast.info('You already have an active subscription');
-        navigate('/dashboard');
+        const planKey = status.subscription.planKey || '';
+        setCurrentSubscription({
+          planKey: planKey.replace('easyflow_', ''),
+          status: status.subscription.status,
+        });
       }
     } catch (err) {
       // Ignore errors - user might not have subscription yet
       console.log('No existing subscription or error checking:', err);
+    }
+  };
+
+  const saveIndustrySelection = async () => {
+    if (!user) return;
+    try {
+      // Update user's industry type via API
+      await apiClient.updateUserProfile({ industryType: selectedIndustry });
+      // Update local store
+      setUser({ ...user, industryType: selectedIndustry });
+    } catch (err) {
+      console.error('Failed to save industry selection:', err);
     }
   };
 
@@ -125,21 +153,27 @@ export default function Subscribe() {
     setError(null);
 
     try {
+      // Map plan key to Stripe plan key format
+      const planKeyMap: Record<string, string> = {
+        solo: 'easyflow_solo',
+        pro: 'easyflow_pro',
+        business: 'easyflow_business',
+      };
+
+      const stripePlanKey = planKeyMap[selectedPlan];
+      if (!stripePlanKey) {
+        throw new Error('Invalid plan selected');
+      }
+
       // Create Stripe checkout session
       const response = await apiClient.createCheckoutSession({
-        planKey: selectedPlan,
+        planKey: stripePlanKey,
         billingPeriod,
       });
 
       if (response.ok && response.url) {
-        // Check if this is a placeholder plan (no Stripe redirect needed)
-        if (response.isPlaceholder) {
-          // For placeholder plans, redirect directly to success page
-          navigate(response.url);
-        } else {
-          // Redirect to Stripe checkout for real plans
-          window.location.href = response.url;
-        }
+        // Redirect to Stripe checkout
+        window.location.href = response.url;
       } else {
         setError(response.error || 'Failed to create checkout session');
         toast.error('Failed to start checkout. Please try again.');
@@ -153,119 +187,14 @@ export default function Subscribe() {
     }
   };
 
-  const getPlanFeatures = (plan: Plan): PlanFeature[] => {
-    const features: PlanFeature[] = [];
-
-    // Industry-specific features
-    if (selectedIndustry === 'trades') {
-      features.push({
-        label: 'Material Library',
-        included: plan.features.materials === true,
-        highlight: true,
-      });
-      features.push({
-        label: 'Quote Generation',
-        included: plan.features.quotes === true,
-        highlight: true,
-      });
-      if (plan.features.enhancements) {
-        features.push({
-          label: `${plan.features.enhancements.length} Enhancement Types`,
-          included: plan.features.enhancements.length > 0,
-          highlight: false,
-        });
-      }
-      if (plan.features.bulkOperations) {
-        features.push({
-          label: 'Bulk Operations',
-          included: true,
-          highlight: false,
-        });
-      }
-    } else {
-      // Real estate
-      if (plan.features.enhancements) {
-        plan.features.enhancements.forEach((enhancement) => {
-          features.push({
-            label: formatEnhancementName(enhancement),
-            included: true,
-            highlight: true,
-          });
-        });
-      }
-      if (plan.tier === 't3' && plan.features.materials) {
-        features.push({
-          label: 'Material Library (T3 Only)',
-          included: true,
-          highlight: false,
-        });
-      }
-      if (plan.features.bulkOperations) {
-        features.push({
-          label: 'Bulk Operations',
-          included: true,
-          highlight: false,
-        });
-      }
-    }
-
-    if (plan.features.apiAccess) {
-      features.push({
-        label: 'API Access',
-        included: true,
-        highlight: false,
-      });
-    }
-
-    return features;
+  const formatPrice = (price: number): string => {
+    return `$${price.toFixed(2)}`;
   };
 
-  const formatEnhancementName = (enhancement: string): string => {
-    const names: Record<string, string> = {
-      image_enhancement: 'Image Enhancement',
-      day_to_dusk: 'Day to Dusk',
-      stage_room: 'Virtual Staging',
-      item_removal: 'Item Removal',
-    };
-    return names[enhancement] || enhancement;
+  const getCurrentPlanKey = (): string | null => {
+    if (!currentSubscription) return null;
+    return currentSubscription.planKey;
   };
-
-  const getPrice = (plan: Plan): number | null => {
-    const price = billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceYearly;
-    if (price === null || price === undefined) return null;
-    // Ensure price is a number
-    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-    return isNaN(numPrice) ? null : numPrice;
-  };
-
-  const formatPrice = (price: number | null | string | undefined): string => {
-    if (price === null || price === undefined) return 'Contact us';
-    // Ensure price is a number
-    const numPrice = typeof price === 'string' ? parseFloat(price) : Number(price);
-    if (isNaN(numPrice) || !isFinite(numPrice)) return 'Contact us';
-    return `$${numPrice.toFixed(2)}`;
-  };
-
-  const getTierBadge = (tier: string) => {
-    const badges = {
-      t1: { label: 'Starter', variant: 'secondary' as const },
-      t2: { label: 'Pro', variant: 'default' as const },
-      t3: { label: 'Enterprise', variant: 'outline' as const },
-    };
-    return badges[tier as keyof typeof badges] || { label: tier, variant: 'secondary' as const };
-  };
-
-  // Loading state
-  if (loading && plans.length === 0) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-        <div className="text-center">
-          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-slate-600">Loading plans...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12 px-4">
@@ -288,16 +217,13 @@ export default function Subscribe() {
               Select Your Industry
             </CardTitle>
             <CardDescription>
-              Choose the industry that best matches your business
+              Choose the industry that best matches your business (this affects app behavior, not pricing)
             </CardDescription>
           </CardHeader>
           <CardContent>
             <RadioGroup
               value={selectedIndustry}
-              onValueChange={(v) => {
-                setSelectedIndustry(v as Industry);
-                setSelectedPlan(null); // Reset selection when industry changes
-              }}
+              onValueChange={(v) => setSelectedIndustry(v as Industry)}
               className="flex gap-6"
             >
               <Label
@@ -336,12 +262,12 @@ export default function Subscribe() {
 
         {/* Billing Period Toggle */}
         <div className="flex justify-center mb-8">
-          <div className="inline-flex items-center gap-2 p-1 bg-slate-200 rounded-lg">
+          <div className="inline-flex items-center gap-2 p-1 bg-white border-2 border-slate-200 rounded-lg shadow-sm">
             <Button
               variant={billingPeriod === 'monthly' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setBillingPeriod('monthly')}
-              className="px-6"
+              className={`px-6 ${billingPeriod === 'monthly' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
             >
               Monthly
             </Button>
@@ -349,10 +275,10 @@ export default function Subscribe() {
               variant={billingPeriod === 'yearly' ? 'default' : 'ghost'}
               size="sm"
               onClick={() => setBillingPeriod('yearly')}
-              className="px-6"
+              className={`px-6 ${billingPeriod === 'yearly' ? 'bg-slate-900 text-white hover:bg-slate-800' : ''}`}
             >
               Yearly
-              <Badge variant="secondary" className="ml-2 text-xs">
+              <Badge variant="secondary" className="ml-2 text-xs bg-green-100 text-green-800">
                 Save 20%
               </Badge>
             </Button>
@@ -367,151 +293,173 @@ export default function Subscribe() {
           </Alert>
         )}
 
-        {/* Plans Grid */}
-        {loading ? (
-          <div className="flex justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : plans.length === 0 ? (
-          <Alert className="max-w-3xl mx-auto">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>
-              No plans available for this industry. Please contact support.
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            {plans.map((plan) => {
-              const tierBadge = getTierBadge(plan.tier);
-              const price = getPrice(plan);
-              const features = getPlanFeatures(plan);
-              const isSelected = selectedPlan === plan.planKey;
-              const isHovered = hoveredPlan === plan.planKey;
-              const isPopular = plan.tier === 't2'; // Mark Pro as popular
+        {/* Three-Card Pricing Layout */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          {PLANS.map((plan) => {
+            const price = billingPeriod === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice;
+            const isSelected = selectedPlan === plan.key;
+            const isPopular = plan.key === 'pro';
+            const isCurrentPlan = getCurrentPlanKey() === plan.key;
 
-              return (
-                <Card
-                  key={plan.id}
-                  className={`relative transition-all cursor-pointer ${
-                    isSelected
-                      ? 'border-primary border-2 shadow-lg scale-105'
-                      : isHovered
-                      ? 'border-slate-300 shadow-md'
-                      : 'border-slate-200'
-                  } ${isPopular ? 'ring-2 ring-primary/20' : ''}`}
-                  onClick={() => setSelectedPlan(plan.planKey)}
-                  onMouseEnter={() => setHoveredPlan(plan.planKey)}
-                  onMouseLeave={() => setHoveredPlan(null)}
-                >
-                  {isPopular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-primary text-white">Most Popular</Badge>
-                    </div>
+            return (
+              <Card
+                key={plan.key}
+                className={`relative transition-all ${
+                  isSelected
+                    ? 'border-primary border-2 shadow-lg scale-105'
+                    : 'border-slate-200 shadow-md'
+                } ${isPopular ? 'ring-2 ring-primary/20' : ''} ${isCurrentPlan ? 'opacity-75' : ''}`}
+                onClick={() => !isCurrentPlan && setSelectedPlan(plan.key)}
+              >
+                {isPopular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                    <Badge className="bg-primary text-white">Most Popular</Badge>
+                  </div>
+                )}
+                {isCurrentPlan && (
+                  <div className="absolute top-4 right-4">
+                    <Badge variant="outline" className="bg-slate-100">
+                      Current Plan
+                    </Badge>
+                  </div>
+                )}
+                <CardHeader className="pb-4">
+                  <CardTitle className="text-2xl mb-2">{plan.name}</CardTitle>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-4xl font-bold">
+                      {formatPrice(price)}
+                    </span>
+                    <span className="text-slate-500">
+                      /{billingPeriod === 'monthly' ? 'month' : 'month'}
+                    </span>
+                  </div>
+                  {billingPeriod === 'yearly' && (
+                    <p className="text-sm text-slate-500 mt-1">
+                      Billed yearly ({formatPrice(plan.yearlyPrice * 12)}/year)
+                    </p>
                   )}
-                  <CardHeader className="pb-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <CardTitle className="text-xl flex items-center gap-2">
-                        {plan.name}
-                        {isPlaceholderPlan(plan) && (
-                          <Badge variant="outline" className="text-xs">
-                            Test Plan
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <Badge variant={tierBadge.variant}>{tierBadge.label}</Badge>
-                    </div>
-                    {isPlaceholderPlan(plan) && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        No payment required - for testing only
-                      </p>
+                  <p className="text-xs text-slate-400 mt-2">
+                    {plan.monthlyCredits} credits/month
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <Separator className="mb-4" />
+                  <ul className="space-y-3 mb-6">
+                    {plan.features.map((feature, idx) => (
+                      <li key={idx} className="flex items-start gap-2 text-sm text-slate-700">
+                        <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    className="w-full"
+                    variant={isSelected ? 'default' : 'outline'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isCurrentPlan) {
+                        if (isSelected) {
+                          handleSubscribe();
+                        } else {
+                          setSelectedPlan(plan.key);
+                        }
+                      }
+                    }}
+                    disabled={processing || isCurrentPlan}
+                  >
+                    {processing && isSelected ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : isCurrentPlan ? (
+                      'Current Plan'
+                    ) : isSelected ? (
+                      <>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Selected – Continue
+                      </>
+                    ) : (
+                      'Select Plan'
                     )}
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold">
-                        {formatPrice(price)}
-                      </span>
-                      {price !== null && (
-                        <span className="text-slate-500">
-                          /{billingPeriod === 'monthly' ? 'month' : 'year'}
-                        </span>
-                      )}
-                    </div>
-                    {billingPeriod === 'yearly' && price !== null && plan.priceMonthly && (() => {
-                      const monthlyPrice = typeof plan.priceMonthly === 'number' 
-                        ? plan.priceMonthly 
-                        : (typeof plan.priceMonthly === 'string' ? parseFloat(plan.priceMonthly) : 0);
-                      const yearlyEquivalent = !isNaN(monthlyPrice) ? monthlyPrice * 12 : 0;
-                      return yearlyEquivalent > 0 ? (
-                        <p className="text-sm text-slate-500 mt-1">
-                          ${yearlyEquivalent.toFixed(2)} billed monthly
-                        </p>
-                      ) : null;
-                    })()}
-                  </CardHeader>
-                  <CardContent>
-                    <Separator className="mb-4" />
-                    <ul className="space-y-3 mb-6">
-                      {features.map((feature, idx) => (
-                        <li
-                          key={idx}
-                          className={`flex items-start gap-2 ${
-                            feature.included ? 'text-slate-900' : 'text-slate-400'
-                          }`}
-                        >
-                          {feature.included ? (
-                            <Check className="h-5 w-5 text-primary flex-shrink-0 mt-0.5" />
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* Feature Comparison Table */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Feature Comparison</CardTitle>
+            <CardDescription>
+              Compare features across all plans
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[200px]">Feature</TableHead>
+                    <TableHead className="text-center">Solo</TableHead>
+                    <TableHead className="text-center">Pro</TableHead>
+                    <TableHead className="text-center">Business</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {FEATURE_COMPARISON.map((row, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell className="font-medium">{row.feature}</TableCell>
+                      <TableCell className="text-center">
+                        {typeof row.solo === 'boolean' ? (
+                          row.solo ? (
+                            <Check className="h-5 w-5 text-green-600 mx-auto" />
                           ) : (
-                            <div className="h-5 w-5 rounded-full border-2 border-slate-300 flex-shrink-0 mt-0.5" />
-                          )}
-                          <span
-                            className={
-                              feature.highlight ? 'font-medium' : 'text-sm'
-                            }
-                          >
-                            {feature.label}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      className="w-full"
-                      variant={isSelected ? 'default' : 'outline'}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSubscribe();
-                      }}
-                      disabled={processing || !isSelected}
-                    >
-                      {processing && isSelected ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processing...
-                        </>
-                      ) : isSelected ? (
-                        <>
-                          <CreditCard className="mr-2 h-4 w-4" />
-                          Selected - Continue
-                        </>
-                      ) : (
-                        'Select Plan'
-                      )}
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        )}
+                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                          )
+                        ) : (
+                          row.solo
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {typeof row.pro === 'boolean' ? (
+                          row.pro ? (
+                            <Check className="h-5 w-5 text-green-600 mx-auto" />
+                          ) : (
+                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                          )
+                        ) : (
+                          row.pro
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {typeof row.business === 'boolean' ? (
+                          row.business ? (
+                            <Check className="h-5 w-5 text-green-600 mx-auto" />
+                          ) : (
+                            <X className="h-5 w-5 text-slate-300 mx-auto" />
+                          )
+                        ) : (
+                          row.business
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Footer Info */}
         <div className="text-center text-sm text-slate-500 max-w-3xl mx-auto">
           <p className="mb-2">
-            All plans include a 14-day free trial. Cancel anytime.
+            Cancel anytime. 14-day free trial included.
           </p>
           <p>
-            Need help choosing?{' '}
-            <a href="/contact" className="text-primary hover:underline">
-              Contact our sales team
-            </a>
+            No payment is collected until trial ends.
           </p>
         </div>
       </div>
