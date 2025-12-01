@@ -231,12 +231,19 @@ export default function Subscribe() {
   };
 
   const getPrice = (plan: Plan): number | null => {
-    return billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceYearly;
+    const price = billingPeriod === 'monthly' ? plan.priceMonthly : plan.priceYearly;
+    if (price === null || price === undefined) return null;
+    // Ensure price is a number
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    return isNaN(numPrice) ? null : numPrice;
   };
 
-  const formatPrice = (price: number | null): string => {
-    if (price === null) return 'Contact us';
-    return `$${price.toFixed(2)}`;
+  const formatPrice = (price: number | null | string): string => {
+    if (price === null || price === undefined) return 'Contact us';
+    // Ensure price is a number
+    const numPrice = typeof price === 'string' ? parseFloat(price) : price;
+    if (isNaN(numPrice)) return 'Contact us';
+    return `$${numPrice.toFixed(2)}`;
   };
 
   const getTierBadge = (tier: string) => {
@@ -430,7 +437,7 @@ export default function Subscribe() {
                     </div>
                     {billingPeriod === 'yearly' && price !== null && plan.priceMonthly && (
                       <p className="text-sm text-slate-500 mt-1">
-                        ${(plan.priceMonthly * 12).toFixed(2)} billed monthly
+                        ${(typeof plan.priceMonthly === 'number' ? plan.priceMonthly : parseFloat(String(plan.priceMonthly))) * 12).toFixed(2)} billed monthly
                       </p>
                     )}
                   </CardHeader>
