@@ -638,22 +638,124 @@ export class PostgresStorage implements IStorage {
   }
 
   async getJob(id: string): Promise<Job | undefined> {
-    const [job] = await ensureDb().select().from(jobs).where(eq(jobs.id, id));
-    return job;
+    try {
+      const [job] = await ensureDb().select().from(jobs).where(eq(jobs.id, id));
+      return job;
+    } catch (error: any) {
+      // If query fails due to missing columns (migration not run), try selecting only base columns
+      if (error?.message?.includes('does not exist') || error?.code === '42703') {
+        console.warn('[getJob] Some columns may not exist, trying with base columns only');
+        try {
+          const [job] = await ensureDb()
+            .select({
+              id: jobs.id,
+              orgId: jobs.orgId,
+              userId: jobs.userId,
+              clientName: jobs.clientName,
+              clientPhone: jobs.clientPhone,
+              clientEmail: jobs.clientEmail,
+              address: jobs.address,
+              status: jobs.status,
+              createdBy: jobs.createdBy,
+              createdAt: jobs.createdAt,
+            })
+            .from(jobs)
+            .where(eq(jobs.id, id));
+          return job as Job;
+        } catch (fallbackError) {
+          // If even base columns fail, rethrow original error
+          throw error;
+        }
+      }
+      throw error;
+    }
   }
 
   async getJobs(userId: string): Promise<Job[]> {
-    return await ensureDb().select().from(jobs).where(eq(jobs.userId, userId)).orderBy(desc(jobs.createdAt));
+    try {
+      return await ensureDb().select().from(jobs).where(eq(jobs.userId, userId)).orderBy(desc(jobs.createdAt));
+    } catch (error: any) {
+      // If query fails due to missing columns (migration not run), try selecting only base columns
+      if (error?.message?.includes('does not exist') || error?.code === '42703') {
+        console.warn('[getJobs] Some columns may not exist, trying with base columns only');
+        try {
+          return await ensureDb()
+            .select({
+              id: jobs.id,
+              orgId: jobs.orgId,
+              userId: jobs.userId,
+              clientName: jobs.clientName,
+              clientPhone: jobs.clientPhone,
+              clientEmail: jobs.clientEmail,
+              address: jobs.address,
+              status: jobs.status,
+              createdBy: jobs.createdBy,
+              createdAt: jobs.createdAt,
+            })
+            .from(jobs)
+            .where(eq(jobs.userId, userId))
+            .orderBy(desc(jobs.createdAt)) as Job[];
+        } catch (fallbackError) {
+          // If even base columns fail, rethrow original error
+          throw error;
+        }
+      }
+      throw error;
+    }
   }
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
-    const [job] = await ensureDb()
-      .update(jobs)
-      .set(updates)
-      .where(eq(jobs.id, id))
-      .returning();
-    if (!job) throw new Error("Failed to update job");
-    return job;
+    try {
+      // Filter out property detail fields if they don't exist in the database yet
+      // Only include fields that are safe to update (base job fields)
+      const safeUpdates: any = {};
+      const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
+      
+      // Always include base fields
+      for (const field of baseFields) {
+        if (field in updates) {
+          safeUpdates[field] = (updates as any)[field];
+        }
+      }
+      
+      // Handle propertyDetailsJson separately (it's a JSONB column)
+      if ('propertyDetailsJson' in updates) {
+        safeUpdates.propertyDetailsJson = updates.propertyDetailsJson;
+      }
+      
+      const [job] = await ensureDb()
+        .update(jobs)
+        .set(safeUpdates)
+        .where(eq(jobs.id, id))
+        .returning();
+      if (!job) throw new Error("Failed to update job");
+      return job;
+    } catch (error: any) {
+      // If update fails due to missing columns, try with only base fields
+      if (error?.message?.includes('does not exist') || error?.message?.includes('property_details_json') || error?.code === '42703') {
+        console.warn('[updateJob] Some columns may not exist, trying with base fields only');
+        const baseUpdates: any = {};
+        const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
+        for (const field of baseFields) {
+          if (field in updates) {
+            baseUpdates[field] = (updates as any)[field];
+          }
+        }
+        try {
+          const [job] = await ensureDb()
+            .update(jobs)
+            .set(baseUpdates)
+            .where(eq(jobs.id, id))
+            .returning();
+          if (!job) throw new Error("Failed to update job");
+          return job;
+        } catch (fallbackError) {
+          // If even base fields fail, rethrow original error
+          throw error;
+        }
+      }
+      throw error;
+    }
   }
 
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
@@ -668,24 +770,54 @@ export class PostgresStorage implements IStorage {
   }
 
   async getJobPhotos(jobId: string, category?: 'marketing' | 'renovation_buyer'): Promise<Photo[]> {
-    const conditions = [eq(photos.jobId, jobId)];
-    if (category) {
-      conditions.push(eq(photos.photoCategory, category));
+    try {
+      const conditions = [eq(photos.jobId, jobId)];
+      if (category) {
+        // Check if photoCategory column exists before using it
+        // If migration hasn't run, this will fail, so we'll fall back to no category filter
+        try {
+          conditions.push(eq(photos.photoCategory, category));
+        } catch (error: any) {
+          // Column doesn't exist yet - ignore category filter
+          console.warn('[getJobPhotos] photoCategory column not found, ignoring category filter:', error?.message);
+        }
+      }
+      return await ensureDb()
+        .select()
+        .from(photos)
+        .where(and(...conditions));
+    } catch (error: any) {
+      // If query fails due to missing column, try without category filter
+      if (error?.message?.includes('photo_category') || error?.code === '42703') {
+        console.warn('[getJobPhotos] photoCategory column not found, fetching all photos');
+        return await ensureDb()
+          .select()
+          .from(photos)
+          .where(eq(photos.jobId, jobId));
+      }
+      throw error;
     }
-    return await ensureDb()
-      .select()
-      .from(photos)
-      .where(and(...conditions));
   }
   
   async updatePhotoCategory(id: string, category: 'marketing' | 'renovation_buyer'): Promise<Photo> {
-    const [photo] = await ensureDb()
-      .update(photos)
-      .set({ photoCategory: category })
-      .where(eq(photos.id, id))
-      .returning();
-    if (!photo) throw new Error("Failed to update photo category");
-    return photo;
+    try {
+      const [photo] = await ensureDb()
+        .update(photos)
+        .set({ photoCategory: category })
+        .where(eq(photos.id, id))
+        .returning();
+      if (!photo) throw new Error("Failed to update photo category");
+      return photo;
+    } catch (error: any) {
+      // If column doesn't exist, return the photo without updating category
+      if (error?.message?.includes('photo_category') || error?.code === '42703') {
+        console.warn('[updatePhotoCategory] photoCategory column not found, returning photo without update');
+        const photo = await this.getPhoto(id);
+        if (!photo) throw new Error("Photo not found");
+        return photo;
+      }
+      throw error;
+    }
   }
 
   async updatePhoto(id: string, data: { originalUrl: string; width: number; height: number }): Promise<Photo> {
@@ -1520,215 +1652,378 @@ export class PostgresStorage implements IStorage {
 
   // Property Notes methods
   async getPropertyNotes(jobId: string): Promise<PropertyNote[]> {
-    return await ensureDb()
-      .select()
-      .from(propertyNotes)
-      .where(eq(propertyNotes.jobId, jobId))
-      .orderBy(desc(propertyNotes.createdAt));
+    try {
+      return await ensureDb()
+        .select()
+        .from(propertyNotes)
+        .where(eq(propertyNotes.jobId, jobId))
+        .orderBy(desc(propertyNotes.createdAt));
+    } catch (error: any) {
+      // If table doesn't exist (migration not run), return empty array
+      if (error?.message?.includes('property_notes') || error?.code === '42P01') {
+        console.warn('[getPropertyNotes] property_notes table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createPropertyNote(data: { jobId: string; userId: string; noteText: string; tags?: string[] }): Promise<PropertyNote> {
-    const [note] = await ensureDb()
-      .insert(propertyNotes)
-      .values({
-        jobId: data.jobId,
-        userId: data.userId,
-        noteText: data.noteText,
-        tags: data.tags || [],
-        updatedAt: new Date(),
-      })
-      .returning();
-    if (!note) throw new Error("Failed to create property note");
-    return note;
+    try {
+      const [note] = await ensureDb()
+        .insert(propertyNotes)
+        .values({
+          jobId: data.jobId,
+          userId: data.userId,
+          noteText: data.noteText,
+          tags: data.tags || [],
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!note) throw new Error("Failed to create property note");
+      return note;
+    } catch (error: any) {
+      // If table doesn't exist (migration not run), throw a more helpful error
+      if (error?.message?.includes('property_notes') || error?.code === '42P01') {
+        throw new Error("Property notes feature requires database migration. Please run migration 034_add_property_notes.sql");
+      }
+      throw error;
+    }
   }
 
   async updatePropertyNote(id: string, data: { noteText?: string; tags?: string[] }): Promise<PropertyNote> {
-    const updates: any = { updatedAt: new Date() };
-    if (data.noteText !== undefined) updates.noteText = data.noteText;
-    if (data.tags !== undefined) updates.tags = data.tags;
-    
-    const [note] = await ensureDb()
-      .update(propertyNotes)
-      .set(updates)
-      .where(eq(propertyNotes.id, id))
-      .returning();
-    if (!note) throw new Error("Failed to update property note");
-    return note;
+    try {
+      const updates: any = { updatedAt: new Date() };
+      if (data.noteText !== undefined) updates.noteText = data.noteText;
+      if (data.tags !== undefined) updates.tags = data.tags;
+      
+      const [note] = await ensureDb()
+        .update(propertyNotes)
+        .set(updates)
+        .where(eq(propertyNotes.id, id))
+        .returning();
+      if (!note) throw new Error("Failed to update property note");
+      return note;
+    } catch (error: any) {
+      if (error?.message?.includes('property_notes') || error?.code === '42P01') {
+        throw new Error("Property notes feature requires database migration. Please run migration 034_add_property_notes.sql");
+      }
+      throw error;
+    }
   }
 
   async deletePropertyNote(id: string): Promise<void> {
-    await ensureDb()
-      .delete(propertyNotes)
-      .where(eq(propertyNotes.id, id));
+    try {
+      await ensureDb()
+        .delete(propertyNotes)
+        .where(eq(propertyNotes.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('property_notes') || error?.code === '42P01') {
+        throw new Error("Property notes feature requires database migration. Please run migration 034_add_property_notes.sql");
+      }
+      throw error;
+    }
   }
 
   // Opportunities methods
   async createOpportunity(opportunity: InsertOpportunity): Promise<Opportunity> {
-    const [opp] = await ensureDb()
-      .insert(opportunities)
-      .values({
-        ...opportunity,
-        updatedAt: new Date(),
-      })
-      .returning();
-    if (!opp) throw new Error("Failed to create opportunity");
-    return opp;
+    try {
+      const [opp] = await ensureDb()
+        .insert(opportunities)
+        .values({
+          ...opportunity,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!opp) throw new Error("Failed to create opportunity");
+      return opp;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async getOpportunity(id: string): Promise<Opportunity | undefined> {
-    const [opp] = await ensureDb()
-      .select()
-      .from(opportunities)
-      .where(eq(opportunities.id, id));
-    return opp;
+    try {
+      const [opp] = await ensureDb()
+        .select()
+        .from(opportunities)
+        .where(eq(opportunities.id, id));
+      return opp;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        console.warn('[getOpportunity] opportunities table not found, returning undefined');
+        return undefined;
+      }
+      throw error;
+    }
   }
 
   async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string }): Promise<Opportunity[]> {
-    const conditions = [eq(opportunities.userId, userId)];
-    if (filters?.status) {
-      conditions.push(eq(opportunities.status, filters.status));
+    try {
+      const conditions = [eq(opportunities.userId, userId)];
+      if (filters?.status) {
+        conditions.push(eq(opportunities.status, filters.status));
+      }
+      if (filters?.pipelineStage) {
+        conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
+      }
+      
+      return await ensureDb()
+        .select()
+        .from(opportunities)
+        .where(and(...conditions))
+        .orderBy(desc(opportunities.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        console.warn('[getOpportunities] opportunities table not found, returning empty array');
+        return [];
+      }
+      throw error;
     }
-    if (filters?.pipelineStage) {
-      conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
-    }
-    
-    return await ensureDb()
-      .select()
-      .from(opportunities)
-      .where(and(...conditions))
-      .orderBy(desc(opportunities.createdAt));
   }
 
   async updateOpportunity(id: string, updates: Partial<Opportunity>): Promise<Opportunity> {
-    const [opp] = await ensureDb()
-      .update(opportunities)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(opportunities.id, id))
-      .returning();
-    if (!opp) throw new Error("Failed to update opportunity");
-    return opp;
+    try {
+      const [opp] = await ensureDb()
+        .update(opportunities)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(opportunities.id, id))
+        .returning();
+      if (!opp) throw new Error("Failed to update opportunity");
+      return opp;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async deleteOpportunity(id: string): Promise<void> {
-    await ensureDb()
-      .delete(opportunities)
-      .where(eq(opportunities.id, id));
+    try {
+      await ensureDb()
+        .delete(opportunities)
+        .where(eq(opportunities.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   // Opportunity Follow-ups
   async getOpportunityFollowups(opportunityId: string): Promise<OpportunityFollowup[]> {
-    return await ensureDb()
-      .select()
-      .from(opportunityFollowups)
-      .where(eq(opportunityFollowups.opportunityId, opportunityId))
-      .orderBy(asc(opportunityFollowups.taskOrder), asc(opportunityFollowups.dueDate));
+    try {
+      return await ensureDb()
+        .select()
+        .from(opportunityFollowups)
+        .where(eq(opportunityFollowups.opportunityId, opportunityId))
+        .orderBy(asc(opportunityFollowups.taskOrder), asc(opportunityFollowups.dueDate));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        console.warn('[getOpportunityFollowups] opportunity_follow_ups table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createOpportunityFollowup(data: InsertOpportunityFollowup): Promise<OpportunityFollowup> {
-    const [followup] = await ensureDb()
-      .insert(opportunityFollowups)
-      .values({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .returning();
-    if (!followup) throw new Error("Failed to create opportunity follow-up");
-    return followup;
+    try {
+      const [followup] = await ensureDb()
+        .insert(opportunityFollowups)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!followup) throw new Error("Failed to create opportunity follow-up");
+      return followup;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async updateOpportunityFollowup(id: string, updates: Partial<OpportunityFollowup>): Promise<OpportunityFollowup> {
-    const [followup] = await ensureDb()
-      .update(opportunityFollowups)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(opportunityFollowups.id, id))
-      .returning();
-    if (!followup) throw new Error("Failed to update opportunity follow-up");
-    return followup;
+    try {
+      const [followup] = await ensureDb()
+        .update(opportunityFollowups)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(opportunityFollowups.id, id))
+        .returning();
+      if (!followup) throw new Error("Failed to update opportunity follow-up");
+      return followup;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async deleteOpportunityFollowup(id: string): Promise<void> {
-    await ensureDb()
-      .delete(opportunityFollowups)
-      .where(eq(opportunityFollowups.id, id));
+    try {
+      await ensureDb()
+        .delete(opportunityFollowups)
+        .where(eq(opportunityFollowups.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   // Opportunity Notes
   async getOpportunityNotes(opportunityId: string): Promise<OpportunityNote[]> {
-    return await ensureDb()
-      .select()
-      .from(opportunityNotes)
-      .where(eq(opportunityNotes.opportunityId, opportunityId))
-      .orderBy(desc(opportunityNotes.createdAt));
+    try {
+      return await ensureDb()
+        .select()
+        .from(opportunityNotes)
+        .where(eq(opportunityNotes.opportunityId, opportunityId))
+        .orderBy(desc(opportunityNotes.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_notes') || error?.code === '42P01') {
+        console.warn('[getOpportunityNotes] opportunity_notes table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createOpportunityNote(data: InsertOpportunityNote): Promise<OpportunityNote> {
-    const [note] = await ensureDb()
-      .insert(opportunityNotes)
-      .values({
-        ...data,
-        updatedAt: new Date(),
-      })
-      .returning();
-    if (!note) throw new Error("Failed to create opportunity note");
-    return note;
+    try {
+      const [note] = await ensureDb()
+        .insert(opportunityNotes)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!note) throw new Error("Failed to create opportunity note");
+      return note;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_notes') || error?.code === '42P01') {
+        throw new Error("Opportunity notes feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async updateOpportunityNote(id: string, updates: Partial<OpportunityNote>): Promise<OpportunityNote> {
-    const [note] = await ensureDb()
-      .update(opportunityNotes)
-      .set({ ...updates, updatedAt: new Date() })
-      .where(eq(opportunityNotes.id, id))
-      .returning();
-    if (!note) throw new Error("Failed to update opportunity note");
-    return note;
+    try {
+      const [note] = await ensureDb()
+        .update(opportunityNotes)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(opportunityNotes.id, id))
+        .returning();
+      if (!note) throw new Error("Failed to update opportunity note");
+      return note;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_notes') || error?.code === '42P01') {
+        throw new Error("Opportunity notes feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async deleteOpportunityNote(id: string): Promise<void> {
-    await ensureDb()
-      .delete(opportunityNotes)
-      .where(eq(opportunityNotes.id, id));
+    try {
+      await ensureDb()
+        .delete(opportunityNotes)
+        .where(eq(opportunityNotes.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_notes') || error?.code === '42P01') {
+        throw new Error("Opportunity notes feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   // Opportunity Activities
   async getOpportunityActivities(opportunityId: string): Promise<OpportunityActivity[]> {
-    return await ensureDb()
-      .select()
-      .from(opportunityActivities)
-      .where(eq(opportunityActivities.opportunityId, opportunityId))
-      .orderBy(desc(opportunityActivities.createdAt));
+    try {
+      return await ensureDb()
+        .select()
+        .from(opportunityActivities)
+        .where(eq(opportunityActivities.opportunityId, opportunityId))
+        .orderBy(desc(opportunityActivities.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_activities') || error?.code === '42P01') {
+        console.warn('[getOpportunityActivities] opportunity_activities table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createOpportunityActivity(data: InsertOpportunityActivity): Promise<OpportunityActivity> {
-    const [activity] = await ensureDb()
-      .insert(opportunityActivities)
-      .values(data)
-      .returning();
-    if (!activity) throw new Error("Failed to create opportunity activity");
-    return activity;
+    try {
+      const [activity] = await ensureDb()
+        .insert(opportunityActivities)
+        .values(data)
+        .returning();
+      if (!activity) throw new Error("Failed to create opportunity activity");
+      return activity;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_activities') || error?.code === '42P01') {
+        throw new Error("Opportunity activities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   // Opportunity Documents
   async getOpportunityDocuments(opportunityId: string): Promise<OpportunityDocument[]> {
-    return await ensureDb()
-      .select()
-      .from(opportunityDocuments)
-      .where(eq(opportunityDocuments.opportunityId, opportunityId))
-      .orderBy(desc(opportunityDocuments.createdAt));
+    try {
+      return await ensureDb()
+        .select()
+        .from(opportunityDocuments)
+        .where(eq(opportunityDocuments.opportunityId, opportunityId))
+        .orderBy(desc(opportunityDocuments.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_documents') || error?.code === '42P01') {
+        console.warn('[getOpportunityDocuments] opportunity_documents table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
   }
 
   async createOpportunityDocument(data: InsertOpportunityDocument): Promise<OpportunityDocument> {
-    const [doc] = await ensureDb()
-      .insert(opportunityDocuments)
-      .values(data)
-      .returning();
-    if (!doc) throw new Error("Failed to create opportunity document");
-    return doc;
+    try {
+      const [doc] = await ensureDb()
+        .insert(opportunityDocuments)
+        .values(data)
+        .returning();
+      if (!doc) throw new Error("Failed to create opportunity document");
+      return doc;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_documents') || error?.code === '42P01') {
+        throw new Error("Opportunity documents feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   async deleteOpportunityDocument(id: string): Promise<void> {
-    await ensureDb()
-      .delete(opportunityDocuments)
-      .where(eq(opportunityDocuments.id, id));
+    try {
+      await ensureDb()
+        .delete(opportunityDocuments)
+        .where(eq(opportunityDocuments.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_documents') || error?.code === '42P01') {
+        throw new Error("Opportunity documents feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
   }
 
   // Subscription Plans methods
