@@ -233,8 +233,12 @@ export function OpportunityDetailDrawer({
   });
 
   const createNoteMutation = useMutation({
-    mutationFn: (noteText: string) =>
-      apiClient.createOpportunityNote(opportunity!.id, noteText),
+    mutationFn: (noteText: string) => {
+      if (!opportunity?.id) {
+        throw new Error('Opportunity ID is required');
+      }
+      return apiClient.createOpportunityNote(opportunity.id, noteText);
+    },
     onSuccess: () => {
       refetchNotes();
       toast({ title: 'Note added', description: 'Note saved successfully.' });
@@ -578,14 +582,22 @@ export function OpportunityDetailDrawer({
                 className="flex-1"
                 rows={3}
               />
-              <Button 
+              <Button
                 onClick={() => {
+                  if (!opportunity?.id) {
+                    toast({
+                      title: 'Error',
+                      description: 'Please save the opportunity first before adding notes',
+                      variant: 'destructive',
+                    });
+                    return;
+                  }
                   if (newNoteText.trim()) {
                     createNoteMutation.mutate(newNoteText.trim());
                     setNewNoteText('');
                   }
                 }}
-                disabled={!newNoteText.trim() || createNoteMutation.isPending}
+                disabled={!newNoteText.trim() || createNoteMutation.isPending || !opportunity?.id}
               >
                 <Plus className="w-4 h-4" />
               </Button>
