@@ -2962,8 +2962,37 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const updated = await storage.updateOpportunity(opportunityId, req.body);
-      res.json(updated);
+      // Map frontend status values to database values before updating
+      const updates: any = { ...req.body };
+      if (updates.status) {
+        const statusMap: Record<string, string> = {
+          'open': 'new',
+          'won': 'closed_won',
+          'lost': 'closed_lost',
+          'abandoned': 'closed_lost',
+        };
+        updates.status = statusMap[updates.status] || updates.status;
+      }
+      
+      const updated = await storage.updateOpportunity(opportunityId, updates);
+      
+      // Map database status values back to frontend values
+      const reverseStatusMap: Record<string, string> = {
+        'new': 'open',
+        'contacted': 'open',
+        'qualified': 'open',
+        'viewing': 'open',
+        'offer': 'open',
+        'closed_won': 'won',
+        'closed_lost': 'lost',
+      };
+      
+      const mappedOpportunity = {
+        ...updated,
+        status: reverseStatusMap[updated.status] || updated.status,
+      };
+      
+      res.json(mappedOpportunity);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
