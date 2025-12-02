@@ -10,9 +10,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
-import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
@@ -21,7 +20,6 @@ import {
   Search, 
   Plus, 
   Filter,
-  Settings,
   CheckCircle,
 } from "lucide-react";
 import { KanbanBoard } from "@/components/opportunities/KanbanBoard";
@@ -63,6 +61,7 @@ export default function Opportunities() {
   const { toast } = useToast();
   const { user } = useAuthStore();
   const isRealEstate = useIsRealEstate();
+  const queryClient = useQueryClient();
 
   // Redirect trades users to quotes page
   if (!isRealEstate) {
@@ -91,13 +90,11 @@ export default function Opportunities() {
   // Create default pipeline and stages if they don't exist
   const createDefaultPipelineMutation = useMutation({
     mutationFn: async () => {
-      // Create default pipeline
       const pipeline = await apiClient.createPipeline({
         name: 'Sales Pipeline',
         isDefault: true,
       });
 
-      // Create default stages
       const defaultStages = [
         { name: 'New', color: '#3B82F6', order: 0 },
         { name: 'Contacted', color: '#8B5CF6', order: 1 },
@@ -128,19 +125,18 @@ export default function Opportunities() {
     }
   }, [pipelines.length, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError]);
 
-  // Fetch opportunities
-  // CRITICAL: Disable refetchOnMount to prevent automatic refetches that clear optimistic updates
-  const { data: opportunities = [], isLoading: opportunitiesLoading } = useQuery({
+  // REBUILT: Simple, robust data fetching - fetch from backend, no complex cache logic
+  const { data: opportunities = [], isLoading: opportunitiesLoading, refetch: refetchOpportunities } = useQuery({
     queryKey: ['/api/opportunities', statusFilter],
-    queryFn: () => apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined),
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
-    refetchOnMount: false, // CRITICAL: Don't refetch on mount - this was clearing opportunities
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnReconnect: false, // Don't refetch on reconnect
+    queryFn: async () => {
+      const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
+      return Array.isArray(data) ? data : [];
+    },
+    staleTime: 30 * 1000, // 30 seconds - short stale time for fresh data
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   });
 
   // Fetch tasks for each opportunity to get task counts
-  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
   const { data: allTasks = {} } = useQuery({
     queryKey: ['/api/opportunities/tasks', opportunities.map(o => o.id).join(',')],
     queryFn: async () => {
@@ -150,17 +146,13 @@ export default function Opportunities() {
           const tasks = await apiClient.getOpportunityTasks(opp.id);
           tasksByOpportunity[opp.id] = tasks || [];
         } catch (error) {
-          // Ignore errors for opportunities without tasks
           tasksByOpportunity[opp.id] = [];
         }
       }
       return tasksByOpportunity;
     },
     enabled: opportunities.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
-    refetchOnMount: false, // CRITICAL: Don't refetch on mount
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnReconnect: false, // Don't refetch on reconnect
+    staleTime: 30 * 1000,
   });
 
   // Enrich opportunities with task counts and contact info
@@ -207,12 +199,14 @@ export default function Opportunities() {
     return filtered;
   }, [enrichedOpportunities, searchTerm, statusFilter]);
 
+  // REBUILT: Simple mutation - save to backend, then refetch
   const moveOpportunityMutation = useMutation({
     mutationFn: ({ opportunityId, newStageId }: { opportunityId: string; newStageId: string }) => {
       return apiClient.updateOpportunity(opportunityId, { stageId: newStageId });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+    onSuccess: async () => {
+      // Refetch opportunities from backend - single source of truth
+      await refetchOpportunities();
       toast({
         title: 'Opportunity moved',
         description: 'The opportunity has been moved to a new stage.',
@@ -241,28 +235,35 @@ export default function Opportunities() {
     setSelectedOpportunity(null);
   };
 
-  const handleUpdate = () => {
-    // REDESIGNED: Only invalidate when explicitly needed (e.g., after updates, not after creation)
-    queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
+  // REBUILT: Simple handler - just refetch from backend
+  const handleOpportunityUpdated = async () => {
+    await refetchOpportunities();
   };
 
-  const handleOpportunityCreated = (createdOpportunity: Opportunity) => {
-    // REDESIGNED: Update state immediately without any refetching
-    // The cache has already been updated optimistically, so we just need to:
-    // 1. Update the selected opportunity to show it in the drawer
-    // 2. Keep the drawer open
-    // 3. Do NOT touch any queries - let the optimistic update persist
+  // REBUILT: After creation, refetch from backend and update selected opportunity
+  const handleOpportunityCreated = async (createdOpportunity: Opportunity) => {
+    // Refetch from backend to get the real saved opportunity
+    await refetchOpportunities();
     
-    setSelectedOpportunity({
-      ...createdOpportunity,
-      title: createdOpportunity.title || 'Untitled Opportunity',
-      status: createdOpportunity.status || 'open',
-      tags: createdOpportunity.tags || [],
-    } as Opportunity);
+    // Find the newly created opportunity in the refetched data
+    const refreshedOpportunities = await queryClient.fetchQuery({
+      queryKey: ['/api/opportunities', statusFilter],
+      queryFn: async () => {
+        const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
+        return Array.isArray(data) ? data : [];
+      },
+    });
     
-    setIsDrawerOpen(true);
-    
-    // NO query invalidation, NO refetching - the cache update is sufficient
+    const newOpp = refreshedOpportunities.find((o: any) => o.id === createdOpportunity.id);
+    if (newOpp) {
+      setSelectedOpportunity({
+        ...newOpp,
+        title: newOpp.title || 'Untitled Opportunity',
+        status: newOpp.status || 'open',
+        tags: newOpp.tags || [],
+      } as Opportunity);
+      setIsDrawerOpen(true);
+    }
   };
 
   const isLoading = opportunitiesLoading || stagesLoading;
@@ -379,16 +380,16 @@ export default function Opportunities() {
         />
       )}
 
-      {/* Drawer should always be available, even when there are no opportunities */}
+      {/* Drawer */}
       <OpportunityDetailDrawer
         opportunity={selectedOpportunity}
         isOpen={isDrawerOpen}
         onClose={handleDrawerClose}
         stages={stages}
-        onUpdate={handleUpdate}
+        onOpportunityUpdated={handleOpportunityUpdated}
         onOpportunityCreated={handleOpportunityCreated}
-        currentStatusFilter={statusFilter}
       />
     </div>
   );
 }
+

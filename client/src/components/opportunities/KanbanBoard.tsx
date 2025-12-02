@@ -119,9 +119,7 @@ function OpportunityCard({
   const StatusIcon = getStatusIcon(opportunity.status);
   const pendingTasks = (opportunity.taskCount || 0) - (opportunity.completedTaskCount || 0);
 
-  // Handle click separately from drag
   const handleClick = (e: React.MouseEvent) => {
-    // Only trigger click if not dragging
     if (!isDragging) {
       e.stopPropagation();
       onClick();
@@ -136,7 +134,6 @@ function OpportunityCard({
       onClick={handleClick}
     >
       <CardContent className="p-4">
-        {/* Drag handle - separate from click area */}
         <div 
           {...attributes} 
           {...listeners}
@@ -146,7 +143,6 @@ function OpportunityCard({
           <MoreHorizontal className="w-4 h-4 text-slate-400 hover:text-slate-600" />
         </div>
 
-        {/* Title and Status */}
         <div className="mb-3">
           <h3 className="font-semibold text-base text-slate-900 mb-2 leading-tight">
             {opportunity.title || 'Untitled Opportunity'}
@@ -157,7 +153,6 @@ function OpportunityCard({
           </Badge>
         </div>
 
-        {/* Contact Info */}
         {opportunity.contactName && (
           <div className="mb-3 pb-3 border-b border-slate-100">
             <div className="flex items-center gap-2 text-sm text-slate-700 font-medium mb-1">
@@ -180,7 +175,6 @@ function OpportunityCard({
           </div>
         )}
 
-        {/* Value */}
         {opportunity.value && (
           <div className="flex items-center gap-2 mb-3 pb-3 border-b border-slate-100">
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100">
@@ -195,7 +189,6 @@ function OpportunityCard({
           </div>
         )}
 
-        {/* Tasks indicator */}
         {pendingTasks > 0 && (
           <div className="flex items-center gap-2 mb-3 text-xs">
             <div className="flex items-center justify-center w-5 h-5 rounded-full bg-amber-100 text-amber-700 font-semibold">
@@ -207,7 +200,6 @@ function OpportunityCard({
           </div>
         )}
 
-        {/* Tags */}
         {opportunity.tags && opportunity.tags.length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-slate-100">
             {opportunity.tags.slice(0, 3).map((tag, idx) => (
@@ -242,7 +234,6 @@ function StageColumn({
       data-stage-id={stage.id}
       data-type="stage"
     >
-      {/* Column Header */}
       <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200">
         <div className="flex items-center gap-2.5">
           <div
@@ -258,7 +249,6 @@ function StageColumn({
         </Badge>
       </div>
 
-      {/* Opportunities List */}
       <SortableContext
         items={opportunities.map(opp => opp.id)}
         strategy={verticalListSortingStrategy}
@@ -300,7 +290,6 @@ export function KanbanBoard({
     })
   );
 
-  // Group opportunities by stage
   const opportunitiesByStage = useMemo(() => {
     const grouped: Record<string, Opportunity[]> = {};
     stages.forEach(stage => {
@@ -318,7 +307,6 @@ export function KanbanBoard({
     return grouped;
   }, [opportunities, stages]);
 
-  // Sort stages by order
   const sortedStages = useMemo(() => {
     return [...stages].sort((a, b) => a.order - b.order);
   }, [stages]);
@@ -343,8 +331,6 @@ export function KanbanBoard({
     const opportunityId = active.id as string;
     let newStageId: string | null = null;
 
-    // Check if we're dropping on a stage column
-    // First, try to find the stage column from the drop target
     const stageElement = (over.data.current as any)?.stageId 
       ? null 
       : document.elementFromPoint(
@@ -357,7 +343,6 @@ export function KanbanBoard({
     } else if (stages.some(stage => stage.id === over.id as string)) {
       newStageId = over.id as string;
     } else {
-      // Last resort: check if over is an opportunity in a stage column
       const parentStage = (over.data.current as any)?.stageId;
       if (parentStage) {
         newStageId = parentStage;

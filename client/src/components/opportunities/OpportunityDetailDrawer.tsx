@@ -26,7 +26,6 @@ import {
   Plus,
   Trash2,
   Edit,
-  Calendar,
   User,
   Tag
 } from 'lucide-react';
@@ -70,9 +69,8 @@ interface OpportunityDetailDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   stages: Array<{ id: string; name: string }>;
-  onUpdate: () => void;
+  onOpportunityUpdated: () => void;
   onOpportunityCreated?: (opportunity: Opportunity) => void;
-  currentStatusFilter?: string | null;
 }
 
 export function OpportunityDetailDrawer({
@@ -80,9 +78,8 @@ export function OpportunityDetailDrawer({
   isOpen,
   onClose,
   stages,
-  onUpdate,
+  onOpportunityUpdated,
   onOpportunityCreated,
-  currentStatusFilter,
 }: OpportunityDetailDrawerProps) {
   const { user } = useAuthStore();
   const { toast } = useToast();
@@ -96,38 +93,29 @@ export function OpportunityDetailDrawer({
   const [newTag, setNewTag] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
-  // Temporary storage for tasks and notes before opportunity is saved
-  const [pendingTasks, setPendingTasks] = useState<Array<{ id: string; title: string; status: 'pending' | 'completed' }>>([]);
-  const [pendingNotes, setPendingNotes] = useState<Array<{ id: string; noteText: string; createdAt: string }>>([]);
+  
   // Editing states
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
 
-  // Fetch tasks for this opportunity
-  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
+  const isNewOpportunity = !opportunity?.id;
+
+  // Fetch tasks and notes only if opportunity exists
   const { data: tasks = [], refetch: refetchTasks } = useQuery({
     queryKey: ['/api/opportunities', opportunity?.id, 'tasks'],
     queryFn: () => apiClient.getOpportunityTasks(opportunity!.id),
     enabled: !!opportunity?.id,
-    refetchOnMount: false, // CRITICAL: Don't refetch on mount
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
+    staleTime: 10 * 1000, // 10 seconds
   });
 
-  // Fetch notes for this opportunity
-  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
   const { data: notes = [], refetch: refetchNotes } = useQuery({
     queryKey: ['/api/opportunities', opportunity?.id, 'notes'],
     queryFn: () => apiClient.getOpportunityNotes(opportunity!.id),
     enabled: !!opportunity?.id,
-    refetchOnMount: false, // CRITICAL: Don't refetch on mount
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
+    staleTime: 10 * 1000,
   });
-
-  const isNewOpportunity = !opportunity?.id;
 
   useEffect(() => {
     if (opportunity) {
@@ -136,9 +124,8 @@ export function OpportunityDetailDrawer({
       setEditedStatus(opportunity.status || 'open');
       setEditedStageId(opportunity.stageId || '');
       setEditedTags(opportunity.tags || []);
-      setIsEditing(isNewOpportunity); // Auto-edit mode for new opportunities
+      setIsEditing(isNewOpportunity);
     } else {
-      // Reset form when drawer closes
       setEditedTitle('');
       setEditedValue('');
       setEditedStatus('open');
@@ -146,96 +133,33 @@ export function OpportunityDetailDrawer({
       setEditedTags([]);
       setIsEditing(false);
     }
-  }, [opportunity?.id, isNewOpportunity]); // Only depend on opportunity.id to prevent unnecessary resets
+  }, [opportunity?.id, isNewOpportunity]);
 
+  // REBUILT: Save to backend FIRST, then notify parent to refetch
   const createOpportunityMutation = useMutation({
-    mutationFn: (data: any) => {
-      console.log('[Frontend] Creating opportunity with data:', data);
-      return apiClient.createOpportunity(data);
+    mutationFn: async (data: any) => {
+      // Save to backend - wait for response
+      const created = await apiClient.createOpportunity(data);
+      return created;
     },
     onSuccess: async (createdOpportunity) => {
-      console.log('[Frontend] Opportunity created successfully:', createdOpportunity);
-      
-      if (createdOpportunity?.id) {
-        // Save pending tasks and notes after opportunity is created
-        for (const task of pendingTasks) {
-          try {
-            await apiClient.createOpportunityTask(createdOpportunity.id, { title: task.title });
-          } catch (error) {
-            console.error('Failed to save pending task:', error);
-          }
-        }
-        
-        for (const note of pendingNotes) {
-          try {
-            await apiClient.createOpportunityNote(createdOpportunity.id, note.noteText);
-          } catch (error) {
-            console.error('Failed to save pending note:', error);
-          }
-        }
-        
-        // Clear pending items
-        setPendingTasks([]);
-        setPendingNotes([]);
-        
-        // REDESIGNED: Update cache for ALL possible query keys to ensure it appears everywhere
-        // Update the exact query key being used (with current statusFilter)
-        if (currentStatusFilter !== undefined) {
-          queryClient.setQueryData(
-            ['/api/opportunities', currentStatusFilter],
-            (oldData: any) => {
-              if (!oldData || !Array.isArray(oldData)) {
-                return [createdOpportunity];
-              }
-              const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
-              if (exists) return oldData;
-              return [createdOpportunity, ...oldData];
-            }
-          );
-        }
-        
-        // Also update the query without filter (for when filter is null)
-        queryClient.setQueryData(
-          ['/api/opportunities', null],
-          (oldData: any) => {
-            if (!oldData || !Array.isArray(oldData)) {
-              return [createdOpportunity];
-            }
-            const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
-            if (exists) return oldData;
-            return [createdOpportunity, ...oldData];
-          }
-        );
-        
-        // Update ALL other opportunity queries as fallback
-        queryClient.setQueriesData(
-          { queryKey: ['/api/opportunities'], exact: false },
-          (oldData: any) => {
-            if (!oldData || !Array.isArray(oldData)) {
-              return [createdOpportunity];
-            }
-            const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
-            if (exists) return oldData;
-            return [createdOpportunity, ...oldData];
-          }
-        );
+      if (!createdOpportunity?.id) {
+        toast({
+          title: 'Error',
+          description: 'Failed to create opportunity - no ID returned',
+          variant: 'destructive',
+        });
+        return;
       }
-      
+
       toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
       
-      // Notify parent component about the newly created opportunity
-      if (onOpportunityCreated && createdOpportunity) {
-        onOpportunityCreated(createdOpportunity);
+      // Notify parent to refetch from backend
+      if (onOpportunityCreated) {
+        await onOpportunityCreated(createdOpportunity);
       }
-      
-      // DON'T invalidate or refetch immediately - let the optimistic update persist
-      // The query will naturally refetch when it becomes stale (after staleTime)
-      // This prevents the opportunity from disappearing
-      
-      // Don't close the drawer - let the user see and interact with the newly created opportunity
     },
     onError: (error: any) => {
-      console.error('[Frontend] Error creating opportunity:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to create opportunity',
@@ -244,19 +168,15 @@ export function OpportunityDetailDrawer({
     },
   });
 
+  // REBUILT: Save to backend FIRST, then notify parent to refetch
   const updateOpportunityMutation = useMutation({
     mutationFn: (updates: Partial<Opportunity>) => 
       apiClient.updateOpportunity(opportunity!.id, updates),
-    onSuccess: (updatedOpportunity) => {
-      // Update local state with the returned opportunity data
-      if (updatedOpportunity) {
-        setEditedTags(Array.isArray(updatedOpportunity.tags) ? updatedOpportunity.tags : []);
-      }
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id] });
+    onSuccess: async () => {
       toast({ title: 'Opportunity updated', description: 'Changes saved successfully.' });
       setIsEditing(false);
-      onUpdate();
+      // Notify parent to refetch from backend
+      await onOpportunityUpdated();
     },
     onError: (error: any) => {
       toast({
@@ -269,7 +189,6 @@ export function OpportunityDetailDrawer({
 
   const handleSave = () => {
     if (isNewOpportunity) {
-      // Create new opportunity
       if (!editedTitle.trim()) {
         toast({
           title: 'Error',
@@ -282,18 +201,17 @@ export function OpportunityDetailDrawer({
       const defaultStage = stages[0];
       createOpportunityMutation.mutate({
         title: editedTitle.trim(),
-        clientName: editedTitle.trim(), // Required field
-        value: editedValue ? parseFloat(editedValue.replace(/,/g, '')) : null,
+        clientName: editedTitle.trim(),
+        value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
         stageId: editedStageId || defaultStage?.id,
         pipelineStage: defaultStage?.name || 'new',
         tags: editedTags,
       });
     } else {
-      // Update existing opportunity
       updateOpportunityMutation.mutate({
         title: editedTitle,
-        value: editedValue ? parseFloat(editedValue.replace(/,/g, '')) : null,
+        value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
         stageId: editedStageId,
         tags: editedTags,
@@ -301,20 +219,17 @@ export function OpportunityDetailDrawer({
     }
   };
 
+  // REBUILT: Save to backend FIRST, then refetch
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; dueDate?: string }) => {
+    mutationFn: (data: { title: string }) => {
       if (!opportunity?.id) {
         throw new Error('Opportunity ID is required');
       }
       return apiClient.createOpportunityTask(opportunity.id, data);
     },
     onSuccess: async () => {
-      // Clear input immediately
       setNewTaskTitle('');
-      // Refetch tasks
       await refetchTasks();
-      // Also invalidate the query cache
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'tasks'] });
       toast({ title: 'Task created', description: 'New task added successfully.' });
     },
     onError: (error: any) => {
@@ -331,10 +246,7 @@ export function OpportunityDetailDrawer({
       return apiClient.updateOpportunityTask(taskId, updates);
     },
     onSuccess: async () => {
-      // Refetch tasks
       await refetchTasks();
-      // Also invalidate the query cache
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'tasks'] });
       toast({ title: 'Task updated', description: 'Task status updated.' });
     },
     onError: (error: any) => {
@@ -346,6 +258,24 @@ export function OpportunityDetailDrawer({
     },
   });
 
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId: string) => {
+      return apiClient.deleteOpportunityTask(taskId);
+    },
+    onSuccess: async () => {
+      await refetchTasks();
+      toast({ title: 'Task deleted', description: 'Task removed successfully.' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete task',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // REBUILT: Save to backend FIRST, then refetch
   const createNoteMutation = useMutation({
     mutationFn: (noteText: string) => {
       if (!opportunity?.id) {
@@ -354,12 +284,8 @@ export function OpportunityDetailDrawer({
       return apiClient.createOpportunityNote(opportunity.id, noteText);
     },
     onSuccess: async () => {
-      // Clear the input immediately
       setNewNoteText('');
-      // Refetch notes
       await refetchNotes();
-      // Also invalidate the query cache to ensure fresh data
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'notes'] });
       toast({ title: 'Note added', description: 'Note saved successfully.' });
     },
     onError: (error: any) => {
@@ -371,22 +297,51 @@ export function OpportunityDetailDrawer({
     },
   });
 
+  const updateNoteMutation = useMutation({
+    mutationFn: ({ noteId, noteText }: { noteId: string; noteText: string }) => {
+      return apiClient.updateOpportunityNote(noteId, noteText);
+    },
+    onSuccess: async () => {
+      await refetchNotes();
+      toast({ title: 'Note updated', description: 'Note saved successfully.' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update note',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const deleteNoteMutation = useMutation({
+    mutationFn: (noteId: string) => {
+      return apiClient.deleteOpportunityNote(noteId);
+    },
+    onSuccess: async () => {
+      await refetchNotes();
+      toast({ title: 'Note deleted', description: 'Note removed successfully.' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete note',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const handleAddNote = () => {
     if (!newNoteText.trim()) return;
-    
     if (!opportunity?.id) {
-      // Store temporarily if opportunity doesn't exist yet
-      const tempNote = {
-        id: `temp-${Date.now()}-${Math.random()}`,
-        noteText: newNoteText.trim(),
-        createdAt: new Date().toISOString(),
-      };
-      setPendingNotes([...pendingNotes, tempNote]);
-      setNewNoteText('');
-      toast({ title: 'Note added', description: 'Note will be saved when opportunity is created.' });
-    } else {
-      createNoteMutation.mutate(newNoteText.trim());
+      toast({
+        title: 'Error',
+        description: 'Please save the opportunity first',
+        variant: 'destructive',
+      });
+      return;
     }
+    createNoteMutation.mutate(newNoteText.trim());
   };
 
   const handleAddTag = () => {
@@ -402,48 +357,29 @@ export function OpportunityDetailDrawer({
 
   const handleAddTask = () => {
     if (!newTaskTitle.trim()) return;
-    
     if (!opportunity?.id) {
-      // Store temporarily if opportunity doesn't exist yet
-      const tempTask = {
-        id: `temp-${Date.now()}-${Math.random()}`,
-        title: newTaskTitle.trim(),
-        status: 'pending' as const,
-      };
-      setPendingTasks([...pendingTasks, tempTask]);
-      setNewTaskTitle('');
-      toast({ title: 'Task added', description: 'Task will be saved when opportunity is created.' });
-    } else {
-      createTaskMutation.mutate({
-        title: newTaskTitle.trim(),
+      toast({
+        title: 'Error',
+        description: 'Please save the opportunity first',
+        variant: 'destructive',
       });
+      return;
     }
+    createTaskMutation.mutate({
+      title: newTaskTitle.trim(),
+    });
   };
 
   const handleToggleTask = (task: Task) => {
-    const isTemp = task.id.startsWith('temp-');
-    
-    if (isTemp) {
-      // Update temporary task
-      setPendingTasks(pendingTasks.map(t => 
-        t.id === task.id 
-          ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' }
-          : t
-      ));
-      return;
-    }
-    
     const newStatus = task.status === 'pending' ? 'completed' : 'pending';
     const updates: any = {
       status: newStatus,
     };
     
-    // Only set completedAt and completedBy when completing
     if (newStatus === 'completed') {
       updates.completedAt = new Date().toISOString();
       updates.completedBy = user?.id;
     } else {
-      // When uncompleting, clear these fields
       updates.completedAt = null;
       updates.completedBy = null;
     }
@@ -456,19 +392,6 @@ export function OpportunityDetailDrawer({
 
   const handleSaveTaskEdit = (task: Task) => {
     if (!editingTaskTitle.trim()) return;
-    
-    const isTemp = task.id.startsWith('temp-');
-    
-    if (isTemp) {
-      // Update temporary task
-      setPendingTasks(pendingTasks.map(t => 
-        t.id === task.id ? { ...t, title: editingTaskTitle.trim() } : t
-      ));
-      setEditingTaskId(null);
-      setEditingTaskTitle('');
-      return;
-    }
-    
     updateTaskMutation.mutate({
       taskId: task.id,
       updates: { title: editingTaskTitle.trim() },
@@ -478,32 +401,11 @@ export function OpportunityDetailDrawer({
   };
 
   const handleDeleteTask = (task: Task) => {
-    const isTemp = task.id.startsWith('temp-');
-    
-    if (isTemp) {
-      // Remove temporary task
-      setPendingTasks(pendingTasks.filter(t => t.id !== task.id));
-      return;
-    }
-    
     deleteTaskMutation.mutate(task.id);
   };
 
   const handleSaveNoteEdit = (note: any) => {
     if (!editingNoteText.trim()) return;
-    
-    const isTemp = note.id.startsWith('temp-');
-    
-    if (isTemp) {
-      // Update temporary note
-      setPendingNotes(pendingNotes.map(n => 
-        n.id === note.id ? { ...n, noteText: editingNoteText.trim() } : n
-      ));
-      setEditingNoteId(null);
-      setEditingNoteText('');
-      return;
-    }
-    
     updateNoteMutation.mutate({
       noteId: note.id,
       noteText: editingNoteText.trim(),
@@ -513,24 +415,32 @@ export function OpportunityDetailDrawer({
   };
 
   const handleDeleteNote = (note: any) => {
-    const isTemp = note.id.startsWith('temp-');
-    
-    if (isTemp) {
-      // Remove temporary note
-      setPendingNotes(pendingNotes.filter(n => n.id !== note.id));
-      return;
-    }
-    
     deleteNoteMutation.mutate(note.id);
   };
 
-  // Combine saved tasks with pending tasks
-  const allTasks = [...tasks, ...pendingTasks];
-  const pendingTasksList = allTasks.filter(t => t.status === 'pending');
-  const completedTasksList = allTasks.filter(t => t.status === 'completed');
-  
-  // Combine saved notes with pending notes
-  const allNotes = [...notes, ...pendingNotes];
+  const pendingTasksList = tasks.filter(t => t.status === 'pending');
+  const completedTasksList = tasks.filter(t => t.status === 'completed');
+
+  // Format currency input
+  const formatCurrencyInput = (value: string) => {
+    const num = value.replace(/[^0-9.]/g, '');
+    if (!num) return '';
+    const formatted = parseFloat(num).toLocaleString('en-US', {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+    return formatted;
+  };
+
+  const handleValueChange = (value: string) => {
+    setEditedValue(value);
+  };
+
+  const handleValueBlur = () => {
+    if (editedValue) {
+      setEditedValue(formatCurrencyInput(editedValue));
+    }
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -588,7 +498,7 @@ export function OpportunityDetailDrawer({
             <div className="flex gap-2">
               {isEditing ? (
                 <>
-                  <Button onClick={handleSave} disabled={updateOpportunityMutation.isPending}>
+                  <Button onClick={handleSave} disabled={createOpportunityMutation.isPending || updateOpportunityMutation.isPending}>
                     Save
                   </Button>
                   <Button variant="outline" onClick={() => setIsEditing(false)}>
@@ -610,9 +520,10 @@ export function OpportunityDetailDrawer({
               <Label>Value</Label>
               {isEditing ? (
                 <Input
-                  type="number"
+                  type="text"
                   value={editedValue}
-                  onChange={(e) => setEditedValue(e.target.value)}
+                  onChange={(e) => handleValueChange(e.target.value)}
+                  onBlur={handleValueBlur}
                   placeholder="0.00"
                   className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
                 />
@@ -621,7 +532,7 @@ export function OpportunityDetailDrawer({
                   <DollarSign className="w-4 h-4" />
                   {!isNewOpportunity && opportunity?.value 
                     ? formatCurrency(typeof opportunity.value === 'string' ? parseFloat(opportunity.value) : opportunity.value)
-                    : isEditing ? (editedValue ? formatCurrency(parseFloat(editedValue)) : 'Not set') : 'Not set'}
+                    : isEditing ? (editedValue ? formatCurrency(parseFloat(editedValue.replace(/[,$]/g, ''))) : 'Not set') : 'Not set'}
                 </div>
               )}
             </div>
@@ -725,25 +636,24 @@ export function OpportunityDetailDrawer({
               </Badge>
             </div>
 
-            {/* Add new checklist item */}
-            <div className="flex gap-2 mb-4">
-              <Input
-                value={newTaskTitle}
-                onChange={(e) => setNewTaskTitle(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
-                placeholder="Add a checklist item..."
-                className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-              />
-              <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending}>
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
+            {opportunity?.id && (
+              <div className="flex gap-2 mb-4">
+                <Input
+                  value={newTaskTitle}
+                  onChange={(e) => setNewTaskTitle(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
+                  placeholder="Add a checklist item..."
+                  className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                />
+                <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
 
-            {/* Pending checklist items */}
             {pendingTasksList.length > 0 && (
               <div className="space-y-2 mb-4">
                 {pendingTasksList.map((task) => {
-                  const isTemp = task.id.startsWith('temp-');
                   const isEditing = editingTaskId === task.id;
                   
                   return (
@@ -785,9 +695,6 @@ export function OpportunityDetailDrawer({
                         ) : (
                           <div className="font-medium text-slate-900">{task.title}</div>
                         )}
-                        {task.description && !isEditing && (
-                          <div className="text-sm text-slate-600 mt-1">{task.description}</div>
-                        )}
                       </div>
                       {!isEditing && (
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -816,12 +723,10 @@ export function OpportunityDetailDrawer({
               </div>
             )}
 
-            {/* Completed checklist items */}
             {completedTasksList.length > 0 && (
               <div className="space-y-2 mt-4 pt-4 border-t-2 border-slate-200">
                 <h4 className="text-sm font-medium text-slate-500 mb-3">Completed ({completedTasksList.length})</h4>
                 {completedTasksList.map((task) => {
-                  const isTemp = task.id.startsWith('temp-');
                   const isEditing = editingTaskId === task.id;
                   
                   return (
@@ -863,9 +768,6 @@ export function OpportunityDetailDrawer({
                         ) : (
                           <div className="font-medium text-slate-700 line-through">{task.title}</div>
                         )}
-                        {task.description && !isEditing && (
-                          <div className="text-sm text-slate-500 line-through mt-1">{task.description}</div>
-                        )}
                       </div>
                       {!isEditing && (
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -894,10 +796,9 @@ export function OpportunityDetailDrawer({
               </div>
             )}
 
-            {/* Empty state - only show if there are no tasks at all */}
-            {allTasks.length === 0 && (
+            {tasks.length === 0 && (
               <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border-2 border-slate-200">
-                No checklist items yet. Add your first item above.
+                {opportunity?.id ? 'No checklist items yet. Add your first item above.' : 'Save the opportunity to add checklist items.'}
               </div>
             )}
           </div>
@@ -906,34 +807,34 @@ export function OpportunityDetailDrawer({
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Notes</h3>
-              <Badge variant="secondary">{allNotes.length}</Badge>
+              <Badge variant="secondary">{notes.length}</Badge>
             </div>
 
-            {/* Add new note */}
-            <div className="flex gap-2 mb-4">
-              <Textarea
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                placeholder="Add a note..."
-                className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
-                rows={3}
-              />
-              <Button
-                onClick={handleAddNote}
-                disabled={!newNoteText.trim() || createNoteMutation.isPending}
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
+            {opportunity?.id && (
+              <div className="flex gap-2 mb-4">
+                <Textarea
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Add a note..."
+                  className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
+                  rows={3}
+                />
+                <Button
+                  onClick={handleAddNote}
+                  disabled={!newNoteText.trim() || createNoteMutation.isPending}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
 
             <div className="space-y-3">
-              {allNotes.length === 0 ? (
+              {notes.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border-2 border-slate-200">
-                  No notes yet. Add your first note above.
+                  {opportunity?.id ? 'No notes yet. Add your first note above.' : 'Save the opportunity to add notes.'}
                 </div>
               ) : (
-                allNotes.map((note: any) => {
-                  const isTemp = note.id.startsWith('temp-');
+                notes.map((note: any) => {
                   const isEditing = editingNoteId === note.id;
                   
                   return (
@@ -967,19 +868,7 @@ export function OpportunityDetailDrawer({
                             {note.noteText}
                           </div>
                           <div className="text-xs text-slate-500 mt-2 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span>{format(new Date(note.createdAt), 'MMM d, yyyy')}</span>
-                              <span>•</span>
-                              <span>{format(new Date(note.createdAt), 'h:mm a')}</span>
-                              {note.noteType && note.noteType !== 'general' && (
-                                <>
-                                  <span>•</span>
-                                  <Badge variant="outline" className="text-xs">
-                                    {note.noteType}
-                                  </Badge>
-                                </>
-                              )}
-                            </div>
+                            <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                               <Button
                                 size="sm"
