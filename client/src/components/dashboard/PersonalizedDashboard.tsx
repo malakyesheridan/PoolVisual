@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileText, Palette, Briefcase } from 'lucide-react';
 import { UserRole } from '@/types/onboarding';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
 
 /**
  * Personalized dashboard that adapts to user onboarding data
@@ -176,11 +177,12 @@ function QuickActionsPanel() {
     const baseActions = [];
     
     if (useCase === 'quotes' || useCase === 'all') {
+      const createPath = isRealEstate ? '/opportunities' : '/quotes/new';
       baseActions.push({
         label: `Create ${quoteTerm}`,
-        href: '/quotes/new',
+        href: createPath,
         icon: FileText,
-        onClick: () => navigate('/quotes/new'),
+        onClick: () => navigate(createPath),
       });
     }
     

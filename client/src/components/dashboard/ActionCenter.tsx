@@ -26,6 +26,7 @@ import {
   Star
 } from 'lucide-react';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
+import { useIsRealEstate } from '../../hooks/useIsRealEstate';
 
 interface ActionCenterProps {
   jobs: any[];
@@ -78,6 +79,8 @@ const ActionButton = ({ title, description, icon: Icon, onClick, variant = 'seco
 
 export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: ActionCenterProps) {
   const { project, projects, quote, quotes: quotesTerm, createJob, createQuote, uploadPhoto } = useIndustryTerm();
+  const isRealEstate = useIsRealEstate();
+  const quotesPath = isRealEstate ? '/opportunities' : '/quotes';
   const hasJobs = jobs.length > 0;
   const hasQuotes = quotes.length > 0;
   const pendingQuotes = quotes.filter(q => q.status === 'sent').length;
@@ -110,7 +113,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
       title: `Generate ${quote}`,
       description: `Create professional ${quotesTerm.toLowerCase()}`,
       icon: FileText,
-      onClick: () => onNavigate('/quotes'),
+      onClick: () => onNavigate(quotesPath),
       variant: 'secondary' as const,
       disabled: !hasJobs
     }
@@ -121,7 +124,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
       title: `Send ${quote}`,
       description: `Email ${quote.toLowerCase()} to client`,
       icon: Send,
-      onClick: () => onNavigate('/quotes'),
+      onClick: () => onNavigate(quotesPath),
       variant: 'accent' as const,
       badge: pendingQuotes > 0 ? pendingQuotes.toString() : undefined,
       disabled: !hasQuotes
@@ -130,7 +133,7 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
       title: 'Export PDF',
       description: `Download ${quote.toLowerCase()} as PDF`,
       icon: Download,
-      onClick: () => onNavigate('/quotes'),
+      onClick: () => onNavigate(quotesPath),
       variant: 'secondary' as const,
       disabled: !hasQuotes
     },

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import React from 'react';
-import { useRoute, useLocation } from 'wouter';
+import { useRoute, useLocation, Redirect } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 import { 
   ArrowLeft, 
   Search, 
@@ -47,6 +48,7 @@ export default function Quotes() {
   const [, params] = useRoute('/quotes/:id');
   const [, navigate] = useLocation();
   const quoteId = params?.id;
+  const isRealEstate = useIsRealEstate();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showJobSelectionModal, setShowJobSelectionModal] = useState(false);
@@ -56,6 +58,11 @@ export default function Quotes() {
   const [deleteConfirmQuoteId, setDeleteConfirmQuoteId] = useState<string | null>(null);
   const { toast } = useToast();
   const { user } = useAuthStore();
+  
+  // Redirect real estate users to opportunities page
+  if (isRealEstate && !quoteId) {
+    return <Redirect to="/opportunities" />;
+  }
   
   // Get industry-specific terminology from user (user-centric)
   const userIndustry = user?.industryType || 'pool';

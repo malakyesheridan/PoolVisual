@@ -11,6 +11,7 @@ import { Link } from "wouter";
 import { useAuthStore } from "@/stores/auth-store";
 import { Logo } from "@/components/brand/Logo";
 import { useIndustryTerm } from "@/hooks/useIndustryTerm";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 
 interface TopNavigationProps {
   currentPage?: string;
@@ -23,6 +24,7 @@ interface TopNavigationProps {
 export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
   const { user, logout } = useAuthStore();
   const { jobs, quotes } = useIndustryTerm();
+  const isRealEstate = useIsRealEstate();
 
   const getInitials = (name: string) => {
     return name
@@ -75,9 +77,9 @@ export function TopNavigation({ currentPage, jobDetails }: TopNavigationProps) {
             Library
           </Link>
           <Link 
-            href="/quotes"
+            href={isRealEstate ? '/opportunities' : '/quotes'}
             className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-              currentPage === 'quotes' 
+              (currentPage === 'quotes' || currentPage === 'opportunities')
                 ? 'text-primary bg-primary/10' 
                 : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100'
             }`} 
