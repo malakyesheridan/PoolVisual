@@ -245,8 +245,8 @@ export default function Opportunities() {
     setSelectedOpportunity(createdOpportunity);
     // Keep drawer open so user can see the newly created opportunity
     setIsDrawerOpen(true);
-    // Refetch opportunities to ensure the list is updated
-    handleUpdate();
+    // DON'T refetch immediately - the optimistic update is already in the cache
+    // Refetching would overwrite it and cause the opportunity to disappear
   };
 
   const isLoading = opportunitiesLoading || stagesLoading;

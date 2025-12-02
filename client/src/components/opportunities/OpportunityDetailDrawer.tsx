@@ -182,10 +182,6 @@ export function OpportunityDetailDrawer({
         );
       }
       
-      // Invalidate all opportunity queries to trigger a background refetch
-      // This ensures data consistency but doesn't block the UI
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
-      
       toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
       
       // Notify parent component about the newly created opportunity
@@ -193,8 +189,9 @@ export function OpportunityDetailDrawer({
         onOpportunityCreated(createdOpportunity);
       }
       
-      // Update queries in the background
-      onUpdate();
+      // DON'T invalidate or refetch immediately - let the optimistic update persist
+      // The query will naturally refetch when it becomes stale (after staleTime)
+      // This prevents the opportunity from disappearing
       
       // Don't close the drawer - let the user see and interact with the newly created opportunity
     },
