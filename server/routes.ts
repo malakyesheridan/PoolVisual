@@ -2813,6 +2813,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const opportunities = await storage.getOpportunities(String(requestingUserId), filters);
       console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for user', String(requestingUserId));
       console.log('[GET /api/opportunities] Opportunity IDs:', opportunities.map((o: any) => o.id));
+      console.log('[GET /api/opportunities] StageIds:', opportunities.map((o: any) => ({ id: o.id, stageId: o.stageId, title: o.title })));
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
