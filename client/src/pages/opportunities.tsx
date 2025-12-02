@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, Redirect } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ import { apiClient } from "@/lib/api-client";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
+import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 import { 
   ArrowLeft, 
   Search, 
@@ -61,6 +62,12 @@ export default function Opportunities() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const { toast } = useToast();
   const { user } = useAuthStore();
+  const isRealEstate = useIsRealEstate();
+
+  // Redirect trades users to quotes page
+  if (!isRealEstate) {
+    return <Redirect to="/quotes" />;
+  }
 
   // Fetch default pipeline
   const { data: pipelines = [] } = useQuery({

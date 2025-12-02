@@ -973,9 +973,8 @@ class ApiClient {
   }
 
   // Opportunity Tasks (new name for follow-ups)
-  // Note: These map to the followups endpoints until backend is updated
   async getOpportunityTasks(opportunityId: string) {
-    return this.request<any[]>(`/opportunities/${opportunityId}/followups`).then(tasks => 
+    return this.request<any[]>(`/opportunities/${opportunityId}/tasks`).then(tasks => 
       tasks.map((task: any) => ({
         ...task,
         title: task.title || task.taskText,
@@ -985,10 +984,11 @@ class ApiClient {
   }
 
   async createOpportunityTask(opportunityId: string, data: { title: string; description?: string; dueDate?: string }) {
-    return this.request(`/opportunities/${opportunityId}/followups`, {
+    return this.request(`/opportunities/${opportunityId}/tasks`, {
       method: 'POST',
       body: JSON.stringify({
-        taskText: data.title, // Map title to taskText for backend
+        title: data.title,
+        description: data.description,
         dueDate: data.dueDate,
       }),
     }).then((task: any) => ({
@@ -1010,7 +1010,7 @@ class ApiClient {
       delete updates.title;
     }
     
-    return this.request(`/followups/${id}`, {
+    return this.request(`/opportunity-tasks/${id}`, {
       method: 'PUT',
       body: JSON.stringify(updates),
     }).then((task: any) => ({
@@ -1021,7 +1021,7 @@ class ApiClient {
   }
 
   async deleteOpportunityTask(id: string) {
-    return this.request(`/followups/${id}`, { method: 'DELETE' });
+    return this.request(`/opportunity-tasks/${id}`, { method: 'DELETE' });
   }
 
   // Opportunity Follow-ups (legacy - aliases for tasks)
