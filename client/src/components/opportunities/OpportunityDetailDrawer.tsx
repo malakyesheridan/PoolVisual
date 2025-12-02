@@ -137,9 +137,16 @@ export function OpportunityDetailDrawer({
   }, [opportunity, isNewOpportunity]);
 
   const createOpportunityMutation = useMutation({
-    mutationFn: (data: any) => apiClient.createOpportunity(data),
+    mutationFn: (data: any) => {
+      console.log('[Frontend] Creating opportunity with data:', data);
+      return apiClient.createOpportunity(data);
+    },
     onSuccess: async (createdOpportunity) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+      console.log('[Frontend] Opportunity created successfully:', createdOpportunity);
+      
+      // Invalidate and refetch opportunities immediately
+      await queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+      await queryClient.refetchQueries({ queryKey: ['/api/opportunities'] });
       
       // Save pending tasks and notes after opportunity is created
       if (createdOpportunity?.id) {
@@ -168,9 +175,13 @@ export function OpportunityDetailDrawer({
       
       toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
       onUpdate();
-      onClose();
+      // Don't close immediately - let the user see it was created
+      setTimeout(() => {
+        onClose();
+      }, 500);
     },
     onError: (error: any) => {
+      console.error('[Frontend] Error creating opportunity:', error);
       toast({
         title: 'Error',
         description: error.message || 'Failed to create opportunity',

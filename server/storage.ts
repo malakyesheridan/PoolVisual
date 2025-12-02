@@ -1743,16 +1743,26 @@ export class PostgresStorage implements IStorage {
   // Opportunities methods
   async createOpportunity(opportunity: InsertOpportunity): Promise<Opportunity> {
     try {
+      // Ensure userId and createdBy are set
+      const opportunityData = {
+        ...opportunity,
+        userId: opportunity.userId || (opportunity as any).userId,
+        createdBy: opportunity.createdBy || (opportunity as any).createdBy || opportunity.userId || (opportunity as any).userId,
+        updatedAt: new Date(),
+      };
+      
+      console.log('[Storage] Creating opportunity with userId:', opportunityData.userId, 'createdBy:', opportunityData.createdBy);
+      
       const [opp] = await ensureDb()
         .insert(opportunities)
-        .values({
-          ...opportunity,
-          updatedAt: new Date(),
-        })
+        .values(opportunityData)
         .returning();
       if (!opp) throw new Error("Failed to create opportunity");
+      
+      console.log('[Storage] Opportunity created successfully:', opp.id, 'userId:', opp.userId);
       return opp;
     } catch (error: any) {
+      console.error('[Storage] Error creating opportunity:', error);
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
       }
@@ -1778,6 +1788,8 @@ export class PostgresStorage implements IStorage {
 
   async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string }): Promise<Opportunity[]> {
     try {
+      console.log('[Storage] getOpportunities called with userId:', userId, 'filters:', filters);
+      
       const conditions = [eq(opportunities.userId, userId)];
       if (filters?.status) {
         conditions.push(eq(opportunities.status, filters.status));
@@ -1786,12 +1798,20 @@ export class PostgresStorage implements IStorage {
         conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
       }
       
-      return await ensureDb()
+      const results = await ensureDb()
         .select()
         .from(opportunities)
         .where(and(...conditions))
         .orderBy(desc(opportunities.createdAt));
+      
+      console.log('[Storage] getOpportunities found', results.length, 'opportunities for userId:', userId);
+      if (results.length > 0) {
+        console.log('[Storage] Sample opportunity userIds:', results.slice(0, 3).map(r => r.userId));
+      }
+      
+      return results;
     } catch (error: any) {
+      console.error('[Storage] Error in getOpportunities:', error);
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         console.warn('[getOpportunities] opportunities table not found, returning empty array');
         return [];

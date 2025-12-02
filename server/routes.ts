@@ -2788,6 +2788,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Opportunities endpoints (for real estate)
   app.get("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      console.log('[GET /api/opportunities] Fetching opportunities for userId:', req.user.id);
+      
       const filters: any = {};
       if (req.query.status) {
         // Map frontend status values to database values
@@ -2802,6 +2804,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
 
       const opportunities = await storage.getOpportunities(req.user.id, filters);
+      
+      console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for userId:', req.user.id);
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
@@ -2821,6 +2825,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       
       res.json(mappedOpportunities);
     } catch (error) {
+      console.error('[GET /api/opportunities] Error:', error);
       res.status(500).json({ message: (error as Error).message });
     }
   });
@@ -2925,7 +2930,23 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (ownerId) opportunityData.ownerId = ownerId;
       if (tags) opportunityData.tags = tags;
 
+      // Ensure userId and createdBy are always set
+      if (!opportunityData.userId) {
+        opportunityData.userId = req.user.id;
+      }
+      if (!opportunityData.createdBy) {
+        opportunityData.createdBy = req.user.id;
+      }
+      
+      console.log('[POST /api/opportunities] Creating opportunity with userId:', opportunityData.userId, 'createdBy:', opportunityData.createdBy);
+      
       const opportunity = await storage.createOpportunity(opportunityData);
+      
+      if (!opportunity) {
+        return res.status(500).json({ message: "Failed to create opportunity" });
+      }
+      
+      console.log('[POST /api/opportunities] Opportunity created successfully:', opportunity.id, 'userId:', opportunity.userId);
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
