@@ -329,29 +329,36 @@ export default function Opportunities() {
             : "Get started by creating your first opportunity"}
           primaryAction={{
             label: "New Opportunity",
-            onClick: () => navigate('/opportunities/new'),
+            onClick: () => {
+              setSelectedOpportunity({
+                id: '',
+                title: '',
+                status: 'open',
+                tags: [],
+              } as Opportunity);
+              setIsDrawerOpen(true);
+            },
             icon: Plus
           }}
         />
       ) : (
-        <>
-          <KanbanBoard
-            opportunities={filteredOpportunities}
-            stages={stages}
-            onOpportunityClick={handleOpportunityClick}
-            onOpportunityMove={handleOpportunityMove}
-            isLoading={isLoading}
-          />
-
-          <OpportunityDetailDrawer
-            opportunity={selectedOpportunity}
-            isOpen={isDrawerOpen}
-            onClose={handleDrawerClose}
-            stages={stages}
-            onUpdate={handleUpdate}
-          />
-        </>
+        <KanbanBoard
+          opportunities={filteredOpportunities}
+          stages={stages}
+          onOpportunityClick={handleOpportunityClick}
+          onOpportunityMove={handleOpportunityMove}
+          isLoading={isLoading}
+        />
       )}
+
+      {/* Drawer should always be available, even when there are no opportunities */}
+      <OpportunityDetailDrawer
+        opportunity={selectedOpportunity}
+        isOpen={isDrawerOpen}
+        onClose={handleDrawerClose}
+        stages={stages}
+        onUpdate={handleUpdate}
+      />
     </div>
   );
 }
