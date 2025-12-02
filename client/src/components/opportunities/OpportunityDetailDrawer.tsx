@@ -135,7 +135,7 @@ export function OpportunityDetailDrawer({
       setEditedTags([]);
       setIsEditing(false);
     }
-  }, [opportunity, isNewOpportunity]);
+  }, [opportunity?.id, isNewOpportunity]); // Only depend on opportunity.id to prevent unnecessary resets
 
   const createOpportunityMutation = useMutation({
     mutationFn: (data: any) => {

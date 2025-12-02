@@ -241,12 +241,22 @@ export default function Opportunities() {
   };
 
   const handleOpportunityCreated = (createdOpportunity: Opportunity) => {
-    // Update selected opportunity to the newly created one
-    setSelectedOpportunity(createdOpportunity);
-    // Keep drawer open so user can see the newly created opportunity
+    // REDESIGNED: Update state immediately without any refetching
+    // The cache has already been updated optimistically, so we just need to:
+    // 1. Update the selected opportunity to show it in the drawer
+    // 2. Keep the drawer open
+    // 3. Do NOT touch any queries - let the optimistic update persist
+    
+    setSelectedOpportunity({
+      ...createdOpportunity,
+      title: createdOpportunity.title || 'Untitled Opportunity',
+      status: createdOpportunity.status || 'open',
+      tags: createdOpportunity.tags || [],
+    } as Opportunity);
+    
     setIsDrawerOpen(true);
-    // DON'T refetch immediately - the optimistic update is already in the cache
-    // Refetching would overwrite it and cause the opportunity to disappear
+    
+    // NO query invalidation, NO refetching - the cache update is sufficient
   };
 
   const isLoading = opportunitiesLoading || stagesLoading;
