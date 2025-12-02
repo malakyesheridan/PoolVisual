@@ -1745,19 +1745,45 @@ export class PostgresStorage implements IStorage {
     try {
       // CRITICAL: Ensure userId and createdBy are ALWAYS set - these are required fields
       // Normalize userId to ensure it's a valid string UUID
-      const normalizedUserId = String(opportunity.userId).trim();
-      if (!normalizedUserId || normalizedUserId === 'undefined' || normalizedUserId === 'null') {
+      const normalizedUserId = String(opportunity.userId || '').trim();
+      if (!normalizedUserId || normalizedUserId === 'undefined' || normalizedUserId === 'null' || normalizedUserId === '') {
         throw new Error("userId is required to create an opportunity");
       }
       
-      const normalizedCreatedBy = opportunity.createdBy ? String(opportunity.createdBy).trim() : normalizedUserId;
+      const normalizedCreatedBy = (opportunity.createdBy ? String(opportunity.createdBy).trim() : normalizedUserId);
+      if (!normalizedCreatedBy || normalizedCreatedBy === 'undefined' || normalizedCreatedBy === 'null' || normalizedCreatedBy === '') {
+        throw new Error("createdBy is required to create an opportunity");
+      }
       
+      // Build opportunityData explicitly - don't spread to avoid overriding our normalized values
       const opportunityData: any = {
-        ...opportunity,
-        userId: normalizedUserId, // This MUST be set as a string UUID
-        createdBy: normalizedCreatedBy, // createdBy defaults to userId if not provided
+        userId: normalizedUserId, // CRITICAL: Set first, explicitly
+        createdBy: normalizedCreatedBy, // CRITICAL: Set second, explicitly
+        title: opportunity.title || 'Untitled Opportunity', // REQUIRED by schema
+        status: opportunity.status || 'new',
         updatedAt: new Date(),
       };
+      
+      // Add optional fields only if they exist and are not null/undefined
+      if (opportunity.orgId) opportunityData.orgId = opportunity.orgId;
+      if (opportunity.contactId) opportunityData.contactId = opportunity.contactId;
+      if (opportunity.pipelineId) opportunityData.pipelineId = opportunity.pipelineId;
+      if (opportunity.stageId) opportunityData.stageId = opportunity.stageId;
+      if (opportunity.ownerId) opportunityData.ownerId = opportunity.ownerId;
+      if (opportunity.value !== undefined && opportunity.value !== null) opportunityData.value = opportunity.value;
+      if (opportunity.tags) opportunityData.tags = opportunity.tags;
+      if (opportunity.clientName) opportunityData.clientName = opportunity.clientName;
+      if (opportunity.clientPhone) opportunityData.clientPhone = opportunity.clientPhone;
+      if (opportunity.clientEmail) opportunityData.clientEmail = opportunity.clientEmail;
+      if (opportunity.propertyAddress) opportunityData.propertyAddress = opportunity.propertyAddress;
+      if (opportunity.propertyJobId) opportunityData.propertyJobId = opportunity.propertyJobId;
+      if (opportunity.pipelineStage) opportunityData.pipelineStage = opportunity.pipelineStage;
+      if (opportunity.estimatedValue !== undefined && opportunity.estimatedValue !== null) opportunityData.estimatedValue = opportunity.estimatedValue;
+      if (opportunity.probabilityPct !== undefined) opportunityData.probabilityPct = opportunity.probabilityPct;
+      if (opportunity.expectedCloseDate) opportunityData.expectedCloseDate = opportunity.expectedCloseDate;
+      if (opportunity.actualCloseDate) opportunityData.actualCloseDate = opportunity.actualCloseDate;
+      if (opportunity.source) opportunityData.source = opportunity.source;
+      if (opportunity.notes) opportunityData.notes = opportunity.notes;
       
       const [opp] = await ensureDb()
         .insert(opportunities)
