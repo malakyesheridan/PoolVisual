@@ -442,8 +442,9 @@ export default function Opportunities() {
   const isLoading = isLoadingOpportunities || stagesLoading;
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 md:px-8 py-4 md:py-6">
-      {/* Header */}
+    <div className="h-screen flex flex-col bg-slate-50">
+      <div className="flex-shrink-0 px-4 md:px-8 py-4 md:py-6">
+        {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-4">
           <Button 
@@ -505,53 +506,57 @@ export default function Opportunities() {
         </DropdownMenu>
       </div>
 
-      {/* Kanban Board */}
-      {isLoading ? (
-        <div className="text-center p-8">
-          <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-slate-500">Loading opportunities...</p>
-        </div>
-      ) : stages.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="No pipeline stages"
-          description="Setting up your default pipeline..."
-          primaryAction={{
-            label: "Refresh",
-            onClick: () => queryClient.invalidateQueries({ queryKey: ['/api/pipelines'] }),
-            icon: CheckCircle
-          }}
-        />
-      ) : filteredOpportunities.length === 0 ? (
-        <EmptyState
-          icon={FileText}
-          title="No opportunities found"
-          description={searchTerm || statusFilter 
-            ? "Try adjusting your search or filters"
-            : "Get started by creating your first opportunity"}
-          primaryAction={{
-            label: "New Opportunity",
-            onClick: () => {
-              setSelectedOpportunity({
-                id: '',
-                title: '',
-                status: 'open',
-                tags: [],
-              } as Opportunity);
-              setIsDrawerOpen(true);
-            },
-            icon: Plus
-          }}
-        />
-      ) : (
-        <KanbanBoard
-          opportunities={filteredOpportunities}
-          stages={stages}
-          onOpportunityClick={handleOpportunityClick}
-          onOpportunityMove={handleOpportunityMove}
-          isLoading={isLoading}
-        />
-      )}
+      {/* Kanban Board Container with Scroll */}
+      <div className="flex-1 overflow-hidden px-4 md:px-8 pb-4 md:pb-6">
+        {isLoading ? (
+          <div className="text-center p-8">
+            <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+            <p className="text-slate-500">Loading opportunities...</p>
+          </div>
+        ) : stages.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No pipeline stages"
+            description="Setting up your default pipeline..."
+            primaryAction={{
+              label: "Refresh",
+              onClick: () => queryClient.invalidateQueries({ queryKey: ['/api/pipelines'] }),
+              icon: CheckCircle
+            }}
+          />
+        ) : filteredOpportunities.length === 0 ? (
+          <EmptyState
+            icon={FileText}
+            title="No opportunities found"
+            description={searchTerm || statusFilter 
+              ? "Try adjusting your search or filters"
+              : "Get started by creating your first opportunity"}
+            primaryAction={{
+              label: "New Opportunity",
+              onClick: () => {
+                setSelectedOpportunity({
+                  id: '',
+                  title: '',
+                  status: 'open',
+                  tags: [],
+                } as Opportunity);
+                setIsDrawerOpen(true);
+              },
+              icon: Plus
+            }}
+          />
+        ) : (
+          <div className="h-full overflow-y-auto">
+            <KanbanBoard
+              opportunities={filteredOpportunities}
+              stages={stages}
+              onOpportunityClick={handleOpportunityClick}
+              onOpportunityMove={handleOpportunityMove}
+              isLoading={isLoading}
+            />
+          </div>
+        )}
+      </div>
 
       {/* Drawer */}
       <OpportunityDetailDrawer

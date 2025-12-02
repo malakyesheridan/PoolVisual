@@ -300,18 +300,22 @@ export function KanbanBoard({
     });
     
     // Group opportunities by stage
+    // CRITICAL: Only group opportunities that have a stageId matching a current stage
+    // This ensures opportunities stay in their assigned stage and don't get moved to 'new'
     opportunities.forEach(opp => {
       const stageId = opp.stageId;
       
-      // If opportunity has a stageId that exists in stages, use it
+      // Only assign to a stage if stageId exists AND matches a current stage
+      // If stageId doesn't match, don't show it yet - wait for stages to load
+      // This prevents opportunities from being incorrectly moved to the first stage
       if (stageId && stageIds.has(stageId)) {
+        // StageId matches a current stage - assign to that stage
         if (!grouped[stageId]) {
           grouped[stageId] = [];
         }
         grouped[stageId].push(opp);
-      } else {
-        // If no stageId or stageId doesn't match any current stage, assign to first stage
-        // This ensures all opportunities are visible and prevents orphaned columns
+      } else if (!stageId) {
+        // No stageId at all - assign to first stage as fallback
         const fallbackStageId = stages.length > 0 ? stages[0].id : null;
         if (fallbackStageId) {
           if (!grouped[fallbackStageId]) {
@@ -320,6 +324,8 @@ export function KanbanBoard({
           grouped[fallbackStageId].push(opp);
         }
       }
+      // If stageId exists but doesn't match any current stage, don't show it
+      // The stageId is preserved in the opportunity data, so once stages load it will appear correctly
     });
 
     return grouped;
