@@ -91,7 +91,6 @@ export function OpportunityDetailDrawer({
   const [editedTags, setEditedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newTaskDueDate, setNewTaskDueDate] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
 
   // Fetch tasks for this opportunity
@@ -149,8 +148,13 @@ export function OpportunityDetailDrawer({
   const updateOpportunityMutation = useMutation({
     mutationFn: (updates: Partial<Opportunity>) => 
       apiClient.updateOpportunity(opportunity!.id, updates),
-    onSuccess: () => {
+    onSuccess: (updatedOpportunity) => {
+      // Update local state with the returned opportunity data
+      if (updatedOpportunity) {
+        setEditedTags(Array.isArray(updatedOpportunity.tags) ? updatedOpportunity.tags : []);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id] });
       toast({ title: 'Opportunity updated', description: 'Changes saved successfully.' });
       setIsEditing(false);
       onUpdate();
@@ -206,9 +210,8 @@ export function OpportunityDetailDrawer({
       return apiClient.createOpportunityTask(opportunity.id, data);
     },
     onSuccess: async () => {
-      // Clear inputs immediately
+      // Clear input immediately
       setNewTaskTitle('');
-      setNewTaskDueDate('');
       // Refetch tasks
       await refetchTasks();
       // Also invalidate the query cache
@@ -292,7 +295,6 @@ export function OpportunityDetailDrawer({
     if (newTaskTitle.trim()) {
       createTaskMutation.mutate({
         title: newTaskTitle.trim(),
-        dueDate: newTaskDueDate || undefined,
       });
     }
   };
@@ -344,7 +346,7 @@ export function OpportunityDetailDrawer({
                 <Input
                   value={editedTitle}
                   onChange={(e) => setEditedTitle(e.target.value)}
-                  className="text-xl font-bold mb-2"
+                  className="text-xl font-bold mb-2 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
                 />
               ) : (
                 <h2 className="text-xl font-bold mb-2">{opportunity?.title || 'Untitled Opportunity'}</h2>
@@ -404,7 +406,7 @@ export function OpportunityDetailDrawer({
                   value={editedValue}
                   onChange={(e) => setEditedValue(e.target.value)}
                   placeholder="0.00"
-                  className="mt-1"
+                  className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
                 />
               ) : (
                 <div className="flex items-center gap-2 mt-1">
@@ -420,7 +422,7 @@ export function OpportunityDetailDrawer({
               <Label>Status</Label>
               {isEditing ? (
                 <Select value={editedStatus} onValueChange={(v: any) => setEditedStatus(v)}>
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -445,7 +447,7 @@ export function OpportunityDetailDrawer({
               <Label>Stage</Label>
               {isEditing ? (
                 <Select value={editedStageId} onValueChange={setEditedStageId}>
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
                     <SelectValue placeholder="Select stage" />
                   </SelectTrigger>
                   <SelectContent>
@@ -476,7 +478,7 @@ export function OpportunityDetailDrawer({
                       onChange={(e) => setNewTag(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
                       placeholder="Add tag"
-                      className="flex-1"
+                      className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
                     />
                     <Button onClick={handleAddTag} size="sm">
                       <Plus className="w-4 h-4" />
@@ -506,45 +508,39 @@ export function OpportunityDetailDrawer({
             </div>
           </div>
 
-          {/* Tasks Section */}
+          {/* Checklist Section */}
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Tasks</h3>
+              <h3 className="text-lg font-semibold">Checklist</h3>
               <Badge variant="secondary">
                 {pendingTasks.length} pending, {completedTasks.length} completed
               </Badge>
             </div>
 
-            {/* Add new task */}
+            {/* Add new checklist item */}
             <div className="flex gap-2 mb-4">
               <Input
                 value={newTaskTitle}
                 onChange={(e) => setNewTaskTitle(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
-                placeholder="Add a new task..."
-                className="flex-1"
+                placeholder="Add a checklist item..."
+                className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
               />
-              <Input
-                type="date"
-                value={newTaskDueDate}
-                onChange={(e) => setNewTaskDueDate(e.target.value)}
-                className="w-40"
-              />
-              <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending}>
+              <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending || !opportunity?.id}>
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
 
-            {/* Pending tasks */}
+            {/* Pending checklist items */}
             {pendingTasks.length > 0 && (
               <div className="space-y-2 mb-4">
                 {pendingTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
+                  <div key={task.id} className="flex items-start gap-3 p-3 bg-white hover:bg-slate-50 rounded-lg transition-colors border-2 border-slate-200 shadow-sm">
                     <input
                       type="checkbox"
                       checked={task.status === 'completed'}
                       onChange={() => handleToggleTask(task)}
-                      className="w-4 h-4 mt-1 cursor-pointer accent-primary"
+                      className="w-5 h-5 mt-0.5 cursor-pointer accent-primary border-2 border-slate-300 rounded"
                       disabled={updateTaskMutation.isPending}
                     />
                     <div className="flex-1">
@@ -552,29 +548,23 @@ export function OpportunityDetailDrawer({
                       {task.description && (
                         <div className="text-sm text-slate-600 mt-1">{task.description}</div>
                       )}
-                      {task.dueDate && (
-                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-2">
-                          <Calendar className="w-3 h-3" />
-                          Due: {format(new Date(task.dueDate), 'MMM d, yyyy')}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Completed tasks */}
+            {/* Completed checklist items */}
             {completedTasks.length > 0 && (
-              <div className="space-y-2 mt-4 pt-4 border-t border-slate-200">
-                <h4 className="text-sm font-medium text-slate-500 mb-2">Completed ({completedTasks.length})</h4>
+              <div className="space-y-2 mt-4 pt-4 border-t-2 border-slate-200">
+                <h4 className="text-sm font-medium text-slate-500 mb-3">Completed ({completedTasks.length})</h4>
                 {completedTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 p-3 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-100">
+                  <div key={task.id} className="flex items-start gap-3 p-3 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg transition-colors border-2 border-emerald-200 shadow-sm">
                     <input
                       type="checkbox"
                       checked={task.status === 'completed'}
                       onChange={() => handleToggleTask(task)}
-                      className="w-4 h-4 mt-1 cursor-pointer accent-emerald-600"
+                      className="w-5 h-5 mt-0.5 cursor-pointer accent-emerald-600 border-2 border-emerald-300 rounded"
                       disabled={updateTaskMutation.isPending}
                     />
                     <div className="flex-1">
@@ -582,21 +572,16 @@ export function OpportunityDetailDrawer({
                       {task.description && (
                         <div className="text-sm text-slate-500 line-through mt-1">{task.description}</div>
                       )}
-                      {task.completedAt && (
-                        <div className="text-xs text-emerald-600 flex items-center gap-1 mt-2">
-                          <CheckCircle className="w-3 h-3" />
-                          Completed {format(new Date(task.completedAt), 'MMM d, yyyy')}
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {tasks.length === 0 && (
-              <div className="text-center py-8 text-slate-400">
-                No tasks yet. Add your first task above.
+            {/* Empty state - only show if there are no tasks at all */}
+            {tasks.length === 0 && pendingTasks.length === 0 && completedTasks.length === 0 && (
+              <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border-2 border-slate-200">
+                No checklist items yet. Add your first item above.
               </div>
             )}
           </div>
@@ -614,7 +599,7 @@ export function OpportunityDetailDrawer({
                 value={newNoteText}
                 onChange={(e) => setNewNoteText(e.target.value)}
                 placeholder="Add a note..."
-                className="flex-1"
+                className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
                 rows={3}
               />
               <Button
@@ -639,12 +624,12 @@ export function OpportunityDetailDrawer({
 
             <div className="space-y-3">
               {notes.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border border-slate-200">
+                <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border-2 border-slate-200">
                   No notes yet. Add your first note above.
                 </div>
               ) : (
                 notes.map((note: any) => (
-                  <div key={note.id} className="p-4 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors shadow-sm">
+                  <div key={note.id} className="p-4 bg-white rounded-lg border-2 border-slate-200 hover:border-slate-300 transition-colors shadow-sm">
                     <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap">
                       {note.noteText}
                     </div>
