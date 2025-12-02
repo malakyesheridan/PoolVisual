@@ -68,8 +68,9 @@ export default function Opportunities() {
   const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(true);
   const hasLoadedOnce = useRef(false);
   const isRefetchingRef = useRef(false);
-  // Track recently created opportunities to prevent them from being wiped during race conditions
-  const recentlyCreatedRef = useRef<Set<string>>(new Set());
+  // Track recently created opportunities by timestamp to prevent them from being wiped during race conditions
+  // This persists across page refreshes by checking createdAt timestamps
+  const recentlyCreatedTimestamps = useRef<Map<string, number>>(new Map());
 
   // Redirect trades users to quotes page
   if (!isRealEstate) {
@@ -150,38 +151,67 @@ export default function Opportunities() {
       const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
       const opportunities = Array.isArray(data) ? data : [];
       
+      console.log('[Opportunities] Loaded from server:', opportunities.length, 'opportunities');
+      console.log('[Opportunities] Server opportunity IDs:', opportunities.map(o => o.id));
+      
       // Update local state - merge with recently created opportunities that might not be in server response yet
       setLocalOpportunities(prev => {
+        console.log('[Opportunities] Previous local state:', prev.length, 'opportunities');
+        console.log('[Opportunities] Previous local IDs:', prev.map(o => o.id));
+        
         // Create a map of server opportunities by ID
         const serverMap = new Map(opportunities.map(opp => [opp.id, opp]));
+        const serverIds = new Set(opportunities.map(o => o.id));
+        
+        const now = Date.now();
+        const RECENT_THRESHOLD = 60000; // 60 seconds
         
         // Keep recently created opportunities that aren't in server response yet
-        // This handles race conditions where the opportunity was just created
-        // but the database transaction hasn't committed or been reflected in the query yet
+        // Check both: 1) if they're in our timestamp map, and 2) if they have a recent createdAt timestamp
         const recentlyCreated = prev.filter(opp => {
           // If it's in server response, use server version
           if (serverMap.has(opp.id)) {
+            // Clean up from timestamp map since it's now in server
+            recentlyCreatedTimestamps.current.delete(opp.id);
             return false; // Will be included from opportunities array
           }
-          // Keep if it was recently created (within last 30 seconds)
-          // This prevents wiping opportunities that are still being committed
-          return recentlyCreatedRef.current.has(opp.id);
+          
+          // Check if it was marked as recently created
+          const createdTimestamp = recentlyCreatedTimestamps.current.get(opp.id);
+          if (createdTimestamp && (now - createdTimestamp) < RECENT_THRESHOLD) {
+            console.log('[Opportunities] Keeping recently created opportunity:', opp.id, 'created', Math.round((now - createdTimestamp) / 1000), 'seconds ago');
+            return true;
+          }
+          
+          // Also check createdAt timestamp if available (for opportunities created in this session)
+          if (opp.createdAt) {
+            const createdAt = new Date(opp.createdAt).getTime();
+            if (!isNaN(createdAt) && (now - createdAt) < RECENT_THRESHOLD) {
+              console.log('[Opportunities] Keeping opportunity with recent createdAt:', opp.id);
+              // Add to timestamp map for future reference
+              recentlyCreatedTimestamps.current.set(opp.id, createdAt);
+              return true;
+            }
+          }
+          
+          return false;
         });
         
         // Combine: server data (most up-to-date) + recently created not in server
-        const serverIds = new Set(opportunities.map(o => o.id));
         const merged = [
           ...opportunities,
           ...recentlyCreated.filter(opp => !serverIds.has(opp.id))
         ];
         
-        // Clean up old recently created refs (older than 30 seconds)
-        // We'll do this by removing IDs that are now in the server response
-        recentlyCreatedRef.current.forEach(id => {
-          if (serverIds.has(id)) {
-            recentlyCreatedRef.current.delete(id);
+        // Clean up old timestamps (older than threshold)
+        recentlyCreatedTimestamps.current.forEach((timestamp, id) => {
+          if ((now - timestamp) >= RECENT_THRESHOLD) {
+            recentlyCreatedTimestamps.current.delete(id);
           }
         });
+        
+        console.log('[Opportunities] Merged result:', merged.length, 'opportunities');
+        console.log('[Opportunities] Merged IDs:', merged.map(o => o.id));
         
         return merged;
       });
@@ -339,8 +369,10 @@ export default function Opportunities() {
     try {
       const verified = await apiClient.getOpportunity(createdOpportunity.id);
       if (verified) {
-        // Mark as recently created to prevent it from being wiped during race conditions
-        recentlyCreatedRef.current.add(verified.id);
+        // Mark as recently created with timestamp to prevent it from being wiped during race conditions
+        const now = Date.now();
+        recentlyCreatedTimestamps.current.set(verified.id, now);
+        console.log('[Opportunities] Marked opportunity as recently created:', verified.id, 'at', new Date(now).toISOString());
         
         // Add to local state immediately
         setLocalOpportunities(prev => {
@@ -352,10 +384,10 @@ export default function Opportunities() {
           return [verified, ...prev];
         });
         
-        // Clean up the ref after 30 seconds
+        // Clean up the timestamp after 60 seconds
         setTimeout(() => {
-          recentlyCreatedRef.current.delete(verified.id);
-        }, 30000);
+          recentlyCreatedTimestamps.current.delete(verified.id);
+        }, 60000);
         
         // Update selected opportunity
         setSelectedOpportunity({
@@ -378,8 +410,10 @@ export default function Opportunities() {
       }
     } catch (error) {
       // If verification fails, still add to local state and reload
-      // Mark as recently created to prevent it from being wiped
-      recentlyCreatedRef.current.add(createdOpportunity.id);
+      // Mark as recently created with timestamp to prevent it from being wiped
+      const now = Date.now();
+      recentlyCreatedTimestamps.current.set(createdOpportunity.id, now);
+      console.log('[Opportunities] Marked opportunity as recently created (error case):', createdOpportunity.id);
       
       setLocalOpportunities(prev => {
         if (prev.some(o => o.id === createdOpportunity.id)) {
@@ -388,10 +422,10 @@ export default function Opportunities() {
         return [createdOpportunity, ...prev];
       });
       
-      // Clean up the ref after 30 seconds
+      // Clean up the timestamp after 60 seconds
       setTimeout(() => {
-        recentlyCreatedRef.current.delete(createdOpportunity.id);
-      }, 30000);
+        recentlyCreatedTimestamps.current.delete(createdOpportunity.id);
+      }, 60000);
       await loadOpportunities(true);
       setSelectedOpportunity({
         ...createdOpportunity,

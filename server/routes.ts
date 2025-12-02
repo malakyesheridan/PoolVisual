@@ -2809,7 +2809,10 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // CRITICAL: Use the authenticated user's ID directly - no transformations
       // Ensure userId is a string (UUIDs in PostgreSQL are stored as UUID type but compared as strings in Drizzle)
+      console.log('[GET /api/opportunities] Requesting userId:', String(requestingUserId), 'filters:', filters);
       const opportunities = await storage.getOpportunities(String(requestingUserId), filters);
+      console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for user', String(requestingUserId));
+      console.log('[GET /api/opportunities] Opportunity IDs:', opportunities.map((o: any) => o.id));
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
@@ -2827,6 +2830,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         status: reverseStatusMap[opp.status] || opp.status,
       }));
       
+      console.log('[GET /api/opportunities] Returning', mappedOpportunities.length, 'mapped opportunities');
       res.json(mappedOpportunities);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -2945,17 +2949,23 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (ownerId) opportunityData.ownerId = ownerId;
       if (tags) opportunityData.tags = tags;
       
+      console.log('[POST /api/opportunities] Creating opportunity with userId:', authenticatedUserId);
       const opportunity = await storage.createOpportunity(opportunityData);
       
       if (!opportunity) {
         return res.status(500).json({ message: "Failed to create opportunity" });
       }
       
+      console.log('[POST /api/opportunities] Created opportunity:', opportunity.id, 'with userId:', opportunity.userId);
+      
       // Verify the opportunity was saved with the correct userId
       // Compare as strings to handle UUID type differences
       if (String(opportunity.userId) !== authenticatedUserId) {
+        console.error('[POST /api/opportunities] ERROR: userId mismatch! Expected:', authenticatedUserId, 'Got:', opportunity.userId);
         return res.status(500).json({ message: "Opportunity was created with incorrect userId" });
       }
+      
+      console.log('[POST /api/opportunities] Opportunity userId verified successfully');
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
