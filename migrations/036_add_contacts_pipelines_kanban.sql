@@ -48,7 +48,11 @@ ALTER TABLE opportunities
   ADD COLUMN IF NOT EXISTS pipeline_id UUID REFERENCES pipelines(id),
   ADD COLUMN IF NOT EXISTS stage_id UUID REFERENCES pipeline_stages(id),
   ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES users(id),
-  ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}';
+  ADD COLUMN IF NOT EXISTS tags TEXT[] DEFAULT '{}',
+  ADD COLUMN IF NOT EXISTS value NUMERIC(12,2);
+
+-- Copy estimated_value to value if value is null
+UPDATE opportunities SET value = estimated_value WHERE value IS NULL AND estimated_value IS NOT NULL;
 
 -- Update opportunities: set title from client_name if title is null
 UPDATE opportunities SET title = client_name WHERE title IS NULL AND client_name IS NOT NULL;

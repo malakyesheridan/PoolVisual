@@ -108,6 +108,8 @@ export function OpportunityDetailDrawer({
     enabled: !!opportunity?.id,
   });
 
+  const isNewOpportunity = !opportunity?.id;
+
   useEffect(() => {
     if (opportunity) {
       setEditedTitle(opportunity.title || '');
@@ -115,9 +117,34 @@ export function OpportunityDetailDrawer({
       setEditedStatus(opportunity.status || 'open');
       setEditedStageId(opportunity.stageId || '');
       setEditedTags(opportunity.tags || []);
+      setIsEditing(isNewOpportunity); // Auto-edit mode for new opportunities
+    } else {
+      // Reset form when drawer closes
+      setEditedTitle('');
+      setEditedValue('');
+      setEditedStatus('open');
+      setEditedStageId('');
+      setEditedTags([]);
       setIsEditing(false);
     }
-  }, [opportunity]);
+  }, [opportunity, isNewOpportunity]);
+
+  const createOpportunityMutation = useMutation({
+    mutationFn: (data: any) => apiClient.createOpportunity(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+      toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
+      onUpdate();
+      onClose();
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to create opportunity',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const updateOpportunityMutation = useMutation({
     mutationFn: (updates: Partial<Opportunity>) => 
@@ -136,6 +163,40 @@ export function OpportunityDetailDrawer({
       });
     },
   });
+
+  const handleSave = () => {
+    if (isNewOpportunity) {
+      // Create new opportunity
+      if (!editedTitle.trim()) {
+        toast({
+          title: 'Error',
+          description: 'Title is required',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      const defaultStage = stages[0];
+      createOpportunityMutation.mutate({
+        title: editedTitle.trim(),
+        clientName: editedTitle.trim(), // Required field
+        value: editedValue ? parseFloat(editedValue) : null,
+        status: editedStatus,
+        stageId: editedStageId || defaultStage?.id,
+        pipelineStage: defaultStage?.name || 'new',
+        tags: editedTags,
+      });
+    } else {
+      // Update existing opportunity
+      updateOpportunityMutation.mutate({
+        title: editedTitle,
+        value: editedValue ? parseFloat(editedValue) : null,
+        status: editedStatus,
+        stageId: editedStageId,
+        tags: editedTags,
+      });
+    }
+  };
 
   const createTaskMutation = useMutation({
     mutationFn: (data: { title: string; dueDate?: string }) =>
@@ -188,13 +249,37 @@ export function OpportunityDetailDrawer({
   });
 
   const handleSave = () => {
-    updateOpportunityMutation.mutate({
-      title: editedTitle,
-      value: editedValue ? parseFloat(editedValue) : undefined,
-      status: editedStatus,
-      stageId: editedStageId || undefined,
-      tags: editedTags,
-    });
+    if (isNewOpportunity) {
+      // Create new opportunity
+      if (!editedTitle.trim()) {
+        toast({
+          title: 'Error',
+          description: 'Title is required',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      const defaultStage = stages[0];
+      createOpportunityMutation.mutate({
+        title: editedTitle.trim(),
+        clientName: editedTitle.trim(), // Required field
+        value: editedValue ? parseFloat(editedValue) : null,
+        status: editedStatus,
+        stageId: editedStageId || defaultStage?.id,
+        pipelineStage: defaultStage?.name || 'new',
+        tags: editedTags,
+      });
+    } else {
+      // Update existing opportunity
+      updateOpportunityMutation.mutate({
+        title: editedTitle,
+        value: editedValue ? parseFloat(editedValue) : null,
+        status: editedStatus,
+        stageId: editedStageId,
+        tags: editedTags,
+      });
+    }
   };
 
   const handleAddTag = () => {
@@ -209,6 +294,14 @@ export function OpportunityDetailDrawer({
   };
 
   const handleAddTask = () => {
+    if (!opportunity?.id) {
+      toast({
+        title: 'Error',
+        description: 'Please save the opportunity first before adding tasks',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (newTaskTitle.trim()) {
       createTaskMutation.mutate({
         title: newTaskTitle.trim(),
@@ -232,14 +325,14 @@ export function OpportunityDetailDrawer({
   const pendingTasks = tasks.filter(t => t.status === 'pending');
   const completedTasks = tasks.filter(t => t.status === 'completed');
 
-  if (!opportunity) return null;
-
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
-            <DialogTitle className="text-2xl">Opportunity Details</DialogTitle>
+            <DialogTitle className="text-2xl">
+              {isNewOpportunity ? 'New Opportunity' : 'Opportunity Details'}
+            </DialogTitle>
             <Button variant="ghost" size="icon" onClick={onClose}>
               <X className="w-4 h-4" />
             </Button>
@@ -257,30 +350,32 @@ export function OpportunityDetailDrawer({
                   className="text-xl font-bold mb-2"
                 />
               ) : (
-                <h2 className="text-xl font-bold mb-2">{opportunity.title}</h2>
+                <h2 className="text-xl font-bold mb-2">{opportunity?.title || 'Untitled Opportunity'}</h2>
               )}
               
-              {opportunity.contactName && (
+              {!isNewOpportunity && opportunity?.contactName && (
                 <div className="flex items-center gap-2 text-slate-600 mb-2">
                   <User className="w-4 h-4" />
                   <span className="font-medium">{opportunity.contactName}</span>
                 </div>
               )}
 
-              <div className="flex items-center gap-4 text-sm text-slate-500">
-                {opportunity.contactPhone && (
-                  <div className="flex items-center gap-1">
-                    <Phone className="w-4 h-4" />
-                    {opportunity.contactPhone}
-                  </div>
-                )}
-                {opportunity.contactEmail && (
-                  <div className="flex items-center gap-1">
-                    <Mail className="w-4 h-4" />
-                    {opportunity.contactEmail}
-                  </div>
-                )}
-              </div>
+              {!isNewOpportunity && (
+                <div className="flex items-center gap-4 text-sm text-slate-500">
+                  {opportunity?.contactPhone && (
+                    <div className="flex items-center gap-1">
+                      <Phone className="w-4 h-4" />
+                      {opportunity.contactPhone}
+                    </div>
+                  )}
+                  {opportunity?.contactEmail && (
+                    <div className="flex items-center gap-1">
+                      <Mail className="w-4 h-4" />
+                      {opportunity.contactEmail}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
@@ -317,9 +412,9 @@ export function OpportunityDetailDrawer({
               ) : (
                 <div className="flex items-center gap-2 mt-1">
                   <DollarSign className="w-4 h-4" />
-                  {opportunity.value 
+                  {!isNewOpportunity && opportunity?.value 
                     ? formatCurrency(typeof opportunity.value === 'string' ? parseFloat(opportunity.value) : opportunity.value)
-                    : 'Not set'}
+                    : isEditing ? (editedValue ? formatCurrency(parseFloat(editedValue)) : 'Not set') : 'Not set'}
                 </div>
               )}
             </div>
@@ -340,11 +435,11 @@ export function OpportunityDetailDrawer({
                 </Select>
               ) : (
                 <Badge className={`mt-1 ${
-                  opportunity.status === 'won' ? 'bg-green-100 text-green-700' :
-                  opportunity.status === 'lost' ? 'bg-red-100 text-red-700' :
+                  editedStatus === 'won' ? 'bg-green-100 text-green-700' :
+                  editedStatus === 'lost' ? 'bg-red-100 text-red-700' :
                   'bg-blue-100 text-blue-700'
                 }`}>
-                  {opportunity.status}
+                  {editedStatus}
                 </Badge>
               )}
             </div>
@@ -365,7 +460,12 @@ export function OpportunityDetailDrawer({
                   </SelectContent>
                 </Select>
               ) : (
-                <div className="mt-1">{opportunity.stageName || 'Not assigned'}</div>
+                <div className="mt-1">
+                  {isEditing 
+                    ? (stages.find(s => s.id === editedStageId)?.name || 'Not assigned')
+                    : (opportunity?.stageName || 'Not assigned')
+                  }
+                </div>
               )}
             </div>
 
@@ -398,10 +498,10 @@ export function OpportunityDetailDrawer({
                 </div>
               ) : (
                 <div className="flex flex-wrap gap-2 mt-1">
-                  {opportunity.tags?.map((tag, idx) => (
+                  {editedTags.map((tag, idx) => (
                     <Badge key={idx} variant="secondary">{tag}</Badge>
                   ))}
-                  {(!opportunity.tags || opportunity.tags.length === 0) && (
+                  {editedTags.length === 0 && (
                     <span className="text-slate-400 text-sm">No tags</span>
                   )}
                 </div>

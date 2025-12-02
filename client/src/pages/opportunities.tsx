@@ -257,7 +257,15 @@ export default function Opportunities() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button onClick={() => navigate('/opportunities/new')}>
+          <Button onClick={() => {
+            setSelectedOpportunity({
+              id: '',
+              title: '',
+              status: 'open',
+              tags: [],
+            } as Opportunity);
+            setIsDrawerOpen(true);
+          }}>
             <Plus className="w-4 h-4 mr-2" />
             New Opportunity
           </Button>
