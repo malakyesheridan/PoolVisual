@@ -2821,30 +2821,69 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { clientName, clientPhone, clientEmail, propertyAddress, propertyJobId, status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes } = req.body;
+      const { 
+        // New fields (Kanban board)
+        title, value, stageId, pipelineId, contactId, ownerId, tags,
+        // Legacy fields (backward compatibility)
+        clientName, clientPhone, clientEmail, propertyAddress, propertyJobId, 
+        status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes 
+      } = req.body;
 
-      if (!clientName || !clientName.trim()) {
-        return res.status(400).json({ message: "Client name is required" });
+      // Support both new (title) and old (clientName) formats
+      const opportunityTitle = title || clientName;
+      if (!opportunityTitle || !opportunityTitle.trim()) {
+        return res.status(400).json({ message: "Title or client name is required" });
       }
 
       const userOrgs = await storage.getUserOrgs(req.user.id);
-      const opportunity = await storage.createOpportunity({
+      
+      // Map new status values to old ones for database compatibility
+      // New: 'open', 'won', 'lost', 'abandoned'
+      // Old: 'new', 'contacted', 'qualified', 'viewing', 'offer', 'closed_won', 'closed_lost'
+      const statusMap: Record<string, string> = {
+        'open': 'new',
+        'won': 'closed_won',
+        'lost': 'closed_lost',
+        'abandoned': 'closed_lost',
+      };
+      const mappedStatus = status ? (statusMap[status] || status) : 'new';
+
+      // Build opportunity data with new fields taking precedence
+      const opportunityData: any = {
         userId: req.user.id,
         orgId: userOrgs[0]?.id,
-        clientName: clientName.trim(),
-        clientPhone,
-        clientEmail,
-        propertyAddress,
-        propertyJobId,
-        status: status || 'new',
+        title: opportunityTitle.trim(),
+        // Legacy fields for backward compatibility
+        clientName: opportunityTitle.trim(),
+        clientPhone: clientPhone || null,
+        clientEmail: clientEmail || null,
+        propertyAddress: propertyAddress || null,
+        propertyJobId: propertyJobId || null,
+        status: mappedStatus, // Use mapped status for database constraint
         pipelineStage: pipelineStage || 'new',
-        estimatedValue,
+        estimatedValue: estimatedValue || null,
         probabilityPct: probabilityPct || 0,
-        expectedCloseDate,
-        source,
-        notes,
+        expectedCloseDate: expectedCloseDate || null,
+        source: source || null,
+        notes: notes || null,
         createdBy: req.user.id,
-      });
+      };
+
+      // Add new Kanban fields if provided
+      if (value !== undefined) {
+        opportunityData.value = value;
+        // Also set estimatedValue if not provided
+        if (!estimatedValue) {
+          opportunityData.estimatedValue = value;
+        }
+      }
+      if (stageId) opportunityData.stageId = stageId;
+      if (pipelineId) opportunityData.pipelineId = pipelineId;
+      if (contactId) opportunityData.contactId = contactId;
+      if (ownerId) opportunityData.ownerId = ownerId;
+      if (tags) opportunityData.tags = tags;
+
+      const opportunity = await storage.createOpportunity(opportunityData);
       res.json(opportunity);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
