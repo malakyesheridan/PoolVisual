@@ -2842,8 +2842,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Opportunity not found" });
       }
 
-      // Verify access
-      if (opportunity.userId !== req.user.id) {
+      // Verify access - compare as strings to handle UUID type differences
+      if (String(opportunity.userId) !== String(req.user.id)) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -2952,7 +2952,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       // Verify the opportunity was saved with the correct userId
-      if (opportunity.userId !== authenticatedUserId) {
+      // Compare as strings to handle UUID type differences
+      if (String(opportunity.userId) !== authenticatedUserId) {
         return res.status(500).json({ message: "Opportunity was created with incorrect userId" });
       }
       
@@ -2987,7 +2988,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Opportunity not found" });
       }
 
-      if (opportunity.userId !== req.user.id) {
+      // Verify access - compare as strings to handle UUID type differences
+      if (String(opportunity.userId) !== String(req.user.id)) {
         return res.status(403).json({ message: "Access denied" });
       }
 

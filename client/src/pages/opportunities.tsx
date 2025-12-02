@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useLocation, Redirect } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +68,8 @@ export default function Opportunities() {
   const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(true);
   const hasLoadedOnce = useRef(false);
   const isRefetchingRef = useRef(false);
+  // Track recently created opportunities to prevent them from being wiped during race conditions
+  const recentlyCreatedRef = useRef<Set<string>>(new Set());
 
   // Redirect trades users to quotes page
   if (!isRealEstate) {
@@ -136,7 +138,8 @@ export default function Opportunities() {
   }, [pipelines.length, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError]);
 
   // NEW: Manual data fetching - load once, then manage locally
-  const loadOpportunities = async (force = false) => {
+  // Use useCallback to memoize and prevent stale closures
+  const loadOpportunities = useCallback(async (force = false) => {
     // Prevent multiple simultaneous loads
     if (isRefetchingRef.current && !force) return;
     
@@ -147,8 +150,42 @@ export default function Opportunities() {
       const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
       const opportunities = Array.isArray(data) ? data : [];
       
-      // Update local state - this is our source of truth
-      setLocalOpportunities(opportunities);
+      // Update local state - merge with recently created opportunities that might not be in server response yet
+      setLocalOpportunities(prev => {
+        // Create a map of server opportunities by ID
+        const serverMap = new Map(opportunities.map(opp => [opp.id, opp]));
+        
+        // Keep recently created opportunities that aren't in server response yet
+        // This handles race conditions where the opportunity was just created
+        // but the database transaction hasn't committed or been reflected in the query yet
+        const recentlyCreated = prev.filter(opp => {
+          // If it's in server response, use server version
+          if (serverMap.has(opp.id)) {
+            return false; // Will be included from opportunities array
+          }
+          // Keep if it was recently created (within last 30 seconds)
+          // This prevents wiping opportunities that are still being committed
+          return recentlyCreatedRef.current.has(opp.id);
+        });
+        
+        // Combine: server data (most up-to-date) + recently created not in server
+        const serverIds = new Set(opportunities.map(o => o.id));
+        const merged = [
+          ...opportunities,
+          ...recentlyCreated.filter(opp => !serverIds.has(opp.id))
+        ];
+        
+        // Clean up old recently created refs (older than 30 seconds)
+        // We'll do this by removing IDs that are now in the server response
+        recentlyCreatedRef.current.forEach(id => {
+          if (serverIds.has(id)) {
+            recentlyCreatedRef.current.delete(id);
+          }
+        });
+        
+        return merged;
+      });
+      
       hasLoadedOnce.current = true;
     } catch (error) {
       console.error('Failed to load opportunities:', error);
@@ -161,13 +198,21 @@ export default function Opportunities() {
       setIsLoadingOpportunities(false);
       isRefetchingRef.current = false;
     }
-  };
+  }, [statusFilter, toast]);
 
-  // Load opportunities on mount and when filter changes
+  // Load opportunities on mount
   useEffect(() => {
-    if (!hasLoadedOnce.current || statusFilter !== null) {
+    if (!hasLoadedOnce.current) {
       loadOpportunities(true);
     }
+  }, [loadOpportunities]);
+
+  // Load opportunities when statusFilter changes (after initial load)
+  useEffect(() => {
+    if (hasLoadedOnce.current) {
+      loadOpportunities(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusFilter]);
 
   // Fetch tasks for each opportunity to get task counts
@@ -294,6 +339,9 @@ export default function Opportunities() {
     try {
       const verified = await apiClient.getOpportunity(createdOpportunity.id);
       if (verified) {
+        // Mark as recently created to prevent it from being wiped during race conditions
+        recentlyCreatedRef.current.add(verified.id);
+        
         // Add to local state immediately
         setLocalOpportunities(prev => {
           // Check if already exists
@@ -303,6 +351,11 @@ export default function Opportunities() {
           // Add to beginning
           return [verified, ...prev];
         });
+        
+        // Clean up the ref after 30 seconds
+        setTimeout(() => {
+          recentlyCreatedRef.current.delete(verified.id);
+        }, 30000);
         
         // Update selected opportunity
         setSelectedOpportunity({
@@ -325,12 +378,20 @@ export default function Opportunities() {
       }
     } catch (error) {
       // If verification fails, still add to local state and reload
+      // Mark as recently created to prevent it from being wiped
+      recentlyCreatedRef.current.add(createdOpportunity.id);
+      
       setLocalOpportunities(prev => {
         if (prev.some(o => o.id === createdOpportunity.id)) {
           return prev;
         }
         return [createdOpportunity, ...prev];
       });
+      
+      // Clean up the ref after 30 seconds
+      setTimeout(() => {
+        recentlyCreatedRef.current.delete(createdOpportunity.id);
+      }, 30000);
       await loadOpportunities(true);
       setSelectedOpportunity({
         ...createdOpportunity,
