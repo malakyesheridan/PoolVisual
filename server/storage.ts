@@ -1768,7 +1768,10 @@ export class PostgresStorage implements IStorage {
       if (opportunity.orgId) opportunityData.orgId = opportunity.orgId;
       if (opportunity.contactId) opportunityData.contactId = opportunity.contactId;
       if (opportunity.pipelineId) opportunityData.pipelineId = opportunity.pipelineId;
-      if (opportunity.stageId) opportunityData.stageId = opportunity.stageId;
+      // CRITICAL: Always set stageId if provided - don't skip it
+      if (opportunity.stageId) {
+        opportunityData.stageId = opportunity.stageId;
+      }
       if (opportunity.ownerId) opportunityData.ownerId = opportunity.ownerId;
       if (opportunity.value !== undefined && opportunity.value !== null) opportunityData.value = opportunity.value;
       if (opportunity.tags) opportunityData.tags = opportunity.tags;

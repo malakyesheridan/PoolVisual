@@ -309,22 +309,16 @@ export function KanbanBoard({
           grouped[stageId] = [];
         }
         grouped[stageId].push(opp);
-      } else if (stageId) {
-        // If stageId exists but doesn't match any current stage, preserve it
-        // This handles cases where stages haven't loaded yet or a stage was deleted
-        // Create a temporary group for this stageId so the opportunity stays in its assigned stage
-        if (!grouped[stageId]) {
-          grouped[stageId] = [];
-        }
-        grouped[stageId].push(opp);
       } else {
-        // Only use fallback if opportunity truly has no stageId
-        // Assign to first stage to ensure visibility
-        const fallbackStageId = stages.length > 0 ? stages[0].id : 'unassigned';
-        if (!grouped[fallbackStageId]) {
-          grouped[fallbackStageId] = [];
+        // If no stageId or stageId doesn't match any current stage, assign to first stage
+        // This ensures all opportunities are visible and prevents orphaned columns
+        const fallbackStageId = stages.length > 0 ? stages[0].id : null;
+        if (fallbackStageId) {
+          if (!grouped[fallbackStageId]) {
+            grouped[fallbackStageId] = [];
+          }
+          grouped[fallbackStageId].push(opp);
         }
-        grouped[fallbackStageId].push(opp);
       }
     });
 
@@ -406,29 +400,6 @@ export function KanbanBoard({
             onOpportunityClick={onOpportunityClick}
           />
         ))}
-        {/* Render columns for opportunities with stageIds that don't match any current stage */}
-        {Object.keys(opportunitiesByStage)
-          .filter(stageId => {
-            // Only show if it's not in sortedStages and has opportunities
-            return !sortedStages.some(s => s.id === stageId) && opportunitiesByStage[stageId].length > 0;
-          })
-          .map(stageId => {
-            // Create a temporary stage object for display
-            const tempStage: Stage = {
-              id: stageId,
-              name: 'Unassigned Stage',
-              color: '#6B7280',
-              order: 999,
-            };
-            return (
-              <StageColumn
-                key={stageId}
-                stage={tempStage}
-                opportunities={opportunitiesByStage[stageId]}
-                onOpportunityClick={onOpportunityClick}
-              />
-            );
-          })}
       </div>
 
       <DragOverlay>

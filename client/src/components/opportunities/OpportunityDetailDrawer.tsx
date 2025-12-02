@@ -251,11 +251,12 @@ export function OpportunityDetailDrawer({
         return;
       }
       
-      // Ensure we have a stageId - use editedStageId, or first stage, or wait for stages to load
+      // CRITICAL: Always assign a stageId - use editedStageId or default to first stage
+      // This ensures opportunities are always properly assigned and visible
       const defaultStage = stages.find(s => s.id === editedStageId) || stages[0];
       const finalStageId = editedStageId || defaultStage?.id;
       
-      if (!finalStageId && stages.length === 0) {
+      if (!finalStageId) {
         toast({
           title: 'Error',
           description: 'Please wait for stages to load before creating an opportunity',
@@ -264,12 +265,13 @@ export function OpportunityDetailDrawer({
         return;
       }
       
+      // Ensure stageId is always set - this is critical for proper display
       createOpportunityMutation.mutate({
         title: editedTitle.trim(),
         clientName: editedTitle.trim(),
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
-        stageId: finalStageId,
+        stageId: finalStageId, // ALWAYS set stageId
         pipelineStage: defaultStage?.name || 'new',
         tags: editedTags,
       });
