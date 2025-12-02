@@ -199,12 +199,20 @@ export function OpportunityDetailDrawer({
   };
 
   const createTaskMutation = useMutation({
-    mutationFn: (data: { title: string; dueDate?: string }) =>
-      apiClient.createOpportunityTask(opportunity!.id, data),
-    onSuccess: () => {
-      refetchTasks();
+    mutationFn: (data: { title: string; dueDate?: string }) => {
+      if (!opportunity?.id) {
+        throw new Error('Opportunity ID is required');
+      }
+      return apiClient.createOpportunityTask(opportunity.id, data);
+    },
+    onSuccess: async () => {
+      // Clear inputs immediately
       setNewTaskTitle('');
       setNewTaskDueDate('');
+      // Refetch tasks
+      await refetchTasks();
+      // Also invalidate the query cache
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'tasks'] });
       toast({ title: 'Task created', description: 'New task added successfully.' });
     },
     onError: (error: any) => {
@@ -217,10 +225,14 @@ export function OpportunityDetailDrawer({
   });
 
   const updateTaskMutation = useMutation({
-    mutationFn: ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) =>
-      apiClient.updateOpportunityTask(taskId, updates),
-    onSuccess: () => {
-      refetchTasks();
+    mutationFn: ({ taskId, updates }: { taskId: string; updates: Partial<Task> }) => {
+      return apiClient.updateOpportunityTask(taskId, updates);
+    },
+    onSuccess: async () => {
+      // Refetch tasks
+      await refetchTasks();
+      // Also invalidate the query cache
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'tasks'] });
       toast({ title: 'Task updated', description: 'Task status updated.' });
     },
     onError: (error: any) => {
@@ -239,8 +251,13 @@ export function OpportunityDetailDrawer({
       }
       return apiClient.createOpportunityNote(opportunity.id, noteText);
     },
-    onSuccess: () => {
-      refetchNotes();
+    onSuccess: async () => {
+      // Clear the input immediately
+      setNewNoteText('');
+      // Refetch notes
+      await refetchNotes();
+      // Also invalidate the query cache to ensure fresh data
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities', opportunity?.id, 'notes'] });
       toast({ title: 'Note added', description: 'Note saved successfully.' });
     },
     onError: (error: any) => {
@@ -282,13 +299,23 @@ export function OpportunityDetailDrawer({
 
   const handleToggleTask = (task: Task) => {
     const newStatus = task.status === 'pending' ? 'completed' : 'pending';
+    const updates: any = {
+      status: newStatus,
+    };
+    
+    // Only set completedAt and completedBy when completing
+    if (newStatus === 'completed') {
+      updates.completedAt = new Date().toISOString();
+      updates.completedBy = user?.id;
+    } else {
+      // When uncompleting, clear these fields
+      updates.completedAt = null;
+      updates.completedBy = null;
+    }
+    
     updateTaskMutation.mutate({
       taskId: task.id,
-      updates: {
-        status: newStatus,
-        completedAt: newStatus === 'completed' ? new Date().toISOString() : undefined,
-        completedBy: newStatus === 'completed' ? user?.id : undefined,
-      },
+      updates,
     });
   };
 
@@ -512,20 +539,21 @@ export function OpportunityDetailDrawer({
             {pendingTasks.length > 0 && (
               <div className="space-y-2 mb-4">
                 {pendingTasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                  <div key={task.id} className="flex items-start gap-3 p-3 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors border border-slate-200">
                     <input
                       type="checkbox"
-                      checked={false}
+                      checked={task.status === 'completed'}
                       onChange={() => handleToggleTask(task)}
-                      className="w-4 h-4"
+                      className="w-4 h-4 mt-1 cursor-pointer accent-primary"
+                      disabled={updateTaskMutation.isPending}
                     />
                     <div className="flex-1">
-                      <div className="font-medium">{task.title}</div>
+                      <div className="font-medium text-slate-900">{task.title}</div>
                       {task.description && (
-                        <div className="text-sm text-slate-500">{task.description}</div>
+                        <div className="text-sm text-slate-600 mt-1">{task.description}</div>
                       )}
                       {task.dueDate && (
-                        <div className="text-xs text-slate-400 flex items-center gap-1 mt-1">
+                        <div className="text-xs text-slate-500 flex items-center gap-1 mt-2">
                           <Calendar className="w-3 h-3" />
                           Due: {format(new Date(task.dueDate), 'MMM d, yyyy')}
                         </div>
@@ -538,20 +566,27 @@ export function OpportunityDetailDrawer({
 
             {/* Completed tasks */}
             {completedTasks.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-slate-500">Completed</h4>
+              <div className="space-y-2 mt-4 pt-4 border-t border-slate-200">
+                <h4 className="text-sm font-medium text-slate-500 mb-2">Completed ({completedTasks.length})</h4>
                 {completedTasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg opacity-60">
+                  <div key={task.id} className="flex items-start gap-3 p-3 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg transition-colors border border-emerald-100">
                     <input
                       type="checkbox"
-                      checked={true}
+                      checked={task.status === 'completed'}
                       onChange={() => handleToggleTask(task)}
-                      className="w-4 h-4"
+                      className="w-4 h-4 mt-1 cursor-pointer accent-emerald-600"
+                      disabled={updateTaskMutation.isPending}
                     />
-                    <div className="flex-1 line-through">
-                      <div className="font-medium">{task.title}</div>
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-700 line-through">{task.title}</div>
                       {task.description && (
-                        <div className="text-sm text-slate-500">{task.description}</div>
+                        <div className="text-sm text-slate-500 line-through mt-1">{task.description}</div>
+                      )}
+                      {task.completedAt && (
+                        <div className="text-xs text-emerald-600 flex items-center gap-1 mt-2">
+                          <CheckCircle className="w-3 h-3" />
+                          Completed {format(new Date(task.completedAt), 'MMM d, yyyy')}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -594,7 +629,6 @@ export function OpportunityDetailDrawer({
                   }
                   if (newNoteText.trim()) {
                     createNoteMutation.mutate(newNoteText.trim());
-                    setNewNoteText('');
                   }
                 }}
                 disabled={!newNoteText.trim() || createNoteMutation.isPending || !opportunity?.id}
@@ -603,19 +637,32 @@ export function OpportunityDetailDrawer({
               </Button>
             </div>
 
-            <div className="space-y-2">
-              {notes.map((note: any) => (
-                <div key={note.id} className="p-3 bg-slate-50 rounded-lg">
-                  <div className="text-sm">{note.noteText}</div>
-                  <div className="text-xs text-slate-400 mt-1">
-                    {format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}
-                  </div>
-                </div>
-              ))}
-              {notes.length === 0 && (
-                <div className="text-center py-4 text-slate-400 text-sm">
+            <div className="space-y-3">
+              {notes.length === 0 ? (
+                <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border border-slate-200">
                   No notes yet. Add your first note above.
                 </div>
+              ) : (
+                notes.map((note: any) => (
+                  <div key={note.id} className="p-4 bg-white rounded-lg border border-slate-200 hover:border-slate-300 transition-colors shadow-sm">
+                    <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap">
+                      {note.noteText}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
+                      <span>{format(new Date(note.createdAt), 'MMM d, yyyy')}</span>
+                      <span>•</span>
+                      <span>{format(new Date(note.createdAt), 'h:mm a')}</span>
+                      {note.noteType && note.noteType !== 'general' && (
+                        <>
+                          <span>•</span>
+                          <Badge variant="outline" className="text-xs">
+                            {note.noteType}
+                          </Badge>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ))
               )}
             </div>
           </div>

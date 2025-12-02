@@ -994,13 +994,12 @@ class ApiClient {
   }
 
   async updateOpportunityTask(id: string, data: any) {
-    // Map status to completed boolean for backend
+    // The backend route expects status as a string, not completed boolean
     const updates: any = { ...data };
-    if (data.status) {
-      updates.completed = data.status === 'completed';
-      delete updates.status;
-    }
-    if (data.title) {
+    
+    // Keep status as-is (backend handles it)
+    // Map title to taskText only if title exists and taskText doesn't
+    if (data.title && !data.taskText) {
       updates.taskText = data.title;
       delete updates.title;
     }
