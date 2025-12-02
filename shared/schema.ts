@@ -388,18 +388,66 @@ export const propertyNotes = pgTable("property_notes", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Contacts (for real estate CRM)
+export const contacts = pgTable("contacts", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  email: text("email"),
+  phone: text("phone"),
+  company: text("company"),
+  address: text("address"),
+  notes: text("notes"),
+  tags: text("tags").array().default(sql`'{}'::text[]`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Pipelines (for real estate CRM)
+export const pipelines = pgTable("pipelines", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id),
+  name: text("name").notNull(),
+  isDefault: boolean("is_default").default(false).notNull(),
+  stageOrder: text("stage_order").array().default(sql`'{}'::text[]`), // Array of stage IDs in order
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Pipeline Stages
+export const pipelineStages = pgTable("pipeline_stages", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  pipelineId: uuid("pipeline_id").references(() => pipelines.id).notNull(),
+  name: text("name").notNull(),
+  order: integer("order").default(0).notNull(),
+  color: text("color").default("#6B7280"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 // Opportunities (for real estate CRM)
 export const opportunities = pgTable("opportunities", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: uuid("user_id").references(() => users.id).notNull(),
   orgId: uuid("org_id").references(() => orgs.id),
-  clientName: text("client_name").notNull(),
+  title: text("title").notNull(), // e.g. "123 Main St Renovation"
+  contactId: uuid("contact_id").references(() => contacts.id), // Foreign key to Contact
+  pipelineId: uuid("pipeline_id").references(() => pipelines.id),
+  stageId: uuid("stage_id").references(() => pipelineStages.id),
+  status: text("status").default("open").notNull(), // 'open' | 'won' | 'lost' | 'abandoned'
+  value: numeric("value", { precision: 12, scale: 2 }), // potential revenue (renamed from estimatedValue)
+  ownerId: uuid("owner_id").references(() => users.id), // assigned user
+  tags: text("tags").array().default(sql`'{}'::text[]`),
+  // Legacy fields (keep for backward compatibility)
+  clientName: text("client_name"),
   clientPhone: text("client_phone"),
   clientEmail: text("client_email"),
   propertyAddress: text("property_address"),
   propertyJobId: uuid("property_job_id").references(() => jobs.id),
-  status: text("status").default("new").notNull(),
-  pipelineStage: text("pipeline_stage").default("new"),
+  pipelineStage: text("pipeline_stage").default("new"), // Legacy field
   estimatedValue: numeric("estimated_value", { precision: 12, scale: 2 }),
   probabilityPct: integer("probability_pct").default(0),
   expectedCloseDate: timestamp("expected_close_date"),
@@ -411,22 +459,26 @@ export const opportunities = pgTable("opportunities", {
   createdBy: uuid("created_by").references(() => users.id).notNull(),
 });
 
-// Opportunity follow-ups
-export const opportunityFollowups = pgTable("opportunity_followups", {
+// Opportunity Tasks (renamed from follow-ups for clarity)
+export const opportunityTasks = pgTable("opportunity_tasks", {
   id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
   opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
-  taskText: text("task_text").notNull(),
+  title: text("title").notNull(), // Task title
+  description: text("description"), // Optional description
+  status: text("status").default("pending").notNull(), // 'pending' | 'completed'
   dueDate: timestamp("due_date"),
-  completed: boolean("completed").default(false).notNull(),
   completedAt: timestamp("completed_at"),
   completedBy: uuid("completed_by").references(() => users.id),
-  assignedTo: uuid("assigned_to").references(() => users.id),
+  assigneeId: uuid("assignee_id").references(() => users.id), // Renamed from assignedTo
   taskOrder: integer("task_order").default(0),
   isRecurring: boolean("is_recurring").default(false),
   recurrencePattern: text("recurrence_pattern"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Legacy table name alias (for backward compatibility)
+export const opportunityFollowups = opportunityTasks;
 
 // Opportunity notes
 export const opportunityNotes = pgTable("opportunity_notes", {
@@ -524,6 +576,24 @@ export const insertOpportunityActivitySchema = createInsertSchema(opportunityAct
 export const insertOpportunityDocumentSchema = createInsertSchema(opportunityDocuments).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertContactSchema = createInsertSchema(contacts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPipelineSchema = createInsertSchema(pipelines).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertPipelineStageSchema = createInsertSchema(pipelineStages).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertMaterialSchema = createInsertSchema(materials).omit({ 
@@ -855,6 +925,14 @@ export type OpportunityActivity = typeof opportunityActivities.$inferSelect;
 export type InsertOpportunityActivity = z.infer<typeof insertOpportunityActivitySchema>;
 export type OpportunityDocument = typeof opportunityDocuments.$inferSelect;
 export type InsertOpportunityDocument = z.infer<typeof insertOpportunityDocumentSchema>;
+export type OpportunityTask = typeof opportunityTasks.$inferSelect;
+export type InsertOpportunityTask = typeof opportunityTasks.$inferInsert;
+export type Contact = typeof contacts.$inferSelect;
+export type InsertContact = typeof contacts.$inferInsert;
+export type Pipeline = typeof pipelines.$inferSelect;
+export type InsertPipeline = typeof pipelines.$inferInsert;
+export type PipelineStage = typeof pipelineStages.$inferSelect;
+export type InsertPipelineStage = typeof pipelineStages.$inferInsert;
 
 // Calibration metadata schema
 export const CalibrationMetaSchema = z.object({

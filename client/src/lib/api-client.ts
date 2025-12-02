@@ -972,33 +972,86 @@ class ApiClient {
     return this.request<Record<string, any[]>>(`/opportunities/pipeline`);
   }
 
-  // Opportunity Follow-ups
+  // Opportunity Tasks (new name for follow-ups)
+  // Note: These map to the followups endpoints until backend is updated
+  async getOpportunityTasks(opportunityId: string) {
+    return this.request<any[]>(`/opportunities/${opportunityId}/followups`).then(tasks => 
+      tasks.map((task: any) => ({
+        ...task,
+        title: task.title || task.taskText,
+        status: task.status || (task.completed ? 'completed' : 'pending'),
+      }))
+    );
+  }
+
+  async createOpportunityTask(opportunityId: string, data: { title: string; description?: string; dueDate?: string }) {
+    return this.request(`/opportunities/${opportunityId}/followups`, {
+      method: 'POST',
+      body: JSON.stringify({
+        taskText: data.title, // Map title to taskText for backend
+        dueDate: data.dueDate,
+      }),
+    }).then((task: any) => ({
+      ...task,
+      title: task.title || task.taskText,
+      status: task.status || (task.completed ? 'completed' : 'pending'),
+    }));
+  }
+
+  async updateOpportunityTask(id: string, data: any) {
+    // Map status to completed boolean for backend
+    const updates: any = { ...data };
+    if (data.status) {
+      updates.completed = data.status === 'completed';
+      delete updates.status;
+    }
+    if (data.title) {
+      updates.taskText = data.title;
+      delete updates.title;
+    }
+    
+    return this.request(`/followups/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    }).then((task: any) => ({
+      ...task,
+      title: task.title || task.taskText,
+      status: task.status || (task.completed ? 'completed' : 'pending'),
+    }));
+  }
+
+  async deleteOpportunityTask(id: string) {
+    return this.request(`/followups/${id}`, { method: 'DELETE' });
+  }
+
+  // Opportunity Follow-ups (legacy - aliases for tasks)
   async getOpportunityFollowups(opportunityId: string) {
-    return this.request<any[]>(`/opportunities/${opportunityId}/followups`);
+    return this.getOpportunityTasks(opportunityId);
   }
 
   async createOpportunityFollowup(opportunityId: string, data: any) {
-    return this.request(`/opportunities/${opportunityId}/followups`, {
-      method: 'POST',
-      body: JSON.stringify(data),
+    return this.createOpportunityTask(opportunityId, {
+      title: data.taskText || data.title,
+      description: data.description,
+      dueDate: data.dueDate,
     });
   }
 
   async updateOpportunityFollowup(id: string, data: any) {
-    return this.request(`/followups/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
+    return this.updateOpportunityTask(id, {
+      title: data.taskText || data.title,
+      description: data.description,
+      status: data.completed ? 'completed' : 'pending',
+      dueDate: data.dueDate,
     });
   }
 
   async completeOpportunityFollowup(id: string) {
-    return this.request(`/followups/${id}/complete`, {
-      method: 'PUT',
-    });
+    return this.updateOpportunityTask(id, { status: 'completed' });
   }
 
   async deleteOpportunityFollowup(id: string) {
-    return this.request(`/followups/${id}`, { method: 'DELETE' });
+    return this.deleteOpportunityTask(id);
   }
 
   // Opportunity Notes
@@ -1022,6 +1075,67 @@ class ApiClient {
 
   async deleteOpportunityNote(noteId: string) {
     return this.request(`/opportunity-notes/${noteId}`, { method: 'DELETE' });
+  }
+
+  // Contacts
+  async getContacts() {
+    return this.request<any[]>('/contacts');
+  }
+
+  async createContact(data: any) {
+    return this.request('/contacts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateContact(id: string, data: any) {
+    return this.request(`/contacts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteContact(id: string) {
+    return this.request(`/contacts/${id}`, { method: 'DELETE' });
+  }
+
+  // Pipelines
+  async getPipelines() {
+    return this.request<any[]>('/pipelines');
+  }
+
+  async createPipeline(data: any) {
+    return this.request('/pipelines', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePipeline(id: string, data: any) {
+    return this.request(`/pipelines/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Pipeline Stages
+  async getPipelineStages(pipelineId: string) {
+    return this.request<any[]>(`/pipelines/${pipelineId}/stages`);
+  }
+
+  async createPipelineStage(pipelineId: string, data: any) {
+    return this.request(`/pipelines/${pipelineId}/stages`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePipelineStage(id: string, data: any) {
+    return this.request(`/pipeline-stages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
   }
 
   // Opportunity Activities

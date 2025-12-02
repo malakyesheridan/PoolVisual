@@ -3153,6 +3153,311 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.status(500).json({ message: (error as Error).message });
     }
   });
+
+  // Tasks endpoints (alias for followups until migration is complete)
+  app.get("/api/opportunities/:id/tasks", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const opportunity = await storage.getOpportunity(opportunityId);
+      
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const followups = await storage.getOpportunityFollowups(opportunityId);
+      // Map followups to tasks format
+      const tasks = followups.map((f: any) => ({
+        ...f,
+        title: f.title || f.taskText,
+        status: f.status || (f.completed ? 'completed' : 'pending'),
+      }));
+      res.json(tasks);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/opportunities/:id/tasks", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const opportunityId = req.params.id;
+      const { title, description, dueDate } = req.body;
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({ message: "Task title is required" });
+      }
+
+      const opportunity = await storage.getOpportunity(opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const followup = await storage.createOpportunityFollowup({
+        opportunityId,
+        taskText: title.trim(),
+        dueDate: dueDate ? new Date(dueDate) : null,
+      });
+      
+      // Map to task format
+      res.json({
+        ...followup,
+        title: followup.title || followup.taskText,
+        status: followup.status || (followup.completed ? 'completed' : 'pending'),
+      });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/opportunity-tasks/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const taskId = req.params.id;
+      const updates: any = { ...req.body };
+      
+      // Map task format to followup format
+      if (updates.status) {
+        updates.completed = updates.status === 'completed';
+        delete updates.status;
+      }
+      if (updates.title) {
+        updates.taskText = updates.title;
+        delete updates.title;
+      }
+      
+      const followup = await storage.updateOpportunityFollowup(taskId, updates);
+      
+      // Map to task format
+      res.json({
+        ...followup,
+        title: followup.title || followup.taskText,
+        status: followup.status || (followup.completed ? 'completed' : 'pending'),
+      });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/opportunity-tasks/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const taskId = req.params.id;
+      await storage.deleteOpportunityFollowup(taskId);
+      res.json({ message: "Task deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Contacts endpoints
+  app.get("/api/contacts", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const contacts = await storage.getContacts(req.user.id);
+      res.json(contacts);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/contacts", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { firstName, lastName, email, phone, company, address, notes, tags } = req.body;
+
+      if (!firstName || !lastName) {
+        return res.status(400).json({ message: "First name and last name are required" });
+      }
+
+      const contact = await storage.createContact({
+        userId: req.user.id,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email?.trim(),
+        phone: phone?.trim(),
+        company: company?.trim(),
+        address: address?.trim(),
+        notes: notes?.trim(),
+        tags: tags || [],
+      });
+      res.json(contact);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/contacts/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const contactId = req.params.id;
+      const contact = await storage.getContact(contactId);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      if (contact.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updated = await storage.updateContact(contactId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.delete("/api/contacts/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const contactId = req.params.id;
+      const contact = await storage.getContact(contactId);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      if (contact.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deleteContact(contactId);
+      res.json({ message: "Contact deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Pipelines endpoints
+  app.get("/api/pipelines", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const pipelines = await storage.getPipelines(req.user.id);
+      res.json(pipelines);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/pipelines", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { name, isDefault, orgId } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ message: "Pipeline name is required" });
+      }
+
+      // If setting as default, unset other defaults for this user
+      if (isDefault) {
+        const existingPipelines = await storage.getPipelines(req.user.id);
+        for (const pipeline of existingPipelines) {
+          if (pipeline.isDefault) {
+            await storage.updatePipeline(pipeline.id, { isDefault: false });
+          }
+        }
+      }
+
+      const pipeline = await storage.createPipeline({
+        userId: req.user.id,
+        orgId: orgId || null,
+        name: name.trim(),
+        isDefault: isDefault || false,
+        stageOrder: [],
+      });
+      res.json(pipeline);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/pipelines/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const pipelineId = req.params.id;
+      const pipeline = await storage.getPipeline(pipelineId);
+      
+      if (!pipeline) {
+        return res.status(404).json({ message: "Pipeline not found" });
+      }
+
+      if (pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // If setting as default, unset other defaults
+      if (req.body.isDefault) {
+        const existingPipelines = await storage.getPipelines(req.user.id);
+        for (const p of existingPipelines) {
+          if (p.isDefault && p.id !== pipelineId) {
+            await storage.updatePipeline(p.id, { isDefault: false });
+          }
+        }
+      }
+
+      const updated = await storage.updatePipeline(pipelineId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.get("/api/pipelines/:id/stages", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const pipelineId = req.params.id;
+      const pipeline = await storage.getPipeline(pipelineId);
+      
+      if (!pipeline) {
+        return res.status(404).json({ message: "Pipeline not found" });
+      }
+
+      if (pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const stages = await storage.getPipelineStages(pipelineId);
+      res.json(stages);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/pipelines/:id/stages", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const pipelineId = req.params.id;
+      const { name, order, color } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ message: "Stage name is required" });
+      }
+
+      const pipeline = await storage.getPipeline(pipelineId);
+      if (!pipeline || pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const stage = await storage.createPipelineStage({
+        pipelineId,
+        name: name.trim(),
+        order: order !== undefined ? order : 0,
+        color: color || '#6B7280',
+      });
+      res.json(stage);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/pipeline-stages/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const stageId = req.params.id;
+      const stage = await storage.getPipelineStage(stageId);
+      
+      if (!stage) {
+        return res.status(404).json({ message: "Pipeline stage not found" });
+      }
+
+      const pipeline = await storage.getPipeline(stage.pipelineId);
+      if (!pipeline || pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updated = await storage.updatePipelineStage(stageId, req.body);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
   
   console.log('✅ Routes registered successfully');
 }

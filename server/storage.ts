@@ -42,6 +42,14 @@ import {
   InsertOpportunityActivity,
   OpportunityDocument,
   InsertOpportunityDocument,
+  Contact,
+  InsertContact,
+  Pipeline,
+  InsertPipeline,
+  PipelineStage,
+  InsertPipelineStage,
+  OpportunityTask,
+  InsertOpportunityTask,
   users,
   orgs,
   orgMembers,
@@ -61,9 +69,13 @@ import {
   propertyNotes,
   opportunities,
   opportunityFollowups,
+  opportunityTasks,
   opportunityNotes,
   opportunityActivities,
   opportunityDocuments,
+  contacts,
+  pipelines,
+  pipelineStages,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -180,6 +192,25 @@ export interface IStorage {
   getOpportunityDocuments(opportunityId: string): Promise<any[]>;
   createOpportunityDocument(data: any): Promise<any>;
   deleteOpportunityDocument(id: string): Promise<void>;
+  
+  // Contacts
+  getContacts(userId: string): Promise<any[]>;
+  getContact(id: string): Promise<any | undefined>;
+  createContact(data: any): Promise<any>;
+  updateContact(id: string, updates: any): Promise<any>;
+  deleteContact(id: string): Promise<void>;
+  
+  // Pipelines
+  getPipelines(userId: string): Promise<any[]>;
+  getPipeline(id: string): Promise<any | undefined>;
+  createPipeline(data: any): Promise<any>;
+  updatePipeline(id: string, updates: any): Promise<any>;
+  
+  // Pipeline Stages
+  getPipelineStages(pipelineId: string): Promise<any[]>;
+  getPipelineStage(id: string): Promise<any | undefined>;
+  createPipelineStage(data: any): Promise<any>;
+  updatePipelineStage(id: string, updates: any): Promise<any>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -1799,17 +1830,18 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  // Opportunity Follow-ups
+  // Opportunity Follow-ups (uses opportunityTasks table - opportunityFollowups is an alias)
   async getOpportunityFollowups(opportunityId: string): Promise<OpportunityFollowup[]> {
     try {
+      // Use opportunityTasks (opportunityFollowups is an alias to the same table)
       return await ensureDb()
         .select()
-        .from(opportunityFollowups)
-        .where(eq(opportunityFollowups.opportunityId, opportunityId))
-        .orderBy(asc(opportunityFollowups.taskOrder), asc(opportunityFollowups.dueDate));
+        .from(opportunityTasks)
+        .where(eq(opportunityTasks.opportunityId, opportunityId))
+        .orderBy(asc(opportunityTasks.taskOrder), asc(opportunityTasks.dueDate));
     } catch (error: any) {
-      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
-        console.warn('[getOpportunityFollowups] opportunity_follow_ups table not found, returning empty array');
+      if (error?.message?.includes('opportunity_tasks') || error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        console.warn('[getOpportunityFollowups] opportunity tasks table not found, returning empty array');
         return [];
       }
       throw error;
@@ -1818,18 +1850,32 @@ export class PostgresStorage implements IStorage {
 
   async createOpportunityFollowup(data: InsertOpportunityFollowup): Promise<OpportunityFollowup> {
     try {
-      const [followup] = await ensureDb()
-        .insert(opportunityFollowups)
+      // Map old schema fields to new schema
+      const insertData: any = { ...data };
+      if (data.taskText && !data.title) {
+        insertData.title = data.taskText;
+        delete insertData.taskText;
+      }
+      if (data.completed !== undefined && !data.status) {
+        insertData.status = data.completed ? 'completed' : 'pending';
+      }
+      if (data.assignedTo && !data.assigneeId) {
+        insertData.assigneeId = data.assignedTo;
+      }
+
+      // Use opportunityTasks (opportunityFollowups is an alias to the same table)
+      const [task] = await ensureDb()
+        .insert(opportunityTasks)
         .values({
-          ...data,
+          ...insertData,
           updatedAt: new Date(),
         })
         .returning();
-      if (!followup) throw new Error("Failed to create opportunity follow-up");
-      return followup;
+      if (!task) throw new Error("Failed to create opportunity task");
+      return task as any;
     } catch (error: any) {
-      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
-        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      if (error?.message?.includes('opportunity_tasks') || error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity tasks feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
       }
       throw error;
     }
@@ -1837,16 +1883,30 @@ export class PostgresStorage implements IStorage {
 
   async updateOpportunityFollowup(id: string, updates: Partial<OpportunityFollowup>): Promise<OpportunityFollowup> {
     try {
-      const [followup] = await ensureDb()
-        .update(opportunityFollowups)
-        .set({ ...updates, updatedAt: new Date() })
-        .where(eq(opportunityFollowups.id, id))
+      // Map old schema fields to new schema
+      const updateData: any = { ...updates };
+      if (updates.taskText && !updates.title) {
+        updateData.title = updates.taskText;
+        delete updateData.taskText;
+      }
+      if (updates.completed !== undefined && !updates.status) {
+        updateData.status = updates.completed ? 'completed' : 'pending';
+      }
+      if (updates.assignedTo && !updates.assigneeId) {
+        updateData.assigneeId = updates.assignedTo;
+      }
+
+      // Use opportunityTasks (opportunityFollowups is an alias to the same table)
+      const [task] = await ensureDb()
+        .update(opportunityTasks)
+        .set({ ...updateData, updatedAt: new Date() })
+        .where(eq(opportunityTasks.id, id))
         .returning();
-      if (!followup) throw new Error("Failed to update opportunity follow-up");
-      return followup;
+      if (!task) throw new Error("Failed to update opportunity task");
+      return task as any;
     } catch (error: any) {
-      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
-        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      if (error?.message?.includes('opportunity_tasks') || error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity tasks feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
       }
       throw error;
     }
@@ -1854,12 +1914,13 @@ export class PostgresStorage implements IStorage {
 
   async deleteOpportunityFollowup(id: string): Promise<void> {
     try {
+      // Use opportunityTasks (opportunityFollowups is an alias to the same table)
       await ensureDb()
-        .delete(opportunityFollowups)
-        .where(eq(opportunityFollowups.id, id));
+        .delete(opportunityTasks)
+        .where(eq(opportunityTasks.id, id));
     } catch (error: any) {
-      if (error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
-        throw new Error("Opportunity follow-ups feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      if (error?.message?.includes('opportunity_tasks') || error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        throw new Error("Opportunity tasks feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
       }
       throw error;
     }
@@ -2005,6 +2066,226 @@ export class PostgresStorage implements IStorage {
     } catch (error: any) {
       if (error?.message?.includes('opportunity_documents') || error?.code === '42P01') {
         throw new Error("Opportunity documents feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
+      }
+      throw error;
+    }
+  }
+
+  // Contacts methods
+  async getContacts(userId: string): Promise<Contact[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(contacts)
+        .where(eq(contacts.userId, userId))
+        .orderBy(desc(contacts.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('contacts') || error?.code === '42P01') {
+        console.warn('[getContacts] contacts table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getContact(id: string): Promise<Contact | undefined> {
+    try {
+      const [contact] = await ensureDb()
+        .select()
+        .from(contacts)
+        .where(eq(contacts.id, id))
+        .limit(1);
+      return contact;
+    } catch (error: any) {
+      if (error?.message?.includes('contacts') || error?.code === '42P01') {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async createContact(data: InsertContact): Promise<Contact> {
+    try {
+      const [contact] = await ensureDb()
+        .insert(contacts)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!contact) throw new Error("Failed to create contact");
+      return contact;
+    } catch (error: any) {
+      if (error?.message?.includes('contacts') || error?.code === '42P01') {
+        throw new Error("Contacts feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async updateContact(id: string, updates: Partial<Contact>): Promise<Contact> {
+    try {
+      const [updated] = await ensureDb()
+        .update(contacts)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(contacts.id, id))
+        .returning();
+      if (!updated) throw new Error("Failed to update contact");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('contacts') || error?.code === '42P01') {
+        throw new Error("Contacts feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async deleteContact(id: string): Promise<void> {
+    try {
+      await ensureDb()
+        .delete(contacts)
+        .where(eq(contacts.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('contacts') || error?.code === '42P01') {
+        throw new Error("Contacts feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  // Pipelines methods
+  async getPipelines(userId: string): Promise<Pipeline[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(pipelines)
+        .where(eq(pipelines.userId, userId))
+        .orderBy(desc(pipelines.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('pipelines') || error?.code === '42P01') {
+        console.warn('[getPipelines] pipelines table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getPipeline(id: string): Promise<Pipeline | undefined> {
+    try {
+      const [pipeline] = await ensureDb()
+        .select()
+        .from(pipelines)
+        .where(eq(pipelines.id, id))
+        .limit(1);
+      return pipeline;
+    } catch (error: any) {
+      if (error?.message?.includes('pipelines') || error?.code === '42P01') {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async createPipeline(data: InsertPipeline): Promise<Pipeline> {
+    try {
+      const [pipeline] = await ensureDb()
+        .insert(pipelines)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!pipeline) throw new Error("Failed to create pipeline");
+      return pipeline;
+    } catch (error: any) {
+      if (error?.message?.includes('pipelines') || error?.code === '42P01') {
+        throw new Error("Pipelines feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async updatePipeline(id: string, updates: Partial<Pipeline>): Promise<Pipeline> {
+    try {
+      const [updated] = await ensureDb()
+        .update(pipelines)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(pipelines.id, id))
+        .returning();
+      if (!updated) throw new Error("Failed to update pipeline");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('pipelines') || error?.code === '42P01') {
+        throw new Error("Pipelines feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  // Pipeline Stages methods
+  async getPipelineStages(pipelineId: string): Promise<PipelineStage[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(pipelineStages)
+        .where(eq(pipelineStages.pipelineId, pipelineId))
+        .orderBy(asc(pipelineStages.order));
+    } catch (error: any) {
+      if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
+        console.warn('[getPipelineStages] pipeline_stages table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getPipelineStage(id: string): Promise<PipelineStage | undefined> {
+    try {
+      const [stage] = await ensureDb()
+        .select()
+        .from(pipelineStages)
+        .where(eq(pipelineStages.id, id))
+        .limit(1);
+      return stage;
+    } catch (error: any) {
+      if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async createPipelineStage(data: InsertPipelineStage): Promise<PipelineStage> {
+    try {
+      const [stage] = await ensureDb()
+        .insert(pipelineStages)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!stage) throw new Error("Failed to create pipeline stage");
+      return stage;
+    } catch (error: any) {
+      if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
+        throw new Error("Pipeline stages feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async updatePipelineStage(id: string, updates: Partial<PipelineStage>): Promise<PipelineStage> {
+    try {
+      const [updated] = await ensureDb()
+        .update(pipelineStages)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(pipelineStages.id, id))
+        .returning();
+      if (!updated) throw new Error("Failed to update pipeline stage");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
+        throw new Error("Pipeline stages feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
       }
       throw error;
     }
