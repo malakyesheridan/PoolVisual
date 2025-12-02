@@ -71,6 +71,8 @@ interface OpportunityDetailDrawerProps {
   onClose: () => void;
   stages: Array<{ id: string; name: string }>;
   onUpdate: () => void;
+  onOpportunityCreated?: (opportunity: Opportunity) => void;
+  currentStatusFilter?: string | null;
 }
 
 export function OpportunityDetailDrawer({

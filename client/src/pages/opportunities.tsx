@@ -233,11 +233,9 @@ export default function Opportunities() {
     setSelectedOpportunity(null);
   };
 
-  const handleUpdate = async () => {
-    // Invalidate all opportunity queries to refetch
-    await queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
-    // Refetch opportunities to get the latest data
-    await queryClient.refetchQueries({ queryKey: ['/api/opportunities'], exact: false });
+  const handleUpdate = () => {
+    // REDESIGNED: Only invalidate when explicitly needed (e.g., after updates, not after creation)
+    queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
   };
 
   const handleOpportunityCreated = (createdOpportunity: Opportunity) => {
