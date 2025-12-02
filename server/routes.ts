@@ -2789,11 +2789,37 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const filters: any = {};
-      if (req.query.status) filters.status = req.query.status;
+      if (req.query.status) {
+        // Map frontend status values to database values
+        const statusMap: Record<string, string> = {
+          'open': 'new',
+          'won': 'closed_won',
+          'lost': 'closed_lost',
+          'abandoned': 'closed_lost',
+        };
+        filters.status = statusMap[req.query.status as string] || req.query.status;
+      }
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
 
       const opportunities = await storage.getOpportunities(req.user.id, filters);
-      res.json(opportunities);
+      
+      // Map database status values back to frontend values
+      const reverseStatusMap: Record<string, string> = {
+        'new': 'open',
+        'contacted': 'open',
+        'qualified': 'open',
+        'viewing': 'open',
+        'offer': 'open',
+        'closed_won': 'won',
+        'closed_lost': 'lost',
+      };
+      
+      const mappedOpportunities = opportunities.map((opp: any) => ({
+        ...opp,
+        status: reverseStatusMap[opp.status] || opp.status,
+      }));
+      
+      res.json(mappedOpportunities);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -2813,7 +2839,23 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      res.json(opportunity);
+      // Map database status values back to frontend values
+      const reverseStatusMap: Record<string, string> = {
+        'new': 'open',
+        'contacted': 'open',
+        'qualified': 'open',
+        'viewing': 'open',
+        'offer': 'open',
+        'closed_won': 'won',
+        'closed_lost': 'lost',
+      };
+      
+      const mappedOpportunity = {
+        ...opportunity,
+        status: reverseStatusMap[opportunity.status] || opportunity.status,
+      };
+
+      res.json(mappedOpportunity);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -2884,7 +2926,24 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (tags) opportunityData.tags = tags;
 
       const opportunity = await storage.createOpportunity(opportunityData);
-      res.json(opportunity);
+      
+      // Map database status values back to frontend values
+      const reverseStatusMap: Record<string, string> = {
+        'new': 'open',
+        'contacted': 'open',
+        'qualified': 'open',
+        'viewing': 'open',
+        'offer': 'open',
+        'closed_won': 'won',
+        'closed_lost': 'lost',
+      };
+      
+      const mappedOpportunity = {
+        ...opportunity,
+        status: reverseStatusMap[opportunity.status] || opportunity.status,
+      };
+      
+      res.json(mappedOpportunity);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -3178,9 +3237,26 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/opportunities/pipeline", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const opportunities = await storage.getOpportunities(req.user.id);
+      
+      // Map database status values back to frontend values
+      const reverseStatusMap: Record<string, string> = {
+        'new': 'open',
+        'contacted': 'open',
+        'qualified': 'open',
+        'viewing': 'open',
+        'offer': 'open',
+        'closed_won': 'won',
+        'closed_lost': 'lost',
+      };
+      
+      const mappedOpportunities = opportunities.map((opp: any) => ({
+        ...opp,
+        status: reverseStatusMap[opp.status] || opp.status,
+      }));
+      
       // Group by pipeline stage
       const pipeline: Record<string, any[]> = {};
-      opportunities.forEach(opp => {
+      mappedOpportunities.forEach(opp => {
         const stage = opp.pipelineStage || 'new';
         if (!pipeline[stage]) {
           pipeline[stage] = [];
