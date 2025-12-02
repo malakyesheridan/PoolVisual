@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useLocation, Redirect } from 'wouter';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +62,12 @@ export default function Opportunities() {
   const { user } = useAuthStore();
   const isRealEstate = useIsRealEstate();
   const queryClient = useQueryClient();
+  
+  // NEW: Local state to manage opportunities - single source of truth
+  const [localOpportunities, setLocalOpportunities] = useState<Opportunity[]>([]);
+  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(true);
+  const hasLoadedOnce = useRef(false);
+  const isRefetchingRef = useRef(false);
 
   // Redirect trades users to quotes page
   if (!isRealEstate) {
@@ -73,6 +79,8 @@ export default function Opportunities() {
     queryKey: ['/api/pipelines'],
     queryFn: () => apiClient.getPipelines(),
     staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   const defaultPipeline = useMemo(() => {
@@ -85,6 +93,8 @@ export default function Opportunities() {
     queryFn: () => apiClient.getPipelineStages(defaultPipeline?.id),
     enabled: !!defaultPipeline?.id,
     staleTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   // Create default pipeline and stages if they don't exist
@@ -125,23 +135,47 @@ export default function Opportunities() {
     }
   }, [pipelines.length, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError]);
 
-  // REBUILT: Simple, robust data fetching - fetch from backend, no complex cache logic
-  const { data: opportunities = [], isLoading: opportunitiesLoading, refetch: refetchOpportunities } = useQuery({
-    queryKey: ['/api/opportunities', statusFilter],
-    queryFn: async () => {
+  // NEW: Manual data fetching - load once, then manage locally
+  const loadOpportunities = async (force = false) => {
+    // Prevent multiple simultaneous loads
+    if (isRefetchingRef.current && !force) return;
+    
+    isRefetchingRef.current = true;
+    setIsLoadingOpportunities(true);
+    
+    try {
       const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
-      return Array.isArray(data) ? data : [];
-    },
-    staleTime: 30 * 1000, // 30 seconds - short stale time for fresh data
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
-  });
+      const opportunities = Array.isArray(data) ? data : [];
+      
+      // Update local state - this is our source of truth
+      setLocalOpportunities(opportunities);
+      hasLoadedOnce.current = true;
+    } catch (error) {
+      console.error('Failed to load opportunities:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load opportunities',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingOpportunities(false);
+      isRefetchingRef.current = false;
+    }
+  };
+
+  // Load opportunities on mount and when filter changes
+  useEffect(() => {
+    if (!hasLoadedOnce.current || statusFilter !== null) {
+      loadOpportunities(true);
+    }
+  }, [statusFilter]);
 
   // Fetch tasks for each opportunity to get task counts
   const { data: allTasks = {} } = useQuery({
-    queryKey: ['/api/opportunities/tasks', opportunities.map(o => o.id).join(',')],
+    queryKey: ['/api/opportunities/tasks', localOpportunities.map(o => o.id).join(',')],
     queryFn: async () => {
       const tasksByOpportunity: Record<string, any[]> = {};
-      for (const opp of opportunities) {
+      for (const opp of localOpportunities) {
         try {
           const tasks = await apiClient.getOpportunityTasks(opp.id);
           tasksByOpportunity[opp.id] = tasks || [];
@@ -151,13 +185,15 @@ export default function Opportunities() {
       }
       return tasksByOpportunity;
     },
-    enabled: opportunities.length > 0,
+    enabled: localOpportunities.length > 0,
     staleTime: 30 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 
   // Enrich opportunities with task counts and contact info
   const enrichedOpportunities = useMemo(() => {
-    return opportunities.map((opp: any) => {
+    return localOpportunities.map((opp: any) => {
       const tasks = allTasks[opp.id] || [];
       const pendingTasks = tasks.filter((t: any) => t.status === 'pending');
       const completedTasks = tasks.filter((t: any) => t.status === 'completed');
@@ -176,7 +212,7 @@ export default function Opportunities() {
         stageName: stages.find((s: Stage) => s.id === opp.stageId)?.name || opp.pipelineStage,
       };
     });
-  }, [opportunities, allTasks, stages]);
+  }, [localOpportunities, allTasks, stages]);
 
   // Filter opportunities
   const filteredOpportunities = useMemo(() => {
@@ -199,14 +235,14 @@ export default function Opportunities() {
     return filtered;
   }, [enrichedOpportunities, searchTerm, statusFilter]);
 
-  // REBUILT: Simple mutation - save to backend, then refetch
+  // NEW: Manual mutation - update local state immediately, then sync with backend
   const moveOpportunityMutation = useMutation({
     mutationFn: ({ opportunityId, newStageId }: { opportunityId: string; newStageId: string }) => {
       return apiClient.updateOpportunity(opportunityId, { stageId: newStageId });
     },
     onSuccess: async () => {
-      // Refetch opportunities from backend - single source of truth
-      await refetchOpportunities();
+      // Reload from backend to get fresh data
+      await loadOpportunities(true);
       toast({
         title: 'Opportunity moved',
         description: 'The opportunity has been moved to a new stage.',
@@ -235,56 +271,67 @@ export default function Opportunities() {
     setSelectedOpportunity(null);
   };
 
-  // REBUILT: Simple handler - just refetch from backend
+  // NEW: Manual update handler - reload from backend
   const handleOpportunityUpdated = async () => {
-    await refetchOpportunities();
+    await loadOpportunities(true);
   };
 
-  // REBUILT: After creation, wait for DB commit, then refetch ALL opportunities (no filter)
+  // NEW: After creation, add to local state immediately, then verify with backend
   const handleOpportunityCreated = async (createdOpportunity: Opportunity) => {
-    // CRITICAL: Wait a moment for database transaction to commit
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Refetch ALL opportunities (no filter) to ensure we get the new one
-    const allOpportunities = await queryClient.fetchQuery({
-      queryKey: ['/api/opportunities', null],
-      queryFn: async () => {
-        const data = await apiClient.getOpportunities(undefined);
-        return Array.isArray(data) ? data : [];
-      },
-    });
-    
-    // Find the newly created opportunity
-    const newOpp = allOpportunities.find((o: any) => o.id === createdOpportunity.id);
-    
-    if (newOpp) {
-      // Update the cache for the current filter query
-      queryClient.setQueryData(['/api/opportunities', statusFilter], (oldData: any) => {
-        if (!oldData || !Array.isArray(oldData)) {
-          return [newOpp];
-        }
-        // Check if already exists
-        const exists = oldData.some((o: any) => o.id === newOpp.id);
-        if (exists) return oldData;
-        // Add to beginning
-        return [newOpp, ...oldData];
+    if (!createdOpportunity?.id) {
+      toast({
+        title: 'Error',
+        description: 'Failed to create opportunity - no ID returned',
+        variant: 'destructive',
       });
-      
-      // Also update the null filter cache
-      queryClient.setQueryData(['/api/opportunities', null], allOpportunities);
-      
-      // Update selected opportunity and keep drawer open
-      setSelectedOpportunity({
-        ...newOpp,
-        title: newOpp.title || 'Untitled Opportunity',
-        status: newOpp.status || 'open',
-        tags: newOpp.tags || [],
-      } as Opportunity);
-      setIsDrawerOpen(true);
-    } else {
-      // If not found, still refetch the current filter query
-      await refetchOpportunities();
-      // Set the created opportunity as selected anyway
+      return;
+    }
+
+    // Wait for DB commit
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Verify it exists by fetching it back
+    try {
+      const verified = await apiClient.getOpportunity(createdOpportunity.id);
+      if (verified) {
+        // Add to local state immediately
+        setLocalOpportunities(prev => {
+          // Check if already exists
+          if (prev.some(o => o.id === verified.id)) {
+            return prev.map(o => o.id === verified.id ? verified : o);
+          }
+          // Add to beginning
+          return [verified, ...prev];
+        });
+        
+        // Update selected opportunity
+        setSelectedOpportunity({
+          ...verified,
+          title: verified.title || 'Untitled Opportunity',
+          status: verified.status || 'open',
+          tags: verified.tags || [],
+        } as Opportunity);
+        setIsDrawerOpen(true);
+      } else {
+        // If not found, reload all
+        await loadOpportunities(true);
+        setSelectedOpportunity({
+          ...createdOpportunity,
+          title: createdOpportunity.title || 'Untitled Opportunity',
+          status: createdOpportunity.status || 'open',
+          tags: createdOpportunity.tags || [],
+        } as Opportunity);
+        setIsDrawerOpen(true);
+      }
+    } catch (error) {
+      // If verification fails, still add to local state and reload
+      setLocalOpportunities(prev => {
+        if (prev.some(o => o.id === createdOpportunity.id)) {
+          return prev;
+        }
+        return [createdOpportunity, ...prev];
+      });
+      await loadOpportunities(true);
       setSelectedOpportunity({
         ...createdOpportunity,
         title: createdOpportunity.title || 'Untitled Opportunity',
@@ -295,7 +342,7 @@ export default function Opportunities() {
     }
   };
 
-  const isLoading = opportunitiesLoading || stagesLoading;
+  const isLoading = isLoadingOpportunities || stagesLoading;
 
   return (
     <div className="min-h-screen bg-slate-50 px-4 md:px-8 py-4 md:py-6">
@@ -421,4 +468,3 @@ export default function Opportunities() {
     </div>
   );
 }
-
