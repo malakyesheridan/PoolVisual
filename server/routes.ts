@@ -2898,13 +2898,26 @@ export async function registerRoutes(app: Express): Promise<void> {
       };
       const mappedStatus = status ? (statusMap[status] || status) : 'new';
 
+      // CRITICAL: Get and validate userId FIRST
+      if (!req.user?.id) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      const authenticatedUserId = String(req.user.id).trim();
+      if (!authenticatedUserId || authenticatedUserId === 'undefined' || authenticatedUserId === 'null') {
+        return res.status(401).json({ message: "Invalid user ID" });
+      }
+
+      // Ensure title is set (required by schema)
+      const finalTitle = opportunityTitle.trim() || 'Untitled Opportunity';
+
       // Build opportunity data with new fields taking precedence
       const opportunityData: any = {
-        userId: req.user.id,
-        orgId: userOrgs[0]?.id,
-        title: opportunityTitle.trim(),
+        userId: authenticatedUserId, // Set correctly from the start
+        createdBy: authenticatedUserId, // Set correctly from the start
+        orgId: userOrgs[0]?.id || null,
+        title: finalTitle, // REQUIRED by schema
         // Legacy fields for backward compatibility
-        clientName: opportunityTitle.trim(),
+        clientName: finalTitle,
         clientPhone: clientPhone || null,
         clientEmail: clientEmail || null,
         propertyAddress: propertyAddress || null,
@@ -2916,7 +2929,6 @@ export async function registerRoutes(app: Express): Promise<void> {
         expectedCloseDate: expectedCloseDate || null,
         source: source || null,
         notes: notes || null,
-        createdBy: req.user.id,
       };
 
       // Add new Kanban fields if provided
@@ -2932,16 +2944,6 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (contactId) opportunityData.contactId = contactId;
       if (ownerId) opportunityData.ownerId = ownerId;
       if (tags) opportunityData.tags = tags;
-
-      // CRITICAL: ALWAYS set userId and createdBy from authenticated user - these are required
-      // Ensure we're using the exact userId from the session as a string
-      const authenticatedUserId = String(req.user.id);
-      if (!authenticatedUserId || authenticatedUserId === 'undefined' || authenticatedUserId === 'null') {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
-      opportunityData.userId = authenticatedUserId;
-      opportunityData.createdBy = authenticatedUserId;
       
       const opportunity = await storage.createOpportunity(opportunityData);
       
