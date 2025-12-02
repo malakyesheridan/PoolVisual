@@ -3357,6 +3357,18 @@ export async function registerRoutes(app: Express): Promise<void> {
       const taskId = req.params.id;
       const updates: any = { ...req.body };
       
+      // Verify the task exists and belongs to the user's opportunity
+      const task = await storage.getOpportunityFollowup(taskId);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      // Get the opportunity to verify ownership
+      const opportunity = await storage.getOpportunity(task.opportunityId);
+      if (!opportunity || opportunity.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
       // Map task format to followup format
       if (updates.status) {
         updates.completed = updates.status === 'completed';

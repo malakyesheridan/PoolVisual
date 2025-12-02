@@ -92,6 +92,14 @@ export function OpportunityDetailDrawer({
   const [newTag, setNewTag] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
+  // Temporary storage for tasks and notes before opportunity is saved
+  const [pendingTasks, setPendingTasks] = useState<Array<{ id: string; title: string; status: 'pending' | 'completed' }>>([]);
+  const [pendingNotes, setPendingNotes] = useState<Array<{ id: string; noteText: string; createdAt: string }>>([]);
+  // Editing states
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState('');
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
 
   // Fetch tasks for this opportunity
   const { data: tasks = [], refetch: refetchTasks } = useQuery({
@@ -130,8 +138,34 @@ export function OpportunityDetailDrawer({
 
   const createOpportunityMutation = useMutation({
     mutationFn: (data: any) => apiClient.createOpportunity(data),
-    onSuccess: () => {
+    onSuccess: async (createdOpportunity) => {
       queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+      
+      // Save pending tasks and notes after opportunity is created
+      if (createdOpportunity?.id) {
+        // Save pending tasks
+        for (const task of pendingTasks) {
+          try {
+            await apiClient.createOpportunityTask(createdOpportunity.id, { title: task.title });
+          } catch (error) {
+            console.error('Failed to save pending task:', error);
+          }
+        }
+        
+        // Save pending notes
+        for (const note of pendingNotes) {
+          try {
+            await apiClient.createOpportunityNote(createdOpportunity.id, note.noteText);
+          } catch (error) {
+            console.error('Failed to save pending note:', error);
+          }
+        }
+        
+        // Clear pending items
+        setPendingTasks([]);
+        setPendingNotes([]);
+      }
+      
       toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
       onUpdate();
       onClose();
@@ -184,7 +218,7 @@ export function OpportunityDetailDrawer({
       createOpportunityMutation.mutate({
         title: editedTitle.trim(),
         clientName: editedTitle.trim(), // Required field
-        value: editedValue ? parseFloat(editedValue) : null,
+        value: editedValue ? parseFloat(editedValue.replace(/,/g, '')) : null,
         status: editedStatus,
         stageId: editedStageId || defaultStage?.id,
         pipelineStage: defaultStage?.name || 'new',
@@ -194,7 +228,7 @@ export function OpportunityDetailDrawer({
       // Update existing opportunity
       updateOpportunityMutation.mutate({
         title: editedTitle,
-        value: editedValue ? parseFloat(editedValue) : null,
+        value: editedValue ? parseFloat(editedValue.replace(/,/g, '')) : null,
         status: editedStatus,
         stageId: editedStageId,
         tags: editedTags,
@@ -272,6 +306,24 @@ export function OpportunityDetailDrawer({
     },
   });
 
+  const handleAddNote = () => {
+    if (!newNoteText.trim()) return;
+    
+    if (!opportunity?.id) {
+      // Store temporarily if opportunity doesn't exist yet
+      const tempNote = {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        noteText: newNoteText.trim(),
+        createdAt: new Date().toISOString(),
+      };
+      setPendingNotes([...pendingNotes, tempNote]);
+      setNewNoteText('');
+      toast({ title: 'Note added', description: 'Note will be saved when opportunity is created.' });
+    } else {
+      createNoteMutation.mutate(newNoteText.trim());
+    }
+  };
+
   const handleAddTag = () => {
     if (newTag.trim() && !editedTags.includes(newTag.trim())) {
       setEditedTags([...editedTags, newTag.trim()]);
@@ -284,15 +336,19 @@ export function OpportunityDetailDrawer({
   };
 
   const handleAddTask = () => {
+    if (!newTaskTitle.trim()) return;
+    
     if (!opportunity?.id) {
-      toast({
-        title: 'Error',
-        description: 'Please save the opportunity first before adding tasks',
-        variant: 'destructive',
-      });
-      return;
-    }
-    if (newTaskTitle.trim()) {
+      // Store temporarily if opportunity doesn't exist yet
+      const tempTask = {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        title: newTaskTitle.trim(),
+        status: 'pending' as const,
+      };
+      setPendingTasks([...pendingTasks, tempTask]);
+      setNewTaskTitle('');
+      toast({ title: 'Task added', description: 'Task will be saved when opportunity is created.' });
+    } else {
       createTaskMutation.mutate({
         title: newTaskTitle.trim(),
       });
@@ -300,6 +356,18 @@ export function OpportunityDetailDrawer({
   };
 
   const handleToggleTask = (task: Task) => {
+    const isTemp = task.id.startsWith('temp-');
+    
+    if (isTemp) {
+      // Update temporary task
+      setPendingTasks(pendingTasks.map(t => 
+        t.id === task.id 
+          ? { ...t, status: t.status === 'pending' ? 'completed' : 'pending' }
+          : t
+      ));
+      return;
+    }
+    
     const newStatus = task.status === 'pending' ? 'completed' : 'pending';
     const updates: any = {
       status: newStatus,
@@ -321,8 +389,83 @@ export function OpportunityDetailDrawer({
     });
   };
 
-  const pendingTasks = tasks.filter(t => t.status === 'pending');
-  const completedTasks = tasks.filter(t => t.status === 'completed');
+  const handleSaveTaskEdit = (task: Task) => {
+    if (!editingTaskTitle.trim()) return;
+    
+    const isTemp = task.id.startsWith('temp-');
+    
+    if (isTemp) {
+      // Update temporary task
+      setPendingTasks(pendingTasks.map(t => 
+        t.id === task.id ? { ...t, title: editingTaskTitle.trim() } : t
+      ));
+      setEditingTaskId(null);
+      setEditingTaskTitle('');
+      return;
+    }
+    
+    updateTaskMutation.mutate({
+      taskId: task.id,
+      updates: { title: editingTaskTitle.trim() },
+    });
+    setEditingTaskId(null);
+    setEditingTaskTitle('');
+  };
+
+  const handleDeleteTask = (task: Task) => {
+    const isTemp = task.id.startsWith('temp-');
+    
+    if (isTemp) {
+      // Remove temporary task
+      setPendingTasks(pendingTasks.filter(t => t.id !== task.id));
+      return;
+    }
+    
+    deleteTaskMutation.mutate(task.id);
+  };
+
+  const handleSaveNoteEdit = (note: any) => {
+    if (!editingNoteText.trim()) return;
+    
+    const isTemp = note.id.startsWith('temp-');
+    
+    if (isTemp) {
+      // Update temporary note
+      setPendingNotes(pendingNotes.map(n => 
+        n.id === note.id ? { ...n, noteText: editingNoteText.trim() } : n
+      ));
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      return;
+    }
+    
+    updateNoteMutation.mutate({
+      noteId: note.id,
+      noteText: editingNoteText.trim(),
+    });
+    setEditingNoteId(null);
+    setEditingNoteText('');
+  };
+
+  const handleDeleteNote = (note: any) => {
+    const isTemp = note.id.startsWith('temp-');
+    
+    if (isTemp) {
+      // Remove temporary note
+      setPendingNotes(pendingNotes.filter(n => n.id !== note.id));
+      return;
+    }
+    
+    deleteNoteMutation.mutate(note.id);
+  };
+
+  // Combine saved tasks with pending tasks
+  const allTasks = [...tasks, ...pendingTasks];
+  const pendingTasksList = allTasks.filter(t => t.status === 'pending');
+  const completedTasksList = allTasks.filter(t => t.status === 'completed');
+  
+  // Combine saved notes with pending notes
+  const allNotes = [...notes, ...pendingNotes];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -513,7 +656,7 @@ export function OpportunityDetailDrawer({
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Checklist</h3>
               <Badge variant="secondary">
-                {pendingTasks.length} pending, {completedTasks.length} completed
+                {pendingTasksList.length} pending, {completedTasksList.length} completed
               </Badge>
             </div>
 
@@ -526,60 +669,168 @@ export function OpportunityDetailDrawer({
                 placeholder="Add a checklist item..."
                 className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
               />
-              <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending || !opportunity?.id}>
+              <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending}>
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
 
             {/* Pending checklist items */}
-            {pendingTasks.length > 0 && (
+            {pendingTasksList.length > 0 && (
               <div className="space-y-2 mb-4">
-                {pendingTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 p-3 bg-white hover:bg-slate-50 rounded-lg transition-colors border-2 border-slate-200 shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task.status === 'completed'}
-                      onChange={() => handleToggleTask(task)}
-                      className="w-5 h-5 mt-0.5 cursor-pointer accent-primary border-2 border-slate-300 rounded"
-                      disabled={updateTaskMutation.isPending}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-900">{task.title}</div>
-                      {task.description && (
-                        <div className="text-sm text-slate-600 mt-1">{task.description}</div>
+                {pendingTasksList.map((task) => {
+                  const isTemp = task.id.startsWith('temp-');
+                  const isEditing = editingTaskId === task.id;
+                  
+                  return (
+                    <div key={task.id} className="flex items-start gap-3 p-3 bg-white hover:bg-slate-50 rounded-lg transition-colors border-2 border-slate-200 shadow-sm group">
+                      <input
+                        type="checkbox"
+                        checked={task.status === 'completed'}
+                        onChange={() => handleToggleTask(task)}
+                        className="w-5 h-5 mt-0.5 cursor-pointer accent-primary border-2 border-slate-300 rounded"
+                        disabled={updateTaskMutation.isPending || isEditing}
+                      />
+                      <div className="flex-1">
+                        {isEditing ? (
+                          <div className="flex gap-2">
+                            <Input
+                              value={editingTaskTitle}
+                              onChange={(e) => setEditingTaskTitle(e.target.value)}
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveTaskEdit(task);
+                                } else if (e.key === 'Escape') {
+                                  setEditingTaskId(null);
+                                  setEditingTaskTitle('');
+                                }
+                              }}
+                              className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                              autoFocus
+                            />
+                            <Button size="sm" onClick={() => handleSaveTaskEdit(task)}>
+                              <CheckCircle className="w-4 h-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              setEditingTaskId(null);
+                              setEditingTaskTitle('');
+                            }}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="font-medium text-slate-900">{task.title}</div>
+                        )}
+                        {task.description && !isEditing && (
+                          <div className="text-sm text-slate-600 mt-1">{task.description}</div>
+                        )}
+                      </div>
+                      {!isEditing && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingTaskId(task.id);
+                              setEditingTaskTitle(task.title);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteTask(task)}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </Button>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             {/* Completed checklist items */}
-            {completedTasks.length > 0 && (
+            {completedTasksList.length > 0 && (
               <div className="space-y-2 mt-4 pt-4 border-t-2 border-slate-200">
-                <h4 className="text-sm font-medium text-slate-500 mb-3">Completed ({completedTasks.length})</h4>
-                {completedTasks.map((task) => (
-                  <div key={task.id} className="flex items-start gap-3 p-3 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg transition-colors border-2 border-emerald-200 shadow-sm">
-                    <input
-                      type="checkbox"
-                      checked={task.status === 'completed'}
-                      onChange={() => handleToggleTask(task)}
-                      className="w-5 h-5 mt-0.5 cursor-pointer accent-emerald-600 border-2 border-emerald-300 rounded"
-                      disabled={updateTaskMutation.isPending}
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-slate-700 line-through">{task.title}</div>
-                      {task.description && (
-                        <div className="text-sm text-slate-500 line-through mt-1">{task.description}</div>
+                <h4 className="text-sm font-medium text-slate-500 mb-3">Completed ({completedTasksList.length})</h4>
+                {completedTasksList.map((task) => {
+                  const isTemp = task.id.startsWith('temp-');
+                  const isEditing = editingTaskId === task.id;
+                  
+                  return (
+                    <div key={task.id} className="flex items-start gap-3 p-3 bg-emerald-50/50 hover:bg-emerald-50 rounded-lg transition-colors border-2 border-emerald-200 shadow-sm group">
+                      <input
+                        type="checkbox"
+                        checked={task.status === 'completed'}
+                        onChange={() => handleToggleTask(task)}
+                        className="w-5 h-5 mt-0.5 cursor-pointer accent-emerald-600 border-2 border-emerald-300 rounded"
+                        disabled={updateTaskMutation.isPending || isEditing}
+                      />
+                      <div className="flex-1">
+                        {isEditing ? (
+                          <div className="flex gap-2">
+                            <Input
+                              value={editingTaskTitle}
+                              onChange={(e) => setEditingTaskTitle(e.target.value)}
+                              onKeyPress={(e) => {
+                                if (e.key === 'Enter') {
+                                  handleSaveTaskEdit(task);
+                                } else if (e.key === 'Escape') {
+                                  setEditingTaskId(null);
+                                  setEditingTaskTitle('');
+                                }
+                              }}
+                              className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                              autoFocus
+                            />
+                            <Button size="sm" onClick={() => handleSaveTaskEdit(task)}>
+                              <CheckCircle className="w-4 h-4" />
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              setEditingTaskId(null);
+                              setEditingTaskTitle('');
+                            }}>
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="font-medium text-slate-700 line-through">{task.title}</div>
+                        )}
+                        {task.description && !isEditing && (
+                          <div className="text-sm text-slate-500 line-through mt-1">{task.description}</div>
+                        )}
+                      </div>
+                      {!isEditing && (
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setEditingTaskId(task.id);
+                              setEditingTaskTitle(task.title);
+                            }}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => handleDeleteTask(task)}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-600" />
+                          </Button>
+                        </div>
                       )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
             {/* Empty state - only show if there are no tasks at all */}
-            {tasks.length === 0 && pendingTasks.length === 0 && completedTasks.length === 0 && (
+            {allTasks.length === 0 && (
               <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border-2 border-slate-200">
                 No checklist items yet. Add your first item above.
               </div>
@@ -590,7 +841,7 @@ export function OpportunityDetailDrawer({
           <div>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold">Notes</h3>
-              <Badge variant="secondary">{notes.length}</Badge>
+              <Badge variant="secondary">{allNotes.length}</Badge>
             </div>
 
             {/* Add new note */}
@@ -603,51 +854,92 @@ export function OpportunityDetailDrawer({
                 rows={3}
               />
               <Button
-                onClick={() => {
-                  if (!opportunity?.id) {
-                    toast({
-                      title: 'Error',
-                      description: 'Please save the opportunity first before adding notes',
-                      variant: 'destructive',
-                    });
-                    return;
-                  }
-                  if (newNoteText.trim()) {
-                    createNoteMutation.mutate(newNoteText.trim());
-                  }
-                }}
-                disabled={!newNoteText.trim() || createNoteMutation.isPending || !opportunity?.id}
+                onClick={handleAddNote}
+                disabled={!newNoteText.trim() || createNoteMutation.isPending}
               >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
 
             <div className="space-y-3">
-              {notes.length === 0 ? (
+              {allNotes.length === 0 ? (
                 <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border-2 border-slate-200">
                   No notes yet. Add your first note above.
                 </div>
               ) : (
-                notes.map((note: any) => (
-                  <div key={note.id} className="p-4 bg-white rounded-lg border-2 border-slate-200 hover:border-slate-300 transition-colors shadow-sm">
-                    <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap">
-                      {note.noteText}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-2 flex items-center gap-2">
-                      <span>{format(new Date(note.createdAt), 'MMM d, yyyy')}</span>
-                      <span>•</span>
-                      <span>{format(new Date(note.createdAt), 'h:mm a')}</span>
-                      {note.noteType && note.noteType !== 'general' && (
+                allNotes.map((note: any) => {
+                  const isTemp = note.id.startsWith('temp-');
+                  const isEditing = editingNoteId === note.id;
+                  
+                  return (
+                    <div key={note.id} className="p-4 bg-white rounded-lg border-2 border-slate-200 hover:border-slate-300 transition-colors shadow-sm group">
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            value={editingNoteText}
+                            onChange={(e) => setEditingNoteText(e.target.value)}
+                            className="border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
+                            rows={3}
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => handleSaveNoteEdit(note)}>
+                              <CheckCircle className="w-4 h-4 mr-1" />
+                              Save
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => {
+                              setEditingNoteId(null);
+                              setEditingNoteText('');
+                            }}>
+                              <X className="w-4 h-4 mr-1" />
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
                         <>
-                          <span>•</span>
-                          <Badge variant="outline" className="text-xs">
-                            {note.noteType}
-                          </Badge>
+                          <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap">
+                            {note.noteText}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span>{format(new Date(note.createdAt), 'MMM d, yyyy')}</span>
+                              <span>•</span>
+                              <span>{format(new Date(note.createdAt), 'h:mm a')}</span>
+                              {note.noteType && note.noteType !== 'general' && (
+                                <>
+                                  <span>•</span>
+                                  <Badge variant="outline" className="text-xs">
+                                    {note.noteType}
+                                  </Badge>
+                                </>
+                              )}
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingNoteId(note.id);
+                                  setEditingNoteText(note.noteText);
+                                }}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleDeleteNote(note)}
+                              >
+                                <Trash2 className="w-4 h-4 text-red-600" />
+                              </Button>
+                            </div>
+                          </div>
                         </>
                       )}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

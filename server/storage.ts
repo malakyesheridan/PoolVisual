@@ -1831,6 +1831,22 @@ export class PostgresStorage implements IStorage {
   }
 
   // Opportunity Follow-ups (uses opportunityTasks table - opportunityFollowups is an alias)
+  async getOpportunityFollowup(id: string): Promise<OpportunityFollowup | undefined> {
+    try {
+      const [task] = await ensureDb()
+        .select()
+        .from(opportunityTasks)
+        .where(eq(opportunityTasks.id, id));
+      return task;
+    } catch (error: any) {
+      if (error?.message?.includes('opportunity_tasks') || error?.message?.includes('opportunity_follow_ups') || error?.code === '42P01') {
+        console.warn('[getOpportunityFollowup] opportunity tasks table not found');
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   async getOpportunityFollowups(opportunityId: string): Promise<OpportunityFollowup[]> {
     try {
       // Use opportunityTasks (opportunityFollowups is an alias to the same table)
