@@ -79,6 +79,7 @@ export function OpportunityDetailDrawer({
   onClose,
   stages,
   onUpdate,
+  onOpportunityCreated,
 }: OpportunityDetailDrawerProps) {
   const { user } = useAuthStore();
   const { toast } = useToast();
@@ -144,13 +145,8 @@ export function OpportunityDetailDrawer({
     onSuccess: async (createdOpportunity) => {
       console.log('[Frontend] Opportunity created successfully:', createdOpportunity);
       
-      // Invalidate and refetch opportunities immediately
-      await queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
-      await queryClient.refetchQueries({ queryKey: ['/api/opportunities'] });
-      
-      // Save pending tasks and notes after opportunity is created
       if (createdOpportunity?.id) {
-        // Save pending tasks
+        // Save pending tasks and notes after opportunity is created
         for (const task of pendingTasks) {
           try {
             await apiClient.createOpportunityTask(createdOpportunity.id, { title: task.title });
@@ -159,7 +155,6 @@ export function OpportunityDetailDrawer({
           }
         }
         
-        // Save pending notes
         for (const note of pendingNotes) {
           try {
             await apiClient.createOpportunityNote(createdOpportunity.id, note.noteText);
@@ -171,14 +166,37 @@ export function OpportunityDetailDrawer({
         // Clear pending items
         setPendingTasks([]);
         setPendingNotes([]);
+        
+        // Optimistically update ALL opportunity queries (regardless of statusFilter)
+        // This ensures the new opportunity appears immediately
+        queryClient.setQueriesData(
+          { queryKey: ['/api/opportunities'], exact: false },
+          (oldData: any) => {
+            if (!oldData || !Array.isArray(oldData)) return oldData;
+            // Check if opportunity already exists (avoid duplicates)
+            const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
+            if (exists) return oldData;
+            // Add the new opportunity to the beginning of the array
+            return [createdOpportunity, ...oldData];
+          }
+        );
       }
       
+      // Invalidate all opportunity queries to trigger a background refetch
+      // This ensures data consistency but doesn't block the UI
+      queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
+      
       toast({ title: 'Opportunity created', description: 'New opportunity created successfully.' });
+      
+      // Notify parent component about the newly created opportunity
+      if (onOpportunityCreated && createdOpportunity) {
+        onOpportunityCreated(createdOpportunity);
+      }
+      
+      // Update queries in the background
       onUpdate();
-      // Don't close immediately - let the user see it was created
-      setTimeout(() => {
-        onClose();
-      }, 500);
+      
+      // Don't close the drawer - let the user see and interact with the newly created opportunity
     },
     onError: (error: any) => {
       console.error('[Frontend] Error creating opportunity:', error);

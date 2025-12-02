@@ -233,8 +233,20 @@ export default function Opportunities() {
     setSelectedOpportunity(null);
   };
 
-  const handleUpdate = () => {
-    queryClient.invalidateQueries({ queryKey: ['/api/opportunities'] });
+  const handleUpdate = async () => {
+    // Invalidate all opportunity queries to refetch
+    await queryClient.invalidateQueries({ queryKey: ['/api/opportunities'], exact: false });
+    // Refetch opportunities to get the latest data
+    await queryClient.refetchQueries({ queryKey: ['/api/opportunities'], exact: false });
+  };
+
+  const handleOpportunityCreated = (createdOpportunity: Opportunity) => {
+    // Update selected opportunity to the newly created one
+    setSelectedOpportunity(createdOpportunity);
+    // Keep drawer open so user can see the newly created opportunity
+    setIsDrawerOpen(true);
+    // Refetch opportunities to ensure the list is updated
+    handleUpdate();
   };
 
   const isLoading = opportunitiesLoading || stagesLoading;
@@ -358,6 +370,7 @@ export default function Opportunities() {
         onClose={handleDrawerClose}
         stages={stages}
         onUpdate={handleUpdate}
+        onOpportunityCreated={handleOpportunityCreated}
       />
     </div>
   );
