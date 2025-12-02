@@ -2789,10 +2789,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const requestingUserId = req.user.id;
-      console.log('[GET /api/opportunities] Fetching opportunities for userId:', requestingUserId);
       
       if (!requestingUserId) {
-        console.error('[GET /api/opportunities] ERROR: No userId in request');
         return res.status(401).json({ message: "User not authenticated" });
       }
       
@@ -2809,17 +2807,9 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
 
-      const opportunities = await storage.getOpportunities(requestingUserId, filters);
-      
-      console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for userId:', requestingUserId);
-      if (opportunities.length > 0) {
-        console.log('[GET /api/opportunities] Sample opportunity userIds:', opportunities.slice(0, 3).map((o: any) => o.userId));
-        // Verify all opportunities belong to the requesting user
-        const mismatched = opportunities.filter((o: any) => o.userId !== requestingUserId);
-        if (mismatched.length > 0) {
-          console.error('[GET /api/opportunities] WARNING: Found', mismatched.length, 'opportunities with mismatched userIds');
-        }
-      }
+      // CRITICAL: Use the authenticated user's ID directly - no transformations
+      // Ensure userId is a string (UUIDs in PostgreSQL are stored as UUID type but compared as strings in Drizzle)
+      const opportunities = await storage.getOpportunities(String(requestingUserId), filters);
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
@@ -2839,7 +2829,6 @@ export async function registerRoutes(app: Express): Promise<void> {
       
       res.json(mappedOpportunities);
     } catch (error) {
-      console.error('[GET /api/opportunities] Error:', error);
       res.status(500).json({ message: (error as Error).message });
     }
   });
@@ -2945,34 +2934,23 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (tags) opportunityData.tags = tags;
 
       // CRITICAL: ALWAYS set userId and createdBy from authenticated user - these are required
-      opportunityData.userId = req.user.id;
-      opportunityData.createdBy = req.user.id;
+      // Ensure we're using the exact userId from the session as a string
+      const authenticatedUserId = String(req.user.id);
+      if (!authenticatedUserId || authenticatedUserId === 'undefined' || authenticatedUserId === 'null') {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
       
-      console.log('[POST /api/opportunities] Creating opportunity:', {
-        userId: opportunityData.userId,
-        createdBy: opportunityData.createdBy,
-        title: opportunityData.title,
-        status: opportunityData.status,
-        stageId: opportunityData.stageId
-      });
+      opportunityData.userId = authenticatedUserId;
+      opportunityData.createdBy = authenticatedUserId;
       
       const opportunity = await storage.createOpportunity(opportunityData);
       
       if (!opportunity) {
-        console.error('[POST /api/opportunities] Failed to create opportunity - storage returned null');
         return res.status(500).json({ message: "Failed to create opportunity" });
       }
       
-      console.log('[POST /api/opportunities] Opportunity created successfully:', {
-        id: opportunity.id,
-        userId: opportunity.userId,
-        title: opportunity.title,
-        status: opportunity.status
-      });
-      
       // Verify the opportunity was saved with the correct userId
-      if (opportunity.userId !== req.user.id) {
-        console.error('[POST /api/opportunities] CRITICAL ERROR: Opportunity userId mismatch! Expected:', req.user.id, 'Got:', opportunity.userId);
+      if (opportunity.userId !== authenticatedUserId) {
         return res.status(500).json({ message: "Opportunity was created with incorrect userId" });
       }
       
