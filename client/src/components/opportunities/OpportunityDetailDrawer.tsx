@@ -248,40 +248,6 @@ export function OpportunityDetailDrawer({
     },
   });
 
-  const handleSave = () => {
-    if (isNewOpportunity) {
-      // Create new opportunity
-      if (!editedTitle.trim()) {
-        toast({
-          title: 'Error',
-          description: 'Title is required',
-          variant: 'destructive',
-        });
-        return;
-      }
-      
-      const defaultStage = stages[0];
-      createOpportunityMutation.mutate({
-        title: editedTitle.trim(),
-        clientName: editedTitle.trim(), // Required field
-        value: editedValue ? parseFloat(editedValue) : null,
-        status: editedStatus,
-        stageId: editedStageId || defaultStage?.id,
-        pipelineStage: defaultStage?.name || 'new',
-        tags: editedTags,
-      });
-    } else {
-      // Update existing opportunity
-      updateOpportunityMutation.mutate({
-        title: editedTitle,
-        value: editedValue ? parseFloat(editedValue) : null,
-        status: editedStatus,
-        stageId: editedStageId,
-        tags: editedTags,
-      });
-    }
-  };
-
   const handleAddTag = () => {
     if (newTag.trim() && !editedTags.includes(newTag.trim())) {
       setEditedTags([...editedTags, newTag.trim()]);

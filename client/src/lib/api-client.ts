@@ -127,11 +127,6 @@ class ApiClient {
     });
   }
 
-  async checkFeatureAccess(feature: string) {
-    return this.request<{ ok: boolean; hasAccess: boolean }>(`/subscription/features/${feature}`, {
-      method: 'GET',
-    });
-  }
 
   // Admin methods
   async getAdminIndustryView() {
