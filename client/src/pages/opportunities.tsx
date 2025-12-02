@@ -381,6 +381,7 @@ export default function Opportunities() {
         stages={stages}
         onUpdate={handleUpdate}
         onOpportunityCreated={handleOpportunityCreated}
+        currentStatusFilter={statusFilter}
       />
     </div>
   );

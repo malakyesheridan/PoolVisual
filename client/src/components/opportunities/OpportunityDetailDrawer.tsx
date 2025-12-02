@@ -80,6 +80,7 @@ export function OpportunityDetailDrawer({
   stages,
   onUpdate,
   onOpportunityCreated,
+  currentStatusFilter,
 }: OpportunityDetailDrawerProps) {
   const { user } = useAuthStore();
   const { toast } = useToast();
