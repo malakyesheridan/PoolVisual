@@ -212,6 +212,7 @@ export default function Opportunities() {
         
         console.log('[Opportunities] Merged result:', merged.length, 'opportunities');
         console.log('[Opportunities] Merged IDs:', merged.map(o => o.id));
+        console.log('[Opportunities] StageIds:', merged.map(o => ({ id: o.id, stageId: o.stageId, title: o.title })));
         
         return merged;
       });
