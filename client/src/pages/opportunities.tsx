@@ -240,27 +240,56 @@ export default function Opportunities() {
     await refetchOpportunities();
   };
 
-  // REBUILT: After creation, refetch from backend and update selected opportunity
+  // REBUILT: After creation, wait for DB commit, then refetch ALL opportunities (no filter)
   const handleOpportunityCreated = async (createdOpportunity: Opportunity) => {
-    // Refetch from backend to get the real saved opportunity
-    await refetchOpportunities();
+    // CRITICAL: Wait a moment for database transaction to commit
+    await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Find the newly created opportunity in the refetched data
-    const refreshedOpportunities = await queryClient.fetchQuery({
-      queryKey: ['/api/opportunities', statusFilter],
+    // Refetch ALL opportunities (no filter) to ensure we get the new one
+    const allOpportunities = await queryClient.fetchQuery({
+      queryKey: ['/api/opportunities', null],
       queryFn: async () => {
-        const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
+        const data = await apiClient.getOpportunities(undefined);
         return Array.isArray(data) ? data : [];
       },
     });
     
-    const newOpp = refreshedOpportunities.find((o: any) => o.id === createdOpportunity.id);
+    // Find the newly created opportunity
+    const newOpp = allOpportunities.find((o: any) => o.id === createdOpportunity.id);
+    
     if (newOpp) {
+      // Update the cache for the current filter query
+      queryClient.setQueryData(['/api/opportunities', statusFilter], (oldData: any) => {
+        if (!oldData || !Array.isArray(oldData)) {
+          return [newOpp];
+        }
+        // Check if already exists
+        const exists = oldData.some((o: any) => o.id === newOpp.id);
+        if (exists) return oldData;
+        // Add to beginning
+        return [newOpp, ...oldData];
+      });
+      
+      // Also update the null filter cache
+      queryClient.setQueryData(['/api/opportunities', null], allOpportunities);
+      
+      // Update selected opportunity and keep drawer open
       setSelectedOpportunity({
         ...newOpp,
         title: newOpp.title || 'Untitled Opportunity',
         status: newOpp.status || 'open',
         tags: newOpp.tags || [],
+      } as Opportunity);
+      setIsDrawerOpen(true);
+    } else {
+      // If not found, still refetch the current filter query
+      await refetchOpportunities();
+      // Set the created opportunity as selected anyway
+      setSelectedOpportunity({
+        ...createdOpportunity,
+        title: createdOpportunity.title || 'Untitled Opportunity',
+        status: createdOpportunity.status || 'open',
+        tags: createdOpportunity.tags || [],
       } as Opportunity);
       setIsDrawerOpen(true);
     }

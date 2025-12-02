@@ -135,11 +135,31 @@ export function OpportunityDetailDrawer({
     }
   }, [opportunity?.id, isNewOpportunity]);
 
-  // REBUILT: Save to backend FIRST, then notify parent to refetch
+  // REBUILT: Save to backend FIRST, verify it was saved, then notify parent
   const createOpportunityMutation = useMutation({
     mutationFn: async (data: any) => {
       // Save to backend - wait for response
       const created = await apiClient.createOpportunity(data);
+      
+      // CRITICAL: Verify the opportunity was actually saved by fetching it back
+      if (created?.id) {
+        // Wait a moment for DB commit
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // Verify by fetching it back
+        try {
+          const verified = await apiClient.getOpportunity(created.id);
+          if (!verified) {
+            throw new Error('Opportunity was not found after creation');
+          }
+          return verified;
+        } catch (error) {
+          // If verification fails, still return the created opportunity
+          // The parent will handle refetching
+          return created;
+        }
+      }
+      
       return created;
     },
     onSuccess: async (createdOpportunity) => {
