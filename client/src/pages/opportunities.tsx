@@ -129,13 +129,18 @@ export default function Opportunities() {
   }, [pipelines.length, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError]);
 
   // Fetch opportunities
+  // CRITICAL: Disable refetchOnMount to prevent automatic refetches that clear optimistic updates
   const { data: opportunities = [], isLoading: opportunitiesLoading } = useQuery({
     queryKey: ['/api/opportunities', statusFilter],
     queryFn: () => apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined),
-    staleTime: 1 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
+    refetchOnMount: false, // CRITICAL: Don't refetch on mount - this was clearing opportunities
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnReconnect: false, // Don't refetch on reconnect
   });
 
   // Fetch tasks for each opportunity to get task counts
+  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
   const { data: allTasks = {} } = useQuery({
     queryKey: ['/api/opportunities/tasks', opportunities.map(o => o.id).join(',')],
     queryFn: async () => {
@@ -152,7 +157,10 @@ export default function Opportunities() {
       return tasksByOpportunity;
     },
     enabled: opportunities.length > 0,
-    staleTime: 1 * 60 * 1000,
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
+    refetchOnMount: false, // CRITICAL: Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnReconnect: false, // Don't refetch on reconnect
   });
 
   // Enrich opportunities with task counts and contact info

@@ -106,17 +106,25 @@ export function OpportunityDetailDrawer({
   const [editingNoteText, setEditingNoteText] = useState('');
 
   // Fetch tasks for this opportunity
+  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
   const { data: tasks = [], refetch: refetchTasks } = useQuery({
     queryKey: ['/api/opportunities', opportunity?.id, 'tasks'],
     queryFn: () => apiClient.getOpportunityTasks(opportunity!.id),
     enabled: !!opportunity?.id,
+    refetchOnMount: false, // CRITICAL: Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
   });
 
   // Fetch notes for this opportunity
+  // CRITICAL: Disable refetchOnMount to prevent automatic refetches
   const { data: notes = [], refetch: refetchNotes } = useQuery({
     queryKey: ['/api/opportunities', opportunity?.id, 'notes'],
     queryFn: () => apiClient.getOpportunityNotes(opportunity!.id),
     enabled: !!opportunity?.id,
+    refetchOnMount: false, // CRITICAL: Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    staleTime: 5 * 60 * 1000, // 5 minutes - prevent immediate refetches
   });
 
   const isNewOpportunity = !opportunity?.id;
