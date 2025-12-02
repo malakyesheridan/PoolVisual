@@ -309,9 +309,17 @@ export function KanbanBoard({
           grouped[stageId] = [];
         }
         grouped[stageId].push(opp);
+      } else if (stageId) {
+        // If stageId exists but doesn't match any current stage, preserve it
+        // This handles cases where stages haven't loaded yet or a stage was deleted
+        // Create a temporary group for this stageId so the opportunity stays in its assigned stage
+        if (!grouped[stageId]) {
+          grouped[stageId] = [];
+        }
+        grouped[stageId].push(opp);
       } else {
-        // If no stageId or stageId doesn't match any stage, assign to first stage as fallback
-        // This ensures opportunities are always visible even if their stage was deleted or not loaded
+        // Only use fallback if opportunity truly has no stageId
+        // Assign to first stage to ensure visibility
         const fallbackStageId = stages.length > 0 ? stages[0].id : 'unassigned';
         if (!grouped[fallbackStageId]) {
           grouped[fallbackStageId] = [];
@@ -398,6 +406,29 @@ export function KanbanBoard({
             onOpportunityClick={onOpportunityClick}
           />
         ))}
+        {/* Render columns for opportunities with stageIds that don't match any current stage */}
+        {Object.keys(opportunitiesByStage)
+          .filter(stageId => {
+            // Only show if it's not in sortedStages and has opportunities
+            return !sortedStages.some(s => s.id === stageId) && opportunitiesByStage[stageId].length > 0;
+          })
+          .map(stageId => {
+            // Create a temporary stage object for display
+            const tempStage: Stage = {
+              id: stageId,
+              name: 'Unassigned Stage',
+              color: '#6B7280',
+              order: 999,
+            };
+            return (
+              <StageColumn
+                key={stageId}
+                stage={tempStage}
+                opportunities={opportunitiesByStage[stageId]}
+                onOpportunityClick={onOpportunityClick}
+              />
+            );
+          })}
       </div>
 
       <DragOverlay>

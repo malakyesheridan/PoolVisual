@@ -207,6 +207,39 @@ export function OpportunityDetailDrawer({
     },
   });
 
+  // Delete opportunity mutation
+  const deleteOpportunityMutation = useMutation({
+    mutationFn: () => apiClient.deleteOpportunity(opportunity!.id),
+    onSuccess: async () => {
+      toast({ title: 'Opportunity deleted', description: 'Opportunity has been deleted successfully.' });
+      onClose();
+      // Notify parent to refetch from backend
+      await onOpportunityUpdated();
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to delete opportunity',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDelete = () => {
+    if (isNewOpportunity) {
+      onClose();
+      return;
+    }
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = () => {
+    deleteOpportunityMutation.mutate();
+    setShowDeleteConfirm(false);
+  };
+
   const handleSave = () => {
     if (isNewOpportunity) {
       if (!editedTitle.trim()) {
@@ -475,16 +508,29 @@ export function OpportunityDetailDrawer({
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+    <>
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl">
               {isNewOpportunity ? 'New Opportunity' : 'Opportunity Details'}
             </DialogTitle>
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              {!isNewOpportunity && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleDelete}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={onClose}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </DialogHeader>
 
@@ -932,6 +978,33 @@ export function OpportunityDetailDrawer({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Delete Confirmation Dialog */}
+    <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Opportunity</DialogTitle>
+        </DialogHeader>
+        <div className="py-4">
+          <p className="text-sm text-slate-600">
+            Are you sure you want to delete "{opportunity?.title || 'this opportunity'}"? This action cannot be undone.
+          </p>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+            Cancel
+          </Button>
+          <Button 
+            variant="destructive" 
+            onClick={confirmDelete}
+            disabled={deleteOpportunityMutation.isPending}
+          >
+            {deleteOpportunityMutation.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 

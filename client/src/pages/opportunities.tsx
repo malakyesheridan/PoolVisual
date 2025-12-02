@@ -283,7 +283,9 @@ export default function Opportunities() {
         status: opp.status || 'open',
         taskCount: tasks.length,
         completedTaskCount: completedTasks.length,
-        stageId: opp.stageId || opp.pipelineStage,
+        // Preserve stageId - keep original stageId, don't override with pipelineStage
+        // pipelineStage is a legacy string field, stageId is the UUID reference
+        stageId: opp.stageId,
         stageName: stages.find((s: Stage) => s.id === opp.stageId)?.name || opp.pipelineStage,
       };
     });
