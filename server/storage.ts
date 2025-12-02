@@ -1743,26 +1743,49 @@ export class PostgresStorage implements IStorage {
   // Opportunities methods
   async createOpportunity(opportunity: InsertOpportunity): Promise<Opportunity> {
     try {
-      // Ensure userId and createdBy are set
-      const opportunityData = {
+      // CRITICAL: Ensure userId and createdBy are ALWAYS set - these are required fields
+      if (!opportunity.userId) {
+        throw new Error("userId is required to create an opportunity");
+      }
+      
+      const opportunityData: any = {
         ...opportunity,
-        userId: opportunity.userId || (opportunity as any).userId,
-        createdBy: opportunity.createdBy || (opportunity as any).createdBy || opportunity.userId || (opportunity as any).userId,
+        userId: opportunity.userId, // This MUST be set
+        createdBy: opportunity.createdBy || opportunity.userId, // createdBy defaults to userId if not provided
         updatedAt: new Date(),
       };
       
-      console.log('[Storage] Creating opportunity with userId:', opportunityData.userId, 'createdBy:', opportunityData.createdBy);
+      console.log('[Storage] Creating opportunity with userId:', opportunityData.userId, 'createdBy:', opportunityData.createdBy, 'title:', opportunityData.title);
       
       const [opp] = await ensureDb()
         .insert(opportunities)
         .values(opportunityData)
         .returning();
-      if (!opp) throw new Error("Failed to create opportunity");
       
-      console.log('[Storage] Opportunity created successfully:', opp.id, 'userId:', opp.userId);
+      if (!opp) {
+        throw new Error("Failed to create opportunity - no record returned");
+      }
+      
+      console.log('[Storage] Opportunity created successfully:', {
+        id: opp.id,
+        userId: opp.userId,
+        title: opp.title,
+        status: opp.status
+      });
+      
+      // Verify the opportunity was saved with the correct userId
+      if (opp.userId !== opportunityData.userId) {
+        console.error('[Storage] WARNING: Opportunity userId mismatch! Expected:', opportunityData.userId, 'Got:', opp.userId);
+      }
+      
       return opp;
     } catch (error: any) {
-      console.error('[Storage] Error creating opportunity:', error);
+      console.error('[Storage] Error creating opportunity:', {
+        error: error.message,
+        code: error.code,
+        userId: opportunity.userId,
+        title: (opportunity as any).title
+      });
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
       }
@@ -1788,8 +1811,14 @@ export class PostgresStorage implements IStorage {
 
   async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string }): Promise<Opportunity[]> {
     try {
+      if (!userId) {
+        console.error('[Storage] getOpportunities called with empty userId!');
+        throw new Error("userId is required to fetch opportunities");
+      }
+      
       console.log('[Storage] getOpportunities called with userId:', userId, 'filters:', filters);
       
+      // Build conditions - ALWAYS filter by userId first
       const conditions = [eq(opportunities.userId, userId)];
       if (filters?.status) {
         conditions.push(eq(opportunities.status, filters.status));
@@ -1798,6 +1827,7 @@ export class PostgresStorage implements IStorage {
         conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
       }
       
+      // Execute query
       const results = await ensureDb()
         .select()
         .from(opportunities)
@@ -1806,12 +1836,29 @@ export class PostgresStorage implements IStorage {
       
       console.log('[Storage] getOpportunities found', results.length, 'opportunities for userId:', userId);
       if (results.length > 0) {
-        console.log('[Storage] Sample opportunity userIds:', results.slice(0, 3).map(r => r.userId));
+        const sampleUserIds = results.slice(0, 3).map(r => r.userId);
+        console.log('[Storage] Sample opportunity userIds:', sampleUserIds);
+        // Verify all results have the correct userId
+        const mismatched = results.filter(r => r.userId !== userId);
+        if (mismatched.length > 0) {
+          console.error('[Storage] ERROR: Found', mismatched.length, 'opportunities with incorrect userId! Expected:', userId, 'Found:', mismatched.map(m => m.userId));
+        }
+      } else {
+        // If no results, check if there are ANY opportunities in the database (for debugging)
+        const allOpportunities = await ensureDb()
+          .select({ id: opportunities.id, userId: opportunities.userId })
+          .from(opportunities)
+          .limit(5);
+        console.log('[Storage] Total opportunities in database (sample):', allOpportunities.map(o => ({ id: o.id, userId: o.userId })));
       }
       
       return results;
     } catch (error: any) {
-      console.error('[Storage] Error in getOpportunities:', error);
+      console.error('[Storage] Error in getOpportunities:', {
+        error: error.message,
+        code: error.code,
+        userId: userId
+      });
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         console.warn('[getOpportunities] opportunities table not found, returning empty array');
         return [];

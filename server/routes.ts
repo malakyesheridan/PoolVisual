@@ -2788,7 +2788,13 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Opportunities endpoints (for real estate)
   app.get("/api/opportunities", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      console.log('[GET /api/opportunities] Fetching opportunities for userId:', req.user.id);
+      const requestingUserId = req.user.id;
+      console.log('[GET /api/opportunities] Fetching opportunities for userId:', requestingUserId);
+      
+      if (!requestingUserId) {
+        console.error('[GET /api/opportunities] ERROR: No userId in request');
+        return res.status(401).json({ message: "User not authenticated" });
+      }
       
       const filters: any = {};
       if (req.query.status) {
@@ -2803,9 +2809,17 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
 
-      const opportunities = await storage.getOpportunities(req.user.id, filters);
+      const opportunities = await storage.getOpportunities(requestingUserId, filters);
       
-      console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for userId:', req.user.id);
+      console.log('[GET /api/opportunities] Found', opportunities.length, 'opportunities for userId:', requestingUserId);
+      if (opportunities.length > 0) {
+        console.log('[GET /api/opportunities] Sample opportunity userIds:', opportunities.slice(0, 3).map((o: any) => o.userId));
+        // Verify all opportunities belong to the requesting user
+        const mismatched = opportunities.filter((o: any) => o.userId !== requestingUserId);
+        if (mismatched.length > 0) {
+          console.error('[GET /api/opportunities] WARNING: Found', mismatched.length, 'opportunities with mismatched userIds');
+        }
+      }
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
@@ -2930,23 +2944,37 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (ownerId) opportunityData.ownerId = ownerId;
       if (tags) opportunityData.tags = tags;
 
-      // Ensure userId and createdBy are always set
-      if (!opportunityData.userId) {
-        opportunityData.userId = req.user.id;
-      }
-      if (!opportunityData.createdBy) {
-        opportunityData.createdBy = req.user.id;
-      }
+      // CRITICAL: ALWAYS set userId and createdBy from authenticated user - these are required
+      opportunityData.userId = req.user.id;
+      opportunityData.createdBy = req.user.id;
       
-      console.log('[POST /api/opportunities] Creating opportunity with userId:', opportunityData.userId, 'createdBy:', opportunityData.createdBy);
+      console.log('[POST /api/opportunities] Creating opportunity:', {
+        userId: opportunityData.userId,
+        createdBy: opportunityData.createdBy,
+        title: opportunityData.title,
+        status: opportunityData.status,
+        stageId: opportunityData.stageId
+      });
       
       const opportunity = await storage.createOpportunity(opportunityData);
       
       if (!opportunity) {
+        console.error('[POST /api/opportunities] Failed to create opportunity - storage returned null');
         return res.status(500).json({ message: "Failed to create opportunity" });
       }
       
-      console.log('[POST /api/opportunities] Opportunity created successfully:', opportunity.id, 'userId:', opportunity.userId);
+      console.log('[POST /api/opportunities] Opportunity created successfully:', {
+        id: opportunity.id,
+        userId: opportunity.userId,
+        title: opportunity.title,
+        status: opportunity.status
+      });
+      
+      // Verify the opportunity was saved with the correct userId
+      if (opportunity.userId !== req.user.id) {
+        console.error('[POST /api/opportunities] CRITICAL ERROR: Opportunity userId mismatch! Expected:', req.user.id, 'Got:', opportunity.userId);
+        return res.status(500).json({ message: "Opportunity was created with incorrect userId" });
+      }
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
