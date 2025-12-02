@@ -168,16 +168,44 @@ export function OpportunityDetailDrawer({
         setPendingTasks([]);
         setPendingNotes([]);
         
-        // Optimistically update ALL opportunity queries (regardless of statusFilter)
-        // This ensures the new opportunity appears immediately
+        // REDESIGNED: Update cache for ALL possible query keys to ensure it appears everywhere
+        // Update the exact query key being used (with current statusFilter)
+        if (currentStatusFilter !== undefined) {
+          queryClient.setQueryData(
+            ['/api/opportunities', currentStatusFilter],
+            (oldData: any) => {
+              if (!oldData || !Array.isArray(oldData)) {
+                return [createdOpportunity];
+              }
+              const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
+              if (exists) return oldData;
+              return [createdOpportunity, ...oldData];
+            }
+          );
+        }
+        
+        // Also update the query without filter (for when filter is null)
+        queryClient.setQueryData(
+          ['/api/opportunities', null],
+          (oldData: any) => {
+            if (!oldData || !Array.isArray(oldData)) {
+              return [createdOpportunity];
+            }
+            const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
+            if (exists) return oldData;
+            return [createdOpportunity, ...oldData];
+          }
+        );
+        
+        // Update ALL other opportunity queries as fallback
         queryClient.setQueriesData(
           { queryKey: ['/api/opportunities'], exact: false },
           (oldData: any) => {
-            if (!oldData || !Array.isArray(oldData)) return oldData;
-            // Check if opportunity already exists (avoid duplicates)
+            if (!oldData || !Array.isArray(oldData)) {
+              return [createdOpportunity];
+            }
             const exists = oldData.some((opp: any) => opp.id === createdOpportunity.id);
             if (exists) return oldData;
-            // Add the new opportunity to the beginning of the array
             return [createdOpportunity, ...oldData];
           }
         );
