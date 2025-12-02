@@ -218,13 +218,25 @@ export function OpportunityDetailDrawer({
         return;
       }
       
-      const defaultStage = stages[0];
+      // Ensure we have a stageId - use editedStageId, or first stage, or wait for stages to load
+      const defaultStage = stages.find(s => s.id === editedStageId) || stages[0];
+      const finalStageId = editedStageId || defaultStage?.id;
+      
+      if (!finalStageId && stages.length === 0) {
+        toast({
+          title: 'Error',
+          description: 'Please wait for stages to load before creating an opportunity',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
       createOpportunityMutation.mutate({
         title: editedTitle.trim(),
         clientName: editedTitle.trim(),
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
-        stageId: editedStageId || defaultStage?.id,
+        stageId: finalStageId,
         pipelineStage: defaultStage?.name || 'new',
         tags: editedTags,
       });

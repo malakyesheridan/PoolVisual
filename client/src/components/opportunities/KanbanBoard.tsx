@@ -292,16 +292,32 @@ export function KanbanBoard({
 
   const opportunitiesByStage = useMemo(() => {
     const grouped: Record<string, Opportunity[]> = {};
+    const stageIds = new Set(stages.map(s => s.id));
+    
+    // Initialize all known stages
     stages.forEach(stage => {
       grouped[stage.id] = [];
     });
     
+    // Group opportunities by stage
     opportunities.forEach(opp => {
-      const stageId = opp.stageId || 'unassigned';
-      if (!grouped[stageId]) {
-        grouped[stageId] = [];
+      const stageId = opp.stageId;
+      
+      // If opportunity has a stageId that exists in stages, use it
+      if (stageId && stageIds.has(stageId)) {
+        if (!grouped[stageId]) {
+          grouped[stageId] = [];
+        }
+        grouped[stageId].push(opp);
+      } else {
+        // If no stageId or stageId doesn't match any stage, assign to first stage as fallback
+        // This ensures opportunities are always visible even if their stage was deleted or not loaded
+        const fallbackStageId = stages.length > 0 ? stages[0].id : 'unassigned';
+        if (!grouped[fallbackStageId]) {
+          grouped[fallbackStageId] = [];
+        }
+        grouped[fallbackStageId].push(opp);
       }
-      grouped[stageId].push(opp);
     });
 
     return grouped;
