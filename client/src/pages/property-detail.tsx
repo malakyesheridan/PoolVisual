@@ -487,7 +487,7 @@ export default function PropertyDetail() {
 
   return (
     <div className="bg-slate-50 pb-20 md:pb-0">      
-      <div className="max-w-4xl mx-auto px-4 md:px-6 py-4 md:py-8">
+      <div className="w-full max-w-[98%] xl:max-w-[1600px] mx-auto px-3 md:px-6 py-4 md:py-8">
         {/* Mobile Header */}
         <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
           <div className="flex items-center justify-between">
@@ -549,9 +549,9 @@ export default function PropertyDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-3 space-y-6">
             
             {/* Photos Section - Conditional rendering based on industry */}
             {isRealEstate ? (
