@@ -3605,6 +3605,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       const stages = await storage.getPipelineStages(pipelineId);
+      console.log(`[GET /api/pipelines/:id/stages] Returning ${stages.length} stages for pipeline ${pipelineId}:`, stages.map(s => ({ id: s.id, name: s.name })));
       res.json(stages);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -3625,12 +3626,23 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Check if a stage with this name already exists for this pipeline
+      const existingStages = await storage.getPipelineStages(pipelineId);
+      const duplicateStage = existingStages.find(s => s.name.toLowerCase() === name.trim().toLowerCase());
+      
+      if (duplicateStage) {
+        console.log(`[POST /api/pipelines/:id/stages] Stage "${name}" already exists for pipeline ${pipelineId} with ID ${duplicateStage.id}, returning existing stage`);
+        return res.json(duplicateStage);
+      }
+
+      console.log(`[POST /api/pipelines/:id/stages] Creating new stage "${name}" for pipeline ${pipelineId}`);
       const stage = await storage.createPipelineStage({
         pipelineId,
         name: name.trim(),
         order: order !== undefined ? order : 0,
         color: color || '#6B7280',
       });
+      console.log(`[POST /api/pipelines/:id/stages] Created stage with ID ${stage.id} for pipeline ${pipelineId}`);
       res.json(stage);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });

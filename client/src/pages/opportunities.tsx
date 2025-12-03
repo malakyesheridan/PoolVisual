@@ -78,7 +78,7 @@ export default function Opportunities() {
   }
 
   // Fetch default pipeline
-  const { data: pipelines = [] } = useQuery({
+  const { data: pipelines = [], isLoading: pipelinesLoading } = useQuery({
     queryKey: ['/api/pipelines'],
     queryFn: () => apiClient.getPipelines(),
     staleTime: 5 * 60 * 1000,
@@ -99,6 +99,9 @@ export default function Opportunities() {
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
+
+  // Track if we've attempted to create pipeline/stages to prevent duplicates
+  const hasAttemptedPipelineCreation = useRef(false);
 
   // Create default pipeline and stages if they don't exist
   const createDefaultPipelineMutation = useMutation({
@@ -132,11 +135,44 @@ export default function Opportunities() {
     },
   });
 
+  // Create stages for existing pipeline if it doesn't have any
+  const createDefaultStagesMutation = useMutation({
+    mutationFn: async (pipelineId: string) => {
+      const defaultStages = [
+        { name: 'New', color: '#3B82F6', order: 0 },
+        { name: 'Contacted', color: '#8B5CF6', order: 1 },
+        { name: 'Qualified', color: '#10B981', order: 2 },
+        { name: 'Viewing', color: '#F59E0B', order: 3 },
+        { name: 'Offer', color: '#EF4444', order: 4 },
+        { name: 'Closed', color: '#6B7280', order: 5 },
+      ];
+
+      for (const stage of defaultStages) {
+        await apiClient.createPipelineStage(pipelineId, stage);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pipelines'] });
+    },
+  });
+
+  // Create default pipeline and stages if they don't exist
+  // CRITICAL: Only run after pipelines query has completed to avoid race conditions
   useEffect(() => {
+    // Don't run if still loading or already attempted
+    if (pipelinesLoading || hasAttemptedPipelineCreation.current) return;
+    
+    // If no pipelines exist, create a new default pipeline with stages
     if (pipelines.length === 0 && !createDefaultPipelineMutation.isPending && !createDefaultPipelineMutation.isError) {
+      hasAttemptedPipelineCreation.current = true;
       createDefaultPipelineMutation.mutate();
     }
-  }, [pipelines.length, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError]);
+    // If a default pipeline exists but has no stages, create stages for it
+    else if (defaultPipeline?.id && stages.length === 0 && !stagesLoading && !createDefaultStagesMutation.isPending) {
+      hasAttemptedPipelineCreation.current = true;
+      createDefaultStagesMutation.mutate(defaultPipeline.id);
+    }
+  }, [pipelines.length, pipelinesLoading, defaultPipeline?.id, stages.length, stagesLoading, createDefaultPipelineMutation.isPending, createDefaultPipelineMutation.isError, createDefaultStagesMutation.isPending]);
 
   // NEW: Manual data fetching - load once, then manage locally
   // Use useCallback to memoize and prevent stale closures
