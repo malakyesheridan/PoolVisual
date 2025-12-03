@@ -741,12 +741,15 @@ export function OpportunityDetailDrawer({
                 <div>
                   <Label>Property</Label>
                   {isEditing ? (
-                    <Select value={editedPropertyJobId} onValueChange={setEditedPropertyJobId}>
+                    <Select 
+                      value={editedPropertyJobId || "__none__"} 
+                      onValueChange={(value) => setEditedPropertyJobId(value === "__none__" ? "" : value)}
+                    >
                       <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
                         <SelectValue placeholder="Select property" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No property linked</SelectItem>
+                        <SelectItem value="__none__">No property linked</SelectItem>
                         {jobs.map(job => (
                           <SelectItem key={job.id} value={job.id}>
                             {job.clientName || job.address || `Property ${job.id.slice(0, 8)}`}
