@@ -166,7 +166,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
                     className="bg-primary hover:bg-primary/90 text-white text-xs px-3 py-1 h-7"
                   >
                     <FileText className="w-3 h-3 mr-1" />
-                    Create Quote
+                    {createQuote}
                   </Button>
                 )}
                 <ArrowRight className="w-4 h-4 text-gray-400" />

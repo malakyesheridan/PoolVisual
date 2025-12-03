@@ -11,10 +11,15 @@ import {
   DollarSign, 
   Calendar,
   Loader2,
-  AlertCircle
+  AlertCircle,
+  Home,
+  Building,
+  MapPin,
+  TrendingUp
 } from 'lucide-react';
 import { formatCurrency } from '../../lib/measurement-utils';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
+import { useIsRealEstate } from '../../hooks/useIsRealEstate';
 
 interface MetricCardsProps {
   jobs: any[];
@@ -32,6 +37,7 @@ export function MetricCards({
   className = '' 
 }: MetricCardsProps) {
   const { projects, quote } = useIndustryTerm();
+  const isRealEstate = useIsRealEstate();
   
   // Calculate metrics from real job data (same logic as Jobs page)
   const totalProjects = jobs.length;
@@ -57,18 +63,19 @@ export function MetricCards({
     return sum + (isNaN(value) ? 0 : value);
   }, 0);
 
+  // Use real estate-specific icons for real estate industry
   const metrics = [
     {
       title: `Total ${projects}`,
       value: totalProjects,
-      icon: Briefcase,
+      icon: isRealEstate ? Home : Briefcase,
       color: "text-primary",
       bgColor: "bg-primary/5"
     },
     {
       title: `Active ${projects}`, 
       value: activeProjects,
-      icon: Activity,
+      icon: isRealEstate ? Building : Activity,
       color: "text-green-600",
       bgColor: "bg-green-50"
     },
@@ -82,7 +89,7 @@ export function MetricCards({
     {
       title: "Total Value",
       value: formatCurrency(totalQuoteValue),
-      icon: DollarSign,
+      icon: isRealEstate ? TrendingUp : DollarSign,
       color: "text-purple-600",
       bgColor: "bg-purple-50"
     }
