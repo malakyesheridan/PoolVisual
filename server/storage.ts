@@ -1828,7 +1828,7 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string }): Promise<Opportunity[]> {
+  async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string; propertyJobId?: string }): Promise<Opportunity[]> {
     try {
       // Ensure userId is a valid string UUID
       const normalizedUserId = String(userId).trim();
@@ -1844,6 +1844,9 @@ export class PostgresStorage implements IStorage {
       }
       if (filters?.pipelineStage) {
         conditions.push(eq(opportunities.pipelineStage, filters.pipelineStage));
+      }
+      if (filters?.propertyJobId) {
+        conditions.push(eq(opportunities.propertyJobId, filters.propertyJobId));
       }
       
       // Execute query - this will return ALL opportunities for this userId

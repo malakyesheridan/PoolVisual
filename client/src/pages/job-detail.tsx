@@ -25,7 +25,8 @@ import {
   Eye,
   Send,
   X,
-  ImageIcon
+  ImageIcon,
+  DollarSign
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PhotoGridSkeleton } from "@/components/ui/skeleton-variants";
@@ -82,6 +83,14 @@ export default function JobDetail() {
     queryFn: () => jobId ? apiClient.getQuotes(job?.orgId || '', { jobId }) : Promise.resolve([]),
     enabled: !!jobId && !!job?.orgId,
     staleTime: 30 * 1000, // 30 seconds - quotes can change more frequently
+  });
+
+  // Fetch linked opportunities for this property (real estate only)
+  const { data: linkedOpportunities = [], isLoading: opportunitiesLoading } = useQuery({
+    queryKey: ['/api/opportunities', jobId, 'linked'],
+    queryFn: () => jobId ? apiClient.getOpportunities({ propertyJobId: jobId }) : Promise.resolve([]),
+    enabled: !!jobId && isRealEstate,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
   // For real estate: separate queries for marketing and renovation photos
@@ -1001,7 +1010,89 @@ export default function JobDetail() {
 
             {/* Property Notes (Real Estate Only) */}
             {isRealEstate && jobId && (
-              <PropertyNotes jobId={jobId} />
+              <>
+                <PropertyNotes jobId={jobId} />
+                
+                {/* Linked Opportunities */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      <span>Linked Opportunities ({linkedOpportunities.length})</span>
+                      <Button 
+                        size="sm" 
+                        onClick={() => navigate('/opportunities')}
+                        variant="outline"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        New Opportunity
+                      </Button>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {opportunitiesLoading ? (
+                      <div className="text-center p-8">
+                        <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                        <p className="text-slate-500">Loading opportunities...</p>
+                      </div>
+                    ) : linkedOpportunities.length === 0 ? (
+                      <div className="text-center p-8">
+                        <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                        <h3 className="text-lg font-medium text-slate-900 mb-2">No linked opportunities</h3>
+                        <p className="text-slate-500 mb-4">
+                          Link opportunities to this property to track sales pipeline
+                        </p>
+                        <Button 
+                          onClick={() => navigate('/opportunities')}
+                          variant="outline"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create Opportunity
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {linkedOpportunities.map((opp: any) => (
+                          <div 
+                            key={opp.id}
+                            className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
+                            onClick={() => navigate(`/opportunities`)}
+                          >
+                            <div className="flex-1">
+                              <h4 className="font-medium text-slate-900">{opp.title || 'Untitled Opportunity'}</h4>
+                              <div className="flex items-center gap-4 mt-1 text-sm text-slate-600">
+                                {opp.stageName && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {opp.stageName}
+                                  </Badge>
+                                )}
+                                {opp.value && (
+                                  <span className="flex items-center gap-1">
+                                    <DollarSign className="w-3 h-3" />
+                                    {formatCurrency(typeof opp.value === 'string' ? parseFloat(opp.value) : opp.value)}
+                                  </span>
+                                )}
+                                <span className="text-slate-500">
+                                  {formatDistanceToNow(new Date(opp.createdAt), { addSuffix: true })}
+                                </span>
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate('/opportunities');
+                              }}
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
             )}
 
             {/* Client Information */}

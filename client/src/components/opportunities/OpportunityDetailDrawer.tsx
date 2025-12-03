@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Select,
   SelectContent,
@@ -16,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth-store';
+import { useLocation } from 'wouter';
 import { 
   X, 
   Phone, 
@@ -27,7 +29,11 @@ import {
   Trash2,
   Edit,
   User,
-  Tag
+  Tag,
+  MapPin,
+  FileText,
+  ChevronDown,
+  Eye
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
 import { format } from 'date-fns';
@@ -47,6 +53,8 @@ interface Opportunity {
   ownerName?: string;
   tags?: string[];
   notes?: string;
+  propertyJobId?: string;
+  propertyName?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -68,7 +76,7 @@ interface OpportunityDetailDrawerProps {
   opportunity: Opportunity | null;
   isOpen: boolean;
   onClose: () => void;
-  stages: Array<{ id: string; name: string }>;
+  stages: Array<{ id: string; name: string; color?: string }>;
   onOpportunityUpdated: () => void;
   onOpportunityCreated?: (opportunity: Opportunity) => void;
 }
@@ -84,15 +92,18 @@ export function OpportunityDetailDrawer({
   const { user } = useAuthStore();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [editedValue, setEditedValue] = useState('');
   const [editedStatus, setEditedStatus] = useState<'open' | 'won' | 'lost' | 'abandoned'>('open');
   const [editedStageId, setEditedStageId] = useState<string>('');
+  const [editedPropertyJobId, setEditedPropertyJobId] = useState<string>('');
   const [editedTags, setEditedTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newNoteText, setNewNoteText] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
   
   // Editing states
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
@@ -117,12 +128,20 @@ export function OpportunityDetailDrawer({
     staleTime: 10 * 1000,
   });
 
+  // Fetch jobs/properties for property dropdown
+  const { data: jobs = [] } = useQuery({
+    queryKey: ['/api/jobs'],
+    queryFn: () => apiClient.getJobs(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  });
+
   useEffect(() => {
     if (opportunity) {
       setEditedTitle(opportunity.title || '');
       setEditedValue(opportunity.value?.toString() || '');
       setEditedStatus(opportunity.status || 'open');
       setEditedStageId(opportunity.stageId || '');
+      setEditedPropertyJobId(opportunity.propertyJobId || '');
       setEditedTags(opportunity.tags || []);
       setIsEditing(isNewOpportunity);
     } else {
@@ -130,6 +149,7 @@ export function OpportunityDetailDrawer({
       setEditedValue('');
       setEditedStatus('open');
       setEditedStageId('');
+      setEditedPropertyJobId('');
       setEditedTags([]);
       setIsEditing(false);
     }
@@ -273,6 +293,7 @@ export function OpportunityDetailDrawer({
         status: editedStatus,
         stageId: finalStageId, // ALWAYS set stageId
         pipelineStage: defaultStage?.name || 'new',
+        propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
       });
     } else {
@@ -281,6 +302,7 @@ export function OpportunityDetailDrawer({
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
         stageId: editedStageId,
+        propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
       });
     }
@@ -512,13 +534,32 @@ export function OpportunityDetailDrawer({
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto w-[95vw] md:w-full">
         <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle className="text-2xl">
               {isNewOpportunity ? 'New Opportunity' : 'Opportunity Details'}
             </DialogTitle>
             <div className="flex items-center gap-2">
+              {!isNewOpportunity && !isEditing && (
+                <Button variant="outline" onClick={() => setIsEditing(true)}>
+                  <Edit className="w-4 h-4 mr-2" />
+                  Edit
+                </Button>
+              )}
+              {isEditing && (
+                <>
+                  <Button 
+                    onClick={handleSave} 
+                    disabled={createOpportunityMutation.isPending || updateOpportunityMutation.isPending}
+                  >
+                    Save
+                  </Button>
+                  <Button variant="outline" onClick={() => setIsEditing(false)}>
+                    Cancel
+                  </Button>
+                </>
+              )}
               {!isNewOpportunity && (
                 <Button 
                   variant="ghost" 
@@ -537,199 +578,320 @@ export function OpportunityDetailDrawer({
         </DialogHeader>
 
         <div className="space-y-6 mt-4">
-          {/* Header Section */}
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              {isEditing ? (
-                <Input
-                  value={editedTitle}
-                  onChange={(e) => setEditedTitle(e.target.value)}
-                  className="text-xl font-bold mb-2 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-                />
-              ) : (
-                <h2 className="text-xl font-bold mb-2">{opportunity?.title || 'Untitled Opportunity'}</h2>
-              )}
-              
-              {!isNewOpportunity && opportunity?.contactName && (
-                <div className="flex items-center gap-2 text-slate-600 mb-2">
-                  <User className="w-4 h-4" />
-                  <span className="font-medium">{opportunity.contactName}</span>
-                </div>
-              )}
+          {/* Title Section */}
+          <div>
+            {isEditing ? (
+              <Input
+                value={editedTitle}
+                onChange={(e) => setEditedTitle(e.target.value)}
+                className="text-2xl font-bold border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+              />
+            ) : (
+              <h2 className="text-2xl font-bold">{opportunity?.title || 'Untitled Opportunity'}</h2>
+            )}
+          </div>
 
-              {!isNewOpportunity && (
-                <div className="flex items-center gap-4 text-sm text-slate-500">
-                  {opportunity?.contactPhone && (
-                    <div className="flex items-center gap-1">
-                      <Phone className="w-4 h-4" />
-                      {opportunity.contactPhone}
+          {/* Contact Information Card */}
+          {!isNewOpportunity && (
+            <Card className="bg-slate-50 border-slate-200">
+              <CardContent className="p-4">
+                {opportunity?.contactName ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <User className="w-4 h-4 text-slate-500" />
+                      <span className="font-semibold text-slate-900">{opportunity.contactName}</span>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-slate-600 ml-6">
+                      {opportunity.contactPhone && (
+                        <div className="flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {opportunity.contactPhone}
+                        </div>
+                      )}
+                      {opportunity.contactEmail && (
+                        <div className="flex items-center gap-1">
+                          <Mail className="w-3 h-3" />
+                          {opportunity.contactEmail}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-2">
+                    <p className="text-sm text-slate-500">No contact assigned</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Financial Information Card */}
+          <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Financial Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div>
+                <Label className="text-sm font-medium text-slate-700">Value</Label>
+                {isEditing ? (
+                  <Input
+                    type="text"
+                    value={editedValue}
+                    onChange={(e) => handleValueChange(e.target.value)}
+                    onBlur={handleValueBlur}
+                    placeholder="0.00"
+                    className="mt-1 text-lg font-semibold border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                  />
+                ) : (
+                  <div className="mt-1 text-2xl font-bold text-slate-900">
+                    {opportunity?.value 
+                      ? formatCurrency(typeof opportunity.value === 'string' ? parseFloat(opportunity.value) : opportunity.value)
+                      : 'Not set'}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Status & Pipeline Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold">Status & Pipeline</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Status</Label>
+                  {isEditing ? (
+                    <Select value={editedStatus} onValueChange={(v: any) => setEditedStatus(v)}>
+                      <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="open">Open</SelectItem>
+                        <SelectItem value="won">Won</SelectItem>
+                        <SelectItem value="lost">Lost</SelectItem>
+                        <SelectItem value="abandoned">Abandoned</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Badge className={`mt-1 px-3 py-1 ${
+                      editedStatus === 'won' ? 'bg-emerald-500 text-white' :
+                      editedStatus === 'lost' ? 'bg-red-500 text-white' :
+                      editedStatus === 'abandoned' ? 'bg-gray-500 text-white' :
+                      'bg-blue-500 text-white'
+                    }`}>
+                      {editedStatus.charAt(0).toUpperCase() + editedStatus.slice(1)}
+                    </Badge>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Stage</Label>
+                  {isEditing ? (
+                    <Select value={editedStageId} onValueChange={setEditedStageId}>
+                      <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
+                        <SelectValue placeholder="Select stage" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stages.map(stage => (
+                          <SelectItem key={stage.id} value={stage.id}>
+                            <div className="flex items-center gap-2">
+                              {stage.color && (
+                                <div 
+                                  className="w-2 h-2 rounded-full border border-white shadow-sm" 
+                                  style={{ backgroundColor: stage.color }}
+                                />
+                              )}
+                              {stage.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="mt-1 flex items-center gap-2">
+                      {opportunity?.stageId && stages.find(s => s.id === opportunity.stageId)?.color && (
+                        <div 
+                          className="w-3 h-3 rounded-full border-2 border-white shadow-sm" 
+                          style={{ backgroundColor: stages.find(s => s.id === opportunity.stageId)?.color }}
+                        />
+                      )}
+                      <span className="font-medium">{opportunity?.stageName || 'Not assigned'}</span>
                     </div>
                   )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Relationship Information Card */}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                Relationship
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Label>Property</Label>
+                  {isEditing ? (
+                    <Select value={editedPropertyJobId} onValueChange={setEditedPropertyJobId}>
+                      <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
+                        <SelectValue placeholder="Select property" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No property linked</SelectItem>
+                        {jobs.map(job => (
+                          <SelectItem key={job.id} value={job.id}>
+                            {job.clientName || job.address || `Property ${job.id.slice(0, 8)}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <div className="mt-1">
+                      {opportunity?.propertyJobId ? (
+                        <div className="flex items-center gap-2">
+                          <MapPin className="w-4 h-4 text-slate-500" />
+                          <span className="font-medium">
+                            {jobs.find(j => j.id === opportunity.propertyJobId)?.clientName || 
+                             jobs.find(j => j.id === opportunity.propertyJobId)?.address || 
+                             'Linked property'}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => navigate(`/jobs/${opportunity.propertyJobId}`)}
+                            className="ml-2"
+                          >
+                            <Eye className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">Not linked</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Tags</Label>
+                  {isEditing ? (
+                    <div className="mt-1">
+                      <div className="flex gap-2 mb-2">
+                        <Input
+                          value={newTag}
+                          onChange={(e) => setNewTag(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
+                          placeholder="Add tag"
+                          className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                        />
+                        <Button onClick={handleAddTag} size="default">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add
+                        </Button>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {editedTags.map((tag, idx) => (
+                          <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                            {tag}
+                            <button onClick={() => handleRemoveTag(tag)}>
+                              <X className="w-3 h-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2 mt-1">
+                      {editedTags.length > 0 ? (
+                        editedTags.map((tag, idx) => (
+                          <Badge key={idx} variant="secondary">{tag}</Badge>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 text-sm">No tags</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions Card */}
+          {!isNewOpportunity && (opportunity?.contactEmail || opportunity?.contactPhone || opportunity?.propertyJobId) && (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold">Quick Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {opportunity?.contactEmail && (
-                    <div className="flex items-center gap-1">
-                      <Mail className="w-4 h-4" />
-                      {opportunity.contactEmail}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-2">
-              {isEditing ? (
-                <>
-                  <Button onClick={handleSave} disabled={createOpportunityMutation.isPending || updateOpportunityMutation.isPending}>
-                    Save
-                  </Button>
-                  <Button variant="outline" onClick={() => setIsEditing(false)}>
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button variant="outline" onClick={() => setIsEditing(true)}>
-                  <Edit className="w-4 h-4 mr-2" />
-                  Edit
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Details Section */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label>Value</Label>
-              {isEditing ? (
-                <Input
-                  type="text"
-                  value={editedValue}
-                  onChange={(e) => handleValueChange(e.target.value)}
-                  onBlur={handleValueBlur}
-                  placeholder="0.00"
-                  className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-                />
-              ) : (
-                <div className="flex items-center gap-2 mt-1">
-                  <DollarSign className="w-4 h-4" />
-                  {!isNewOpportunity && opportunity?.value 
-                    ? formatCurrency(typeof opportunity.value === 'string' ? parseFloat(opportunity.value) : opportunity.value)
-                    : isEditing ? (editedValue ? formatCurrency(parseFloat(editedValue.replace(/[,$]/g, ''))) : 'Not set') : 'Not set'}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label>Status</Label>
-              {isEditing ? (
-                <Select value={editedStatus} onValueChange={(v: any) => setEditedStatus(v)}>
-                  <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="open">Open</SelectItem>
-                    <SelectItem value="won">Won</SelectItem>
-                    <SelectItem value="lost">Lost</SelectItem>
-                    <SelectItem value="abandoned">Abandoned</SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Badge className={`mt-1 ${
-                  editedStatus === 'won' ? 'bg-green-100 text-green-700' :
-                  editedStatus === 'lost' ? 'bg-red-100 text-red-700' :
-                  'bg-blue-100 text-blue-700'
-                }`}>
-                  {editedStatus}
-                </Badge>
-              )}
-            </div>
-
-            <div>
-              <Label>Stage</Label>
-              {isEditing ? (
-                <Select value={editedStageId} onValueChange={setEditedStageId}>
-                  <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
-                    <SelectValue placeholder="Select stage" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {stages.map(stage => (
-                      <SelectItem key={stage.id} value={stage.id}>
-                        {stage.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="mt-1">
-                  {isEditing 
-                    ? (stages.find(s => s.id === editedStageId)?.name || 'Not assigned')
-                    : (opportunity?.stageName || 'Not assigned')
-                  }
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label>Tags</Label>
-              {isEditing ? (
-                <div className="mt-1">
-                  <div className="flex gap-2 mb-2">
-                    <Input
-                      value={newTag}
-                      onChange={(e) => setNewTag(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && handleAddTag()}
-                      placeholder="Add tag"
-                      className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-                    />
-                    <Button onClick={handleAddTag} size="sm">
-                      <Plus className="w-4 h-4" />
+                    <Button variant="outline" className="justify-start">
+                      <Mail className="w-4 h-4 mr-2" />
+                      Send Email
                     </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {editedTags.map((tag, idx) => (
-                      <Badge key={idx} variant="secondary" className="flex items-center gap-1">
-                        {tag}
-                        <button onClick={() => handleRemoveTag(tag)}>
-                          <X className="w-3 h-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2 mt-1">
-                  {editedTags.map((tag, idx) => (
-                    <Badge key={idx} variant="secondary">{tag}</Badge>
-                  ))}
-                  {editedTags.length === 0 && (
-                    <span className="text-slate-400 text-sm">No tags</span>
+                  )}
+                  {opportunity?.contactPhone && (
+                    <Button variant="outline" className="justify-start">
+                      <Phone className="w-4 h-4 mr-2" />
+                      Schedule Call
+                    </Button>
+                  )}
+                  {opportunity?.propertyJobId && (
+                    <Button 
+                      variant="outline" 
+                      className="justify-start"
+                      onClick={() => navigate(`/jobs/${opportunity.propertyJobId}`)}
+                    >
+                      <MapPin className="w-4 h-4 mr-2" />
+                      View Property
+                    </Button>
                   )}
                 </div>
-              )}
-            </div>
-          </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Checklist Section */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Checklist</h3>
-              <Badge variant="secondary">
-                {pendingTasksList.length} pending, {completedTasksList.length} completed
-              </Badge>
-            </div>
-
-            {opportunity?.id && (
-              <div className="flex gap-2 mb-4">
-                <Input
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
-                  placeholder="Add a checklist item..."
-                  className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
-                />
-                <Button onClick={handleAddTask} disabled={!newTaskTitle.trim() || createTaskMutation.isPending}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  Checklist
+                </div>
+                <Badge variant="secondary">
+                  {pendingTasksList.length} pending, {completedTasksList.length} completed
+                </Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {opportunity?.id && (
+                <div className="flex gap-2 mb-4">
+                  <Input
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleAddTask()}
+                    placeholder="Add a checklist item..."
+                    className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                  />
+                  <Button 
+                    onClick={handleAddTask} 
+                    disabled={!newTaskTitle.trim() || createTaskMutation.isPending}
+                    size="default"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add
+                  </Button>
+                </div>
+              )}
 
             {pendingTasksList.length > 0 && (
               <div className="space-y-2 mb-4">
@@ -803,10 +965,18 @@ export function OpportunityDetailDrawer({
               </div>
             )}
 
-            {completedTasksList.length > 0 && (
-              <div className="space-y-2 mt-4 pt-4 border-t-2 border-slate-200">
-                <h4 className="text-sm font-medium text-slate-500 mb-3">Completed ({completedTasksList.length})</h4>
-                {completedTasksList.map((task) => {
+              {completedTasksList.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <button
+                    onClick={() => setShowCompleted(!showCompleted)}
+                    className="flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-slate-900 mb-3 w-full text-left"
+                  >
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showCompleted ? 'rotate-180' : ''}`} />
+                    Completed ({completedTasksList.length})
+                  </button>
+                  {showCompleted && (
+                    <div className="space-y-2">
+                      {completedTasksList.map((task) => {
                   const isEditing = editingTaskId === task.id;
                   
                   return (
@@ -872,111 +1042,141 @@ export function OpportunityDetailDrawer({
                       )}
                     </div>
                   );
-                })}
-              </div>
-            )}
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {tasks.length === 0 && (
-              <div className="text-center py-8 text-slate-400 bg-slate-50 rounded-lg border-2 border-slate-200">
-                {opportunity?.id ? 'No checklist items yet. Add your first item above.' : 'Save the opportunity to add checklist items.'}
-              </div>
-            )}
-          </div>
+              {pendingTasksList.length === 0 && completedTasksList.length === 0 && (
+                <div className="text-center py-8">
+                  <CheckCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 mb-4">
+                    {opportunity?.id ? 'No checklist items yet' : 'Save the opportunity to add checklist items'}
+                  </p>
+                  {opportunity?.id && (
+                    <Button variant="outline" size="sm" onClick={() => {/* focus input */}}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add first item
+                    </Button>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {/* Notes Section */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Notes</h3>
-              <Badge variant="secondary">{notes.length}</Badge>
-            </div>
+          <Card className="bg-amber-50/30 border-amber-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-amber-700" />
+                  Notes
+                </div>
+                <Badge variant="secondary">{notes.length}</Badge>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {opportunity?.id && (
+                <div className="flex gap-2 mb-4">
+                  <Textarea
+                    value={newNoteText}
+                    onChange={(e) => setNewNoteText(e.target.value)}
+                    placeholder="Add a note..."
+                    className="flex-1 min-h-[80px] border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
+                  />
+                  <Button
+                    onClick={handleAddNote}
+                    disabled={!newNoteText.trim() || createNoteMutation.isPending}
+                    size="default"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add
+                  </Button>
+                </div>
+              )}
 
-            {opportunity?.id && (
-              <div className="flex gap-2 mb-4">
-                <Textarea
-                  value={newNoteText}
-                  onChange={(e) => setNewNoteText(e.target.value)}
-                  placeholder="Add a note..."
-                  className="flex-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
-                  rows={3}
-                />
-                <Button
-                  onClick={handleAddNote}
-                  disabled={!newNoteText.trim() || createNoteMutation.isPending}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-
-            <div className="space-y-3">
               {notes.length === 0 ? (
-                <div className="text-center py-8 text-slate-400 text-sm bg-slate-50 rounded-lg border-2 border-slate-200">
-                  {opportunity?.id ? 'No notes yet. Add your first note above.' : 'Save the opportunity to add notes.'}
+                <div className="text-center py-8">
+                  <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500 mb-4">
+                    {opportunity?.id ? 'No notes yet' : 'Save the opportunity to add notes'}
+                  </p>
+                  {opportunity?.id && (
+                    <Button variant="outline" size="sm" onClick={() => {/* focus textarea */}}>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add first note
+                    </Button>
+                  )}
                 </div>
               ) : (
-                notes.map((note: any) => {
-                  const isEditing = editingNoteId === note.id;
-                  
-                  return (
-                    <div key={note.id} className="p-4 bg-white rounded-lg border-2 border-slate-200 hover:border-slate-300 transition-colors shadow-sm group">
-                      {isEditing ? (
-                        <div className="space-y-2">
-                          <Textarea
-                            value={editingNoteText}
-                            onChange={(e) => setEditingNoteText(e.target.value)}
-                            className="border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
-                            rows={3}
-                            autoFocus
-                          />
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={() => handleSaveNoteEdit(note)}>
-                              <CheckCircle className="w-4 h-4 mr-1" />
-                              Save
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => {
-                              setEditingNoteId(null);
-                              setEditingNoteText('');
-                            }}>
-                              <X className="w-4 h-4 mr-1" />
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap">
-                            {note.noteText}
-                          </div>
-                          <div className="text-xs text-slate-500 mt-2 flex items-center justify-between">
-                            <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => {
-                                  setEditingNoteId(note.id);
-                                  setEditingNoteText(note.noteText);
-                                }}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={() => handleDeleteNote(note)}
-                              >
-                                <Trash2 className="w-4 h-4 text-red-600" />
-                              </Button>
+                <div className="space-y-3">
+                  {notes.map((note: any) => {
+                    const isEditing = editingNoteId === note.id;
+                    
+                    return (
+                      <Card key={note.id} className="bg-white group">
+                        <CardContent className="p-4">
+                          {isEditing ? (
+                            <div className="space-y-2">
+                              <Textarea
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                className="border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white resize-none"
+                                rows={3}
+                                autoFocus
+                              />
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => handleSaveNoteEdit(note)}>
+                                  <CheckCircle className="w-4 h-4 mr-1" />
+                                  Save
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => {
+                                  setEditingNoteId(null);
+                                  setEditingNoteText('');
+                                }}>
+                                  <X className="w-4 h-4 mr-1" />
+                                  Cancel
+                                </Button>
+                              </div>
                             </div>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })
+                          ) : (
+                            <>
+                              <div className="text-sm text-slate-900 leading-relaxed whitespace-pre-wrap mb-2">
+                                {note.noteText}
+                              </div>
+                              <div className="text-xs text-slate-500 flex items-center justify-between">
+                                <span>{format(new Date(note.createdAt), 'MMM d, yyyy h:mm a')}</span>
+                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingNoteId(note.id);
+                                      setEditingNoteText(note.noteText);
+                                    }}
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => handleDeleteNote(note)}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-red-600" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
               )}
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </div>
       </DialogContent>
     </Dialog>

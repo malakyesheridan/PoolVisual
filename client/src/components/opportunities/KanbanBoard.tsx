@@ -230,11 +230,11 @@ function StageColumn({
 }) {
   return (
     <div
-      className="flex-shrink-0 w-80 bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border border-slate-200 shadow-sm"
+      className="flex-shrink-0 w-80 h-full flex flex-col bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border border-slate-200 shadow-sm"
       data-stage-id={stage.id}
       data-type="stage"
     >
-      <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200">
+      <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
         <div className="flex items-center gap-2.5">
           <div
             className="w-3 h-3 rounded-full shadow-sm border border-white/50"
@@ -253,7 +253,7 @@ function StageColumn({
         items={opportunities.map(opp => opp.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="space-y-3 min-h-[200px]">
+        <div className="flex-1 overflow-y-auto space-y-3 min-h-0" style={{ scrollbarWidth: 'thin' }}>
           {opportunities.length === 0 ? (
             <div className="text-center py-8 text-slate-400 text-sm">
               No opportunities
@@ -395,7 +395,7 @@ export function KanbanBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-5 overflow-x-auto pb-6 px-1" style={{ scrollbarWidth: 'thin' }}>
+      <div className="flex gap-5 h-full pb-6 px-1" style={{ scrollbarWidth: 'thin' }}>
         {sortedStages.map((stage) => (
           <StageColumn
             key={stage.id}

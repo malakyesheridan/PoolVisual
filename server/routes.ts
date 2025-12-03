@@ -2806,6 +2806,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         filters.status = statusMap[req.query.status as string] || req.query.status;
       }
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
+      if (req.query.propertyJobId) filters.propertyJobId = req.query.propertyJobId;
 
       // CRITICAL: Use the authenticated user's ID directly - no transformations
       // Ensure userId is a string (UUIDs in PostgreSQL are stored as UUID type but compared as strings in Drizzle)

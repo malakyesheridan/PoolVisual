@@ -545,7 +545,7 @@ export default function Opportunities() {
       </div>
 
       {/* Kanban Board Container with Scroll */}
-      <div className="flex-1 overflow-hidden px-4 md:px-8 pb-4 md:pb-6">
+      <div className="flex-1 min-h-0 overflow-hidden px-4 md:px-8 pb-4 md:pb-6">
         {isLoading ? (
           <div className="text-center p-8">
             <div className="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
@@ -584,7 +584,7 @@ export default function Opportunities() {
             }}
           />
         ) : (
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto overflow-x-auto">
             <KanbanBoard
               opportunities={filteredOpportunities}
               stages={stages}

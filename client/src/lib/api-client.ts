@@ -933,10 +933,11 @@ class ApiClient {
   }
 
   // Opportunities (for real estate)
-  async getOpportunities(filters?: { status?: string; pipelineStage?: string }) {
+  async getOpportunities(filters?: { status?: string; pipelineStage?: string; propertyJobId?: string }) {
     const params = new URLSearchParams();
     if (filters?.status) params.append('status', filters.status);
     if (filters?.pipelineStage) params.append('pipelineStage', filters.pipelineStage);
+    if (filters?.propertyJobId) params.append('propertyJobId', filters.propertyJobId);
     const query = params.toString();
     return this.request<any[]>(`/opportunities${query ? `?${query}` : ''}`);
   }
