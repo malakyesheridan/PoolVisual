@@ -11,6 +11,7 @@ import { Button } from '../ui/button';
 import { AlertCircle, TrendingUp, Clock, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 import { useIsRealEstate } from '../../hooks/useIsRealEstate';
+import { useJobsRoute, useJobDetailRoute } from '../../lib/route-utils';
 
 interface QuickInsightsProps {
   jobs: any[];
