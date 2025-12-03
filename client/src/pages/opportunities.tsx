@@ -506,6 +506,7 @@ export default function Opportunities() {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+      </div>
 
       {/* Kanban Board Container with Scroll */}
       <div className="flex-1 overflow-hidden px-4 md:px-8 pb-4 md:pb-6">
