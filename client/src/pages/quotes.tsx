@@ -875,7 +875,8 @@ export default function Quotes() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/jobs/${quote.jobId}`);
+                            const route = isRealEstate ? `/properties/${quote.jobId}` : `/jobs/${quote.jobId}`;
+                            navigate(route);
                           }}
                           className="flex items-center gap-1 text-xs text-primary hover:underline mt-2 tap-target"
                         >
@@ -937,7 +938,8 @@ export default function Quotes() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    navigate(`/jobs/${quote.jobId}`);
+                                    const route = isRealEstate ? `/properties/${quote.jobId}` : `/jobs/${quote.jobId}`;
+                            navigate(route);
                                   }}
                                   className="hover:underline"
                                 >

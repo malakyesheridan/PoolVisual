@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 import { useIsRealEstate } from '../../hooks/useIsRealEstate';
+import { useJobsRoute } from '../../lib/route-utils';
 
 interface ActionCenterProps {
   jobs: any[];
@@ -80,6 +81,8 @@ const ActionButton = ({ title, description, icon: Icon, onClick, variant = 'seco
 export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: ActionCenterProps) {
   const { project, projects, quote, quotes: quotesTerm, createJob, createQuote, uploadPhoto } = useIndustryTerm();
   const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
+  const newJobRoute = `${jobsRoute}/new`;
   const quotesPath = isRealEstate ? '/opportunities' : '/quotes';
   const hasJobs = jobs.length > 0;
   const hasQuotes = quotes.length > 0;
@@ -90,14 +93,14 @@ export function ActionCenter({ jobs, quotes, onNavigate, className = '' }: Actio
       title: createJob,
       description: `Start a new ${project.toLowerCase()}`,
       icon: Plus,
-      onClick: () => onNavigate('/jobs/new'),
+      onClick: () => onNavigate(newJobRoute),
       variant: 'primary' as const
     },
     {
       title: uploadPhoto,
       description: `Add photos to existing ${project.toLowerCase()}`,
       icon: Upload,
-      onClick: () => onNavigate('/jobs'),
+      onClick: () => onNavigate(jobsRoute),
       variant: 'secondary' as const,
       disabled: !hasJobs
     },

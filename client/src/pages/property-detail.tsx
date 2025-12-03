@@ -48,8 +48,8 @@ import { PhotoCard } from "@/components/photos/PhotoCard";
 import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm";
 import { PropertyNotes } from "@/components/properties/PropertyNotes";
 
-export default function JobDetail() {
-  const [, params] = useRoute('/jobs/:id');
+export default function PropertyDetail() {
+  const [, params] = useRoute('/properties/:id');
   const [, navigate] = useLocation();
   const jobId = params?.id;
   const { toast } = useToast();
@@ -61,17 +61,8 @@ export default function JobDetail() {
   const isRealEstate = useIsRealEstate();
   const { user } = useAuthStore();
 
-  // Redirect real estate users to /properties route
-  useEffect(() => {
-    if (isRealEstate && jobId) {
-      navigate(`/properties/${jobId}`, { replace: true });
-    }
-  }, [isRealEstate, jobId, navigate]);
-
-  // Don't render anything for real estate users (they'll be redirected)
-  if (isRealEstate) {
-    return null;
-  }
+  // This is the real estate page, so isRealEstate should always be true
+  // But we'll keep the check for safety
 
   const editForm = useForm<EditClientFormData>({
     resolver: zodResolver(editClientSchema),
@@ -233,10 +224,10 @@ export default function JobDetail() {
   const duplicateJobMutation = useMutation({
     mutationFn: (jobData: any) => apiClient.createJob(jobData),
     onSuccess: (newJob) => {
-      navigate(`/jobs/${newJob.id}`);
+      navigate(`/properties/${newJob.id}`);
       toast({
-        title: "Job duplicated",
-        description: "The job has been duplicated successfully.",
+        title: "Property duplicated",
+        description: "The property has been duplicated successfully.",
       });
     },
     onError: (error) => {
@@ -399,7 +390,7 @@ export default function JobDetail() {
     return (
       <div className="bg-slate-50">
         <div className="max-w-4xl mx-auto px-6 py-8 text-center">
-          <h1 className="text-2xl font-bold text-slate-900 mb-4">Job not found</h1>
+          <h1 className="text-2xl font-bold text-slate-900 mb-4">Property not found</h1>
           <Button onClick={() => navigate('/dashboard')}>
             <ArrowLeft className="w-4 h-4 mr-2" />
             Back to Dashboard
@@ -411,8 +402,8 @@ export default function JobDetail() {
 
   // Build breadcrumbs
   const breadcrumbs = [
-    { label: 'Jobs', href: '/jobs', icon: FileText },
-    { label: job?.clientName || 'Job Details', href: null }
+    { label: 'Properties', href: '/properties', icon: FileText },
+    { label: job?.clientName || 'Property Details', href: null }
   ];
 
   const getQuoteStatusColor = (status: string) => {
@@ -478,18 +469,18 @@ export default function JobDetail() {
   };
 
   const handleEditJob = () => {
-    // For now, just show a toast message since we don't have a full job edit modal
+    // For now, just show a toast message since we don't have a full property edit modal
     toast({
-      title: "Edit Job",
-      description: "Job editing functionality will be available soon.",
+      title: "Edit Property",
+      description: "Property editing functionality will be available soon.",
     });
   };
 
   const handleDeleteJob = () => {
     // For now, just show a toast message since we don't have delete functionality
     toast({
-      title: "Delete Job",
-      description: "Job deletion functionality will be available soon.",
+      title: "Delete Property",
+      description: "Property deletion functionality will be available soon.",
       variant: "destructive",
     });
   };
@@ -553,7 +544,7 @@ export default function JobDetail() {
           <div className="flex items-center gap-3">
             <Button variant="outline" onClick={handleEditJob} data-testid="button-edit-job">
               <Edit className="w-4 h-4 mr-2" />
-              Edit Job
+              Edit Property
             </Button>
           </div>
         </div>

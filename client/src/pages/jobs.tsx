@@ -65,6 +65,18 @@ export default function Jobs() {
   const createJobText = getIndustryTerm(userIndustry, 'createJob');
   const isRealEstate = useIsRealEstate();
 
+  // Redirect real estate users to /properties route
+  useEffect(() => {
+    if (isRealEstate) {
+      navigate('/properties', { replace: true });
+    }
+  }, [isRealEstate, navigate]);
+
+  // Don't render anything for real estate users (they'll be redirected)
+  if (isRealEstate) {
+    return null;
+  }
+
   // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading } = useQuery({
     queryKey: ['/api/jobs'],

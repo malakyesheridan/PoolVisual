@@ -3,6 +3,8 @@ import { FileText, Plus, Loader2 } from 'lucide-react';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api-client';
+import { useIsRealEstate } from '../hooks/useIsRealEstate';
+import { useJobsRoute } from '../lib/route-utils';
 import { Button } from '../components/ui/button';
 import { 
   DropdownMenu, 
@@ -29,6 +31,8 @@ export function JobSelector({ onJobSelect, onCancel }: JobSelectorProps) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
   const [, navigate] = useLocation();
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
 
   useEffect(() => {
     loadJobs();
@@ -78,7 +82,7 @@ export function JobSelector({ onJobSelect, onCancel }: JobSelectorProps) {
   };
 
   const handleCreateNewJob = () => {
-    navigate('/jobs/new');
+    navigate(`${jobsRoute}/new`);
   };
 
   const getJobDisplayName = (job: Job) => {

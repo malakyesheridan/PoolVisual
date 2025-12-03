@@ -12,10 +12,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { jobSchema, type JobFormData } from '@/lib/form-validation';
 import { Form } from '@/components/ui/form';
 import { FormField } from '@/components/common/FormField';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
+import { useJobsRoute } from '@/lib/route-utils';
 
 export default function JobsNew() {
   const [, navigate] = useLocation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
 
   const form = useForm<JobFormData>({
     resolver: zodResolver(jobSchema),
@@ -34,7 +38,8 @@ export default function JobsNew() {
       toast.success("Job created successfully", {
         description: `Job for ${job.clientName} has been created.`
       });
-      navigate(`/jobs/${job.id}`);
+      const route = isRealEstate ? `/properties/${job.id}` : `/jobs/${job.id}`;
+      navigate(route);
     },
     onError: (error: any) => {
       console.error('Job creation error:', error);
@@ -71,7 +76,7 @@ export default function JobsNew() {
             <Button 
               variant="ghost" 
               size="icon"
-              onClick={() => navigate('/jobs')}
+              onClick={() => navigate(jobsRoute)}
               data-testid="button-back-mobile"
               className="hover:bg-slate-100 tap-target"
             >
@@ -189,7 +194,7 @@ export default function JobsNew() {
                   <Button 
                     type="button"
                     variant="outline"
-                    onClick={() => navigate('/jobs')}
+                    onClick={() => navigate(jobsRoute)}
                     disabled={isSubmitting || createJobMutation.isPending}
                     data-testid="button-cancel"
                     className="min-w-[100px] h-11 md:h-auto tap-target"

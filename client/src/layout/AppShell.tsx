@@ -4,6 +4,7 @@ import { Link, useLocation } from 'wouter';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { useIndustryTerm } from '@/hooks/useIndustryTerm';
+import { useJobsRoute } from '@/lib/route-utils';
 import { 
   Home, 
   Briefcase, 
@@ -161,11 +162,12 @@ export function AppShell({ children }: PropsWithChildren) {
   const [location] = useLocation();
   const { user, logout } = useAuthStore();
   const { jobs, quotes } = useIndustryTerm();
+  const jobsRoute = useJobsRoute();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
-    { to: '/jobs', label: jobs, icon: Briefcase },
+    { to: jobsRoute, label: jobs, icon: Briefcase },
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: quotes, icon: FileText },

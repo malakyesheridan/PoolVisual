@@ -10,6 +10,7 @@ import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { AlertCircle, TrendingUp, Clock, CheckCircle2, FileText, ArrowRight } from 'lucide-react';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
+import { useIsRealEstate } from '../../hooks/useIsRealEstate';
 
 interface QuickInsightsProps {
   jobs: any[];
@@ -20,6 +21,8 @@ interface QuickInsightsProps {
 export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsightsProps) {
   const [, navigate] = useLocation();
   const { projects, project, quote, quotes: quotesTerm, createQuote } = useIndustryTerm();
+  const jobsRoute = useJobsRoute();
+  const isRealEstate = useIsRealEstate();
   
   // Group quotes by jobId for quick lookup
   const quotesByJobId = new Map<string, any[]>();
@@ -68,10 +71,11 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
       onClick: () => {
         // Navigate to the first job that needs a quote, or show a list
         if (jobsNeedingQuote.length === 1) {
-          navigate(`/jobs/${jobsNeedingQuote[0].id}`);
+          const route = isRealEstate ? `/properties/${jobsNeedingQuote[0].id}` : `/jobs/${jobsNeedingQuote[0].id}`;
+          navigate(route);
         } else {
           // Navigate to jobs page with filter
-          navigate('/jobs');
+          navigate(jobsRoute);
         }
       }
     });
@@ -86,7 +90,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
       bgColor: 'bg-orange-50',
       action: 'Follow Up',
       jobs: jobsPendingResponse,
-      onClick: () => navigate('/jobs')
+      onClick: () => navigate(jobsRoute)
     });
   }
   
@@ -99,7 +103,7 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
       bgColor: 'bg-green-50',
       action: 'Schedule',
       jobs: jobsReadyToSchedule,
-      onClick: () => navigate('/jobs')
+      onClick: () => navigate(jobsRoute)
     });
   }
 
@@ -161,7 +165,8 @@ export function QuickInsights({ jobs, quotes = [], className = '' }: QuickInsigh
                     variant="default"
                     onClick={(e) => {
                       e.stopPropagation();
-                      navigate(`/jobs/${insight.jobs[0].id}`);
+                      const route = isRealEstate ? `/properties/${insight.jobs[0].id}` : `/jobs/${insight.jobs[0].id}`;
+                      navigate(route);
                     }}
                     className="bg-primary hover:bg-primary/90 text-white text-xs px-3 py-1 h-7"
                   >

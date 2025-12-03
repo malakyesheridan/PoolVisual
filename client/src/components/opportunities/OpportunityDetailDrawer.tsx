@@ -18,6 +18,8 @@ import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/auth-store';
 import { useLocation } from 'wouter';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
+import { useJobsRoute } from '@/lib/route-utils';
 import { 
   X, 
   Phone, 
@@ -93,6 +95,8 @@ export function OpportunityDetailDrawer({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, navigate] = useLocation();
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState('');
   const [editedValue, setEditedValue] = useState('');
@@ -770,7 +774,7 @@ export function OpportunityDetailDrawer({
                           <Button 
                             variant="ghost" 
                             size="sm"
-                            onClick={() => navigate(`/jobs/${opportunity.propertyJobId}`)}
+                            onClick={() => navigate(`${jobsRoute}/${opportunity.propertyJobId}`)}
                             className="ml-2"
                           >
                             <Eye className="w-3 h-3" />

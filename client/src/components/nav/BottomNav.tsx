@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useIndustryTerm } from '@/hooks/useIndustryTerm';
 import { useIsRealEstate } from '@/hooks/useIsRealEstate';
+import { useJobsRoute } from '@/lib/route-utils';
 
 interface NavItem {
   href: string;
@@ -21,10 +22,11 @@ export function BottomNav() {
   const [location] = useLocation();
   const { jobs, quotes } = useIndustryTerm();
   const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
   
   const navItems: NavItem[] = [
     {
-      href: '/dashboard',
+      href: jobsRoute,
       label: jobs,
       icon: Briefcase
     },

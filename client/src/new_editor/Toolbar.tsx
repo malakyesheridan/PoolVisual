@@ -51,6 +51,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [showCalibrationTool, setShowCalibrationTool] = useState(false);
   const [showKeyLegend, setShowKeyLegend] = useState(false);
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
   const [showEnhancementDrawer, setShowEnhancementDrawer] = useState(false);
   const [lastSavedMaskState, setLastSavedMaskState] = useState('');
   const [selectedJobId, setSelectedJobId] = useState<string | undefined>(jobId);
@@ -900,7 +902,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
       if (!confirmed) return;
     }
     
-    navigate(`/jobs/${jobId}`);
+    const route = isRealEstate ? `/properties/${jobId}` : `/jobs/${jobId}`;
+    navigate(route);
   };
 
   const handleJobSelect = (jobId: string) => {

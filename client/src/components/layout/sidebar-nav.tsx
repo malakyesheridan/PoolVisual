@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useIndustryTerm } from "@/hooks/useIndustryTerm";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { useJobsRoute } from "@/lib/route-utils";
 
 interface SidebarNavProps {
   className?: string;
@@ -21,6 +22,7 @@ export function SidebarNav({ className }: SidebarNavProps) {
   const [location] = useLocation();
   const { jobs, quotes } = useIndustryTerm();
   const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
   
   const navigation = [
     {
@@ -30,7 +32,7 @@ export function SidebarNav({ className }: SidebarNavProps) {
     },
     {
       name: jobs,
-      href: '/jobs',
+      href: jobsRoute,
       icon: Briefcase,
     },
     {

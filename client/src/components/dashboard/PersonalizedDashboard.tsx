@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { FileText, Palette, Briefcase } from 'lucide-react';
 import { UserRole } from '@/types/onboarding';
 import { useIsRealEstate } from '@/hooks/useIsRealEstate';
+import { useJobsRoute } from '@/lib/route-utils';
 
 /**
  * Personalized dashboard that adapts to user onboarding data
@@ -24,6 +25,8 @@ import { useIsRealEstate } from '@/hooks/useIsRealEstate';
  */
 export function PersonalizedDashboard() {
   const { industry, role, useCase, experience } = useOnboarding();
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
   const enabledFeatures = useEnabledFeatures();
   const [, navigate] = useLocation();
   
@@ -84,8 +87,14 @@ export function PersonalizedDashboard() {
                 
                 // Add navigation handlers for widgets that need them
                 if (widget.id === 'activeProjects' || widget.id === 'projectPipeline') {
-                  widgetProps.onView = (id: string) => navigate(`/jobs/${id}`);
-                  widgetProps.onEdit = (id: string) => navigate(`/jobs/${id}/edit`);
+                  widgetProps.onView = (id: string) => {
+                    const route = isRealEstate ? `/properties/${id}` : `/jobs/${id}`;
+                    navigate(route);
+                  };
+                  widgetProps.onEdit = (id: string) => {
+                    const route = isRealEstate ? `/properties/${id}/edit` : `/jobs/${id}/edit`;
+                    navigate(route);
+                  };
                 }
                 
                 if (widget.id === 'actionCenter') {
@@ -170,6 +179,9 @@ function WelcomeMessage() {
 function QuickActionsPanel() {
   const { useCase, industry } = useOnboarding();
   const [, navigate] = useLocation();
+  const isRealEstate = useIsRealEstate();
+  const jobsRoute = useJobsRoute();
+  const newJobRoute = `${jobsRoute}/new`;
   
   const actions = useMemo(() => {
     const jobTerm = getIndustryTerm(industry, 'job');
@@ -189,23 +201,23 @@ function QuickActionsPanel() {
     if (useCase === 'design' || useCase === 'all') {
       baseActions.push({
         label: 'Start Design',
-        href: '/jobs/new',
+        href: newJobRoute,
         icon: Palette,
-        onClick: () => navigate('/jobs/new'),
+        onClick: () => navigate(newJobRoute),
       });
     }
     
     if (useCase === 'project_management' || useCase === 'all') {
       baseActions.push({
         label: `Create ${jobTerm}`,
-        href: '/jobs/new',
+        href: newJobRoute,
         icon: Briefcase,
-        onClick: () => navigate('/jobs/new'),
+        onClick: () => navigate(newJobRoute),
       });
     }
     
     return baseActions;
-  }, [useCase, industry, navigate]);
+  }, [useCase, industry, navigate, isRealEstate, newJobRoute]);
   
   if (actions.length === 0) return null;
   
