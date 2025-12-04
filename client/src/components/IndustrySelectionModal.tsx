@@ -8,56 +8,75 @@ import { useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
 export function IndustrySelectionModal() {
-  const { user, setUser } = useAuthStore();
+  // CRITICAL FIX: Use selector to subscribe only to user, not entire store
+  // This prevents unnecessary re-renders when other parts of store update
+  const user = useAuthStore((state) => state.user);
+  const setUser = useAuthStore((state) => state.setUser);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
-  const [shouldMount, setShouldMount] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // CRITICAL FIX: Delay mount until after initial render to decouple from Onboarding
-  // Use useLayoutEffect to set mount flag after render but before paint
+  // CRITICAL FIX: Delay mount until after initial render to decouple from other components
+  // This ensures modal doesn't render during the same render cycle as Onboarding
   useLayoutEffect(() => {
-    setShouldMount(true);
+    setIsMounted(true);
   }, []);
 
-  // CRITICAL FIX: Use refs to store mutation results
+  // CRITICAL FIX: Use refs to store ALL mutation results - no direct state updates
+  // All updates will be processed in effects AFTER render completes
   const pendingUserUpdateRef = useRef<any>(null);
   const pendingNavigationRef = useRef<string | null>(null);
   const pendingModalCloseRef = useRef(false);
-  const pendingToastRef = useRef<{ title: string; description: string } | null>(null);
+  const pendingToastRef = useRef<{ title: string; description: string; variant?: 'default' | 'destructive' } | null>(null);
+  const isProcessingUpdatesRef = useRef(false);
 
   // Check if industry is missing (only after mount delay)
   useEffect(() => {
-    if (!shouldMount || !user) return;
+    if (!isMounted || !user) return;
     
     // If user already has industry, don't show
     if (user.industryType) {
+      setIsOpen(false);
       return;
     }
 
     // Show modal if industry is missing (non-dismissible)
     setIsOpen(true);
-  }, [user, shouldMount]);
+  }, [user, isMounted]);
 
-  // CRITICAL FIX: Update store in useLayoutEffect to prevent render conflicts
+  // CRITICAL FIX: Update store in useLayoutEffect (synchronous, before paint)
+  // This ensures store updates happen after render but before browser paint
   useLayoutEffect(() => {
-    if (pendingUserUpdateRef.current) {
-      setUser(pendingUserUpdateRef.current);
+    if (pendingUserUpdateRef.current && !isProcessingUpdatesRef.current) {
+      isProcessingUpdatesRef.current = true;
+      const updatedUser = pendingUserUpdateRef.current;
+      
+      // Update store synchronously
+      setUser(updatedUser);
       pendingUserUpdateRef.current = null;
+      
+      isProcessingUpdatesRef.current = false;
     }
   }, [setUser]);
 
-  // CRITICAL FIX: Handle navigation and UI updates in useEffect
+  // CRITICAL FIX: Handle navigation and UI updates in useEffect (asynchronous, after paint)
+  // This prevents UI updates from triggering re-renders during render phase
   useEffect(() => {
+    if (isProcessingUpdatesRef.current) return;
+    
     if (pendingNavigationRef.current) {
-      setLocation(pendingNavigationRef.current);
+      const path = pendingNavigationRef.current;
       pendingNavigationRef.current = null;
+      setLocation(path);
     }
+    
     if (pendingModalCloseRef.current) {
       setIsOpen(false);
       pendingModalCloseRef.current = false;
     }
+    
     if (pendingToastRef.current) {
       toast(pendingToastRef.current);
       pendingToastRef.current = null;
@@ -82,12 +101,12 @@ export function IndustrySelectionModal() {
     },
     onError: (error: any) => {
       console.error('[IndustrySelectionModal] Failed to update industry:', error);
-      toast({
+      // CRITICAL FIX: Store error toast in ref, process in useEffect
+      pendingToastRef.current = {
         title: 'Error',
         description: error.message || 'Failed to save industry selection. Please try again.',
         variant: 'destructive',
-      });
-      // Don't allow user to proceed if API fails
+      };
     },
   });
 
@@ -99,7 +118,7 @@ export function IndustrySelectionModal() {
   };
 
   // CRITICAL FIX: Don't render until mount delay completes
-  if (!shouldMount) {
+  if (!isMounted) {
     return null;
   }
 
@@ -158,4 +177,3 @@ export function IndustrySelectionModal() {
     </Dialog>
   );
 }
-

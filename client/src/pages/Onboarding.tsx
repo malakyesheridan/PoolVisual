@@ -56,7 +56,7 @@ const getOnboardingSteps = (industry: string | undefined): Array<{
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
   // Use refs to prevent race conditions with server state
@@ -80,34 +80,32 @@ export default function Onboarding() {
     staleTime: 5000, // Don't refetch too often
   });
 
+  // CRITICAL FIX: Use refs to store ALL mutation results - no direct state updates
+  // All updates will be processed in effects AFTER render completes
+  const pendingUserUpdateRef = useRef<{ user: any; invalidateQueries: string[] } | null>(null);
+  const pendingNavigationRef = useRef<string | null>(null);
+  const pendingQueryUpdateRef = useRef<{ queryKey: string[]; data?: any; invalidate?: boolean } | null>(null);
+  const isProcessingUpdatesRef = useRef(false);
+
   // Update onboarding mutation (debounced for responses, immediate for step changes)
-  // CRITICAL FIX: Store result in ref, update in useLayoutEffect
   const updateOnboardingMutation = useMutation({
     mutationFn: (data: { step: string; responses?: any }) => apiClient.updateOnboarding(data),
-    // Don't invalidate on every update - only on step changes
     onSuccess: (data, variables) => {
-      // Get current step from query data to avoid stale closure
+      // Store in ref - will be processed in useEffect
       const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
       const currentStepFromData = currentOnboarding?.step || 'welcome';
       
-      // Only update if step changed - store in ref for useLayoutEffect
+      // Only update if step changed
       if (variables.step !== currentStepFromData) {
         pendingQueryUpdateRef.current = {
           queryKey: ['/api/onboarding/status'],
-          data
+          data,
         };
       }
     },
   });
 
-  // CRITICAL FIX: Use refs to store mutation results and update in useLayoutEffect
-  // This prevents state updates during render
-  const pendingUserUpdateRef = useRef<{ user: any; invalidateQueries: string[] } | null>(null);
-  const pendingNavigationRef = useRef<string | null>(null);
-  const pendingQueryUpdateRef = useRef<{ queryKey: string[]; data?: any } | null>(null);
-
   // Update user industry mutation (user-centric)
-  // CRITICAL FIX: Store result in ref, update in useLayoutEffect
   const updateUserIndustryMutation = useMutation({
     mutationFn: async (industry: string) => {
       // Update user's industryType
@@ -118,7 +116,7 @@ export default function Onboarding() {
     },
     onSuccess: (updatedUser) => {
       if (updatedUser) {
-        // Store result in ref - will be processed in useLayoutEffect
+        // Store in ref - will be processed in useLayoutEffect
         pendingUserUpdateRef.current = {
           user: updatedUser,
           invalidateQueries: ['/api/user/profile']
@@ -127,52 +125,68 @@ export default function Onboarding() {
     },
   });
 
-  // CRITICAL FIX: Update store in useLayoutEffect to prevent render conflicts
+  // Complete onboarding mutation
+  const completeOnboardingMutation = useMutation({
+    mutationFn: () => apiClient.completeOnboarding(),
+    onSuccess: () => {
+      // Store in refs - will be processed in effects
+      pendingQueryUpdateRef.current = {
+        queryKey: ['/api/onboarding/status'],
+        invalidate: true,
+      };
+      pendingNavigationRef.current = '/dashboard';
+    },
+  });
+
+  // CRITICAL FIX: Update store in useLayoutEffect (synchronous, before paint)
+  // This ensures store updates happen after render but before browser paint
   useLayoutEffect(() => {
-    if (pendingUserUpdateRef.current) {
-      const { user, invalidateQueries } = pendingUserUpdateRef.current;
-      useAuthStore.getState().setUser(user);
-      invalidateQueries.forEach(key => {
-        queryClient.invalidateQueries({ queryKey: [key] });
-      });
+    if (pendingUserUpdateRef.current && !isProcessingUpdatesRef.current) {
+      isProcessingUpdatesRef.current = true;
+      const { user: updatedUser, invalidateQueries } = pendingUserUpdateRef.current;
+      
+      // Update store synchronously
+      useAuthStore.getState().setUser(updatedUser);
       pendingUserUpdateRef.current = null;
+      
+      // Schedule query invalidations for next effect cycle
+      if (invalidateQueries.length > 0) {
+        pendingQueryUpdateRef.current = {
+          queryKey: invalidateQueries,
+          invalidate: true,
+        };
+      }
+      
+      isProcessingUpdatesRef.current = false;
     }
   });
 
-  // CRITICAL FIX: Handle navigation in useEffect (not in mutation callback)
+  // CRITICAL FIX: Handle query updates in useEffect (asynchronous, after paint)
+  // This prevents query updates from triggering re-renders during render phase
   useEffect(() => {
-    if (pendingNavigationRef.current) {
+    if (pendingQueryUpdateRef.current && !isProcessingUpdatesRef.current) {
+      isProcessingUpdatesRef.current = true;
+      const { queryKey, data, invalidate } = pendingQueryUpdateRef.current;
+      
+      if (invalidate) {
+        queryClient.invalidateQueries({ queryKey });
+      } else if (data) {
+        queryClient.setQueryData(queryKey, data);
+      }
+      
+      pendingQueryUpdateRef.current = null;
+      isProcessingUpdatesRef.current = false;
+    }
+  }, [queryClient]);
+
+  // CRITICAL FIX: Handle navigation in useEffect (asynchronous, after paint)
+  useEffect(() => {
+    if (pendingNavigationRef.current && !isProcessingUpdatesRef.current) {
       const path = pendingNavigationRef.current;
       pendingNavigationRef.current = null;
       navigate(path);
     }
   }, [navigate]);
-
-  // CRITICAL FIX: Handle query updates in useLayoutEffect
-  useLayoutEffect(() => {
-    if (pendingQueryUpdateRef.current) {
-      const { queryKey, data } = pendingQueryUpdateRef.current;
-      if (data) {
-        queryClient.setQueryData(queryKey, data);
-      } else {
-        queryClient.invalidateQueries({ queryKey });
-      }
-      pendingQueryUpdateRef.current = null;
-    }
-  });
-
-  // Complete onboarding mutation
-  // CRITICAL FIX: Store navigation in ref, handle in useEffect
-  const completeOnboardingMutation = useMutation({
-    mutationFn: () => apiClient.completeOnboarding(),
-    onSuccess: () => {
-      // Store navigation and query invalidation in refs
-      pendingQueryUpdateRef.current = {
-        queryKey: ['/api/onboarding/status']
-      };
-      pendingNavigationRef.current = '/dashboard';
-    },
-  });
 
   // Initialize step from onboarding data (only once)
   useEffect(() => {
@@ -195,9 +209,9 @@ export default function Onboarding() {
   // If onboarding is already completed, redirect to dashboard
   useEffect(() => {
     if (onboarding?.completed) {
-      navigate('/dashboard');
+      pendingNavigationRef.current = '/dashboard';
     }
-  }, [onboarding?.completed, navigate]);
+  }, [onboarding?.completed]);
 
   // Debounced response update
   // CRITICAL FIX: Use refs to avoid stale closures and prevent infinite loops

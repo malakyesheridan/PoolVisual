@@ -69,13 +69,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/onboarding" />;
   }
 
-  // CRITICAL FIX: Only show IndustrySelectionModal on non-onboarding routes
-  // This decouples it from Onboarding render timing
-  const shouldShowModal = currentPath !== '/onboarding';
+  // CRITICAL FIX: Completely decouple IndustrySelectionModal from Onboarding
+  // - Only render modal on non-onboarding routes
+  // - Modal has its own mount delay to prevent render conflicts
+  // - Modal processes all updates in effects, never during render
+  const isOnboardingRoute = currentPath === '/onboarding';
   
   return (
     <>
-      {shouldShowModal && <IndustrySelectionModal />}
+      {!isOnboardingRoute && <IndustrySelectionModal />}
       {children}
     </>
   );
