@@ -406,10 +406,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       console.error('[onboarding/update] Error:', error);
       
       // Handle Zod validation errors
-      if (error?.name === 'ZodError' || error?.code === 'VALIDATION_ERROR') {
+      if (error instanceof z.ZodError) {
         return res.status(400).json({ 
           error: "Validation error", 
-          details: error.issues || error.details 
+          details: error.issues 
         });
       }
       
@@ -430,15 +430,24 @@ export async function registerRoutes(app: Express): Promise<void> {
   // NOTE: No requireIndustryType middleware - users need to access this to complete onboarding
   app.post("/api/onboarding/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      // Validate request body with Zod (optional body)
+      // Validate request body with Zod
       const { OnboardingCompleteSchema } = await import('../shared/schemas.js');
       OnboardingCompleteSchema.parse(req.body || {});
       
       await storage.completeUserOnboarding(req.user.id);
       res.json({ ok: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error('[onboarding/complete] Error:', error);
-      res.status(500).json({ error: (error as Error).message });
+      
+      // Handle Zod validation errors
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.issues 
+        });
+      }
+      
+      res.status(500).json({ error: error?.message || 'Failed to complete onboarding' });
     }
   });
 

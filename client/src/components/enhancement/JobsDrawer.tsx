@@ -439,6 +439,10 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
     
     setIsCreating(true);
+    
+    // CRITICAL FIX: Set global enhancement lock BEFORE starting enhancement
+    useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: true });
+    
     const effectivePhotoId = currentState.jobContext?.photoId || '134468b9-648e-4eb1-8434-d7941289fccf';
     
     try {

@@ -371,7 +371,7 @@ export const OnboardingUpdateSchema = z.object({
 
 export const OnboardingCompleteSchema = z.object({
   // Empty for now, but can add confirmation fields
-}).optional();
+});
 
 export type OnboardingStep = z.infer<typeof OnboardingStepSchema>;
 export type OnboardingUpdate = z.infer<typeof OnboardingUpdateSchema>;
