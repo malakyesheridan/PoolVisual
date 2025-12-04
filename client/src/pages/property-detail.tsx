@@ -549,9 +549,9 @@ export default function PropertyDetail() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-7 gap-8">
           {/* Main Content */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="lg:col-span-4 space-y-6">
             
             {/* Photos Section - Conditional rendering based on industry */}
             {isRealEstate ? (
@@ -970,7 +970,7 @@ export default function PropertyDetail() {
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-6">
+          <div className="lg:col-span-3 space-y-6">
             {/* Property Details (Real Estate Only) */}
             {isRealEstate && job && (
               <Card>
