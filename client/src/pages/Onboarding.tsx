@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
@@ -67,7 +67,8 @@ export default function Onboarding() {
 
   // Use user industry if available, otherwise onboarding industry (user-centric)
   const effectiveIndustry = user?.industryType || responses.industry || 'pool';
-  const steps = getOnboardingSteps(effectiveIndustry);
+  // CRITICAL FIX: Memoize steps to prevent infinite loop in useEffect
+  const steps = useMemo(() => getOnboardingSteps(effectiveIndustry), [effectiveIndustry]);
   const currentStep = steps[currentStepIndex]?.id || 'welcome';
 
   // Fetch onboarding status
@@ -133,7 +134,8 @@ export default function Onboarding() {
       setResponses(serverResponses);
       isInitialized.current = true;
     }
-  }, [onboarding, steps]);
+    // CRITICAL FIX: Only depend on onboarding, not steps (steps is memoized and stable)
+  }, [onboarding]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // If onboarding is already completed, redirect to dashboard
   useEffect(() => {
