@@ -1,111 +1,38 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useAuthStore } from '@/stores/auth-store';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import { Loader2, Sparkles, Sunset, Home as HomeIcon, Eraser, Info } from 'lucide-react';
-import { getIndustryTerm, getIndustryQuestionOptions } from '@/lib/industry-terminology';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Label } from '@/components/ui/label';
-
-type OnboardingStep = 'welcome' | 'industry_selection' | 'questionnaire' | 'preview' | 'upload' | 'material_demo' | 'enhancement_demo' | 'workspace_setup' | 'completed';
-
-interface OnboardingResponses {
-  industry?: string;
-  role?: string;
-  useCase?: string;
-  experience?: string;
-}
-
-// Dynamic steps based on industry
-const getOnboardingSteps = (industry: string | undefined): Array<{
-  id: OnboardingStep;
-  title: string;
-  description: string;
-}> => {
-  const baseSteps = [
-    { id: 'welcome' as const, title: 'Welcome', description: 'Get started with EasyFlow Studio' },
-    { id: 'industry_selection' as const, title: 'Select Industry', description: 'Choose your primary trade' },
-  ];
-
-  // Industry should already be set from subscription, but allow override for admin
-  if (industry === 'real_estate') {
-    return [
-      ...baseSteps,
-      { id: 'questionnaire' as const, title: 'Tell Us About Yourself', description: 'Help us personalize your experience' },
-      { id: 'preview' as const, title: 'Preview', description: 'See what you can do' },
-      { id: 'upload' as const, title: 'Upload Your First Photo', description: 'Get hands-on experience' },
-      { id: 'enhancement_demo' as const, title: 'Try Enhancement', description: 'Enhance your photo' },
-      { id: 'workspace_setup' as const, title: 'Workspace Setup', description: 'Configure your workspace' },
-    ];
-  }
-
-  // Trades flow (existing)
-  return [
-    ...baseSteps,
-    { id: 'questionnaire' as const, title: 'Tell Us About Yourself', description: 'Help us personalize your experience' },
-    { id: 'preview' as const, title: 'Preview', description: 'See what you can do' },
-    { id: 'upload' as const, title: 'Upload Your First Photo', description: 'Get hands-on experience' },
-    { id: 'material_demo' as const, title: 'Explore Materials', description: 'See how materials work' },
-    { id: 'workspace_setup' as const, title: 'Workspace Setup', description: 'Configure your workspace' },
-  ];
-};
+import { Loader2, AlertTriangle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Onboarding() {
   const [, navigate] = useLocation();
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
-  // Use refs to prevent race conditions with server state
-  const isInitialized = useRef(false);
-  const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [responses, setResponses] = useState<OnboardingResponses>({});
-  const [isNavigating, setIsNavigating] = useState(false);
-
-  // Use user industry if available, otherwise onboarding industry (user-centric)
-  const effectiveIndustry = user?.industryType || responses.industry || 'pool';
-  // CRITICAL FIX: Memoize steps to prevent infinite loop in useEffect
-  const steps = useMemo(() => getOnboardingSteps(effectiveIndustry), [effectiveIndustry]);
-  const currentStep = steps[currentStepIndex]?.id || 'welcome';
-
-  // Fetch onboarding status
-  const { data: onboarding, isLoading } = useQuery({
-    queryKey: ['/api/onboarding/status'],
-    queryFn: () => apiClient.getOnboardingStatus(),
-    enabled: !!user,
-    retry: false,
-    staleTime: 5000, // Don't refetch too often
-  });
+  const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // CRITICAL FIX: Use refs to store ALL mutation results - no direct state updates
-  // All updates will be processed in effects AFTER render completes
   const pendingUserUpdateRef = useRef<{ user: any; invalidateQueries: string[] } | null>(null);
   const pendingNavigationRef = useRef<string | null>(null);
-  const pendingQueryUpdateRef = useRef<{ queryKey: string[]; data?: any; invalidate?: boolean } | null>(null);
+  const pendingQueryUpdateRef = useRef<{ queryKey: string[]; invalidate?: boolean } | null>(null);
   const isProcessingUpdatesRef = useRef(false);
 
-  // Update onboarding mutation (debounced for responses, immediate for step changes)
-  const updateOnboardingMutation = useMutation({
-    mutationFn: (data: { step: string; responses?: any }) => apiClient.updateOnboarding(data),
-    onSuccess: (data, variables) => {
-      // Store in ref - will be processed in useEffect
-      const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
-      const currentStepFromData = currentOnboarding?.step || 'welcome';
-      
-      // Only update if step changed
-      if (variables.step !== currentStepFromData) {
-        pendingQueryUpdateRef.current = {
-          queryKey: ['/api/onboarding/status'],
-          data,
-        };
-      }
-    },
-  });
-
-  // Update user industry mutation (user-centric)
+  // Update user industry mutation
   const updateUserIndustryMutation = useMutation({
     mutationFn: async (industry: string) => {
       // Update user's industryType
@@ -121,6 +48,12 @@ export default function Onboarding() {
           user: updatedUser,
           invalidateQueries: ['/api/user/profile']
         };
+        // Complete onboarding
+        pendingQueryUpdateRef.current = {
+          queryKey: ['/api/onboarding/status'],
+          invalidate: true,
+        };
+        pendingNavigationRef.current = '/dashboard';
       }
     },
   });
@@ -134,12 +67,10 @@ export default function Onboarding() {
         queryKey: ['/api/onboarding/status'],
         invalidate: true,
       };
-      pendingNavigationRef.current = '/dashboard';
     },
   });
 
   // CRITICAL FIX: Update store in useLayoutEffect (synchronous, before paint)
-  // This ensures store updates happen after render but before browser paint
   useLayoutEffect(() => {
     if (pendingUserUpdateRef.current && !isProcessingUpdatesRef.current) {
       isProcessingUpdatesRef.current = true;
@@ -162,16 +93,13 @@ export default function Onboarding() {
   });
 
   // CRITICAL FIX: Handle query updates in useEffect (asynchronous, after paint)
-  // This prevents query updates from triggering re-renders during render phase
   useEffect(() => {
     if (pendingQueryUpdateRef.current && !isProcessingUpdatesRef.current) {
       isProcessingUpdatesRef.current = true;
-      const { queryKey, data, invalidate } = pendingQueryUpdateRef.current;
+      const { queryKey, invalidate } = pendingQueryUpdateRef.current;
       
       if (invalidate) {
         queryClient.invalidateQueries({ queryKey });
-      } else if (data) {
-        queryClient.setQueryData(queryKey, data);
       }
       
       pendingQueryUpdateRef.current = null;
@@ -188,701 +116,142 @@ export default function Onboarding() {
     }
   }, [navigate]);
 
-  // Initialize step from onboarding data (only once)
-  useEffect(() => {
-    if (onboarding && !isInitialized.current) {
-      const serverStep = onboarding.step || 'welcome';
-      const serverResponses = onboarding.responses || {};
-      
-      // Find step index in current steps array
-      const stepIndex = steps.findIndex(s => s.id === serverStep);
-      if (stepIndex >= 0) {
-        setCurrentStepIndex(stepIndex);
-      }
-      
-      setResponses(serverResponses);
-      isInitialized.current = true;
-    }
-    // CRITICAL FIX: Only depend on onboarding, not steps (steps is memoized and stable)
-  }, [onboarding]); // eslint-disable-line react-hooks/exhaustive-deps
+  const industries = [
+    { id: 'pool', label: 'Pool Renovation', icon: '🏊', description: 'Pool and spa renovation services' },
+    { id: 'landscaping', label: 'Landscaping', icon: '🌳', description: 'Landscape design and installation' },
+    { id: 'building', label: 'Building & Construction', icon: '🏗️', description: 'General construction and building' },
+    { id: 'electrical', label: 'Electrical', icon: '⚡', description: 'Electrical services and installation' },
+    { id: 'plumbing', label: 'Plumbing', icon: '🔧', description: 'Plumbing services and installation' },
+    { id: 'real_estate', label: 'Real Estate', icon: '🏠', description: 'Real estate and property management' },
+  ];
 
-  // If onboarding is already completed, redirect to dashboard
-  useEffect(() => {
-    if (onboarding?.completed) {
-      pendingNavigationRef.current = '/dashboard';
-    }
-  }, [onboarding?.completed]);
-
-  // Debounced response update
-  // CRITICAL FIX: Use refs to avoid stale closures and prevent infinite loops
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
-  const responsesRef = useRef(responses);
-  const currentStepIndexRef = useRef(currentStepIndex);
-  const stepsRef = useRef(steps);
-  
-  // Keep refs in sync
-  useEffect(() => {
-    responsesRef.current = responses;
-    currentStepIndexRef.current = currentStepIndex;
-    stepsRef.current = steps;
-  }, [responses, currentStepIndex, steps]);
-  
-  const updateResponse = useCallback((key: keyof OnboardingResponses, value: string) => {
-    const newResponses = { ...responsesRef.current, [key]: value };
-    setResponses(newResponses);
-
-    // Clear existing timer
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    // Debounce the API call
-    debounceTimer.current = setTimeout(() => {
-      updateOnboardingMutation.mutate({
-        step: stepsRef.current[currentStepIndexRef.current]?.id || 'welcome',
-        responses: newResponses,
-      });
-    }, 500); // 500ms debounce
-  }, [updateOnboardingMutation]);
-
-  // Update industry and save to user (user-centric)
-  const handleIndustrySelect = useCallback(async (industry: string) => {
-    setResponses(prev => ({ ...prev, industry }));
-    
-    // Update onboarding immediately - use refs to avoid stale closures
-    await updateOnboardingMutation.mutateAsync({
-      step: stepsRef.current[currentStepIndexRef.current]?.id || 'welcome',
-      responses: { ...responsesRef.current, industry },
-    });
-
-    // Update user industryType (user-centric architecture)
-    updateUserIndustryMutation.mutate(industry);
-  }, [updateOnboardingMutation, updateUserIndustryMutation]);
-
-  const handleNext = useCallback(async () => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-
-    try {
-      if (currentStepIndex < steps.length - 1) {
-        const nextStep = steps[currentStepIndex + 1];
-        if (nextStep) {
-          // Update local state immediately
-          setCurrentStepIndex(currentStepIndex + 1);
-          
-          // Save to server
-          await updateOnboardingMutation.mutateAsync({
-            step: nextStep.id,
-            responses,
-          });
-        }
-      }
-    } finally {
-      setIsNavigating(false);
-    }
-  }, [currentStepIndex, steps, responses, isNavigating, updateOnboardingMutation]);
-
-  const handleBack = useCallback(async () => {
-    if (isNavigating) return;
-    setIsNavigating(true);
-
-    try {
-      if (currentStepIndex > 0) {
-        const prevStep = steps[currentStepIndex - 1];
-        if (prevStep) {
-          // Update local state immediately
-          setCurrentStepIndex(currentStepIndex - 1);
-          
-          // Save to server
-          await updateOnboardingMutation.mutateAsync({
-            step: prevStep.id,
-            responses,
-          });
-        }
-      }
-    } finally {
-      setIsNavigating(false);
-    }
-  }, [currentStepIndex, steps, responses, isNavigating, updateOnboardingMutation]);
-
-  const handleComplete = async () => {
-    await completeOnboardingMutation.mutateAsync();
+  const handleIndustrySelect = (industryId: string) => {
+    setSelectedIndustry(industryId);
   };
 
-  const progress = ((currentStepIndex + 1) / steps.length) * 100;
+  const handleConfirm = async () => {
+    if (!selectedIndustry) return;
+    
+    setIsProcessing(true);
+    setShowConfirmation(false);
+    
+    try {
+      // Update user industry
+      await updateUserIndustryMutation.mutateAsync(selectedIndustry);
+      // Complete onboarding
+      await completeOnboardingMutation.mutateAsync();
+    } catch (error) {
+      console.error('[Onboarding] Failed to save industry:', error);
+      setIsProcessing(false);
+    }
+  };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin" />
-      </div>
-    );
-  }
+  const handleShowConfirmation = () => {
+    if (!selectedIndustry) return;
+    setShowConfirmation(true);
+  };
+
+  const getIndustryLabel = (id: string) => {
+    return industries.find(ind => ind.id === id)?.label || id;
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4 pb-20 md:pb-4">
-      <Card className="w-full max-w-2xl">
-        <CardHeader>
-          <div className="space-y-2">
-            <CardTitle className="text-xl md:text-2xl mobile-text-xl">Welcome to EasyFlow Studio</CardTitle>
-            <CardDescription className="mobile-text-base">
-              Let's get you set up in just a few steps
-            </CardDescription>
-          </div>
-          <div className="mt-4">
-            <Progress value={progress} className="h-2" />
-            <p className="text-sm text-muted-foreground mt-2">
-              Step {currentStepIndex + 1} of {steps.length}
-            </p>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+      <Card className="w-full max-w-3xl">
+        <CardHeader className="text-center">
+          <CardTitle className="text-2xl md:text-3xl">Welcome to EasyFlow Studio</CardTitle>
+          <CardDescription className="text-base mt-2">
+            Select your industry to get started. This selection determines which version of the app you'll use.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Step Content */}
-          <div className="min-h-[400px]">
-            {currentStep === 'welcome' && (
-              <WelcomeStep onNext={handleNext} />
-            )}
-            {currentStep === 'industry_selection' && (
-              <IndustrySelectionStep
-                selectedIndustry={effectiveIndustry}
-                onSelect={handleIndustrySelect}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'questionnaire' && (
-              <QuestionnaireStep
-                industry={effectiveIndustry}
-                responses={responses}
-                onUpdate={updateResponse}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'preview' && (
-              <PreviewStep
-                industry={effectiveIndustry}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'upload' && (
-              <UploadStep
-                industry={effectiveIndustry}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'material_demo' && effectiveIndustry !== 'real_estate' && (
-              <MaterialDemoStep
-                industry={effectiveIndustry || 'pool'}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'enhancement_demo' && effectiveIndustry === 'real_estate' && (
-              <EnhancementDemoStep
-                industry={effectiveIndustry}
-                onNext={handleNext}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
-            {currentStep === 'workspace_setup' && (
-              <WorkspaceSetupStep
-                industry={effectiveIndustry}
-                onComplete={handleComplete}
-                onBack={handleBack}
-                disabled={isNavigating}
-              />
-            )}
+          {/* Warning Banner */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900">
+                Important: Industry selection cannot be changed later
+              </p>
+              <p className="text-sm text-amber-700 mt-1">
+                Please choose carefully. This selection will determine the tools and features available to you.
+              </p>
+            </div>
+          </div>
+
+          {/* Industry Selection Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+            {industries.map((industry) => (
+              <button
+                key={industry.id}
+                onClick={() => handleIndustrySelect(industry.id)}
+                disabled={isProcessing}
+                className={`p-6 border-2 rounded-lg text-left transition-all ${
+                  selectedIndustry === industry.id
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary ring-offset-2'
+                    : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+              >
+                <div className="text-4xl mb-3">{industry.icon}</div>
+                <div className="font-semibold text-lg mb-1">{industry.label}</div>
+                <div className="text-sm text-muted-foreground">{industry.description}</div>
+              </button>
+            ))}
+          </div>
+
+          {/* Continue Button */}
+          <div className="flex justify-center mt-8">
+            <Button
+              onClick={handleShowConfirmation}
+              disabled={!selectedIndustry || isProcessing}
+              size="lg"
+              className="min-w-[200px]"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                'Continue'
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
-    </div>
-  );
-}
 
-// Step Components
-function WelcomeStep({ onNext }: { onNext: () => void }) {
-  return (
-    <div className="space-y-4 text-center">
-      <h3 className="text-xl font-semibold">Welcome to EasyFlow Studio!</h3>
-      <p className="text-muted-foreground">
-        We're excited to help you streamline your workflow. This quick setup will take just a few minutes.
-      </p>
-      <div className="mt-8">
-        <Button onClick={onNext} size="lg">
-          Get Started
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function IndustrySelectionStep({
-  selectedIndustry,
-  onSelect,
-  onNext,
-  onBack,
-  disabled,
-  industryLocked,
-}: {
-  selectedIndustry?: string | undefined;
-  onSelect: (industry: string) => void | Promise<void>;
-  onNext: () => void | Promise<void>;
-  onBack: () => void | Promise<void>;
-  disabled?: boolean;
-  industryLocked?: boolean; // Deprecated, kept for backward compatibility
-}) {
-  // Industry is no longer locked (user-centric architecture)
-  // Users can change their industry at any time
-
-  const industries = [
-    { id: 'pool', label: 'Pool Renovation', icon: '🏊' },
-    { id: 'landscaping', label: 'Landscaping', icon: '🌳' },
-    { id: 'building', label: 'Building & Construction', icon: '🏗️' },
-    { id: 'electrical', label: 'Electrical', icon: '⚡' },
-    { id: 'plumbing', label: 'Plumbing', icon: '🔧' },
-    { id: 'real_estate', label: 'Real Estate', icon: '🏠' },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-xl font-semibold">What's your primary industry?</h3>
-      <p className="text-muted-foreground">
-        Select the industry you work in most often. You can change this later.
-      </p>
-      <div className="grid grid-cols-2 gap-4 mt-6">
-        {industries.map((industry) => (
-          <Button
-            key={industry.id}
-            variant={selectedIndustry === industry.id ? 'default' : 'outline'}
-            className="h-20 flex flex-col items-center justify-center"
-            onClick={() => onSelect(industry.id)}
-            disabled={disabled}
-          >
-            <span className="text-2xl mb-2">{industry.icon}</span>
-            <span>{industry.label}</span>
-          </Button>
-        ))}
-      </div>
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={!selectedIndustry || disabled}>
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function QuestionnaireStep({
-  industry,
-  responses,
-  onUpdate,
-  onNext,
-  onBack,
-  disabled,
-}: {
-  industry?: string;
-  responses: OnboardingResponses;
-  onUpdate: (key: keyof OnboardingResponses, value: string) => void;
-  onNext: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const options = getIndustryQuestionOptions(industry);
-  
-  // Map role values
-  const roleValueMap: Record<string, string> = {
-    'Business Owner': 'owner',
-    'Project Manager': 'manager',
-    'Estimator': 'estimator',
-    'Designer': 'designer',
-    'Landscape Designer': 'designer',
-    'Architect': 'designer',
-    'Electrician': 'other',
-    'Plumber': 'other',
-    'Real Estate Agent': 'other',
-    'Property Manager': 'manager',
-    'Photographer': 'other',
-    'Staging Professional': 'other',
-    'Other': 'other',
-  };
-
-  // Map use case values
-  const useCaseValueMap: Record<string, string> = {
-    'Creating Quotes': 'quotes',
-    'Creating Estimates': 'quotes',
-    'Creating Proposals': 'quotes',
-    'Design Visualization': 'design',
-    'Project Management': 'project_management',
-    'Property Staging': 'design',
-    'Photo Enhancement': 'design',
-    'All of the above': 'all',
-  };
-
-  return (
-    <div className="space-y-6">
-      <h3 className="text-xl font-semibold">Tell us about yourself</h3>
-      <div className="space-y-4">
-        <div>
-          <label className="text-sm font-medium">What's your role?</label>
-          <select
-            className="w-full mt-2 p-2 border rounded"
-            value={responses.role || ''}
-            onChange={(e) => {
-              const displayValue = e.target.value;
-              const mappedValue = roleValueMap[displayValue] || displayValue;
-              onUpdate('role', mappedValue);
-            }}
-            disabled={disabled}
-          >
-            <option value="">Select...</option>
-            {options.roles.map((role) => (
-              <option key={role} value={role}>
-                {role}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium">How do you plan to use EasyFlow Studio?</label>
-          <select
-            className="w-full mt-2 p-2 border rounded"
-            value={responses.useCase || ''}
-            onChange={(e) => {
-              const displayValue = e.target.value;
-              const mappedValue = useCaseValueMap[displayValue] || displayValue;
-              onUpdate('useCase', mappedValue);
-            }}
-            disabled={disabled}
-          >
-            <option value="">Select...</option>
-            {options.useCases.map((useCase) => (
-              <option key={useCase} value={useCase}>
-                {useCase}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="text-sm font-medium">Experience level?</label>
-          <select
-            className="w-full mt-2 p-2 border rounded"
-            value={responses.experience || ''}
-            onChange={(e) => onUpdate('experience', e.target.value)}
-            disabled={disabled}
-          >
-            <option value="">Select...</option>
-            <option value="beginner">Beginner</option>
-            <option value="intermediate">Intermediate</option>
-            <option value="advanced">Advanced</option>
-          </select>
-        </div>
-      </div>
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={disabled}>
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function PreviewStep({
-  industry,
-  onNext,
-  onBack,
-  disabled,
-}: {
-  industry?: string;
-  onNext: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const jobTerm = getIndustryTerm(industry, 'job');
-  const quoteTerm = getIndustryTerm(industry, 'quote');
-  const materialTerm = getIndustryTerm(industry, 'material');
-
-  const features = [
-    {
-      icon: '📸',
-      title: `Upload Photos`,
-      description: `Upload ${jobTerm.toLowerCase()} photos to get started`,
-    },
-    {
-      icon: '🎨',
-      title: `Apply ${materialTerm}s`,
-      description: `Visualize different ${materialTerm.toLowerCase()}s on your photos`,
-    },
-    {
-      icon: '💰',
-      title: `Generate ${quoteTerm}s`,
-      description: `Create professional ${quoteTerm.toLowerCase()}s automatically`,
-    },
-  ];
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-xl font-semibold">See what you can do</h3>
-      <p className="text-muted-foreground">
-        EasyFlow Studio helps you create professional {quoteTerm.toLowerCase()}s and visualizations quickly.
-      </p>
-      <div className="mt-6 space-y-4">
-        {features.map((feature, idx) => (
-          <div key={idx} className="p-4 border rounded">
-            <h4 className="font-medium">{feature.icon} {feature.title}</h4>
-            <p className="text-sm text-muted-foreground">{feature.description}</p>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={disabled}>
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function UploadStep({
-  industry,
-  onNext,
-  onBack,
-  disabled,
-}: {
-  industry?: string;
-  onNext: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const [, navigate] = useLocation();
-  const jobTerm = getIndustryTerm(industry, 'job');
-  const createJobText = getIndustryTerm(industry, 'createJob');
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-xl font-semibold">Upload Your First Photo</h3>
-      <p className="text-muted-foreground">
-        Ready to get started? Upload a photo to create your first {jobTerm.toLowerCase()}.
-      </p>
-      <div className="mt-6">
-        <Button
-          onClick={() => {
-            navigate('/jobs/new');
-          }}
-          size="lg"
-          className="w-full"
-          disabled={disabled}
-        >
-          {createJobText}
-        </Button>
-      </div>
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button variant="ghost" onClick={onNext} disabled={disabled}>
-          Skip for now
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function MaterialDemoStep({
-  industry,
-  onNext,
-  onBack,
-  disabled,
-}: {
-  industry: string;
-  onNext: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const { data: categories = [] } = useQuery({
-    queryKey: ['/api/trade-categories', industry],
-    queryFn: () => apiClient.getTradeCategories(industry),
-    enabled: !!industry,
-  });
-
-  const materialTerm = getIndustryTerm(industry, 'material');
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-xl font-semibold">Explore {materialTerm}s</h3>
-      <p className="text-muted-foreground">
-        Here are some {materialTerm.toLowerCase()} categories available for your industry:
-      </p>
-      <div className="mt-6 grid grid-cols-2 gap-4">
-        {categories.slice(0, 4).map((cat: any) => (
-          <div key={cat.id} className="p-4 border rounded">
-            <h4 className="font-medium">{cat.categoryLabel}</h4>
-          </div>
-        ))}
-      </div>
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={disabled}>
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function EnhancementDemoStep({
-  industry,
-  onNext,
-  onBack,
-  disabled,
-}: {
-  industry?: string;
-  onNext: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const [demoImage, setDemoImage] = useState<string | null>(null);
-  const [enhancementType, setEnhancementType] = useState<string>('image_enhancement');
-
-  // Load demo image
-  useEffect(() => {
-    // Use a sample real estate photo
-    setDemoImage('/demo-images/real-estate-sample.jpg');
-  }, []);
-
-  const enhancementTypes = [
-    { key: 'image_enhancement', label: 'Image Enhancement', icon: Sparkles },
-    { key: 'day_to_dusk', label: 'Day to Dusk', icon: Sunset },
-    { key: 'stage_room', label: 'Virtual Staging', icon: HomeIcon },
-    { key: 'item_removal', label: 'Item Removal', icon: Eraser },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h3 className="text-xl font-semibold mb-2">Try Photo Enhancement</h3>
-        <p className="text-slate-600">
-          Enhance your uploaded photo with AI-powered tools designed for real estate.
-        </p>
-      </div>
-
-      {/* Enhancement Type Selector */}
-      <div>
-        <Label className="mb-3 block">Select Enhancement Type</Label>
-        <div className="grid grid-cols-2 gap-3">
-          {enhancementTypes.map((type) => {
-            const Icon = type.icon;
-            return (
-              <button
-                key={type.key}
-                onClick={() => setEnhancementType(type.key)}
-                disabled={disabled}
-                className={`p-4 border-2 rounded-lg text-left transition-all ${
-                  enhancementType === type.key
-                    ? 'border-primary bg-primary/5'
-                    : 'border-slate-200 hover:border-slate-300'
-                } ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-              >
-                <Icon className="h-6 w-6 mb-2 text-slate-600" />
-                <div className="font-medium">{type.label}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Demo Preview */}
-      {demoImage && (
-        <div className="border rounded-lg p-4 bg-slate-50">
-          <div className="text-sm text-slate-600 mb-2">
-            Preview: {enhancementTypes.find(t => t.key === enhancementType)?.label}
-          </div>
-          <div className="relative aspect-video bg-slate-200 rounded overflow-hidden">
-            <img
-              src={demoImage}
-              alt="Demo"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <div className="text-white text-center">
-                <Sparkles className="h-8 w-8 mx-auto mb-2" />
-                <p className="text-sm">Enhancement Preview</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Info Box */}
-      <Alert>
-        <Info className="h-4 w-4" />
-        <AlertDescription>
-          You can enhance photos directly from the editor. Try different enhancement types
-          to see which works best for your listings.
-        </AlertDescription>
-      </Alert>
-
-      <div className="flex justify-between mt-8">
-        <Button variant="outline" onClick={onBack} disabled={disabled}>
-          Back
-        </Button>
-        <Button onClick={onNext} disabled={disabled}>
-          Continue
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function WorkspaceSetupStep({
-  industry,
-  onComplete,
-  onBack,
-  disabled,
-}: {
-  industry?: string;
-  onComplete: () => void;
-  onBack: () => void;
-  disabled?: boolean;
-}) {
-  const jobTerm = getIndustryTerm(industry, 'job');
-  const quoteTerm = getIndustryTerm(industry, 'quote');
-
-  return (
-    <div className="space-y-4">
-      <h3 className="text-xl font-semibold">You're all set!</h3>
-      <p className="text-muted-foreground">
-        Your workspace is ready. You can start creating {jobTerm.toLowerCase()}s and {quoteTerm.toLowerCase()}s right away.
-      </p>
-      <div className="mt-6">
-        <Button onClick={onComplete} size="lg" className="w-full" disabled={disabled}>
-          Start Using EasyFlow Studio
-        </Button>
-      </div>
-      <div className="mt-4">
-        <Button variant="outline" onClick={onBack} className="w-full" disabled={disabled}>
-          Back
-        </Button>
-      </div>
+      {/* Confirmation Dialog */}
+      <AlertDialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Industry Selection</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                You have selected: <strong>{getIndustryLabel(selectedIndustry || '')}</strong>
+              </p>
+              <p className="text-amber-600 font-medium">
+                ⚠️ This selection cannot be changed later. Are you sure you want to proceed?
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirm}
+              disabled={isProcessing}
+              className="bg-primary hover:bg-primary/90"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Confirming...
+                </>
+              ) : (
+                'Confirm & Continue'
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
