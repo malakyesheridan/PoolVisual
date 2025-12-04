@@ -81,12 +81,17 @@ export default function Onboarding() {
   });
 
   // Update onboarding mutation (debounced for responses, immediate for step changes)
+  // CRITICAL FIX: Memoize mutation to prevent infinite loops
   const updateOnboardingMutation = useMutation({
     mutationFn: (data: { step: string; responses?: any }) => apiClient.updateOnboarding(data),
     // Don't invalidate on every update - only on step changes
     onSuccess: (data, variables) => {
+      // Get current step from query data to avoid stale closure
+      const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
+      const currentStepFromData = currentOnboarding?.step || 'welcome';
+      
       // Only invalidate if step changed
-      if (variables.step !== currentStep) {
+      if (variables.step !== currentStepFromData) {
         queryClient.setQueryData(['/api/onboarding/status'], data);
       }
     },
@@ -145,9 +150,21 @@ export default function Onboarding() {
   }, [onboarding?.completed, navigate]);
 
   // Debounced response update
+  // CRITICAL FIX: Use refs to avoid stale closures and prevent infinite loops
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const responsesRef = useRef(responses);
+  const currentStepIndexRef = useRef(currentStepIndex);
+  const stepsRef = useRef(steps);
+  
+  // Keep refs in sync
+  useEffect(() => {
+    responsesRef.current = responses;
+    currentStepIndexRef.current = currentStepIndex;
+    stepsRef.current = steps;
+  }, [responses, currentStepIndex, steps]);
+  
   const updateResponse = useCallback((key: keyof OnboardingResponses, value: string) => {
-    const newResponses = { ...responses, [key]: value };
+    const newResponses = { ...responsesRef.current, [key]: value };
     setResponses(newResponses);
 
     // Clear existing timer
@@ -158,25 +175,25 @@ export default function Onboarding() {
     // Debounce the API call
     debounceTimer.current = setTimeout(() => {
       updateOnboardingMutation.mutate({
-        step: steps[currentStepIndex]?.id || 'welcome',
+        step: stepsRef.current[currentStepIndexRef.current]?.id || 'welcome',
         responses: newResponses,
       });
     }, 500); // 500ms debounce
-  }, [responses, currentStepIndex, steps, updateOnboardingMutation]);
+  }, [updateOnboardingMutation]);
 
   // Update industry and save to user (user-centric)
   const handleIndustrySelect = useCallback(async (industry: string) => {
     setResponses(prev => ({ ...prev, industry }));
     
-    // Update onboarding immediately
+    // Update onboarding immediately - use refs to avoid stale closures
     await updateOnboardingMutation.mutateAsync({
-      step: steps[currentStepIndex]?.id || 'welcome',
-      responses: { ...responses, industry },
+      step: stepsRef.current[currentStepIndexRef.current]?.id || 'welcome',
+      responses: { ...responsesRef.current, industry },
     });
 
     // Update user industryType (user-centric architecture)
     updateUserIndustryMutation.mutate(industry);
-  }, [responses, currentStepIndex, steps, updateOnboardingMutation, updateUserIndustryMutation]);
+  }, [updateOnboardingMutation, updateUserIndustryMutation]);
 
   const handleNext = useCallback(async () => {
     if (isNavigating) return;
