@@ -18,7 +18,7 @@ const propertyDetailsSchema = z.object({
   bedrooms: z.number().int().min(0).optional().nullable(),
   bathrooms: z.number().min(0.5).max(20).optional().nullable(),
   garageSpaces: z.number().int().min(0).optional().nullable(),
-  estimatedPrice: z.number().min(0).optional().nullable(),
+  estimatedPrice: z.string().optional().nullable(), // Changed to string to allow special characters
   propertyType: z.enum(['house', 'apartment', 'townhouse', 'condo', 'land', 'commercial', 'other']).optional().nullable(),
   landSizeM2: z.number().min(0).optional().nullable(),
   interiorSizeM2: z.number().min(0).optional().nullable(),
@@ -26,12 +26,9 @@ const propertyDetailsSchema = z.object({
   yearRenovated: z.number().int().min(1800).max(new Date().getFullYear() + 1).optional().nullable(),
   propertyStatus: z.enum(['for_sale', 'sold', 'pending', 'off_market', 'rental', 'other']).optional().nullable(),
   listingDate: z.string().optional().nullable(),
-  mlsNumber: z.string().optional().nullable(),
   propertyDescription: z.string().optional().nullable(),
   propertyFeatures: z.array(z.string()).optional().nullable(),
   propertyCondition: z.enum(['excellent', 'good', 'fair', 'needs_renovation', 'other']).optional().nullable(),
-  hoaFees: z.number().min(0).optional().nullable(),
-  propertyTaxes: z.number().min(0).optional().nullable(),
   schoolDistrict: z.string().optional().nullable(),
 });
 
@@ -56,7 +53,7 @@ export function PropertyDetailsForm({
       bedrooms: initialData?.bedrooms ?? null,
       bathrooms: initialData?.bathrooms ?? null,
       garageSpaces: initialData?.garageSpaces ?? null,
-      estimatedPrice: initialData?.estimatedPrice ?? null,
+      estimatedPrice: initialData?.estimatedPrice ? String(initialData.estimatedPrice) : null,
       propertyType: initialData?.propertyType ?? null,
       landSizeM2: initialData?.landSizeM2 ?? null,
       interiorSizeM2: initialData?.interiorSizeM2 ?? null,
@@ -64,12 +61,9 @@ export function PropertyDetailsForm({
       yearRenovated: initialData?.yearRenovated ?? null,
       propertyStatus: initialData?.propertyStatus ?? null,
       listingDate: initialData?.listingDate ?? null,
-      mlsNumber: initialData?.mlsNumber ?? null,
       propertyDescription: initialData?.propertyDescription ?? null,
       propertyFeatures: initialData?.propertyFeatures ?? [],
       propertyCondition: initialData?.propertyCondition ?? null,
-      hoaFees: initialData?.hoaFees ?? null,
-      propertyTaxes: initialData?.propertyTaxes ?? null,
       schoolDistrict: initialData?.schoolDistrict ?? null,
     },
   });
@@ -151,12 +145,10 @@ export function PropertyDetailsForm({
                 <FormLabel>Estimated Price</FormLabel>
                 <FormControl>
                   <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="500000"
+                    type="text"
+                    placeholder="$500,000"
                     {...field}
                     value={field.value ?? ''}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
                   />
                 </FormControl>
                 <FormMessage />
@@ -325,24 +317,6 @@ export function PropertyDetailsForm({
 
           <FormField
             control={form.control}
-            name="mlsNumber"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>MLS Number</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="MLS-12345"
-                    {...field}
-                    value={field.value ?? ''}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
             name="propertyCondition"
             render={({ field }) => (
               <FormItem>
@@ -364,48 +338,6 @@ export function PropertyDetailsForm({
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="hoaFees"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>HOA Fees</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="200"
-                    {...field}
-                    value={field.value ?? ''}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="propertyTaxes"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Property Taxes</FormLabel>
-                <FormControl>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="5000"
-                    {...field}
-                    value={field.value ?? ''}
-                    onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
-                  />
-                </FormControl>
                 <FormMessage />
               </FormItem>
             )}

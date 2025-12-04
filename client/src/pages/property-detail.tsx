@@ -844,7 +844,8 @@ export default function PropertyDetail() {
             </Card>
             )}
 
-            {/* Quotes Section */}
+            {/* Quotes Section - Hidden for real estate (trades feature only) */}
+            {!isRealEstate && (
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
@@ -1212,23 +1213,28 @@ export default function PropertyDetail() {
                       </div>
                     </div>
                     
-                    <div className={`flex items-center gap-3 ${quotes.length > 0 ? '' : 'opacity-50'}`}>
-                      <div className={`w-3 h-3 rounded-full ${quotes.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                      <div>
-                        <p className="text-sm font-medium">Quote Created</p>
-                        <p className="text-xs text-slate-500">
-                          {quotes.length > 0 ? `${quotes.length} quote${quotes.length === 1 ? '' : 's'}` : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 opacity-50">
-                      <div className="w-3 h-3 bg-slate-300 rounded-full"></div>
-                      <div>
-                        <p className="text-sm font-medium">Quote Sent</p>
-                        <p className="text-xs text-slate-500">Pending</p>
-                      </div>
-                    </div>
+                    {/* Quote workflow items - Hidden for real estate (trades feature only) */}
+                    {!isRealEstate && (
+                      <>
+                        <div className={`flex items-center gap-3 ${quotes.length > 0 ? '' : 'opacity-50'}`}>
+                          <div className={`w-3 h-3 rounded-full ${quotes.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                          <div>
+                            <p className="text-sm font-medium">Quote Created</p>
+                            <p className="text-xs text-slate-500">
+                              {quotes.length > 0 ? `${quotes.length} quote${quotes.length === 1 ? '' : 's'}` : 'Pending'}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 opacity-50">
+                          <div className="w-3 h-3 bg-slate-300 rounded-full"></div>
+                          <div>
+                            <p className="text-sm font-medium">Quote Sent</p>
+                            <p className="text-xs text-slate-500">Pending</p>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </CardContent>
               </Card>
