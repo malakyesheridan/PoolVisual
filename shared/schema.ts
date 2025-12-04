@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, uuid, numeric, integer, boolean, timestamp, jsonb, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, uuid, numeric, integer, boolean, timestamp, jsonb, pgEnum, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -427,6 +427,18 @@ export const pipelineStages = pgTable("pipeline_stages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// User Stage Name Overrides
+export const userStageNames = pgTable("user_stage_names", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: uuid("user_id").references(() => users.id).notNull(),
+  stageId: uuid("stage_id").references(() => pipelineStages.id).notNull(),
+  customName: text("custom_name").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserStage: unique().on(table.userId, table.stageId),
+}));
 
 // Opportunities (for real estate CRM)
 export const opportunities = pgTable("opportunities", {

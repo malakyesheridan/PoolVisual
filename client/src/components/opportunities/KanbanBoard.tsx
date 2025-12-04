@@ -10,6 +10,7 @@ import {
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
+  useDroppable,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -55,6 +56,8 @@ interface KanbanBoardProps {
   onOpportunityClick: (opportunity: Opportunity) => void;
   onOpportunityMove: (opportunityId: string, newStageId: string) => void;
   isLoading?: boolean;
+  pipelineId?: string;
+  onStageUpdated?: () => void;
 }
 
 function OpportunityCard({ 
@@ -222,29 +225,51 @@ function OpportunityCard({
 function StageColumn({ 
   stage, 
   opportunities, 
-  onOpportunityClick 
+  onOpportunityClick,
+  pipelineId,
+  onStageUpdated,
 }: { 
   stage: Stage; 
   opportunities: Opportunity[];
   onOpportunityClick: (opp: Opportunity) => void;
+  pipelineId?: string;
+  onStageUpdated?: () => void;
 }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: stage.id,
+    data: {
+      type: 'stage',
+      stageId: stage.id,
+    },
+  });
+
   return (
     <div
-      className="flex-shrink-0 w-80 h-full flex flex-col bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border border-slate-200 shadow-sm"
+      ref={setNodeRef}
+      className={`flex-shrink-0 w-80 h-full flex flex-col bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border-2 transition-colors ${
+        isOver ? 'border-primary shadow-lg bg-slate-100' : 'border-slate-200 shadow-sm'
+      }`}
       data-stage-id={stage.id}
       data-type="stage"
     >
-      <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0">
-        <div className="flex items-center gap-2.5">
+      <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0 group">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
           <div
-            className="w-3 h-3 rounded-full shadow-sm border border-white/50"
+            className="w-3 h-3 rounded-full shadow-sm border border-white/50 flex-shrink-0"
             style={{ backgroundColor: stage.color }}
           />
-          <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wide">
+          <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wide truncate">
             {stage.name}
           </h3>
+          {pipelineId && onStageUpdated && (
+            <StageManagement 
+              stage={stage} 
+              pipelineId={pipelineId} 
+              onStageUpdated={onStageUpdated}
+            />
+          )}
         </div>
-        <Badge variant="secondary" className="bg-white text-slate-700 border-slate-300 font-semibold px-2.5 py-0.5">
+        <Badge variant="secondary" className="bg-white text-slate-700 border-slate-300 font-semibold px-2.5 py-0.5 ml-2 flex-shrink-0">
           {opportunities.length}
         </Badge>
       </div>
@@ -279,6 +304,8 @@ export function KanbanBoard({
   onOpportunityClick,
   onOpportunityMove,
   isLoading = false,
+  pipelineId,
+  onStageUpdated,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedOpportunity, setDraggedOpportunity] = useState<Opportunity | null>(null);
@@ -351,27 +378,49 @@ export function KanbanBoard({
     if (!over) return;
 
     const opportunityId = active.id as string;
-    let newStageId: string | null = null;
+    const draggedOpportunity = opportunities.find(o => o.id === opportunityId);
+    
+    if (!draggedOpportunity) return;
 
-    const stageElement = (over.data.current as any)?.stageId 
-      ? null 
-      : document.elementFromPoint(
+    // Get the target stage ID from the droppable
+    let newStageId: string | null = null;
+    
+    // Method 1: Check if we dropped directly on a stage (droppable)
+    if (stages.some(stage => stage.id === over.id as string)) {
+      newStageId = over.id as string;
+    } 
+    // Method 2: Check if we dropped on a card - find which stage it belongs to
+    else {
+      const targetOpportunity = opportunities.find(o => o.id === over.id as string);
+      if (targetOpportunity?.stageId) {
+        newStageId = targetOpportunity.stageId;
+      }
+      // Method 3: Check data.current for stage information
+      else if ((over.data.current as any)?.type === 'stage') {
+        newStageId = (over.data.current as any)?.stageId;
+      }
+      // Method 4: Try to find the stage by checking the DOM (last resort)
+      else {
+        const stageElement = document.elementFromPoint(
           (event as any).activatorEvent?.clientX || 0,
           (event as any).activatorEvent?.clientY || 0
         )?.closest('[data-stage-id]') as HTMLElement;
-    
-    if (stageElement?.dataset?.stageId) {
-      newStageId = stageElement.dataset.stageId;
-    } else if (stages.some(stage => stage.id === over.id as string)) {
-      newStageId = over.id as string;
-    } else {
-      const parentStage = (over.data.current as any)?.stageId;
-      if (parentStage) {
-        newStageId = parentStage;
+        
+        if (stageElement?.dataset?.stageId) {
+          newStageId = stageElement.dataset.stageId;
+        }
       }
     }
 
-    if (newStageId && stages.some(s => s.id === newStageId)) {
+    // Only move if:
+    // 1. We have a valid stage ID
+    // 2. It's a different stage than the current one
+    // 3. The stage exists in our stages list
+    if (
+      newStageId && 
+      newStageId !== draggedOpportunity.stageId &&
+      stages.some(s => s.id === newStageId)
+    ) {
       onOpportunityMove(opportunityId, newStageId);
     }
   };
@@ -402,6 +451,8 @@ export function KanbanBoard({
             stage={stage}
             opportunities={opportunitiesByStage[stage.id] || []}
             onOpportunityClick={onOpportunityClick}
+            pipelineId={pipelineId}
+            onStageUpdated={onStageUpdated}
           />
         ))}
       </div>

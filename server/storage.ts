@@ -48,6 +48,8 @@ import {
   InsertPipeline,
   PipelineStage,
   InsertPipelineStage,
+  UserStageName,
+  InsertUserStageName,
   OpportunityTask,
   InsertOpportunityTask,
   users,
@@ -76,6 +78,7 @@ import {
   contacts,
   pipelines,
   pipelineStages,
+  userStageNames,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -207,10 +210,14 @@ export interface IStorage {
   updatePipeline(id: string, updates: any): Promise<any>;
   
   // Pipeline Stages
-  getPipelineStages(pipelineId: string): Promise<any[]>;
+  getPipelineStages(pipelineId: string, userId?: string): Promise<any[]>;
   getPipelineStage(id: string): Promise<any | undefined>;
   createPipelineStage(data: any): Promise<any>;
   updatePipelineStage(id: string, updates: any): Promise<any>;
+  deletePipelineStage(id: string): Promise<void>;
+  // User Stage Name Overrides
+  upsertUserStageName(userId: string, stageId: string, customName: string): Promise<any>;
+  deleteUserStageName(userId: string, stageId: string): Promise<void>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -2304,13 +2311,39 @@ export class PostgresStorage implements IStorage {
   }
 
   // Pipeline Stages methods
-  async getPipelineStages(pipelineId: string): Promise<PipelineStage[]> {
+  async getPipelineStages(pipelineId: string, userId?: string): Promise<PipelineStage[]> {
     try {
-      return await ensureDb()
+      const stages = await ensureDb()
         .select()
         .from(pipelineStages)
         .where(eq(pipelineStages.pipelineId, pipelineId))
         .orderBy(asc(pipelineStages.order));
+
+      // If userId is provided, fetch user-specific name overrides
+      if (userId) {
+        try {
+          const userNames = await ensureDb()
+            .select()
+            .from(userStageNames)
+            .where(eq(userStageNames.userId, userId));
+
+          const nameMap = new Map(userNames.map(n => [n.stageId, n.customName]));
+
+          // Return stages with user-specific names if available
+          return stages.map(stage => ({
+            ...stage,
+            name: nameMap.get(stage.id) || stage.name,
+          }));
+        } catch (error: any) {
+          // If user_stage_names table doesn't exist yet, just return stages with default names
+          if (error?.message?.includes('user_stage_names') || error?.code === '42P01') {
+            return stages;
+          }
+          throw error;
+        }
+      }
+
+      return stages;
     } catch (error: any) {
       if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
         console.warn('[getPipelineStages] pipeline_stages table not found, returning empty array');
@@ -2367,6 +2400,100 @@ export class PostgresStorage implements IStorage {
     } catch (error: any) {
       if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
         throw new Error("Pipeline stages feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async deletePipelineStage(id: string): Promise<void> {
+    try {
+      // First check if any opportunities are using this stage
+      const opportunitiesUsingStage = await ensureDb()
+        .select()
+        .from(opportunities)
+        .where(eq(opportunities.stageId, id))
+        .limit(1);
+
+      if (opportunitiesUsingStage.length > 0) {
+        throw new Error("Cannot delete stage: opportunities are currently using this stage. Please move or delete those opportunities first.");
+      }
+
+      // Delete user stage name overrides for this stage
+      try {
+        await ensureDb()
+          .delete(userStageNames)
+          .where(eq(userStageNames.stageId, id));
+      } catch (error: any) {
+        // Ignore if table doesn't exist
+        if (!error?.message?.includes('user_stage_names') && error?.code !== '42P01') {
+          throw error;
+        }
+      }
+
+      // Delete the stage
+      await ensureDb()
+        .delete(pipelineStages)
+        .where(eq(pipelineStages.id, id));
+    } catch (error: any) {
+      if (error?.message?.includes('pipeline_stages') || error?.code === '42P01') {
+        throw new Error("Pipeline stages feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  async upsertUserStageName(userId: string, stageId: string, customName: string): Promise<UserStageName> {
+    try {
+      const [existing] = await ensureDb()
+        .select()
+        .from(userStageNames)
+        .where(and(
+          eq(userStageNames.userId, userId),
+          eq(userStageNames.stageId, stageId)
+        ))
+        .limit(1);
+
+      if (existing) {
+        const [updated] = await ensureDb()
+          .update(userStageNames)
+          .set({ customName, updatedAt: new Date() })
+          .where(eq(userStageNames.id, existing.id))
+          .returning();
+        if (!updated) throw new Error("Failed to update user stage name");
+        return updated;
+      } else {
+        const [created] = await ensureDb()
+          .insert(userStageNames)
+          .values({
+            userId,
+            stageId,
+            customName,
+            updatedAt: new Date(),
+          })
+          .returning();
+        if (!created) throw new Error("Failed to create user stage name");
+        return created;
+      }
+    } catch (error: any) {
+      if (error?.message?.includes('user_stage_names') || error?.code === '42P01') {
+        throw new Error("User stage names feature requires database migration. Please run migration 037_user_stage_name_overrides.sql");
+      }
+      throw error;
+    }
+  }
+
+  async deleteUserStageName(userId: string, stageId: string): Promise<void> {
+    try {
+      await ensureDb()
+        .delete(userStageNames)
+        .where(and(
+          eq(userStageNames.userId, userId),
+          eq(userStageNames.stageId, stageId)
+        ));
+    } catch (error: any) {
+      if (error?.message?.includes('user_stage_names') || error?.code === '42P01') {
+        // Table doesn't exist, nothing to delete
+        return;
       }
       throw error;
     }

@@ -1133,6 +1133,25 @@ class ApiClient {
     });
   }
 
+  async updatePipelineStageName(id: string, name: string) {
+    return this.request(`/pipeline-stages/${id}/name`, {
+      method: 'PUT',
+      body: JSON.stringify({ name }),
+    });
+  }
+
+  async resetPipelineStageName(id: string) {
+    return this.request(`/pipeline-stages/${id}/name`, {
+      method: 'DELETE',
+    });
+  }
+
+  async deletePipelineStage(id: string) {
+    return this.request(`/pipeline-stages/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Opportunity Activities
   async getOpportunityActivities(opportunityId: string) {
     return this.request<any[]>(`/opportunities/${opportunityId}/activities`);

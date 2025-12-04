@@ -3605,7 +3605,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      const stages = await storage.getPipelineStages(pipelineId);
+      // Pass userId to get user-specific stage names
+      const stages = await storage.getPipelineStages(pipelineId, req.user.id);
       console.log(`[GET /api/pipelines/:id/stages] Returning ${stages.length} stages for pipeline ${pipelineId}:`, stages.map(s => ({ id: s.id, name: s.name })));
       res.json(stages);
     } catch (error) {
@@ -3664,8 +3665,97 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // If updating name, store it as user-specific override
+      if (req.body.name !== undefined && req.body.name !== stage.name) {
+        await storage.upsertUserStageName(req.user.id, stageId, req.body.name);
+        // Return stage with updated name
+        const stages = await storage.getPipelineStages(stage.pipelineId, req.user.id);
+        const updatedStage = stages.find(s => s.id === stageId);
+        return res.json(updatedStage || stage);
+      }
+
+      // For other updates (color, order), update the stage directly
       const updated = await storage.updatePipelineStage(stageId, req.body);
       res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Endpoint to update only the stage name (user-specific override)
+  app.put("/api/pipeline-stages/:id/name", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const stageId = req.params.id;
+      const { name } = req.body;
+
+      if (!name || !name.trim()) {
+        return res.status(400).json({ message: "Stage name is required" });
+      }
+
+      const stage = await storage.getPipelineStage(stageId);
+      if (!stage) {
+        return res.status(404).json({ message: "Pipeline stage not found" });
+      }
+
+      const pipeline = await storage.getPipeline(stage.pipelineId);
+      if (!pipeline || pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Store user-specific name override
+      await storage.upsertUserStageName(req.user.id, stageId, name.trim());
+      
+      // Return updated stage with user-specific name
+      const stages = await storage.getPipelineStages(stage.pipelineId, req.user.id);
+      const updatedStage = stages.find(s => s.id === stageId);
+      res.json(updatedStage || stage);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Endpoint to reset stage name to default (delete user override)
+  app.delete("/api/pipeline-stages/:id/name", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const stageId = req.params.id;
+      const stage = await storage.getPipelineStage(stageId);
+      
+      if (!stage) {
+        return res.status(404).json({ message: "Pipeline stage not found" });
+      }
+
+      const pipeline = await storage.getPipeline(stage.pipelineId);
+      if (!pipeline || pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Delete user-specific name override
+      await storage.deleteUserStageName(req.user.id, stageId);
+      
+      // Return stage with default name
+      res.json(stage);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Endpoint to delete a stage
+  app.delete("/api/pipeline-stages/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const stageId = req.params.id;
+      const stage = await storage.getPipelineStage(stageId);
+      
+      if (!stage) {
+        return res.status(404).json({ message: "Pipeline stage not found" });
+      }
+
+      const pipeline = await storage.getPipeline(stage.pipelineId);
+      if (!pipeline || pipeline.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      await storage.deletePipelineStage(stageId);
+      res.json({ message: "Stage deleted successfully" });
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

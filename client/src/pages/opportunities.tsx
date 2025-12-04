@@ -349,20 +349,37 @@ export default function Opportunities() {
     return filtered;
   }, [enrichedOpportunities, searchTerm, statusFilter]);
 
-  // NEW: Manual mutation - update local state immediately, then sync with backend
+  // NEW: Manual mutation - update local state immediately (optimistic), then sync with backend
   const moveOpportunityMutation = useMutation({
     mutationFn: ({ opportunityId, newStageId }: { opportunityId: string; newStageId: string }) => {
       return apiClient.updateOpportunity(opportunityId, { stageId: newStageId });
     },
+    onMutate: async ({ opportunityId, newStageId }) => {
+      // Optimistic update: immediately update local state
+      setLocalOpportunities(prev => 
+        prev.map(opp => 
+          opp.id === opportunityId 
+            ? { ...opp, stageId: newStageId }
+            : opp
+        )
+      );
+      
+      // Return context for potential rollback
+      return { previousOpportunities: localOpportunities };
+    },
     onSuccess: async () => {
-      // Reload from backend to get fresh data
+      // Reload from backend to get fresh data and ensure consistency
       await loadOpportunities(true);
       toast({
         title: 'Opportunity moved',
         description: 'The opportunity has been moved to a new stage.',
       });
     },
-    onError: (error: any) => {
+    onError: (error: any, variables, context) => {
+      // Rollback optimistic update on error
+      if (context?.previousOpportunities) {
+        setLocalOpportunities(context.previousOpportunities);
+      }
       toast({
         title: 'Error',
         description: error.message || 'Failed to move opportunity',
@@ -591,6 +608,10 @@ export default function Opportunities() {
               onOpportunityClick={handleOpportunityClick}
               onOpportunityMove={handleOpportunityMove}
               isLoading={isLoading}
+              pipelineId={defaultPipeline?.id}
+              onStageUpdated={() => {
+                queryClient.invalidateQueries({ queryKey: ['/api/pipelines', defaultPipeline?.id, 'stages'] });
+              }}
             />
           </div>
         )}
