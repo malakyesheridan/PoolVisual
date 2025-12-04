@@ -182,11 +182,16 @@ export function AppShell({ children }: PropsWithChildren) {
   // Hide navigation during onboarding (navigation is industry-specific)
   const isOnboardingPage = location === '/onboarding';
 
+  // For onboarding, render without AppShell wrapper (full page control)
+  if (isOnboardingPage) {
+    return <>{children}</>;
+  }
+
   return (
     <div className="app-shell">
       {/* Conditionally render header ONLY - children always render */}
-      {/* Hide header on canvas editor pages and onboarding page */}
-      {!isCanvasEditorPage && !isOnboardingPage && (
+      {/* Hide header on canvas editor pages */}
+      {!isCanvasEditorPage && (
         <header className="app-header bg-white/80 border-b z-header safe-top">
           <div className="mx-auto max-w-7xl h-full flex items-center px-3 md:px-3 gap-3">
             <Link href="/" className="flex items-center">
