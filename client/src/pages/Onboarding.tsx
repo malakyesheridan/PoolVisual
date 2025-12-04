@@ -112,6 +112,8 @@ export default function Onboarding() {
     if (pendingNavigationRef.current && !isProcessingUpdatesRef.current) {
       const path = pendingNavigationRef.current;
       pendingNavigationRef.current = null;
+      // Reset processing state before navigation
+      setIsProcessing(false);
       navigate(path);
     }
   }, [navigate]);
@@ -139,6 +141,19 @@ export default function Onboarding() {
       await updateUserIndustryMutation.mutateAsync(industryValue);
       // Complete onboarding
       await completeOnboardingMutation.mutateAsync();
+      
+      // Navigation will be handled by useEffect, but reset processing state
+      // in case navigation is delayed or fails
+      // The navigation useEffect will also reset it, but this is a safety net
+      setTimeout(() => {
+        if (pendingNavigationRef.current) {
+          // Navigation hasn't happened yet, force it
+          const path = pendingNavigationRef.current;
+          pendingNavigationRef.current = null;
+          setIsProcessing(false);
+          navigate(path);
+        }
+      }, 1000);
     } catch (error) {
       console.error('[Onboarding] Failed to save industry:', error);
       setIsProcessing(false);
