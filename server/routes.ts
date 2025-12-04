@@ -866,9 +866,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      // Verify org access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -892,9 +891,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      // Verify org access
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -948,8 +946,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1141,8 +1139,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Photo not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1177,8 +1175,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1239,8 +1237,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1278,8 +1276,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1364,14 +1362,14 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Job ID is required" });
       }
 
-      // Verify job access
+      // Verify job access (user-centric)
       const job = await storage.getJob(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // User-centric access check
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1409,8 +1407,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1463,8 +1461,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1808,8 +1806,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1849,8 +1847,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -1887,8 +1885,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Associated job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
