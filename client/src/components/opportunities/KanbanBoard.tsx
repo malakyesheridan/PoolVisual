@@ -25,6 +25,7 @@ import { Button } from '@/components/ui/button';
 import { Phone, Mail, DollarSign, CheckCircle, XCircle, Clock, MoreHorizontal } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
 import { formatDistanceToNow } from 'date-fns';
+import { StageManagement } from './StageManagement';
 
 interface Opportunity {
   id: string;
