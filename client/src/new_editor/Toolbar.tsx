@@ -26,6 +26,7 @@ import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { apiClient } from '../lib/api-client';
 import { useJobsRoute, useJobDetailRoute } from '../lib/route-utils';
+import { useIsRealEstate } from '../hooks/useIsRealEstate';
 import { useQuery } from '@tanstack/react-query';
 import { 
   DropdownMenu, 
