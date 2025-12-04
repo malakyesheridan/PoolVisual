@@ -616,10 +616,18 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
       
       // CRITICAL FIX: Check if we have persisted variants for this photo
       // If we do, restore them first before loading the photo
+      // HIGH PRIORITY FIX: Validate persisted variants against server and check URL accessibility
       if (photoIdToUse && typeof window !== 'undefined') {
         try {
-          const { loadVariantState } = await import('./variantPersistence');
-          const restored = loadVariantState(photoIdToUse);
+          const { validatePersistedVariants, loadAndValidateVariantState } = await import('./variantPersistence');
+          
+          // First validate against server (remove stale variants)
+          const serverValidated = await validatePersistedVariants(photoIdToUse);
+          
+          // Then validate URL accessibility
+          const restored = serverValidated 
+            ? await loadAndValidateVariantState(photoIdToUse)
+            : null;
           if (restored && restored.variants.length > 0 && restored.activeVariantId) {
             const activeVariant = restored.variants.find(v => v.id === restored.activeVariantId);
             if (activeVariant && activeVariant.imageUrl) {

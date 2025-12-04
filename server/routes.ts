@@ -4,6 +4,7 @@ import { registerTextureProxyRoutes } from './routes/textureProxy.js';
 import healthRoutes from "./routes/health.js";
 import { storage } from './storage.js';
 import { CompositeGenerator } from './compositeGenerator.js';
+import { requireIndustryType } from './middleware/requireIndustry.js';
 import { 
   insertUserSchema, 
   insertOrgSchema, 
@@ -387,13 +388,13 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/onboarding/update - Update onboarding progress
+  // NOTE: No requireIndustryType middleware - users need to access this to set industry
   app.post("/api/onboarding/update", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { step, responses } = req.body;
-      
-      if (!step) {
-        return res.status(400).json({ error: "Step is required" });
-      }
+      // Validate request body with Zod
+      const { OnboardingUpdateSchema } = await import('../shared/schemas.js');
+      const validated = OnboardingUpdateSchema.parse(req.body);
+      const { step, responses } = validated;
       
       const onboarding = await storage.updateUserOnboarding(req.user.id, {
         step,
@@ -403,13 +404,22 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(onboarding);
     } catch (error: any) {
       console.error('[onboarding/update] Error:', error);
+      
+      // Handle Zod validation errors
+      if (error?.name === 'ZodError' || error?.code === 'VALIDATION_ERROR') {
+        return res.status(400).json({ 
+          error: "Validation error", 
+          details: error.issues || error.details 
+        });
+      }
+      
       // If error is due to missing table, return success with default to prevent crashes
       if (error?.message?.includes('user_onboarding') || error?.code === '42P01' || error?.code === '42703') {
         console.warn('[onboarding/update] Table not found, returning default response');
         return res.json({ 
-          step: step || 'welcome', 
+          step: req.body.step || 'welcome', 
           completed: false, 
-          responses: responses || {} 
+          responses: req.body.responses || {} 
         });
       }
       res.status(500).json({ error: error?.message || 'Failed to update onboarding' });
@@ -417,8 +427,13 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // POST /api/onboarding/complete - Mark onboarding as completed
+  // NOTE: No requireIndustryType middleware - users need to access this to complete onboarding
   app.post("/api/onboarding/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      // Validate request body with Zod (optional body)
+      const { OnboardingCompleteSchema } = await import('../shared/schemas.js');
+      OnboardingCompleteSchema.parse(req.body || {});
+      
       await storage.completeUserOnboarding(req.user.id);
       res.json({ ok: true });
     } catch (error) {

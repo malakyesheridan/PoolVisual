@@ -40,7 +40,8 @@ export const users = pgTable("users", {
   isAdmin: boolean("is_admin").default(false).notNull(),
   adminPermissions: jsonb("admin_permissions").default(sql`'[]'::jsonb`),
   // Personalization fields (from migration 028)
-  industryType: text("industry_type"),
+  // Made required in migration 038 - default 'pool' for backward compatibility
+  industryType: text("industry_type").notNull().default("pool"),
   creditsBalance: numeric("credits_balance", { precision: 20, scale: 0 }).default("0"),
   trialCreditsGranted: boolean("trial_credits_granted").default(false),
   trialStartedAt: timestamp("trial_started_at"),

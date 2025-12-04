@@ -5,48 +5,33 @@ import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
 import { useMutation } from '@tanstack/react-query';
-
-const STORAGE_KEY = 'industry_selection_completed';
+import { useToast } from '@/hooks/use-toast';
 
 export function IndustrySelectionModal() {
   const { user, setUser } = useAuthStore();
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
 
-  // Check if industry is missing and modal hasn't been shown
+  // Check if industry is missing
   useEffect(() => {
     if (!user) return;
     
     // If user already has industry, don't show
     if (user.industryType) {
-      localStorage.removeItem(STORAGE_KEY);
       return;
     }
 
-    // Check if we've already shown this modal (localStorage fallback)
-    const hasShown = localStorage.getItem(STORAGE_KEY);
-    if (hasShown === 'true') {
-      return;
-    }
-
-    // Show modal if industry is missing
+    // Show modal if industry is missing (non-dismissible)
     setIsOpen(true);
   }, [user]);
 
   const updateIndustryMutation = useMutation({
-    mutationFn: async (industryValue: 'real_estate' | null) => {
-      try {
-        const updatedUser = await apiClient.updateUserProfile({ industryType: industryValue });
-        localStorage.setItem('user_industry', industryValue || '');
-        localStorage.setItem(STORAGE_KEY, 'true');
-        return updatedUser;
-      } catch (error) {
-        // Fallback to localStorage if API fails
-        localStorage.setItem('user_industry', industryValue || '');
-        localStorage.setItem(STORAGE_KEY, 'true');
-        return { ...user!, industryType: industryValue };
-      }
+    mutationFn: async (industryValue: string) => {
+      // API call only - no localStorage fallback
+      const updatedUser = await apiClient.updateUserProfile({ industryType: industryValue });
+      return updatedUser;
     },
     onSuccess: (updatedUser) => {
       // Update user state
@@ -55,26 +40,26 @@ export function IndustrySelectionModal() {
       // Close modal and redirect to dashboard
       setIsOpen(false);
       setLocation('/dashboard');
+      toast({
+        title: 'Industry selected',
+        description: 'Your industry preference has been saved.',
+      });
     },
     onError: (error: any) => {
       console.error('[IndustrySelectionModal] Failed to update industry:', error);
-      
-      // Even if API fails, store in localStorage and update local state
-      if (selectedIndustry) {
-        const industryValue = selectedIndustry === 'real_estate' ? 'real_estate' : null;
-        localStorage.setItem('user_industry', industryValue || '');
-        localStorage.setItem(STORAGE_KEY, 'true');
-        setUser({ ...user!, industryType: industryValue });
-        setIsOpen(false);
-        setLocation('/dashboard');
-      }
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save industry selection. Please try again.',
+        variant: 'destructive',
+      });
+      // Don't allow user to proceed if API fails
     },
   });
 
   const handleSelect = (industry: 'trades' | 'real_estate') => {
     setSelectedIndustry(industry);
-    // Auto-save on selection - convert to database value
-    const industryValue = industry === 'real_estate' ? 'real_estate' : null;
+    // Map 'trades' to 'pool' (default trade industry) and 'real_estate' to 'real_estate'
+    const industryValue = industry === 'real_estate' ? 'real_estate' : 'pool';
     updateIndustryMutation.mutate(industryValue);
   };
 
@@ -84,12 +69,17 @@ export function IndustrySelectionModal() {
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={() => {}}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      // Prevent closing without selection - this modal is mandatory
+      if (!open && !user?.industryType) {
+        return; // Block closing
+      }
+    }}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle className="text-2xl text-center">Select Your Industry</DialogTitle>
           <DialogDescription className="text-center mt-2">
-            Choose your industry to get started
+            Please select your industry to continue. This cannot be skipped.
           </DialogDescription>
         </DialogHeader>
         

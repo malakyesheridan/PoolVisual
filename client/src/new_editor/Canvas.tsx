@@ -17,6 +17,8 @@ export function Canvas({ width, height }: CanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const previousVariantIdRef = useRef<string | null>(null);
   const [showDevHud, setShowDevHud] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState<{x: number, y: number} | null>(null);
@@ -68,14 +70,41 @@ export function Canvas({ width, height }: CanvasProps) {
   }, []);
 
   // Load image with proper state management - use active variant URL
+  // CRITICAL FIX: Add AbortController to cancel in-flight loads when variant switches
   useEffect(() => {
     if (activeImageUrl) {
+      // Cancel previous image load if variant changed
+      if (abortControllerRef.current) {
+        console.log('[Canvas] Cancelling previous image load due to variant switch');
+        abortControllerRef.current.abort();
+      }
+      
+      // Track previous variant for fallback
+      const previousVariantId = previousVariantIdRef.current;
+      previousVariantIdRef.current = activeVariantId;
+      
+      // Create new AbortController for this load
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+      
       console.log('[Canvas] Starting to load image:', activeImageUrl);
+      
+      // Set loading state for this variant
+      dispatch({ type: 'SET_LOADING_VARIANT', payload: activeVariantId });
+      
       const img = new Image();
+      
       img.onload = () => {
+        // Check if load was aborted
+        if (abortController.signal.aborted) {
+          console.log('[Canvas] Image load aborted, ignoring result');
+          return;
+        }
+        
         console.log('[Canvas] Image loaded successfully:', activeImageUrl, { width: img.naturalWidth, height: img.naturalHeight });
         imageRef.current = img;
         dispatch({ type: 'SET_STATE', payload: 'ready' });
+        dispatch({ type: 'SET_LOADING_VARIANT', payload: null }); // Clear loading state
         
         // Get actual container size from ref (more reliable than props)
         const container = containerRef.current;
@@ -269,8 +298,47 @@ export function Canvas({ width, height }: CanvasProps) {
         }
       };
       img.onerror = (error) => {
+        // Check if load was aborted
+        if (abortController.signal.aborted) {
+          console.log('[Canvas] Image load aborted, ignoring error');
+          return;
+        }
+        
         console.error('[Canvas] Failed to load image:', activeImageUrl, error);
-        dispatch({ type: 'SET_STATE', payload: 'error' });
+        
+        // CRITICAL FIX: Automatic fallback to previous variant on load failure
+        const currentState = useEditorStore.getState();
+        const fallbackVariantId = previousVariantId || 'original';
+        
+        // Only fallback if we're not already on the fallback variant
+        if (currentState.activeVariantId !== fallbackVariantId) {
+          console.log('[Canvas] Falling back to previous variant due to load failure:', fallbackVariantId);
+          dispatch({ 
+            type: 'SET_ACTIVE_VARIANT', 
+            payload: fallbackVariantId 
+          });
+          
+          // Show error toast with retry option
+          import('../lib/toast').then(({ toast }) => {
+            toast.error('Failed to load variant', {
+              description: 'Switched back to previous variant.',
+              action: {
+                label: 'Retry',
+                onClick: () => {
+                  dispatch({ type: 'SET_ACTIVE_VARIANT', payload: activeVariantId });
+                }
+              }
+            });
+          });
+        } else {
+          // Already on fallback, just show error
+          dispatch({ type: 'SET_STATE', payload: 'error' });
+          import('../lib/toast').then(({ toast }) => {
+            toast.error('Failed to load image', {
+              description: 'The image could not be loaded. Please try again.',
+            });
+          });
+        }
       };
       img.src = activeImageUrl;
     } else {

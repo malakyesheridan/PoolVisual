@@ -28,6 +28,7 @@ interface AuthState {
   login: (user: User) => void;
   logout: () => void;
   setUser: (user: User) => void;
+  updateCredits: (delta: number) => void; // Optimistically update credits
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -45,6 +46,20 @@ export const useAuthStore = create<AuthState>()(
       },
       setUser: (user) => {
         set({ user, isAuthenticated: !!user });
+      },
+      updateCredits: (delta) => {
+        set((state) => {
+          if (!state.user) return state;
+          const currentBalance = Number(state.user.creditsBalance || 0);
+          const newBalance = Math.max(0, currentBalance + delta); // Prevent negative
+          return {
+            ...state,
+            user: {
+              ...state.user,
+              creditsBalance: newBalance,
+            },
+          };
+        });
       },
     }),
     {

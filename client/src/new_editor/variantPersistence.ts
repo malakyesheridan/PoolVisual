@@ -85,6 +85,103 @@ export function loadVariantState(photoId: string | null | undefined): { variants
 }
 
 /**
+ * Load and validate variant state with URL accessibility check
+ * HIGH PRIORITY FIX: Validates URLs are accessible before restoring
+ */
+export async function loadAndValidateVariantState(
+  photoId: string | null | undefined
+): Promise<{ variants: CanvasVariant[]; activeVariantId: string | null } | null> {
+  const persisted = loadVariantState(photoId);
+  if (!persisted) return null;
+  
+  // Validate URLs are accessible
+  const { checkImageAccessible } = await import('../lib/imagePreloader');
+  const validatedVariants = [];
+  
+  for (const variant of persisted.variants) {
+    if (variant.id === 'original') {
+      validatedVariants.push(variant); // Original always valid
+      continue;
+    }
+    
+    const isAccessible = await checkImageAccessible(variant.imageUrl, 5000);
+    if (isAccessible) {
+      validatedVariants.push(variant);
+    } else {
+      console.warn('[VariantPersistence] Variant URL not accessible:', variant.id, variant.imageUrl);
+    }
+  }
+  
+  if (validatedVariants.length === 0) return null;
+  
+  // Ensure activeVariantId is valid
+  const activeVariantId = validatedVariants.some(v => v.id === persisted.activeVariantId)
+    ? persisted.activeVariantId
+    : validatedVariants[0]?.id || null;
+  
+  // Update persisted state if any variants were removed
+  if (validatedVariants.length !== persisted.variants.length) {
+    saveVariantState(photoId, {
+      variants: validatedVariants,
+      activeVariantId
+    });
+  }
+  
+  return { variants: validatedVariants, activeVariantId };
+}
+
+/**
+ * Validate persisted variants against server
+ * HIGH PRIORITY FIX: Removes stale variants that don't exist on server
+ */
+export async function validatePersistedVariants(
+  photoId: string | null | undefined
+): Promise<{ variants: CanvasVariant[]; activeVariantId: string | null } | null> {
+  const persisted = loadVariantState(photoId);
+  if (!persisted) return null;
+  
+  try {
+    // Fetch variants from server
+    const res = await fetch(`/api/ai/enhancement/photo/${photoId}/variants`, {
+      credentials: 'include'
+    });
+    
+    if (!res.ok) {
+      console.warn('[VariantPersistence] Failed to fetch server variants, using persisted only');
+      return persisted;
+    }
+    
+    const serverData = await res.json();
+    const serverVariants = serverData.variants || [];
+    const serverVariantIds = new Set(serverVariants.map((v: any) => v.id));
+    
+    // Filter out variants that don't exist on server
+    const validVariants = persisted.variants.filter(v => 
+      v.id === 'original' || serverVariantIds.has(v.id)
+    );
+    
+  // Update persisted state if any variants were removed
+    if (validVariants.length !== persisted.variants.length) {
+      const activeVariantId = validVariants.some(v => v.id === persisted.activeVariantId)
+        ? persisted.activeVariantId
+        : validVariants[0]?.id || null;
+      
+      saveVariantState(photoId, {
+        variants: validVariants,
+        activeVariantId
+      });
+      
+      return { variants: validVariants, activeVariantId };
+    }
+    
+    return persisted;
+  } catch (error) {
+    console.warn('[VariantPersistence] Error validating against server, using persisted only:', error);
+    return persisted;
+  }
+}
+
+/**
  * Clear variant state from localStorage
  */
 export function clearVariantState(photoId: string | null | undefined): void {

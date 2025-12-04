@@ -16,13 +16,14 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
+  horizontalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Phone, Mail, DollarSign, CheckCircle, XCircle, Clock, MoreHorizontal } from 'lucide-react';
+import { Phone, Mail, DollarSign, CheckCircle, XCircle, Clock, MoreHorizontal, GripVertical } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
 import { formatDistanceToNow } from 'date-fns';
 import { StageManagement } from './StageManagement';
@@ -229,32 +230,68 @@ function StageColumn({
   onOpportunityClick,
   pipelineId,
   onStageUpdated,
+  isDragging,
 }: { 
   stage: Stage; 
   opportunities: Opportunity[];
   onOpportunityClick: (opp: Opportunity) => void;
   pipelineId?: string;
   onStageUpdated?: () => void;
+  isDragging?: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({
-    id: stage.id,
+    id: `stage-${stage.id}`,
     data: {
       type: 'stage',
       stageId: stage.id,
     },
   });
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    transform,
+    transition,
+    isDragging: isStageDragging,
+  } = useSortable({
+    id: `stage-${stage.id}`,
+    data: {
+      type: 'stage-column',
+      stageId: stage.id,
+    },
+    disabled: false, // Allow stage reordering
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isStageDragging ? 0.5 : 1,
+  };
+
+  // Combine refs for both droppable and sortable
+  const combinedRef = (node: HTMLDivElement | null) => {
+    setNodeRef(node);
+    setDragRef(node);
+  };
+
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
+      style={style}
       className={`flex-shrink-0 w-80 h-full flex flex-col bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border-2 transition-colors ${
         isOver ? 'border-primary shadow-lg bg-slate-100' : 'border-slate-200 shadow-sm'
-      }`}
+      } ${isStageDragging ? 'shadow-2xl scale-105 z-50' : ''}`}
       data-stage-id={stage.id}
       data-type="stage"
     >
       <div className="mb-4 flex items-center justify-between pb-3 border-b border-slate-200 flex-shrink-0 group">
-        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <div 
+          {...attributes}
+          {...listeners}
+          className="flex items-center gap-2 flex-1 min-w-0 cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical className="w-4 h-4 text-slate-400 flex-shrink-0" />
           <div
             className="w-3 h-3 rounded-full shadow-sm border border-white/50 flex-shrink-0"
             style={{ backgroundColor: stage.color }}
@@ -262,6 +299,8 @@ function StageColumn({
           <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wide truncate">
             {stage.name}
           </h3>
+        </div>
+        <div onClick={(e) => e.stopPropagation()}>
           {pipelineId && onStageUpdated && (
             <StageManagement 
               stage={stage} 
@@ -304,12 +343,14 @@ export function KanbanBoard({
   stages,
   onOpportunityClick,
   onOpportunityMove,
+  onStageReorder,
   isLoading = false,
   pipelineId,
   onStageUpdated,
 }: KanbanBoardProps) {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [draggedOpportunity, setDraggedOpportunity] = useState<Opportunity | null>(null);
+  const [draggedStage, setDraggedStage] = useState<Stage | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -363,8 +404,20 @@ export function KanbanBoard({
 
   const handleDragStart = (event: DragStartEvent) => {
     setActiveId(event.active.id as string);
-    const opp = opportunities.find(o => o.id === event.active.id);
-    setDraggedOpportunity(opp || null);
+    const activeIdStr = event.active.id as string;
+    
+    // Check if dragging a stage column
+    if (activeIdStr.startsWith('stage-')) {
+      const stageId = activeIdStr.replace('stage-', '');
+      const stage = stages.find(s => s.id === stageId);
+      setDraggedStage(stage || null);
+      setDraggedOpportunity(null);
+    } else {
+      // Dragging an opportunity
+      const opp = opportunities.find(o => o.id === activeIdStr);
+      setDraggedOpportunity(opp || null);
+      setDraggedStage(null);
+    }
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -373,12 +426,51 @@ export function KanbanBoard({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    const activeIdStr = active.id as string;
+    
+    // Handle stage reordering
+    if (activeIdStr.startsWith('stage-')) {
+      if (!over || !onStageReorder) {
+        setActiveId(null);
+        setDraggedStage(null);
+        return;
+      }
+
+      const draggedStageId = activeIdStr.replace('stage-', '');
+      const overIdStr = over.id as string;
+      
+      if (overIdStr.startsWith('stage-')) {
+        const targetStageId = overIdStr.replace('stage-', '');
+        
+        if (draggedStageId !== targetStageId) {
+          // Reorder stages
+          const newOrder = [...stages];
+          const draggedIndex = newOrder.findIndex(s => s.id === draggedStageId);
+          const targetIndex = newOrder.findIndex(s => s.id === targetStageId);
+          
+          if (draggedIndex !== -1 && targetIndex !== -1) {
+            const [removed] = newOrder.splice(draggedIndex, 1);
+            newOrder.splice(targetIndex, 0, removed);
+            
+            // Update order values and call callback
+            const reorderedIds = newOrder.map(s => s.id);
+            onStageReorder(reorderedIds);
+          }
+        }
+      }
+      
+      setActiveId(null);
+      setDraggedStage(null);
+      return;
+    }
+
+    // Handle opportunity moving between stages
     setActiveId(null);
     setDraggedOpportunity(null);
 
     if (!over) return;
 
-    const opportunityId = active.id as string;
+    const opportunityId = activeIdStr;
     const draggedOpportunity = opportunities.find(o => o.id === opportunityId);
     
     if (!draggedOpportunity) return;
@@ -387,12 +479,13 @@ export function KanbanBoard({
     let newStageId: string | null = null;
     
     // Method 1: Check if we dropped directly on a stage (droppable)
-    if (stages.some(stage => stage.id === over.id as string)) {
-      newStageId = over.id as string;
-    } 
+    const overIdStr = over.id as string;
+    if (overIdStr.startsWith('stage-')) {
+      newStageId = overIdStr.replace('stage-', '');
+    }
     // Method 2: Check if we dropped on a card - find which stage it belongs to
     else {
-      const targetOpportunity = opportunities.find(o => o.id === over.id as string);
+      const targetOpportunity = opportunities.find(o => o.id === overIdStr);
       if (targetOpportunity?.stageId) {
         newStageId = targetOpportunity.stageId;
       }
@@ -445,18 +538,23 @@ export function KanbanBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-5 h-full pb-6 px-1" style={{ scrollbarWidth: 'thin' }}>
-        {sortedStages.map((stage) => (
-          <StageColumn
-            key={stage.id}
-            stage={stage}
-            opportunities={opportunitiesByStage[stage.id] || []}
-            onOpportunityClick={onOpportunityClick}
-            pipelineId={pipelineId}
-            onStageUpdated={onStageUpdated}
-          />
-        ))}
-      </div>
+      <SortableContext
+        items={sortedStages.map(s => `stage-${s.id}`)}
+        strategy={horizontalListSortingStrategy}
+      >
+        <div className="flex gap-5 h-full pb-6 px-1" style={{ scrollbarWidth: 'thin' }}>
+          {sortedStages.map((stage) => (
+            <StageColumn
+              key={stage.id}
+              stage={stage}
+              opportunities={opportunitiesByStage[stage.id] || []}
+              onOpportunityClick={onOpportunityClick}
+              pipelineId={pipelineId}
+              onStageUpdated={onStageUpdated}
+            />
+          ))}
+        </div>
+      </SortableContext>
 
       <DragOverlay>
         {draggedOpportunity ? (
@@ -465,6 +563,20 @@ export function KanbanBoard({
               opportunity={draggedOpportunity}
               onClick={() => {}}
             />
+          </div>
+        ) : draggedStage ? (
+          <div className="opacity-95 rotate-2 shadow-2xl w-80">
+            <div className="flex-shrink-0 w-80 h-32 flex flex-col bg-gradient-to-b from-slate-50 to-slate-100/50 rounded-xl p-4 border-2 border-primary shadow-lg">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-3 h-3 rounded-full shadow-sm border border-white/50"
+                  style={{ backgroundColor: draggedStage.color }}
+                />
+                <h3 className="font-semibold text-slate-900 text-sm uppercase tracking-wide">
+                  {draggedStage.name}
+                </h3>
+              </div>
+            </div>
           </div>
         ) : null}
       </DragOverlay>

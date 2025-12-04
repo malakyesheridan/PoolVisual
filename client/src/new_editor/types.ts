@@ -143,6 +143,15 @@ export interface EditorState {
   // Canvas variants (for enhanced images)
   variants: CanvasVariant[];
   activeVariantId: string | null;
+  loadingVariantId: string | null; // Track which variant is currently loading
+  
+  // Enhancement lock
+  isEnhancing: boolean; // Global lock to prevent concurrent enhancements
+  pendingEnhancement: {
+    variantId: string;
+    imageUrl: string;
+    activeVariantIdAtStart: string | null;
+  } | null; // Track pending enhancement for cancellation
   
   // Job context
   jobContext?: {
@@ -266,6 +275,10 @@ export type EditorAction =
   | { type: 'SET_VARIANTS'; payload: { variants: CanvasVariant[]; activeVariantId: string | null } }
   | { type: 'UPDATE_VARIANT_LOADING_STATE'; payload: { variantId: string; loadingState: 'idle' | 'loading' | 'loaded' | 'error'; errorMessage?: string; loadedAt?: number } }
   | { type: 'INCREMENT_VARIANT_RETRY'; payload: { variantId: string } }
+  | { type: 'SET_LOADING_VARIANT'; payload: string | null }
+  | { type: 'SET_ENHANCING'; payload: boolean }
+  | { type: 'SET_PENDING_ENHANCEMENT'; payload: { variantId: string; imageUrl: string; activeVariantIdAtStart: string | null } | null }
+  | { type: 'CANCEL_PENDING_ENHANCEMENT' }
   // NEW: Point editing actions
   | { type: 'SET_POINT_EDITING_SETTINGS'; payload: Partial<EditorState['pointEditing']> }
   | { type: 'TOGGLE_GRID_VISIBILITY' }

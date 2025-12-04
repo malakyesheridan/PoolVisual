@@ -204,6 +204,9 @@ const initialState: EditorState = {
     dpr: window.devicePixelRatio || 1,
     fitScale: undefined // Will be set when image first loads
   },
+  loadingVariantId: null, // Track which variant is loading
+  isEnhancing: false, // Global enhancement lock
+  pendingEnhancement: null, // Track pending enhancement
   imageUrl: undefined,
   variants: [],
   activeVariantId: null,
@@ -1061,7 +1064,51 @@ export const useEditorStore = create<EditorState & {
         break;
       }
       
+      case 'SET_LOADING_VARIANT': {
+        set(state => ({ ...state, loadingVariantId: action.payload }));
+        break;
+      }
+      
+      case 'SET_ENHANCING': {
+        set(state => ({ ...state, isEnhancing: action.payload }));
+        break;
+      }
+      
+      case 'SET_PENDING_ENHANCEMENT': {
+        set(state => ({ ...state, pendingEnhancement: action.payload }));
+        break;
+      }
+      
+      case 'CANCEL_PENDING_ENHANCEMENT': {
+        const currentState = get();
+        if (currentState.pendingEnhancement) {
+          // Remove the pending variant if it exists
+          const pendingVariant = currentState.variants.find(v => v.id === currentState.pendingEnhancement!.variantId);
+          if (pendingVariant && pendingVariant.id !== 'original') {
+            set(state => ({
+              ...state,
+              variants: state.variants.filter(v => v.id !== pendingVariant.id),
+              pendingEnhancement: null,
+              // If cancelled variant was active, fallback to original or first available
+              activeVariantId: state.activeVariantId === pendingVariant.id
+                ? (state.variants.find(v => v.id === 'original')?.id || state.variants[0]?.id || null)
+                : state.activeVariantId
+            }));
+          } else {
+            set(state => ({ ...state, pendingEnhancement: null }));
+          }
+        }
+        break;
+      }
+      
       case 'SET_ACTIVE_VARIANT': {
+        // CRITICAL FIX: Cancel pending enhancement if switching away from it
+        const currentState = get();
+        if (currentState.pendingEnhancement && 
+            currentState.pendingEnhancement.variantId !== action.payload) {
+          // Cancel pending enhancement
+          dispatch({ type: 'CANCEL_PENDING_ENHANCEMENT' });
+        }
         const variantId = action.payload;
         set(state => {
           // Validate variant exists

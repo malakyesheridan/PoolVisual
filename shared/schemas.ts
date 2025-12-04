@@ -350,3 +350,29 @@ export type CreateMask = z.infer<typeof CreateMaskSchema>;
 export type ApiSuccess<T = unknown> = { ok: true; data: T; requestId?: string };
 export type ApiError = z.infer<typeof ApiErrorSchema>;
 export type ApiResponse<T = unknown> = ApiSuccess<T> | ApiError;
+
+// Onboarding schemas
+export const OnboardingStepSchema = z.enum([
+  'welcome',
+  'industry_selection',
+  'questionnaire',
+  'preview',
+  'upload',
+  'material_demo',
+  'enhancement_demo',
+  'workspace_setup',
+  'completed'
+]);
+
+export const OnboardingUpdateSchema = z.object({
+  step: OnboardingStepSchema,
+  responses: z.record(z.unknown()).optional(),
+});
+
+export const OnboardingCompleteSchema = z.object({
+  // Empty for now, but can add confirmation fields
+}).optional();
+
+export type OnboardingStep = z.infer<typeof OnboardingStepSchema>;
+export type OnboardingUpdate = z.infer<typeof OnboardingUpdateSchema>;
+export type OnboardingComplete = z.infer<typeof OnboardingCompleteSchema>;

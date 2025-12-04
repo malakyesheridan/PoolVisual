@@ -2117,6 +2117,18 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         <JobsDrawer 
           onClose={() => setShowEnhancementDrawer(false)}
           onApplyEnhancedImage={async (data) => {
+            // CRITICAL FIX: Check global enhancement lock
+            const currentState = useEditorStore.getState();
+            if (currentState.isEnhancing) {
+              toast.warning('Enhancement in progress', { 
+                description: 'Please wait for the current enhancement to complete before applying another.' 
+              });
+              return;
+            }
+            
+            // CRITICAL FIX: Capture active variant at start to validate it hasn't changed
+            const activeVariantIdAtStart = currentState.activeVariantId;
+            
             // Preload image before adding variant
             const { preloadImage } = await import('../lib/imagePreloader');
             
@@ -2132,6 +2144,16 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
               }
             });
             
+            // CRITICAL FIX: Track pending enhancement for cancellation
+            dispatch({
+              type: 'SET_PENDING_ENHANCEMENT',
+              payload: {
+                variantId,
+                imageUrl: data.imageUrl,
+                activeVariantIdAtStart
+              }
+            });
+            
             // Preload image in background
             const result = await preloadImage(data.imageUrl, {
               maxRetries: 3,
@@ -2139,6 +2161,19 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
             });
             
             if (result.success) {
+              // CRITICAL FIX: Validate variant hasn't changed during preload
+              const stateAfterPreload = useEditorStore.getState();
+              if (stateAfterPreload.activeVariantId !== activeVariantIdAtStart) {
+                // Variant changed during preload - cancel enhancement
+                dispatch({ type: 'CANCEL_PENDING_ENHANCEMENT' });
+                toast.warning('Variant changed', { 
+                  description: 'Enhancement was cancelled because you switched variants during loading.' 
+                });
+                return;
+              }
+              
+              // Clear pending enhancement - it's now applied
+              dispatch({ type: 'SET_PENDING_ENHANCEMENT', payload: null });
               dispatch({
                 type: 'UPDATE_VARIANT_LOADING_STATE',
                 payload: {

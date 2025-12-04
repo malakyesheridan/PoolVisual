@@ -68,6 +68,15 @@ export function VariantsPanel() {
   
   // Handle variant deletion
   const handleDelete = async (variantId: string) => {
+    // CRITICAL FIX: Prevent deletion of loading variants
+    const variant = storeVariants.find(v => v.id === variantId);
+    if (variant?.loadingState === 'loading') {
+      toast.warning('Cannot delete loading variant', {
+        description: 'Please wait for the variant to finish loading before deleting it.'
+      });
+      return;
+    }
+    
     if (!confirm('Are you sure you want to delete this variant? This action cannot be undone.')) {
       return;
     }

@@ -51,6 +51,7 @@ import { IndustrySelectionModal } from '@/components/IndustrySelectionModal';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const user = useAuthStore((state) => state.user);
   const currentPath = window.location.pathname;
   
   // Dev bypass for canvas-editor-v2 and new-editor
@@ -62,9 +63,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/login" />;
   }
 
-  // Show industry selection modal if needed (non-blocking)
-  // The modal will handle showing/hiding based on user.industryType
-  
+  // CRITICAL: Block access if industryType is missing (except onboarding page)
+  // This ensures all users must select their industry before accessing the app
+  if (!user?.industryType && currentPath !== '/onboarding') {
+    return <Redirect to="/onboarding" />;
+  }
+
+  // Show industry selection modal if needed (non-blocking for users who already have industry)
   return (
     <>
       <IndustrySelectionModal />

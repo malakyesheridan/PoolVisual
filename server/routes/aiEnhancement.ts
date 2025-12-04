@@ -303,20 +303,42 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     const enhancementType = mode || options?.mode || 'basic';
     const requiredCredits = creditService.calculateCredits(enhancementType, hasMask);
 
-    // Check if user has enough credits
-    const hasEnough = await creditService.hasEnoughCredits(user.id, requiredCredits);
-    if (!hasEnough) {
-      const balance = await creditService.getCreditBalance(user.id);
-      return res.status(402).json({
-        message: 'Insufficient credits',
-        required: requiredCredits,
-        balance: balance.total,
-        error: 'INSUFFICIENT_CREDITS'
+    // CRITICAL FIX: Deduct credits BEFORE creating job to prevent race conditions
+    // This ensures credits are deducted atomically with job creation
+    let deductionResult;
+    try {
+      deductionResult = await creditService.deductCredits(
+        user.id,
+        enhancementType,
+        hasMask
+      );
+
+      if (!deductionResult.success) {
+        const balance = await creditService.getCreditBalance(user.id);
+        return res.status(402).json({
+          message: 'Insufficient credits',
+          required: requiredCredits,
+          balance: balance.total,
+          error: 'INSUFFICIENT_CREDITS'
+        });
+      }
+    } catch (creditError: any) {
+      logger.error({
+        msg: 'Failed to deduct credits before job creation',
+        err: creditError,
+        userId: user.id,
+        requiredCredits,
+      });
+      return res.status(500).json({
+        message: 'Failed to process credit deduction',
+        error: 'CREDIT_DEDUCTION_FAILED'
       });
     }
 
     // Create job + outbox atomically
+    // Credits are already deducted, so if job creation fails, we'll refund
     let result;
+    let jobId: string | null = null;
     try {
       result = await transaction(async (tx: any) => {
       const insert = await tx.execute(
@@ -474,53 +496,69 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       });
     } catch (txErr: any) {
       console.error('[Create Enhancement] Transaction failed:', txErr.message);
+      
+      // CRITICAL: If job creation fails after credits were deducted, refund the credits
+      if (deductionResult.success) {
+        try {
+          await creditService.refundCredits(
+            user.id,
+            deductionResult.creditsDeducted,
+            'temp-job-id', // Job wasn't created, so no real job ID
+            `Job creation failed: ${txErr.message}`
+          );
+          logger.info({
+            msg: 'Credits refunded due to job creation failure',
+            userId: user.id,
+            creditsRefunded: deductionResult.creditsDeducted,
+          });
+        } catch (refundError) {
+          logger.error({
+            msg: 'CRITICAL: Failed to refund credits after job creation failure',
+            err: refundError,
+            userId: user.id,
+            creditsDeducted: deductionResult.creditsDeducted,
+          });
+        }
+      }
+      
       throw txErr;
     }
     
-    const jobId = result?.id;
+    jobId = result?.id;
     
     if (!jobId) {
       console.error('[Create Enhancement] Job creation returned no ID');
+      
+      // Refund credits if job wasn't created
+      if (deductionResult.success) {
+        try {
+          await creditService.refundCredits(
+            user.id,
+            deductionResult.creditsDeducted,
+            'temp-job-id',
+            'Job creation returned no ID'
+          );
+        } catch (refundError) {
+          logger.error({
+            msg: 'CRITICAL: Failed to refund credits after job creation returned no ID',
+            err: refundError,
+            userId: user.id,
+          });
+        }
+      }
+      
       return res.status(500).json({ message: 'Failed to create job' });
     }
 
-    // Deduct credits after job creation
-    try {
-      const deductionResult = await creditService.deductCredits(
-        user.id,
-        enhancementType,
-        hasMask,
-        jobId
-      );
-
-      if (!deductionResult.success) {
-        // Job was created but credits couldn't be deducted - this is a critical error
-        // In production, you might want to cancel the job or have a background process handle this
-        logger.error({
-          msg: 'Failed to deduct credits after job creation',
-          userId: user.id,
-          jobId,
-          requiredCredits,
-        });
-        // Continue anyway - job is already created, credits will be handled separately
-      } else {
-        logger.info({
-          msg: 'Credits deducted for enhancement',
-          userId: user.id,
-          jobId,
-          creditsDeducted: deductionResult.creditsDeducted,
-          newBalance: deductionResult.newBalance,
-        });
-      }
-    } catch (creditError) {
-      // Log error but don't fail the request - job is already created
-      logger.error({
-        msg: 'Error deducting credits',
-        err: creditError,
-        userId: user.id,
-        jobId,
-      });
-    }
+    // Credits were already deducted before job creation
+    // Update the deduction record with the actual job ID (if needed for tracking)
+    logger.info({
+      msg: 'Credits deducted and job created successfully',
+      userId: user.id,
+      jobId,
+      creditsDeducted: deductionResult.creditsDeducted,
+      newBalance: deductionResult.newBalance,
+    });
 
     // CRITICAL FIX: Trigger outbox processor AFTER transaction completes
     // Add small delay to ensure database commit is visible across instances

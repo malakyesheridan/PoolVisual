@@ -397,6 +397,35 @@ export default function Opportunities() {
     moveOpportunityMutation.mutate({ opportunityId, newStageId });
   };
 
+  // Handle stage reordering
+  const reorderStagesMutation = useMutation({
+    mutationFn: async (stageIds: string[]) => {
+      // Update order for each stage
+      const updates = stageIds.map((stageId, index) => 
+        apiClient.updatePipelineStage(stageId, { order: index })
+      );
+      await Promise.all(updates);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/pipelines', defaultPipeline?.id, 'stages'] });
+      toast({
+        title: 'Stages reordered',
+        description: 'The stage order has been updated.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to reorder stages',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleStageReorder = (stageIds: string[]) => {
+    reorderStagesMutation.mutate(stageIds);
+  };
+
   const handleDrawerClose = () => {
     setIsDrawerOpen(false);
     setSelectedOpportunity(null);
@@ -607,6 +636,7 @@ export default function Opportunities() {
               stages={stages}
               onOpportunityClick={handleOpportunityClick}
               onOpportunityMove={handleOpportunityMove}
+              onStageReorder={handleStageReorder}
               isLoading={isLoading}
               pipelineId={defaultPipeline?.id}
               onStageUpdated={() => {

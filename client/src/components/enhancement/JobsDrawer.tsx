@@ -387,6 +387,14 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     const currentImageUrl = currentState.imageUrl;
     const photoSpace = currentState.photoSpace;
     
+    // CRITICAL FIX: Check global enhancement lock
+    if (currentState.isEnhancing) {
+      toast.warning('Enhancement in progress', { 
+        description: 'Please wait for the current enhancement to complete before starting a new one.' 
+      });
+      return;
+    }
+    
     if (!currentImageUrl) {
       alert('Please load an image in the canvas first');
       return;
@@ -957,7 +965,36 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       
       console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify(logPayload, null, 2));
       
+      // Calculate credits needed for optimistic update
+      const { updateCredits } = useAuthStore.getState();
+      let creditsToDeduct = 0;
+      try {
+        const creditResponse = await apiClient.calculateCredits(previewData.mode, previewData.masks.length > 0);
+        creditsToDeduct = creditResponse.credits;
+        
+        // Optimistically deduct credits immediately
+        updateCredits(-creditsToDeduct);
+        if (creditBalance !== null) {
+          setCreditBalance(creditBalance - creditsToDeduct);
+        }
+      } catch (creditError) {
+        console.warn('[JobsDrawer] Failed to calculate credits for optimistic update:', creditError);
+        // Continue anyway - server will handle it
+      }
+      
       const { jobId } = await createJob(payload);
+      
+      // CRITICAL FIX: Track pending enhancement for cancellation
+      // We'll set the actual variant ID when the job completes and we apply it
+      // For now, we just track that an enhancement is pending
+      useEditorStore.getState().dispatch({ 
+        type: 'SET_PENDING_ENHANCEMENT', 
+        payload: {
+          variantId: `pending-${jobId}`, // Temporary ID until job completes
+          imageUrl: '', // Will be set when job completes
+          activeVariantIdAtStart: activeVariantIdAtStart
+        }
+      });
       
       // Update composite URL with actual jobId if needed (optional - temp ID works fine)
       if (previewData.compositeImageUrl && previewData.compositeImageUrl.includes('temp-')) {
@@ -984,10 +1021,19 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // function now handles timezone issues and invalid dates properly
       getRecentJobs(100).then(d => setInitial(d.jobs)).catch(() => {});
       
-      // Refresh credit balance after enhancement
+      // Reconcile credit balance with server (refresh from API)
       loadCreditBalance();
     } catch (error: any) {
       console.error('Failed to create enhancement:', error);
+      
+      // Revert optimistic credit update on error
+      if (creditsToDeduct > 0) {
+        const { updateCredits } = useAuthStore.getState();
+        updateCredits(creditsToDeduct); // Add back the credits we optimistically deducted
+        if (creditBalance !== null) {
+          setCreditBalance(creditBalance + creditsToDeduct);
+        }
+      }
       
       // Handle insufficient credits (402)
       if (error.status === 402 || error.statusCode === 402 || error.error === 'INSUFFICIENT_CREDITS') {
@@ -1024,6 +1070,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     } finally {
       setIsCreating(false);
       setPreviewData(null);
+      // CRITICAL FIX: Release global enhancement lock
+      useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+      useEditorStore.getState().dispatch({ type: 'SET_PENDING_ENHANCEMENT', payload: null });
     }
   };
 
@@ -1069,6 +1118,15 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const handleApplyToCanvas = async (job: Job) => {
     if (!job || !onApplyEnhancedImage) return;
     
+    // CRITICAL FIX: Check global enhancement lock
+    const currentState = useEditorStore.getState();
+    if (currentState.isEnhancing) {
+      toast.warning('Enhancement in progress', { 
+        description: 'Please wait for the current enhancement to complete before applying another.' 
+      });
+      return;
+    }
+    
     // Get the first variant URL (or fallback)
     const enhancedImageUrl = job.variants && job.variants.length > 0 
       ? job.variants[0]?.url || null
@@ -1079,8 +1137,10 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       return;
     }
     
+    // CRITICAL FIX: Capture active variant at start to validate it hasn't changed
+    const activeVariantIdAtStart = currentState.activeVariantId;
+    
     // Count existing enhanced variants to generate label
-    const currentState = useEditorStore.getState();
     const enhancedCount = currentState.variants.filter(v => v.id !== 'original').length;
     const label = `AI Enhanced ${enhancedCount + 1}`;
     
@@ -1095,6 +1155,16 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       });
       
       if (result.success && result.image) {
+        // CRITICAL FIX: Validate variant hasn't changed during preload
+        const stateAfterPreload = useEditorStore.getState();
+        if (stateAfterPreload.activeVariantId !== activeVariantIdAtStart) {
+          toast.dismiss(loadingToast);
+          toast.warning('Variant changed', { 
+            description: 'Enhancement was cancelled because you switched variants during loading.' 
+          });
+          return;
+        }
+        
         toast.dismiss(loadingToast);
         onApplyEnhancedImage({
           imageUrl: enhancedImageUrl,

@@ -19,7 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Pencil, Plus, Trash2, X } from 'lucide-react';
+import { Pencil, Plus, Trash2, X, Check } from 'lucide-react';
 import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
@@ -170,14 +170,28 @@ export function StageManagement({ stage, pipelineId, onStageUpdated }: StageMana
               }}
               className="h-7 text-xs px-2 py-1"
               autoFocus
+              placeholder="Stage name"
             />
             <Button
               size="sm"
               variant="ghost"
-              className="h-7 w-7 p-0"
+              className="h-7 w-7 p-0 hover:bg-green-100"
               onClick={handleSaveName}
+              title="Save (Enter)"
             >
-              <X className="w-3 h-3" />
+              <Check className="w-3 h-3 text-green-600" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 w-7 p-0 hover:bg-red-100"
+              onClick={() => {
+                setEditedName(stage.name);
+                setIsEditingName(false);
+              }}
+              title="Cancel (Esc)"
+            >
+              <X className="w-3 h-3 text-red-600" />
             </Button>
           </div>
         ) : (
