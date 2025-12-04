@@ -344,7 +344,7 @@ export function Canvas({ width, height }: CanvasProps) {
     } else {
       console.log('[Canvas] No activeImageUrl provided');
     }
-  }, [activeImageUrl, dispatch, canvasSize]); // Use canvasSize to trigger when container is resized
+  }, [activeImageUrl, activeVariantId, canvasSize]); // Removed dispatch from deps to prevent infinite loops
   
   // Recalculate fit when container size changes (if image is loaded but not yet fitted)
   useEffect(() => {
