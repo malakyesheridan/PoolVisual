@@ -16,12 +16,9 @@ export function IndustrySelectionModal() {
   const [shouldMount, setShouldMount] = useState(false);
 
   // CRITICAL FIX: Delay mount until after initial render to decouple from Onboarding
-  useEffect(() => {
-    // Delay mount to prevent render conflicts with Onboarding
-    const timer = setTimeout(() => {
-      setShouldMount(true);
-    }, 0);
-    return () => clearTimeout(timer);
+  // Use useLayoutEffect to set mount flag after render but before paint
+  useLayoutEffect(() => {
+    setShouldMount(true);
   }, []);
 
   // CRITICAL FIX: Use refs to store mutation results
