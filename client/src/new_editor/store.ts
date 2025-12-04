@@ -1102,32 +1102,50 @@ export const useEditorStore = create<EditorState & {
       }
       
       case 'SET_ACTIVE_VARIANT': {
-        // CRITICAL FIX: Cancel pending enhancement if switching away from it
-        const currentState = get();
-        if (currentState.pendingEnhancement && 
-            currentState.pendingEnhancement.variantId !== action.payload) {
-          // Cancel pending enhancement
-          dispatch({ type: 'CANCEL_PENDING_ENHANCEMENT' });
-        }
         const variantId = action.payload;
         set(state => {
+          // CRITICAL FIX: Cancel pending enhancement if switching away from it
+          // Inline the cancellation logic to avoid recursive dispatch
+          let newState = { ...state };
+          
+          if (state.pendingEnhancement && 
+              state.pendingEnhancement.variantId !== variantId) {
+            // Remove the pending variant if it exists
+            const pendingVariant = state.variants.find(v => v.id === state.pendingEnhancement!.variantId);
+            if (pendingVariant && pendingVariant.id !== 'original') {
+              const filteredVariants = state.variants.filter(v => v.id !== pendingVariant.id);
+              newState = {
+                ...newState,
+                variants: filteredVariants,
+                pendingEnhancement: null,
+                // If cancelled variant was active, fallback to original or first available
+                activeVariantId: state.activeVariantId === pendingVariant.id
+                  ? (filteredVariants.find(v => v.id === 'original')?.id || filteredVariants[0]?.id || null)
+                  : state.activeVariantId
+              };
+            } else {
+              newState = { ...newState, pendingEnhancement: null };
+            }
+          }
+          
           // Validate variant exists
-          const variant = state.variants.find(v => v.id === variantId);
+          const variant = newState.variants.find(v => v.id === variantId);
           if (!variant && variantId !== null) {
             console.warn('[EditorStore] Variant not found:', variantId);
-            return state;
+            return newState;
           }
-          const newState = {
-            ...state,
+          
+          newState = {
+            ...newState,
             activeVariantId: variantId,
             // Update imageUrl to match active variant
-            imageUrl: variant ? variant.imageUrl : state.imageUrl
+            imageUrl: variant ? variant.imageUrl : newState.imageUrl
           };
           
           // Persist variant state
-          if (state.jobContext?.photoId && typeof window !== 'undefined') {
+          if (newState.jobContext?.photoId && typeof window !== 'undefined') {
             import('./variantPersistence').then(({ saveVariantState }) => {
-              saveVariantState(state.jobContext!.photoId!, {
+              saveVariantState(newState.jobContext!.photoId!, {
                 variants: newState.variants,
                 activeVariantId: newState.activeVariantId
               });
