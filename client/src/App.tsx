@@ -69,10 +69,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/onboarding" />;
   }
 
-  // Show industry selection modal if needed (non-blocking for users who already have industry)
+  // CRITICAL FIX: Only show IndustrySelectionModal on non-onboarding routes
+  // This decouples it from Onboarding render timing
+  const shouldShowModal = currentPath !== '/onboarding';
+  
   return (
     <>
-      <IndustrySelectionModal />
+      {shouldShowModal && <IndustrySelectionModal />}
       {children}
     </>
   );

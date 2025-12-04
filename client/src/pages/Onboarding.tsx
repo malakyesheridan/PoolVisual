@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
@@ -81,26 +81,33 @@ export default function Onboarding() {
   });
 
   // Update onboarding mutation (debounced for responses, immediate for step changes)
-  // CRITICAL FIX: Memoize mutation to prevent infinite loops
+  // CRITICAL FIX: Store result in ref, update in useLayoutEffect
   const updateOnboardingMutation = useMutation({
     mutationFn: (data: { step: string; responses?: any }) => apiClient.updateOnboarding(data),
     // Don't invalidate on every update - only on step changes
     onSuccess: (data, variables) => {
-      // CRITICAL FIX: Defer query updates to prevent render conflicts
-      setTimeout(() => {
-        // Get current step from query data to avoid stale closure
-        const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
-        const currentStepFromData = currentOnboarding?.step || 'welcome';
-        
-        // Only invalidate if step changed
-        if (variables.step !== currentStepFromData) {
-          queryClient.setQueryData(['/api/onboarding/status'], data);
-        }
-      }, 0);
+      // Get current step from query data to avoid stale closure
+      const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
+      const currentStepFromData = currentOnboarding?.step || 'welcome';
+      
+      // Only update if step changed - store in ref for useLayoutEffect
+      if (variables.step !== currentStepFromData) {
+        pendingQueryUpdateRef.current = {
+          queryKey: ['/api/onboarding/status'],
+          data
+        };
+      }
     },
   });
 
+  // CRITICAL FIX: Use refs to store mutation results and update in useLayoutEffect
+  // This prevents state updates during render
+  const pendingUserUpdateRef = useRef<{ user: any; invalidateQueries: string[] } | null>(null);
+  const pendingNavigationRef = useRef<string | null>(null);
+  const pendingQueryUpdateRef = useRef<{ queryKey: string[]; data?: any } | null>(null);
+
   // Update user industry mutation (user-centric)
+  // CRITICAL FIX: Store result in ref, update in useLayoutEffect
   const updateUserIndustryMutation = useMutation({
     mutationFn: async (industry: string) => {
       // Update user's industryType
@@ -111,25 +118,59 @@ export default function Onboarding() {
     },
     onSuccess: (updatedUser) => {
       if (updatedUser) {
-        // CRITICAL FIX: Defer state update to prevent "Cannot update component while rendering" error
-        // This ensures the update happens after the current render cycle completes
-        setTimeout(() => {
-          useAuthStore.getState().setUser(updatedUser);
-          queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
-        }, 0);
+        // Store result in ref - will be processed in useLayoutEffect
+        pendingUserUpdateRef.current = {
+          user: updatedUser,
+          invalidateQueries: ['/api/user/profile']
+        };
       }
     },
   });
 
+  // CRITICAL FIX: Update store in useLayoutEffect to prevent render conflicts
+  useLayoutEffect(() => {
+    if (pendingUserUpdateRef.current) {
+      const { user, invalidateQueries } = pendingUserUpdateRef.current;
+      useAuthStore.getState().setUser(user);
+      invalidateQueries.forEach(key => {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      });
+      pendingUserUpdateRef.current = null;
+    }
+  });
+
+  // CRITICAL FIX: Handle navigation in useEffect (not in mutation callback)
+  useEffect(() => {
+    if (pendingNavigationRef.current) {
+      const path = pendingNavigationRef.current;
+      pendingNavigationRef.current = null;
+      navigate(path);
+    }
+  }, [navigate]);
+
+  // CRITICAL FIX: Handle query updates in useLayoutEffect
+  useLayoutEffect(() => {
+    if (pendingQueryUpdateRef.current) {
+      const { queryKey, data } = pendingQueryUpdateRef.current;
+      if (data) {
+        queryClient.setQueryData(queryKey, data);
+      } else {
+        queryClient.invalidateQueries({ queryKey });
+      }
+      pendingQueryUpdateRef.current = null;
+    }
+  });
+
   // Complete onboarding mutation
+  // CRITICAL FIX: Store navigation in ref, handle in useEffect
   const completeOnboardingMutation = useMutation({
     mutationFn: () => apiClient.completeOnboarding(),
     onSuccess: () => {
-      // CRITICAL FIX: Defer navigation to prevent "Cannot update component while rendering" error
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['/api/onboarding/status'] });
-        navigate('/dashboard');
-      }, 0);
+      // Store navigation and query invalidation in refs
+      pendingQueryUpdateRef.current = {
+        queryKey: ['/api/onboarding/status']
+      };
+      pendingNavigationRef.current = '/dashboard';
     },
   });
 

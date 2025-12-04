@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,26 @@ export function IndustrySelectionModal() {
   const { toast } = useToast();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
+  const [shouldMount, setShouldMount] = useState(false);
 
-  // Check if industry is missing
+  // CRITICAL FIX: Delay mount until after initial render to decouple from Onboarding
   useEffect(() => {
-    if (!user) return;
+    // Delay mount to prevent render conflicts with Onboarding
+    const timer = setTimeout(() => {
+      setShouldMount(true);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // CRITICAL FIX: Use refs to store mutation results
+  const pendingUserUpdateRef = useRef<any>(null);
+  const pendingNavigationRef = useRef<string | null>(null);
+  const pendingModalCloseRef = useRef(false);
+  const pendingToastRef = useRef<{ title: string; description: string } | null>(null);
+
+  // Check if industry is missing (only after mount delay)
+  useEffect(() => {
+    if (!shouldMount || !user) return;
     
     // If user already has industry, don't show
     if (user.industryType) {
@@ -25,7 +41,31 @@ export function IndustrySelectionModal() {
 
     // Show modal if industry is missing (non-dismissible)
     setIsOpen(true);
-  }, [user]);
+  }, [user, shouldMount]);
+
+  // CRITICAL FIX: Update store in useLayoutEffect to prevent render conflicts
+  useLayoutEffect(() => {
+    if (pendingUserUpdateRef.current) {
+      setUser(pendingUserUpdateRef.current);
+      pendingUserUpdateRef.current = null;
+    }
+  }, [setUser]);
+
+  // CRITICAL FIX: Handle navigation and UI updates in useEffect
+  useEffect(() => {
+    if (pendingNavigationRef.current) {
+      setLocation(pendingNavigationRef.current);
+      pendingNavigationRef.current = null;
+    }
+    if (pendingModalCloseRef.current) {
+      setIsOpen(false);
+      pendingModalCloseRef.current = false;
+    }
+    if (pendingToastRef.current) {
+      toast(pendingToastRef.current);
+      pendingToastRef.current = null;
+    }
+  }, [setLocation, toast]);
 
   const updateIndustryMutation = useMutation({
     mutationFn: async (industryValue: string) => {
@@ -34,19 +74,14 @@ export function IndustrySelectionModal() {
       return updatedUser;
     },
     onSuccess: (updatedUser) => {
-      // CRITICAL FIX: Defer state update to prevent "Cannot update component while rendering" error
-      // This ensures the update happens after the current render cycle completes
-      setTimeout(() => {
-        setUser(updatedUser);
-        
-        // Close modal and redirect to dashboard
-        setIsOpen(false);
-        setLocation('/dashboard');
-        toast({
-          title: 'Industry selected',
-          description: 'Your industry preference has been saved.',
-        });
-      }, 0);
+      // CRITICAL FIX: Store results in refs, update in useLayoutEffect/useEffect
+      pendingUserUpdateRef.current = updatedUser;
+      pendingModalCloseRef.current = true;
+      pendingNavigationRef.current = '/dashboard';
+      pendingToastRef.current = {
+        title: 'Industry selected',
+        description: 'Your industry preference has been saved.',
+      };
     },
     onError: (error: any) => {
       console.error('[IndustrySelectionModal] Failed to update industry:', error);
@@ -65,6 +100,11 @@ export function IndustrySelectionModal() {
     const industryValue = industry === 'real_estate' ? 'real_estate' : 'pool';
     updateIndustryMutation.mutate(industryValue);
   };
+
+  // CRITICAL FIX: Don't render until mount delay completes
+  if (!shouldMount) {
+    return null;
+  }
 
   // Don't render if user has industry or modal shouldn't be shown
   if (!user || user.industryType || !isOpen) {
