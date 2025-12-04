@@ -995,13 +995,11 @@ export default function PropertyDetail() {
                       yearRenovated: job.yearRenovated,
                       propertyStatus: job.propertyStatus as any,
                       listingDate: job.listingDate ? new Date(job.listingDate).toISOString().split('T')[0] : null,
-                      mlsNumber: job.mlsNumber,
                       propertyDescription: job.propertyDescription,
                       propertyFeatures: job.propertyFeatures as string[] || [],
                       propertyCondition: job.propertyCondition as any,
-                      hoaFees: job.hoaFees ? parseFloat(job.hoaFees.toString()) : null,
-                      propertyTaxes: job.propertyTaxes ? parseFloat(job.propertyTaxes.toString()) : null,
                       schoolDistrict: job.schoolDistrict,
+                      estimatedPrice: job.estimatedPrice ? String(job.estimatedPrice) : null,
                     }}
                     onSubmit={async (data) => {
                       await updatePropertyDetailsMutation.mutateAsync(data);
