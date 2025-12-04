@@ -969,6 +969,7 @@ export default function PropertyDetail() {
               </CardContent>
             </Card>
             )}
+          </div>
 
           {/* Sidebar */}
           <div className="lg:col-span-3 space-y-6">
