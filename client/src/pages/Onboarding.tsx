@@ -86,14 +86,17 @@ export default function Onboarding() {
     mutationFn: (data: { step: string; responses?: any }) => apiClient.updateOnboarding(data),
     // Don't invalidate on every update - only on step changes
     onSuccess: (data, variables) => {
-      // Get current step from query data to avoid stale closure
-      const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
-      const currentStepFromData = currentOnboarding?.step || 'welcome';
-      
-      // Only invalidate if step changed
-      if (variables.step !== currentStepFromData) {
-        queryClient.setQueryData(['/api/onboarding/status'], data);
-      }
+      // CRITICAL FIX: Defer query updates to prevent render conflicts
+      setTimeout(() => {
+        // Get current step from query data to avoid stale closure
+        const currentOnboarding = queryClient.getQueryData<any>(['/api/onboarding/status']);
+        const currentStepFromData = currentOnboarding?.step || 'welcome';
+        
+        // Only invalidate if step changed
+        if (variables.step !== currentStepFromData) {
+          queryClient.setQueryData(['/api/onboarding/status'], data);
+        }
+      }, 0);
     },
   });
 
@@ -122,8 +125,11 @@ export default function Onboarding() {
   const completeOnboardingMutation = useMutation({
     mutationFn: () => apiClient.completeOnboarding(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/onboarding/status'] });
-      navigate('/dashboard');
+      // CRITICAL FIX: Defer navigation to prevent "Cannot update component while rendering" error
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['/api/onboarding/status'] });
+        navigate('/dashboard');
+      }, 0);
     },
   });
 
