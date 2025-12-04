@@ -1454,7 +1454,6 @@ export default function PropertyDetail() {
           onSyncFromCanvas={(itemId, measurementData) => syncFromCanvasMutation.mutate({ quoteId: editingQuoteId, itemId, measurementData })}
         />
       )}
-      </div>
     </div>
   );
 }
