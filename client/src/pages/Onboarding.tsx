@@ -108,9 +108,12 @@ export default function Onboarding() {
     },
     onSuccess: (updatedUser) => {
       if (updatedUser) {
-        // Update auth store with new user data
-        useAuthStore.getState().setUser(updatedUser);
-        queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+        // CRITICAL FIX: Defer state update to prevent "Cannot update component while rendering" error
+        // This ensures the update happens after the current render cycle completes
+        setTimeout(() => {
+          useAuthStore.getState().setUser(updatedUser);
+          queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+        }, 0);
       }
     },
   });

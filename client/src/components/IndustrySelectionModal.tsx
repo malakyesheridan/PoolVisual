@@ -34,16 +34,19 @@ export function IndustrySelectionModal() {
       return updatedUser;
     },
     onSuccess: (updatedUser) => {
-      // Update user state
-      setUser(updatedUser);
-      
-      // Close modal and redirect to dashboard
-      setIsOpen(false);
-      setLocation('/dashboard');
-      toast({
-        title: 'Industry selected',
-        description: 'Your industry preference has been saved.',
-      });
+      // CRITICAL FIX: Defer state update to prevent "Cannot update component while rendering" error
+      // This ensures the update happens after the current render cycle completes
+      setTimeout(() => {
+        setUser(updatedUser);
+        
+        // Close modal and redirect to dashboard
+        setIsOpen(false);
+        setLocation('/dashboard');
+        toast({
+          title: 'Industry selected',
+          description: 'Your industry preference has been saved.',
+        });
+      }, 0);
     },
     onError: (error: any) => {
       console.error('[IndustrySelectionModal] Failed to update industry:', error);
