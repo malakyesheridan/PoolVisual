@@ -178,11 +178,15 @@ export function AppShell({ children }: PropsWithChildren) {
   // Precise route detection for canvas editor pages
   const isCanvasEditorPage = 
     (location.startsWith('/jobs/') && location.includes('/photo/') && location.includes('/edit'));
+  
+  // Hide navigation during onboarding (navigation is industry-specific)
+  const isOnboardingPage = location === '/onboarding';
 
   return (
     <div className="app-shell">
       {/* Conditionally render header ONLY - children always render */}
-      {!isCanvasEditorPage && (
+      {/* Hide header on canvas editor pages and onboarding page */}
+      {!isCanvasEditorPage && !isOnboardingPage && (
         <header className="app-header bg-white/80 border-b z-header safe-top">
           <div className="mx-auto max-w-7xl h-full flex items-center px-3 md:px-3 gap-3">
             <Link href="/" className="flex items-center">

@@ -117,11 +117,7 @@ export default function Onboarding() {
   }, [navigate]);
 
   const industries = [
-    { id: 'pool', label: 'Pool Renovation', icon: '🏊', description: 'Pool and spa renovation services' },
-    { id: 'landscaping', label: 'Landscaping', icon: '🌳', description: 'Landscape design and installation' },
-    { id: 'building', label: 'Building & Construction', icon: '🏗️', description: 'General construction and building' },
-    { id: 'electrical', label: 'Electrical', icon: '⚡', description: 'Electrical services and installation' },
-    { id: 'plumbing', label: 'Plumbing', icon: '🔧', description: 'Plumbing services and installation' },
+    { id: 'trades', label: 'Trades', icon: '🔧', description: 'Pool renovation, landscaping, construction, electrical, plumbing, and other trade services' },
     { id: 'real_estate', label: 'Real Estate', icon: '🏠', description: 'Real estate and property management' },
   ];
 
@@ -136,8 +132,11 @@ export default function Onboarding() {
     setShowConfirmation(false);
     
     try {
+      // Map 'trades' to 'pool' (default trade industry) and 'real_estate' to 'real_estate'
+      const industryValue = selectedIndustry === 'real_estate' ? 'real_estate' : 'pool';
+      
       // Update user industry
-      await updateUserIndustryMutation.mutateAsync(selectedIndustry);
+      await updateUserIndustryMutation.mutateAsync(industryValue);
       // Complete onboarding
       await completeOnboardingMutation.mutateAsync();
     } catch (error) {
@@ -178,21 +177,21 @@ export default function Onboarding() {
             </div>
           </div>
 
-          {/* Industry Selection Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-6">
+          {/* Industry Selection Grid - 2 Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6 max-w-2xl mx-auto">
             {industries.map((industry) => (
               <button
                 key={industry.id}
                 onClick={() => handleIndustrySelect(industry.id)}
                 disabled={isProcessing}
-                className={`p-6 border-2 rounded-lg text-left transition-all ${
+                className={`p-8 border-2 rounded-lg text-center transition-all ${
                   selectedIndustry === industry.id
                     ? 'border-primary bg-primary/5 ring-2 ring-primary ring-offset-2'
                     : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 } ${isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
-                <div className="text-4xl mb-3">{industry.icon}</div>
-                <div className="font-semibold text-lg mb-1">{industry.label}</div>
+                <div className="text-6xl mb-4">{industry.icon}</div>
+                <div className="font-semibold text-xl mb-2">{industry.label}</div>
                 <div className="text-sm text-muted-foreground">{industry.description}</div>
               </button>
             ))}
