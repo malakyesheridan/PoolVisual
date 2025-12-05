@@ -125,6 +125,13 @@ export function OpportunityDetailDrawer({
   const [isSavingBuyerProfile, setIsSavingBuyerProfile] = useState(false);
   const [buyerProfileSaved, setBuyerProfileSaved] = useState(false);
 
+  // Contact editing state
+  const [editedContactName, setEditedContactName] = useState('');
+  const [editedContactPhone, setEditedContactPhone] = useState('');
+  const [editedContactEmail, setEditedContactEmail] = useState('');
+  const [editedContactAddress, setEditedContactAddress] = useState('');
+  const [currentContactId, setCurrentContactId] = useState<string | null>(null);
+
   const isNewOpportunity = !opportunity?.id;
 
   // Fetch tasks and notes only if opportunity exists
@@ -149,6 +156,27 @@ export function OpportunityDetailDrawer({
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
+  // Fetch contact details if contactId exists
+  const { data: contactData } = useQuery({
+    queryKey: ['/api/contacts', currentContactId],
+    queryFn: async () => {
+      const contacts = await apiClient.getContacts();
+      return contacts.find((c: any) => c.id === currentContactId);
+    },
+    enabled: !!currentContactId && !isNewOpportunity,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Update contact fields when contact data loads
+  useEffect(() => {
+    if (contactData && !isEditing) {
+      setEditedContactName(`${contactData.firstName || ''} ${contactData.lastName || ''}`.trim() || contactData.firstName || contactData.lastName || '');
+      setEditedContactPhone(contactData.phone || '');
+      setEditedContactEmail(contactData.email || '');
+      setEditedContactAddress(contactData.address || '');
+    }
+  }, [contactData, isEditing]);
+
   useEffect(() => {
     if (opportunity) {
       setEditedTitle(opportunity.title || '');
@@ -158,6 +186,14 @@ export function OpportunityDetailDrawer({
       setEditedStageId(opportunity.stageId || '');
       setEditedPropertyJobId(opportunity.propertyJobId || '');
       setEditedTags(opportunity.tags || []);
+      
+      // Set contact fields - use contactName/contactPhone/contactEmail if contactId not set
+      setEditedContactName(opportunity.contactName || '');
+      setEditedContactPhone(opportunity.contactPhone || '');
+      setEditedContactEmail(opportunity.contactEmail || '');
+      setEditedContactAddress(''); // Will be loaded from contact if contactId exists
+      setCurrentContactId(opportunity.contactId || null);
+      
       setIsEditing(isNewOpportunity);
     } else {
       setEditedTitle('');
@@ -167,9 +203,37 @@ export function OpportunityDetailDrawer({
       setEditedStageId('');
       setEditedPropertyJobId('');
       setEditedTags([]);
+      setEditedContactName('');
+      setEditedContactPhone('');
+      setEditedContactEmail('');
+      setEditedContactAddress('');
+      setCurrentContactId(null);
       setIsEditing(false);
     }
   }, [opportunity?.id, isNewOpportunity]);
+
+  // Load buyer profile when contactId is available and opportunity type is buyer/both
+  useEffect(() => {
+    const shouldLoadProfile = currentContactId && 
+      (editedOpportunityType === 'buyer' || editedOpportunityType === 'both');
+    
+    if (shouldLoadProfile && !isNewOpportunity) {
+      setIsLoadingBuyerProfile(true);
+      apiClient.getBuyerProfile(currentContactId)
+        .then((profile) => {
+          setBuyerProfile(profile || {});
+        })
+        .catch((error) => {
+          console.error('Failed to load buyer profile:', error);
+          setBuyerProfile({});
+        })
+        .finally(() => {
+          setIsLoadingBuyerProfile(false);
+        });
+    } else {
+      setBuyerProfile(null);
+    }
+  }, [currentContactId, editedOpportunityType, isNewOpportunity]);
 
   // REBUILT: Save to backend FIRST, verify it was saved, then notify parent
   const createOpportunityMutation = useMutation({
@@ -276,7 +340,57 @@ export function OpportunityDetailDrawer({
     setShowDeleteConfirm(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // First, create or update contact if contact details are provided
+    let contactIdToUse = currentContactId;
+    
+    if (editedContactName.trim()) {
+      const nameParts = editedContactName.trim().split(' ');
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || '';
+      
+      if (currentContactId) {
+        // Update existing contact
+        try {
+          await apiClient.updateContact(currentContactId, {
+            firstName,
+            lastName,
+            email: editedContactEmail.trim() || null,
+            phone: editedContactPhone.trim() || null,
+            address: editedContactAddress.trim() || null,
+          });
+          contactIdToUse = currentContactId;
+        } catch (error: any) {
+          console.error('Failed to update contact:', error);
+          toast({
+            title: 'Warning',
+            description: 'Failed to update contact, but opportunity will be saved',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        // Create new contact
+        try {
+          const newContact = await apiClient.createContact({
+            firstName,
+            lastName,
+            email: editedContactEmail.trim() || null,
+            phone: editedContactPhone.trim() || null,
+            address: editedContactAddress.trim() || null,
+          });
+          contactIdToUse = newContact.id;
+          setCurrentContactId(newContact.id);
+        } catch (error: any) {
+          console.error('Failed to create contact:', error);
+          toast({
+            title: 'Warning',
+            description: 'Failed to create contact, but opportunity will be saved',
+            variant: 'destructive',
+          });
+        }
+      }
+    }
+
     if (isNewOpportunity) {
       if (!editedTitle.trim()) {
         toast({
@@ -305,9 +419,12 @@ export function OpportunityDetailDrawer({
       createOpportunityMutation.mutate({
         title: editedTitle.trim(),
         clientName: editedTitle.trim(),
+        clientPhone: editedContactPhone.trim() || null,
+        clientEmail: editedContactEmail.trim() || null,
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
         opportunityType: editedOpportunityType,
+        contactId: contactIdToUse,
         stageId: finalStageId, // ALWAYS set stageId
         pipelineStage: defaultStage?.name || 'new',
         propertyJobId: editedPropertyJobId || null,
@@ -316,9 +433,13 @@ export function OpportunityDetailDrawer({
     } else {
       updateOpportunityMutation.mutate({
         title: editedTitle,
+        clientName: editedContactName.trim() || editedTitle,
+        clientPhone: editedContactPhone.trim() || null,
+        clientEmail: editedContactEmail.trim() || null,
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
         opportunityType: editedOpportunityType,
+        contactId: contactIdToUse,
         stageId: editedStageId,
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
@@ -892,38 +1013,104 @@ export function OpportunityDetailDrawer({
           </div>
 
           {/* Contact Information Card */}
-          {!isNewOpportunity && (
-            <Card className="bg-slate-50 border-slate-200">
-              <CardContent className="p-4">
-                {opportunity?.contactName ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <User className="w-4 h-4 text-slate-500" />
-                      <span className="font-semibold text-slate-900">{opportunity.contactName}</span>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm text-slate-600 ml-6">
-                      {opportunity.contactPhone && (
-                        <div className="flex items-center gap-1">
-                          <Phone className="w-3 h-3" />
-                          {opportunity.contactPhone}
-                        </div>
-                      )}
-                      {opportunity.contactEmail && (
-                        <div className="flex items-center gap-1">
-                          <Mail className="w-3 h-3" />
-                          {opportunity.contactEmail}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+          <Card className="bg-slate-50 border-slate-200">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <User className="w-4 h-4" />
+                Contact Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label className="text-sm">Name</Label>
+                {isEditing ? (
+                  <Input
+                    value={editedContactName}
+                    onChange={(e) => setEditedContactName(e.target.value)}
+                    placeholder="First Last"
+                    className="mt-1"
+                  />
                 ) : (
-                  <div className="text-center py-2">
-                    <p className="text-sm text-slate-500">No contact assigned</p>
+                  <div className="mt-1 font-semibold text-slate-900">
+                    {editedContactName || 'Not set'}
                   </div>
                 )}
-              </CardContent>
-            </Card>
-          )}
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-sm">Phone</Label>
+                  {isEditing ? (
+                    <Input
+                      value={editedContactPhone}
+                      onChange={(e) => setEditedContactPhone(e.target.value)}
+                      placeholder="Phone number"
+                      className="mt-1"
+                    />
+                  ) : (
+                    <div className="mt-1 flex items-center gap-1 text-slate-600">
+                      {editedContactPhone ? (
+                        <>
+                          <Phone className="w-3 h-3" />
+                          {editedContactPhone}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Not set</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                <div>
+                  <Label className="text-sm">Email</Label>
+                  {isEditing ? (
+                    <Input
+                      type="email"
+                      value={editedContactEmail}
+                      onChange={(e) => setEditedContactEmail(e.target.value)}
+                      placeholder="Email address"
+                      className="mt-1"
+                    />
+                  ) : (
+                    <div className="mt-1 flex items-center gap-1 text-slate-600">
+                      {editedContactEmail ? (
+                        <>
+                          <Mail className="w-3 h-3" />
+                          {editedContactEmail}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">Not set</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-sm">Address</Label>
+                {isEditing ? (
+                  <Textarea
+                    value={editedContactAddress}
+                    onChange={(e) => setEditedContactAddress(e.target.value)}
+                    placeholder="Street address"
+                    className="mt-1"
+                    rows={2}
+                  />
+                ) : (
+                  <div className="mt-1 flex items-center gap-1 text-slate-600">
+                    {editedContactAddress ? (
+                      <>
+                        <MapPin className="w-3 h-3" />
+                        {editedContactAddress}
+                      </>
+                    ) : (
+                      <span className="text-slate-400">Not set</span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Financial Information Card */}
           <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200">
@@ -1151,9 +1338,9 @@ export function OpportunityDetailDrawer({
             </CardContent>
           </Card>
 
-          {/* Buyer Profile Card - Only show for buyer/both opportunities with contact */}
-          {!isNewOpportunity && opportunity?.contactId && 
-           (opportunity?.opportunityType === 'buyer' || opportunity?.opportunityType === 'both') && (
+          {/* Buyer Profile Card - Only show for buyer/both opportunities */}
+          {!isNewOpportunity && 
+           (editedOpportunityType === 'buyer' || editedOpportunityType === 'both') && (
             <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -1162,20 +1349,34 @@ export function OpportunityDetailDrawer({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {isLoadingBuyerProfile ? (
+                {!currentContactId ? (
+                  <div className="text-center py-4">
+                    <p className="text-sm text-slate-500 mb-2">
+                      Please add contact information above and save to enable buyer profile.
+                    </p>
+                  </div>
+                ) : isLoadingBuyerProfile ? (
                   <div className="text-center py-4">
                     <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
                     <p className="text-sm text-slate-500 mt-2">Loading buyer profile...</p>
                   </div>
                 ) : (
                   <BuyerProfileForm
-                    contactId={opportunity.contactId}
+                    contactId={currentContactId}
                     profile={buyerProfile || {}}
                     onProfileChange={setBuyerProfile}
                     onSave={() => {
+                      if (!currentContactId) {
+                        toast({
+                          title: 'Error',
+                          description: 'Please save contact information first',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
                       setIsSavingBuyerProfile(true);
                       setBuyerProfileSaved(false);
-                      apiClient.updateBuyerProfile(opportunity.contactId!, buyerProfile || {})
+                      apiClient.updateBuyerProfile(currentContactId, buyerProfile || {})
                         .then(() => {
                           setBuyerProfileSaved(true);
                           toast({ title: 'Buyer profile saved', description: 'Profile updated successfully.' });
