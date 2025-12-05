@@ -1166,20 +1166,22 @@ class ApiClient {
     return this.request<any[]>('/buyer-forms');
   }
 
-  // Public buyer form endpoints (no /api prefix)
+  // Public buyer form endpoints
   async getPublicBuyerFormMetadata(token: string) {
-    // Public routes don't use /api prefix, so call directly
-    const response = await fetch(`/public/buyer-form/${token}`, {
+    return this.request<{
+      valid: boolean;
+      message?: string;
+      orgName?: string;
+      orgLogoUrl?: string;
+      property?: {
+        id: string;
+        address: string;
+        photoUrl: string | null;
+      };
+      fields?: any;
+    }>(`/public/buyer-form/${token}`, {
       method: 'GET',
-      credentials: 'omit', // Public route, no auth needed
     });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ message: 'Failed to load form' }));
-      throw new Error(body.message || 'Failed to load form');
-    }
-
-    return response.json();
   }
 
   async submitPublicBuyerForm(token: string, data: any) {

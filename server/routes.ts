@@ -127,9 +127,8 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
 export async function registerRoutes(app: Express): Promise<void> {
   console.log('🔧 Registering routes...');
   
-  // Public buyer form endpoints (must be registered early, before catch-all routes)
-  // These are registered inline here to ensure they're available before static file serving
-  app.get("/public/buyer-form/:token", async (req: any, res: any) => {
+  // Public buyer form API endpoint (for metadata - React app handles the route)
+  app.get("/api/public/buyer-form/:token", async (req: any, res: any) => {
     try {
       const { token } = req.params;
       
@@ -3936,7 +3935,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Buyer Inquiry Form Links endpoints
   app.post("/api/buyer-forms", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { propertyId, expiresAt } = req.body;
+      const { propertyId } = req.body; // No expiresAt needed - one link per user, no expiry
       const userId = req.user.id;
       
       // Get user's org (from session or first org)
@@ -3958,41 +3957,39 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       }
 
-      // Generate secure token
-      let token: string;
-      let attempts = 0;
-      do {
-        token = randomBytes(32).toString('hex');
-        const existing = await storage.getBuyerFormLinkByToken(token);
-        if (!existing) break;
-        attempts++;
-        if (attempts > 5) {
-          throw new Error("Failed to generate unique token");
-        }
-      } while (true);
+      // Get or create a single form link for this user (one link per user, reusable)
+      let formLink = await storage.getBuyerFormLinks(orgId, userId).then(links => 
+        links.find(link => !link.propertyId || link.propertyId === propertyId)
+      );
 
-      // Parse expiresAt if provided
-      let expiresAtDate: Date | null = null;
-      if (expiresAt) {
-        expiresAtDate = new Date(expiresAt);
-        if (isNaN(expiresAtDate.getTime())) {
-          return res.status(400).json({ message: "Invalid expiresAt date format" });
-        }
+      if (!formLink) {
+        // Generate secure token
+        let token: string;
+        let attempts = 0;
+        do {
+          token = randomBytes(32).toString('hex');
+          const existing = await storage.getBuyerFormLinkByToken(token);
+          if (!existing) break;
+          attempts++;
+          if (attempts > 5) {
+            throw new Error("Failed to generate unique token");
+          }
+        } while (true);
+
+        // Create form link (no expiry - permanent link)
+        formLink = await storage.createBuyerFormLink({
+          orgId,
+          createdByUserId: userId,
+          propertyId: propertyId || null,
+          token,
+          status: 'active',
+          expiresAt: null, // No expiry - permanent link
+        });
       }
 
-      // Create form link
-      const formLink = await storage.createBuyerFormLink({
-        orgId,
-        createdByUserId: userId,
-        propertyId: propertyId || null,
-        token,
-        status: 'active',
-        expiresAt: expiresAtDate,
-      });
-
       // Construct shareable URL
-      const baseUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
-      const shareUrl = `${baseUrl}/public/buyer-form/${token}`;
+      const baseUrl = process.env.PUBLIC_BASE_URL || process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+      const shareUrl = `${baseUrl}/public/buyer-form/${formLink.token}`;
 
       res.json({
         id: formLink.id,
