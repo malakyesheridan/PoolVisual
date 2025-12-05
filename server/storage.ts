@@ -1935,7 +1935,7 @@ export class PostgresStorage implements IStorage {
       // This is more reliable than trying to fix the Drizzle query builder
       const db = ensureDb();
       
-      const results = await db.execute(sql`
+      const result = await db.execute(sql`
         SELECT 
           o.id,
           o.contact_id as "contactId",
@@ -1952,8 +1952,11 @@ export class PostgresStorage implements IStorage {
         ORDER BY o.created_at DESC
       `);
       
+      // Extract rows from result (Neon returns { rows: [...] } format)
+      const rows = (result as any).rows || result || [];
+      
       // Map results to expected format
-      return results.rows
+      return rows
         .map((row: any) => {
           // Ensure buyerProfile is a valid object or null
           let buyerProfile = row.buyerProfile;
