@@ -4309,6 +4309,8 @@ export async function registerRoutes(app: Express): Promise<void> {
           source: 'buyer_inquiry_form',
         });
         createdOpportunityId = opportunity.id;
+        
+        console.log('[Buyer Form Submission] Successfully created opportunity:', opportunity.id);
 
         // 3. Record submission
         await storage.createBuyerFormSubmission({
