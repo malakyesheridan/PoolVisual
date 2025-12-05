@@ -1931,43 +1931,30 @@ export class PostgresStorage implements IStorage {
 
   async getBuyerOpportunitiesWithProfiles(orgId: string): Promise<any[]> {
     try {
-      // Get all buyer/both opportunities for this org, joined with contacts to get buyerProfile
-      // Use a simpler approach: filter status in application code to avoid Drizzle issues
+      // Use raw SQL query to avoid Drizzle leftJoin select issues
+      // This is more reliable than trying to fix the Drizzle query builder
       const db = ensureDb();
       
-      // First verify table references exist
-      if (!opportunities || !contacts) {
-        console.error('[getBuyerOpportunitiesWithProfiles] Table references are undefined');
-        return [];
-      }
+      const results = await db.execute(sql`
+        SELECT 
+          o.id,
+          o.contact_id as "contactId",
+          o.opportunity_type as "opportunityType",
+          o.status,
+          o.title,
+          c.name as "contactName",
+          c.buyer_profile as "buyerProfile"
+        FROM opportunities o
+        LEFT JOIN contacts c ON o.contact_id = c.id
+        WHERE o.org_id = ${orgId}::UUID
+          AND o.opportunity_type IN ('buyer', 'both')
+          AND o.status NOT IN ('closed_lost', 'abandoned')
+        ORDER BY o.created_at DESC
+      `);
       
-      const results = await db
-        .select({
-          id: opportunities.id,
-          contactId: opportunities.contactId,
-          opportunityType: opportunities.opportunityType,
-          status: opportunities.status,
-          title: opportunities.title,
-          contactName: contacts.name,
-          buyerProfile: contacts.buyerProfile,
-        })
-        .from(opportunities)
-        .leftJoin(contacts, eq(opportunities.contactId, contacts.id))
-        .where(
-          and(
-            eq(opportunities.orgId, orgId),
-            or(
-              eq(opportunities.opportunityType, 'buyer'),
-              eq(opportunities.opportunityType, 'both')
-            )
-          )
-        )
-        .orderBy(desc(opportunities.createdAt));
-      
-      // Filter out closed_lost and abandoned in application code
-      return results
-        .filter(row => row.status !== 'closed_lost' && row.status !== 'abandoned')
-        .map(row => {
+      // Map results to expected format
+      return results.rows
+        .map((row: any) => {
           // Ensure buyerProfile is a valid object or null
           let buyerProfile = row.buyerProfile;
           if (buyerProfile && typeof buyerProfile === 'object') {
