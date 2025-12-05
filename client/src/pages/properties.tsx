@@ -65,6 +65,9 @@ export default function Properties() {
   const jobsTerm = getIndustryTerm(userIndustry, 'jobs');
   const createJobText = getIndustryTerm(userIndustry, 'createJob');
   const isRealEstate = useIsRealEstate();
+  
+  // Get the new job route at component level (hooks must be called at top level)
+  const newJobRoute = useNewJobRoute();
 
   // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading } = useQuery({
@@ -233,7 +236,7 @@ export default function Properties() {
             }`} aria-label={jobHealthStatus === 'healthy' ? 'All jobs healthy' : 'Some jobs need attention'} />
           </div>
           <Button 
-            onClick={() => navigate('/properties/new')} 
+            onClick={() => navigate(newJobRoute)} 
             className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-2 h-11 md:h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 tap-target"
             data-testid="button-new-job-mobile"
           >
@@ -255,7 +258,7 @@ export default function Properties() {
         </div>
         
         <Button 
-          onClick={() => navigate(useNewJobRoute())} 
+          onClick={() => navigate(newJobRoute)} 
           className="bg-primary hover:bg-primary/90 text-white rounded-lg px-3 py-1.5 h-9 text-sm font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1"
           data-testid="button-new-job"
         >
@@ -389,7 +392,7 @@ export default function Properties() {
                   </p>
                   {!searchTerm ? (
                     <Button
-                      onClick={() => navigate('/properties/new')}
+                      onClick={() => navigate(newJobRoute)}
                       className="bg-primary hover:bg-primary/90 text-white rounded-lg px-4 py-3 md:py-2 h-11 md:h-9 text-sm font-medium transition-all duration-150 tap-target"
                     >
                       <Plus className="w-4 h-4 md:w-3.5 md:h-3.5 mr-1.5" />
