@@ -252,6 +252,29 @@ class ApiClient {
     return this.request<any>(`/jobs/${id}`);
   }
 
+  async getMatchedBuyers(jobId: string) {
+    return this.request<{
+      propertyId: string;
+      matches: Array<{
+        opportunityId: string;
+        contactId: string;
+        contactName: string;
+        matchScore: number;
+        matchTier: 'strong' | 'medium' | 'weak';
+        keyReasons: string[];
+        buyerProfileSummary: {
+          budgetMin?: number;
+          budgetMax?: number;
+          preferredSuburbs?: string[];
+          bedsMin?: number;
+          bathsMin?: number;
+          propertyType?: string;
+          timeline?: string;
+        };
+      }>;
+    }>(`/jobs/${jobId}/matched-buyers`);
+  }
+
   async createJob(data: any) {
     return this.request<any>('/jobs', {
       method: 'POST',

@@ -1102,6 +1102,69 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Matched Buyers endpoint
+  app.get("/api/jobs/:id/matched-buyers", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+
+      // Get property/job
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get orgId for matching (use job.orgId if available, otherwise get from user)
+      let orgId: string | null = job.orgId || null;
+      if (!orgId) {
+        const userOrgs = await storage.getUserOrgs(req.user.id);
+        if (userOrgs && userOrgs.length > 0) {
+          orgId = userOrgs[0].id;
+        }
+      }
+
+      if (!orgId) {
+        return res.status(400).json({ message: "User must belong to an organization" });
+      }
+
+      // Import matching engine
+      const { matchBuyersToProperty } = await import('./services/matchingEngine.js');
+      
+      // Prepare property data
+      const propertyData = {
+        id: job.id,
+        address: job.address || null,
+        estimatedPrice: job.estimatedPrice ? Number(job.estimatedPrice) : null,
+        bedrooms: job.bedrooms ? Number(job.bedrooms) : null,
+        bathrooms: job.bathrooms ? Number(job.bathrooms) : null,
+        propertyType: job.propertyType || null,
+        propertyFeatures: Array.isArray(job.propertyFeatures) ? job.propertyFeatures : (job.propertyFeatures ? [String(job.propertyFeatures)] : []),
+      };
+
+      // Get buyer opportunities with profiles
+      const buyerOpportunities = await storage.getBuyerOpportunitiesWithProfiles(orgId);
+
+      // Run matching engine
+      const matchingResult = matchBuyersToProperty(propertyData, buyerOpportunities);
+
+      // Log for debugging
+      console.log(`[MatchingEngine] Property ${jobId} → ${buyerOpportunities.length} candidates, ${matchingResult.matches.length} matches`);
+
+      res.json(matchingResult);
+    } catch (error: any) {
+      console.error('[Matched Buyers] Error:', error?.message || error);
+      res.status(500).json({ message: error?.message || "Failed to get matched buyers" });
+    }
+  });
+
   app.patch("/api/jobs/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
       const jobId = req.params.id;

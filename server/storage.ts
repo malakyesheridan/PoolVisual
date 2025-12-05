@@ -100,7 +100,7 @@ import {
   type AdminAction,
   type InsertAdminAction
 } from "../shared/schema.js";
-import { eq, desc, and, sql, gte, ne, asc, inArray } from "drizzle-orm";
+import { eq, desc, and, sql, gte, ne, asc, inArray, or } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
@@ -181,6 +181,7 @@ export interface IStorage {
   createOpportunity(opportunity: any): Promise<any>;
   getOpportunity(id: string): Promise<any | undefined>;
   getOpportunities(userId: string, filters?: any): Promise<any[]>;
+  getBuyerOpportunitiesWithProfiles(orgId: string): Promise<any[]>;
   updateOpportunity(id: string, updates: any): Promise<any>;
   deleteOpportunity(id: string): Promise<void>;
   
@@ -1922,6 +1923,52 @@ export class PostgresStorage implements IStorage {
       return results;
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getBuyerOpportunitiesWithProfiles(orgId: string): Promise<any[]> {
+    try {
+      // Get all buyer/both opportunities for this org, joined with contacts to get buyerProfile
+      const results = await ensureDb()
+        .select({
+          id: opportunities.id,
+          contactId: opportunities.contactId,
+          opportunityType: opportunities.opportunityType,
+          status: opportunities.status,
+          title: opportunities.title,
+          contactName: contacts.name,
+          buyerProfile: contacts.buyerProfile,
+        })
+        .from(opportunities)
+        .leftJoin(contacts, eq(opportunities.contactId, contacts.id))
+        .where(
+          and(
+            eq(opportunities.orgId, orgId),
+            or(
+              eq(opportunities.opportunityType, 'buyer'),
+              eq(opportunities.opportunityType, 'both')
+            ),
+            sql`${opportunities.status} != 'closed_lost'`,
+            sql`${opportunities.status} != 'abandoned'`
+          )
+        )
+        .orderBy(desc(opportunities.createdAt));
+      
+      return results.map(row => ({
+        id: row.id,
+        contactId: row.contactId,
+        contactName: row.contactName || null,
+        opportunityType: row.opportunityType,
+        status: row.status,
+        title: row.title,
+        buyerProfile: row.buyerProfile || null,
+      }));
+    } catch (error: any) {
+      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+        console.warn('[getBuyerOpportunitiesWithProfiles] opportunities/contacts table not found, returning empty array');
         return [];
       }
       throw error;

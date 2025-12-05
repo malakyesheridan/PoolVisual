@@ -49,6 +49,7 @@ import { PhotoCard } from "@/components/photos/PhotoCard";
 import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm";
 import { PropertyNotes } from "@/components/properties/PropertyNotes";
 import { BuyerFormLinkDialog } from "@/components/buyer-forms/BuyerFormLinkDialog";
+import { MatchedBuyersPanel } from "@/components/properties/MatchedBuyersPanel";
 
 export default function PropertyDetail() {
   const [, params] = useRoute('/properties/:id');
@@ -1026,6 +1027,14 @@ export default function PropertyDetail() {
             {isRealEstate && jobId && (
               <>
                 <PropertyNotes jobId={jobId} />
+                
+                {/* Matched Buyers Panel */}
+                <MatchedBuyersPanel 
+                  jobId={jobId}
+                  onOpenOpportunity={(opportunityId) => {
+                    navigate(`/opportunities?opportunity=${opportunityId}`);
+                  }}
+                />
                 
                 {/* Linked Opportunities */}
                 <Card>
