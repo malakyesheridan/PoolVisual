@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/measurement-utils";
-import { User, DollarSign, MapPin, Home, Calendar, ArrowRight, Loader2 } from "lucide-react";
+import { User, DollarSign, MapPin, Home, Calendar, Loader2, ChevronRight } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
+import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
 
 interface MatchedBuyersPanelProps {
   jobId: string;
@@ -58,25 +59,37 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
     );
   }
 
-  const getTierColor = (tier: 'strong' | 'medium' | 'weak') => {
+  const getTierStyles = (tier: 'strong' | 'medium' | 'weak') => {
     switch (tier) {
       case 'strong':
-        return 'bg-green-100 text-green-700 border-green-200';
+        return {
+          badge: 'bg-green-50 text-green-700 border-green-200',
+          border: 'border-l-2 border-green-500',
+          background: 'bg-green-50/30',
+        };
       case 'medium':
-        return 'bg-amber-100 text-amber-700 border-amber-200';
+        return {
+          badge: 'bg-amber-50 text-amber-700 border-amber-200',
+          border: 'border-l-2 border-amber-400',
+          background: '',
+        };
       case 'weak':
-        return 'bg-slate-100 text-slate-700 border-slate-200';
+        return {
+          badge: 'bg-slate-50 text-slate-600 border-slate-200',
+          border: 'border-l-2 border-slate-300',
+          background: '',
+        };
     }
   };
 
   const getTierLabel = (tier: 'strong' | 'medium' | 'weak') => {
     switch (tier) {
       case 'strong':
-        return 'Strong Match';
+        return 'Strong';
       case 'medium':
-        return 'Medium Match';
+        return 'Medium';
       case 'weak':
-        return 'Weak Match';
+        return 'Weak';
     }
   };
 
@@ -91,96 +104,123 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {matchingResult.matches.map((match) => (
-          <div
-            key={match.opportunityId}
-            className="border rounded-lg p-4 hover:bg-slate-50 transition-colors"
-          >
-            <div className="flex items-start justify-between mb-3">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <h4 className="font-semibold text-slate-900">{match.contactName}</h4>
-                  <Badge className={getTierColor(match.matchTier)}>
-                    {getTierLabel(match.matchTier)}
+      <CardContent className="space-y-2">
+        {matchingResult.matches.map((match) => {
+          const tierStyles = getTierStyles(match.matchTier);
+          
+          // Extract key reasons and map to icons
+          const reasonIcons: { icon: ReactNode; tooltip: string }[] = [];
+          match.keyReasons.forEach((reason) => {
+            if (reason.toLowerCase().includes('budget')) {
+              reasonIcons.push({ icon: <DollarSign className="w-3.5 h-3.5" />, tooltip: reason });
+            } else if (reason.toLowerCase().includes('bed') || reason.toLowerCase().includes('bath')) {
+              reasonIcons.push({ icon: <Home className="w-3.5 h-3.5" />, tooltip: reason });
+            } else if (reason.toLowerCase().includes('location') || reason.toLowerCase().includes('suburb')) {
+              reasonIcons.push({ icon: <MapPin className="w-3.5 h-3.5" />, tooltip: reason });
+            } else if (reason.toLowerCase().includes('timeline')) {
+              reasonIcons.push({ icon: <Calendar className="w-3.5 h-3.5" />, tooltip: reason });
+            }
+          });
+          
+          return (
+            <div
+              key={match.opportunityId}
+              onClick={() => onOpenOpportunity?.(match.opportunityId)}
+              className={cn(
+                "border rounded-lg p-3 transition-all cursor-pointer group",
+                tierStyles.border,
+                tierStyles.background,
+                "hover:bg-slate-50 hover:shadow-sm",
+                onOpenOpportunity && "hover:border-slate-300"
+              )}
+            >
+              {/* Header Row: Buyer Name + Tier Badge + Score */}
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-semibold text-slate-900 text-sm">{match.contactName}</h4>
+                <div className="flex items-center gap-1.5">
+                  <Badge 
+                    variant="outline" 
+                    className={cn("text-xs font-medium border px-2 py-0.5", tierStyles.badge)}
+                  >
+                    {getTierLabel(match.matchTier)} · {match.matchScore}%
                   </Badge>
-                  <Badge variant="outline" className="text-xs">
-                    {match.matchScore}% match
-                  </Badge>
+                  {onOpenOpportunity && (
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                  )}
                 </div>
-                
-                {/* Key Reasons */}
-                {match.keyReasons.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-3">
-                    {match.keyReasons.slice(0, 3).map((reason, idx) => (
-                      <Badge key={idx} variant="secondary" className="text-xs">
-                        {reason}
-                      </Badge>
+              </div>
+
+              {/* Summary Row: Icons for key alignment points */}
+              <div className="flex items-center gap-3 mb-2 text-xs text-slate-500">
+                {/* Reason Icons */}
+                {reasonIcons.length > 0 && (
+                  <div className="flex items-center gap-1.5">
+                    {reasonIcons.slice(0, 4).map((item, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-center w-5 h-5 rounded bg-slate-100 text-slate-500"
+                        title={item.tooltip}
+                      >
+                        {item.icon}
+                      </div>
                     ))}
                   </div>
                 )}
+                
+                {/* Secondary Info - Lower contrast */}
+                <div className="flex items-center gap-3 ml-auto">
+                  {match.buyerProfileSummary.budgetMin || match.buyerProfileSummary.budgetMax ? (
+                    <div className="flex items-center gap-1" title="Budget">
+                      <DollarSign className="w-3 h-3 text-slate-400" />
+                      <span className="text-slate-400">
+                        {match.buyerProfileSummary.budgetMin && match.buyerProfileSummary.budgetMax
+                          ? `${formatCurrency(match.buyerProfileSummary.budgetMin)}-${formatCurrency(match.buyerProfileSummary.budgetMax)}`
+                          : match.buyerProfileSummary.budgetMin
+                          ? `${formatCurrency(match.buyerProfileSummary.budgetMin)}+`
+                          : `≤${formatCurrency(match.buyerProfileSummary.budgetMax!)}`}
+                      </span>
+                    </div>
+                  ) : null}
+
+                  {(match.buyerProfileSummary.bedsMin || match.buyerProfileSummary.bathsMin) && (
+                    <div className="flex items-center gap-1" title="Beds/Baths">
+                      <Home className="w-3 h-3 text-slate-400" />
+                      <span className="text-slate-400">
+                        {match.buyerProfileSummary.bedsMin && `${match.buyerProfileSummary.bedsMin}+`}
+                        {match.buyerProfileSummary.bedsMin && match.buyerProfileSummary.bathsMin && '/'}
+                        {match.buyerProfileSummary.bathsMin && `${match.buyerProfileSummary.bathsMin}+`}
+                      </span>
+                    </div>
+                  )}
+
+                  {match.buyerProfileSummary.preferredSuburbs && match.buyerProfileSummary.preferredSuburbs.length > 0 && (
+                    <div className="flex items-center gap-1" title="Location">
+                      <MapPin className="w-3 h-3 text-slate-400" />
+                      <span className="text-slate-400">
+                        {match.buyerProfileSummary.preferredSuburbs.slice(0, 1)[0]}
+                        {match.buyerProfileSummary.preferredSuburbs.length > 1 && '+'}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
-              
-              {onOpenOpportunity && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onOpenOpportunity(match.opportunityId)}
-                  className="ml-4"
-                >
-                  Open
-                  <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
-              )}
-            </div>
 
-            {/* Buyer Profile Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-slate-600">
-              {match.buyerProfileSummary.budgetMin || match.buyerProfileSummary.budgetMax ? (
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-4 h-4 text-slate-400" />
-                  <span>
-                    {match.buyerProfileSummary.budgetMin && match.buyerProfileSummary.budgetMax
-                      ? `${formatCurrency(match.buyerProfileSummary.budgetMin)} - ${formatCurrency(match.buyerProfileSummary.budgetMax)}`
-                      : match.buyerProfileSummary.budgetMin
-                      ? `Min: ${formatCurrency(match.buyerProfileSummary.budgetMin)}`
-                      : `Max: ${formatCurrency(match.buyerProfileSummary.budgetMax!)}`}
-                  </span>
-                </div>
-              ) : null}
-
-              {match.buyerProfileSummary.preferredSuburbs && match.buyerProfileSummary.preferredSuburbs.length > 0 ? (
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-slate-400" />
-                  <span>
-                    {match.buyerProfileSummary.preferredSuburbs.slice(0, 2).join(', ')}
-                    {match.buyerProfileSummary.preferredSuburbs.length > 2 && '...'}
-                  </span>
-                </div>
-              ) : null}
-
-              {(match.buyerProfileSummary.bedsMin || match.buyerProfileSummary.bathsMin) && (
-                <div className="flex items-center gap-2">
-                  <Home className="w-4 h-4 text-slate-400" />
-                  <span>
-                    {match.buyerProfileSummary.bedsMin && `${match.buyerProfileSummary.bedsMin}+ beds`}
-                    {match.buyerProfileSummary.bedsMin && match.buyerProfileSummary.bathsMin && ', '}
-                    {match.buyerProfileSummary.bathsMin && `${match.buyerProfileSummary.bathsMin}+ baths`}
-                  </span>
-                </div>
-              )}
-
-              {match.buyerProfileSummary.timeline && (
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-slate-400" />
-                  <span className="capitalize">
-                    {match.buyerProfileSummary.timeline.replace(/([A-Z])/g, ' $1').trim()}
-                  </span>
+              {/* Optional: Soft pill badges for alignment reasons (if space allows) */}
+              {match.keyReasons.length > 0 && reasonIcons.length === 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {match.keyReasons.slice(0, 2).map((reason, idx) => (
+                    <span
+                      key={idx}
+                      className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200"
+                    >
+                      {reason}
+                    </span>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );
