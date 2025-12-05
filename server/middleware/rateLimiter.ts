@@ -10,30 +10,47 @@ import Redis from 'ioredis';
 // Redis client (lazy initialization)
 let redisClient: Redis | null = null;
 
-function getRedisClient() {
+function getRedisClient(): Redis | null {
   if (redisClient) return redisClient;
   
   const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) return null;
+  if (!redisUrl) {
+    // No Redis URL - will use memory store (this is fine)
+    return null;
+  }
   
   try {
     redisClient = new Redis(redisUrl, {
       url: redisUrl,
       maxRetriesPerRequest: null,
       enableReadyCheck: false,
+      lazyConnect: true, // Don't connect immediately
       retryStrategy: (times) => {
         const delay = Math.min(times * 50, 2000);
         return delay;
       }
     });
     
-    redisClient.on('error', (err) => {
-      console.warn('[RateLimiter] Redis error:', err.message);
+    // Handle Redis connection errors gracefully - never crash
+    redisClient.on('error', (err: Error) => {
+      const errorMessage = err.message?.toLowerCase() || '';
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+        console.warn('[RateLimiter] Redis connection error (non-fatal):', errorMessage);
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+        // Suppress timeout errors - they're common with cloud Redis
+        // Don't log these as they're expected
+      } else {
+        console.warn('[RateLimiter] Redis error (non-fatal):', errorMessage);
+      }
+      // Never throw or exit - just log and continue without Redis
     });
     
+    // Don't await connection - let it connect lazily
+    // If connection fails, express-rate-limit will fall back to memory store
     return redisClient;
-  } catch (error) {
-    console.warn('[RateLimiter] Failed to create Redis client:', error);
+  } catch (error: any) {
+    console.warn('[RateLimiter] Failed to create Redis client (non-fatal), using memory store:', error.message);
+    redisClient = null;
     return null;
   }
 }

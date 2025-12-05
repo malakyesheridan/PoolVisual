@@ -11,11 +11,17 @@ export async function initSSEBus() {
   if (SAFE_MODE) return null;
   if (sub) return sub;
   
+  // Check if Redis is configured - if not, disable SSE Bus gracefully
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn('[SSEBus] REDIS_URL not configured, SSE Bus disabled (Pub/Sub features will be unavailable)');
+    return null;
+  }
+  
   try {
     // Lazy import to avoid Redis connection on module load
     const RedisModule = await import('ioredis');
     const Redis = RedisModule.default || RedisModule;
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     const isTLS = redisUrl.startsWith('rediss://');
     
     // Connection options optimized for Upstash Redis
@@ -61,17 +67,39 @@ export async function initSSEBus() {
     });
     
     sub.on('error', (e) => {
-      // Suppress timeout errors - they're common with cloud Redis
+      // Handle all Redis errors gracefully - log as warning, don't crash
       const errorMessage = (e as Error).message?.toLowerCase() || '';
-      if (!errorMessage.includes('timeout') && !errorMessage.includes('etimedout')) {
-        console.warn('[SSEBus] Redis error:', e);
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+        console.warn('[SSEBus] Redis connection error (non-fatal):', errorMessage);
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+        // Suppress timeout errors - they're common with cloud Redis
+        // Don't log these as they're expected
+      } else {
+        console.warn('[SSEBus] Redis error (non-fatal):', errorMessage);
       }
+      // Never throw or exit - just log and continue
     });
     
-    console.log('[SSEBus] Redis Pub/Sub initialized');
+    sub.on('connect', () => {
+      console.log('[SSEBus] Redis Pub/Sub connected');
+    });
+    
+    // Attempt to connect, but don't fail if it doesn't work
+    try {
+      await sub.connect();
+      sub.psubscribe('enhancement:*');
+      console.log('[SSEBus] Redis Pub/Sub initialized');
+    } catch (connectErr: any) {
+      console.warn('[SSEBus] Redis connection failed (non-fatal), Pub/Sub disabled:', connectErr.message);
+      // Don't throw - just return null to indicate SSE Bus is unavailable
+      sub = null;
+      return null;
+    }
+    
     return sub;
   } catch (err: any) {
-    console.warn('[SSEBus] Could not connect to Redis, Pub/Sub disabled:', err.message);
+    console.warn('[SSEBus] Could not initialize Redis, Pub/Sub disabled (non-fatal):', err.message);
+    sub = null;
     return null;
   }
 }

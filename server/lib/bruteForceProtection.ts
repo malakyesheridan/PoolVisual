@@ -27,17 +27,22 @@ export class BruteForceProtection {
 
   constructor(config?: Partial<BruteForceConfig>) {
     // Use existing Redis URL from environment
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    // Check if Redis is configured - if not, disable brute force protection gracefully
+    const redisUrl = process.env.REDIS_URL;
     
-    // Initialize Redis lazily if enabled
+    // Initialize Redis lazily if enabled and URL is provided
     this.redis = null;
-    if (process.env.REDIS_ENABLED === 'true' && process.env.BRUTE_FORCE_PROTECTION_ENABLED === 'true') {
+    if (redisUrl && process.env.REDIS_ENABLED === 'true' && process.env.BRUTE_FORCE_PROTECTION_ENABLED === 'true') {
       this.initializeRedis(redisUrl).catch((error) => {
-        console.warn('[BruteForceProtection] Redis initialization failed, using no-op mode:', error);
+        console.warn('[BruteForceProtection] Redis initialization failed, using no-op mode:', error.message);
         this.redis = null;
       });
     } else {
-      console.log('[BruteForceProtection] Running in no-op mode');
+      if (!redisUrl) {
+        console.log('[BruteForceProtection] REDIS_URL not configured, running in no-op mode (brute force protection disabled)');
+      } else {
+        console.log('[BruteForceProtection] REDIS_ENABLED or BRUTE_FORCE_PROTECTION_ENABLED not set, running in no-op mode');
+      }
     }
 
     // Default configuration
@@ -301,10 +306,34 @@ export class BruteForceProtection {
       this.redis = new Redis(redisUrl, {
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
-        lazyConnect: true
+        lazyConnect: true,
+        connectTimeout: 5000,
+        commandTimeout: 5000,
       });
-    } catch (error) {
-      console.warn('[BruteForceProtection] Redis not available, using no-op mode');
+      
+      // Handle Redis connection errors gracefully - never crash
+      this.redis.on('error', (error: Error) => {
+        const errorMessage = error.message?.toLowerCase() || '';
+        if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+          console.warn('[BruteForceProtection] Redis connection error (non-fatal):', errorMessage);
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+          // Suppress timeout errors - they're common with cloud Redis
+          // Don't log these as they're expected
+        } else {
+          console.warn('[BruteForceProtection] Redis error (non-fatal):', errorMessage);
+        }
+        // Never throw or exit - just log and continue in no-op mode
+      });
+      
+      // Attempt to connect, but don't fail if it doesn't work
+      try {
+        await this.redis.connect();
+      } catch (connectErr: any) {
+        console.warn('[BruteForceProtection] Redis connection failed (non-fatal), using no-op mode:', connectErr.message);
+        this.redis = null;
+      }
+    } catch (error: any) {
+      console.warn('[BruteForceProtection] Redis not available, using no-op mode:', error.message);
       this.redis = null;
     }
   }

@@ -31,18 +31,22 @@ export class CacheService {
     defaultTTL?: number;
     keyPrefix?: string;
   } = {}) {
-    // Use existing Redis URL from environment
-    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    // Check if Redis is configured - if not, disable caching gracefully
+    const redisUrl = process.env.REDIS_URL;
     
-    // Initialize Redis lazily if enabled
+    // Initialize Redis lazily if enabled and URL is provided
     this.redis = null;
-    if (process.env.REDIS_ENABLED === 'true') {
+    if (redisUrl && process.env.REDIS_ENABLED === 'true') {
       this.initializeRedis(redisUrl).catch((error) => {
-        console.warn('[CacheService] Redis initialization failed, using no-op mode:', error);
+        console.warn('[CacheService] Redis initialization failed, using no-op mode:', error.message);
         this.redis = null;
       });
     } else {
-      console.log('[CacheService] Running in no-op mode');
+      if (!redisUrl) {
+        console.log('[CacheService] REDIS_URL not configured, running in no-op mode (caching disabled)');
+      } else {
+        console.log('[CacheService] REDIS_ENABLED not set to true, running in no-op mode');
+      }
     }
 
     this.defaultTTL = options.defaultTTL || 300; // 5 minutes default
@@ -63,14 +67,31 @@ export class CacheService {
         keepAlive: true
       });
 
-      // Handle Redis connection errors gracefully
+      // Handle Redis connection errors gracefully - never crash
       this.redis.on('error', (error: Error) => {
-        console.warn('[CacheService] Redis connection error:', error.message);
+        const errorMessage = error.message?.toLowerCase() || '';
+        if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+          console.warn('[CacheService] Redis connection error (non-fatal):', errorMessage);
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+          // Suppress timeout errors - they're common with cloud Redis
+          // Don't log these as they're expected
+        } else {
+          console.warn('[CacheService] Redis error (non-fatal):', errorMessage);
+        }
+        // Never throw or exit - just log and continue in no-op mode
       });
 
       this.redis.on('connect', () => {
         console.log('[CacheService] Connected to Redis');
       });
+      
+      // Attempt to connect, but don't fail if it doesn't work
+      try {
+        await this.redis.connect();
+      } catch (connectErr: any) {
+        console.warn('[CacheService] Redis connection failed (non-fatal), using no-op mode:', connectErr.message);
+        this.redis = null;
+      }
     } catch (error) {
       console.warn('[CacheService] Redis not available, using no-op mode');
       this.redis = null;

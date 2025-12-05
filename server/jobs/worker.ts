@@ -41,8 +41,13 @@ async function startWorker() {
   try {
     console.log('[Worker] Starting...');
     
-    // Parse Redis URL for TLS configuration
+    // Check if Redis is configured - if not, disable worker gracefully
     const redisUrl = process.env.REDIS_URL;
+    if (!redisUrl) {
+      console.warn('[Worker] REDIS_URL not configured, enhancement worker disabled');
+      return null;
+    }
+    
     const isTLS = redisUrl.startsWith('rediss://');
     
     // Connection options optimized for Upstash Redis
@@ -83,13 +88,17 @@ async function startWorker() {
       console.log('[Worker] Redis connected');
     });
     connection.on('error', (err: Error) => {
-      // Suppress timeout errors - they're common with cloud Redis
-      const errorMessage = err.message.toLowerCase();
-      if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
-        // Timeout errors are expected with cloud Redis, log as debug only
-        return;
+      // Handle all Redis errors gracefully - log as warning, don't crash
+      const errorMessage = err.message?.toLowerCase() || '';
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+        console.warn('[Worker] Redis connection error (non-fatal):', errorMessage);
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+        // Suppress timeout errors - they're common with cloud Redis
+        // Don't log these as they're expected
+      } else {
+        console.warn('[Worker] Redis error (non-fatal):', errorMessage);
       }
-      console.warn('[Worker] Redis connection error:', err.message);
+      // Never throw or exit - just log and continue
     });
 
     redis = new Redis(redisUrl, connectionOptions);
@@ -97,14 +106,30 @@ async function startWorker() {
       console.log('[Worker] Redis pub/sub connected');
     });
     redis.on('error', (err: Error) => {
-      // Suppress timeout errors - they're common with cloud Redis
-      const errorMessage = err.message.toLowerCase();
-      if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
-        // Timeout errors are expected with cloud Redis, log as debug only
-        return;
+      // Handle all Redis errors gracefully - log as warning, don't crash
+      const errorMessage = err.message?.toLowerCase() || '';
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+        console.warn('[Worker] Redis pub/sub connection error (non-fatal):', errorMessage);
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+        // Suppress timeout errors - they're common with cloud Redis
+        // Don't log these as they're expected
+      } else {
+        console.warn('[Worker] Redis pub/sub error (non-fatal):', errorMessage);
       }
-      console.warn('[Worker] Redis pub/sub error:', err.message);
+      // Never throw or exit - just log and continue
     });
+    
+    // Attempt to connect, but don't fail if it doesn't work
+    try {
+      await connection.connect();
+      await redis.connect();
+    } catch (connectErr: any) {
+      console.warn('[Worker] Redis connection failed (non-fatal), worker disabled:', connectErr.message);
+      connection = null;
+      redis = null;
+      enhancementWorker = null;
+      return null;
+    }
 
     enhancementWorker = new Worker<EnhancementJobData>(
       'enhancement',

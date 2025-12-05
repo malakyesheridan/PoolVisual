@@ -459,7 +459,13 @@ async function initializeServer() {
   if (!SAFE_MODE) {
     // SSE system initialization
     SSEManager.init();
-    await initSSEBus();
+    // Initialize SSE Bus (gracefully handles missing Redis)
+    try {
+      await initSSEBus();
+    } catch (sseError: any) {
+      console.warn('[Server] SSE Bus initialization failed (non-fatal):', sseError.message);
+      // Continue without SSE Bus - app will work but SSE features will be unavailable
+    }
     
     // Start worker if enabled
     if (START_WORKER) {

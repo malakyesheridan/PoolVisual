@@ -100,18 +100,37 @@ if (SAFE_MODE) {
     }
     
     connection = new IORedis(redisUrl, connectionOptions);
-    connection.on('error', (err) => {
-      // Suppress timeout errors - they're common with cloud Redis
-      const errorMessage = err.message.toLowerCase();
-      if (!errorMessage.includes('timeout') && !errorMessage.includes('etimedout')) {
-        console.warn('[Redis] Connection error:', err.message);
+    connection.on('error', (err: Error) => {
+      // Handle all Redis errors gracefully - log as warning, don't crash
+      const errorMessage = err.message?.toLowerCase() || '';
+      if (errorMessage.includes('econnrefused') || errorMessage.includes('connect')) {
+        console.warn('[Redis] Connection error (non-fatal):', errorMessage);
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('etimedout')) {
+        // Suppress timeout errors - they're common with cloud Redis
+        // Don't log these as they're expected
+      } else {
+        console.warn('[Redis] Error (non-fatal):', errorMessage);
       }
+      // Never throw or exit - just log and continue
     });
-    enhancementQueue = new Queue('enhancement', { connection });
-    console.log('[Redis] Connected to queue');
+    
+    // Attempt to connect, but don't fail if it doesn't work
+    try {
+      await connection.connect();
+      enhancementQueue = new Queue('enhancement', { connection });
+      console.log('[Redis] Connected to queue');
+    } catch (connectErr: any) {
+      console.warn('[Redis] Connection failed (non-fatal), queue disabled:', connectErr.message);
+      connection = null;
+      enhancementQueue = null;
+    }
   } catch (err: any) {
-    console.warn('[Redis] Could not connect, queue disabled:', err.message);
+    console.warn('[Redis] Could not initialize queue (non-fatal), queue disabled:', err.message);
+    connection = null;
+    enhancementQueue = null;
   }
+  
+  return enhancementQueue;
 }
 
 export { enhancementQueue };
