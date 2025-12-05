@@ -728,9 +728,14 @@ export function OpportunityDetailDrawer({
     };
 
     const updateField = (field: string, value: any) => {
+      // Always update the field, preserving the exact value (including empty strings)
       const newProfile = { ...localProfile, [field]: value };
       setLocalProfile(newProfile);
       setHasChanges(true);
+      // Debug log for text fields
+      if (field === 'freeNotes') {
+        console.log('[BuyerProfileForm] Updated freeNotes:', value, 'Type:', typeof value);
+      }
     };
 
     const addArrayItem = (field: string, value: string) => {
@@ -1138,10 +1143,11 @@ export function OpportunityDetailDrawer({
           <Label className="text-sm">Notes</Label>
           {isEditing ? (
             <Textarea
-              value={localProfile.freeNotes ?? ''}
+              value={localProfile.freeNotes !== undefined && localProfile.freeNotes !== null ? String(localProfile.freeNotes) : ''}
               onChange={(e) => {
                 const value = e.target.value;
-                updateField('freeNotes', value === '' ? null : value);
+                // Always update the field with the actual value
+                updateField('freeNotes', value);
               }}
               placeholder="Additional notes..."
               className="mt-1"
@@ -1159,10 +1165,36 @@ export function OpportunityDetailDrawer({
           <div className="flex items-center gap-2 pt-4 border-t">
             <Button
               onClick={async () => {
-                await onSave(localProfile);
+                // Create a clean profile object with all fields explicitly set
+                // This ensures all fields are sent to the backend, even if they're null/empty
+                const profileToSave: any = {};
+                
+                // Always include all fields so backend can merge properly
+                profileToSave.budgetMin = localProfile.budgetMin !== undefined ? (localProfile.budgetMin === null || localProfile.budgetMin === '' ? null : Number(localProfile.budgetMin)) : undefined;
+                profileToSave.budgetMax = localProfile.budgetMax !== undefined ? (localProfile.budgetMax === null || localProfile.budgetMax === '' ? null : Number(localProfile.budgetMax)) : undefined;
+                profileToSave.preferredSuburbs = localProfile.preferredSuburbs !== undefined ? (Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs : []) : undefined;
+                profileToSave.bedsMin = localProfile.bedsMin !== undefined ? (localProfile.bedsMin === null || localProfile.bedsMin === '' ? null : Number(localProfile.bedsMin)) : undefined;
+                profileToSave.bathsMin = localProfile.bathsMin !== undefined ? (localProfile.bathsMin === null || localProfile.bathsMin === '' ? null : Number(localProfile.bathsMin)) : undefined;
+                profileToSave.propertyType = localProfile.propertyType !== undefined ? (localProfile.propertyType || null) : undefined;
+                profileToSave.mustHaves = localProfile.mustHaves !== undefined ? (Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves : []) : undefined;
+                profileToSave.dealBreakers = localProfile.dealBreakers !== undefined ? (Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers : []) : undefined;
+                profileToSave.financeStatus = localProfile.financeStatus !== undefined ? (localProfile.financeStatus || null) : undefined;
+                profileToSave.timeline = localProfile.timeline !== undefined ? (localProfile.timeline || null) : undefined;
+                // CRITICAL: Always include freeNotes - preserve the value exactly as entered
+                // Only convert to null if it's truly empty (empty string or whitespace only)
+                if (localProfile.freeNotes !== undefined) {
+                  const notesValue = typeof localProfile.freeNotes === 'string' ? localProfile.freeNotes.trim() : localProfile.freeNotes;
+                  profileToSave.freeNotes = notesValue === '' ? null : notesValue;
+                } else {
+                  profileToSave.freeNotes = undefined;
+                }
+                
+                console.log('[BuyerProfileForm] Saving profile:', JSON.stringify(profileToSave, null, 2));
+                console.log('[BuyerProfileForm] freeNotes value:', profileToSave.freeNotes, 'Type:', typeof profileToSave.freeNotes);
+                await onSave(profileToSave);
                 setHasChanges(false);
                 setIsEditing(false);
-                profileRef.current = localProfile;
+                profileRef.current = profileToSave;
               }}
               disabled={isSaving}
               size="sm"
@@ -1210,13 +1242,14 @@ export function OpportunityDetailDrawer({
               {isNewOpportunity ? 'New Opportunity' : 'Opportunity Details'}
             </DialogTitle>
             <div className="flex items-center gap-2">
-              {!isNewOpportunity && !isEditing && (
+              {/* Only show edit button for opportunity details when on details tab */}
+              {!isNewOpportunity && !isEditing && activeTab === 'details' && (
                 <Button variant="outline" onClick={() => setIsEditing(true)}>
                   <Edit className="w-4 h-4 mr-2" />
                   Edit
                 </Button>
               )}
-              {isEditing && (
+              {isEditing && activeTab === 'details' && (
                 <>
                   <Button 
                     onClick={handleSave} 
