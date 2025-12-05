@@ -107,7 +107,19 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
   }
 
   // Create a map of suggestions by opportunityId
-  const suggestionsByOpportunity = new Map<string, typeof suggestionsData?.suggestions?.[0]>();
+  type SuggestionType = {
+    id: string;
+    opportunityId: string;
+    contactId: string;
+    contactName: string;
+    matchScore: number;
+    matchTier: 'strong' | 'medium' | 'weak';
+    status: 'new' | 'in_progress' | 'completed' | 'dismissed';
+    createdAt: string;
+    actedAt?: string;
+    buyerProfileSummary: any;
+  };
+  const suggestionsByOpportunity = new Map<string, SuggestionType>();
   if (suggestionsData?.suggestions) {
     console.log(`[MatchedBuyersPanel] Mapping ${suggestionsData.suggestions.length} suggestions`);
     for (const suggestion of suggestionsData.suggestions) {
