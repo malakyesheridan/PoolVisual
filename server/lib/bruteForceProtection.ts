@@ -66,7 +66,23 @@ export class BruteForceProtection {
       
       // Check if currently blocked
       const blockKey = this.getBlockKey(identifier, action);
-      const blockExpiry = await this.redis.get(blockKey);
+      let blockExpiry: string | null = null;
+      let attempts: string | null = null;
+      
+      try {
+        blockExpiry = await Promise.race([
+          this.redis.get(blockKey),
+          new Promise<null>((_, reject) => 
+            setTimeout(() => reject(new Error('Redis get timeout')), 5000)
+          )
+        ]) as string | null;
+      } catch (error: any) {
+        // On Redis error, allow the request (fail open)
+        if (error?.message?.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED') {
+          console.warn('[BruteForceProtection] Redis timeout (non-fatal), allowing request');
+        }
+        return { allowed: true, remainingAttempts: this.config.maxAttempts };
+      }
       
       if (blockExpiry) {
         return {
@@ -77,7 +93,21 @@ export class BruteForceProtection {
       }
 
       // Get current attempt count
-      const attempts = await this.redis.get(key);
+      try {
+        attempts = await Promise.race([
+          this.redis.get(key),
+          new Promise<null>((_, reject) => 
+            setTimeout(() => reject(new Error('Redis get timeout')), 5000)
+          )
+        ]) as string | null;
+      } catch (error: any) {
+        // On Redis error, allow the request (fail open)
+        if (error?.message?.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED') {
+          console.warn('[BruteForceProtection] Redis timeout (non-fatal), allowing request');
+        }
+        return { allowed: true, remainingAttempts: this.config.maxAttempts };
+      }
+      
       const attemptCount = attempts ? parseInt(attempts) : 0;
 
       // Check if max attempts reached

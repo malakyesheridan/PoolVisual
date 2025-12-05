@@ -92,7 +92,13 @@ export class CacheService {
       }
       
       const fullKey = this.getFullKey(key, options.prefix);
-      const data = await this.redis.get(fullKey);
+      // Add timeout to prevent hanging
+      const data = await Promise.race([
+        this.redis.get(fullKey),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Redis get timeout')), 5000)
+        )
+      ]) as string | null;
       
       if (data === null) {
         this.stats.misses++;
@@ -107,8 +113,13 @@ export class CacheService {
       
       return data as T;
 
-    } catch (error) {
-      console.error('[CacheService] Error getting cache:', error);
+    } catch (error: any) {
+      // Handle timeout and connection errors gracefully
+      if (error?.message?.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED') {
+        console.warn('[CacheService] Redis timeout/connection error (non-fatal):', error.message);
+      } else {
+        console.error('[CacheService] Error getting cache:', error);
+      }
       this.stats.misses++;
       return null;
     }
@@ -138,16 +149,27 @@ export class CacheService {
         data = value as string;
       }
 
-      if (ttl > 0) {
-        await this.redis.setex(fullKey, ttl, data);
-      } else {
-        await this.redis.set(fullKey, data);
-      }
+      // Add timeout to prevent hanging
+      const setPromise = ttl > 0 
+        ? this.redis.setex(fullKey, ttl, data)
+        : this.redis.set(fullKey, data);
+      
+      await Promise.race([
+        setPromise,
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Redis set timeout')), 5000)
+        )
+      ]);
 
       return true;
 
-    } catch (error) {
-      console.error('[CacheService] Error setting cache:', error);
+    } catch (error: any) {
+      // Handle timeout and connection errors gracefully
+      if (error?.message?.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'ECONNREFUSED') {
+        console.warn('[CacheService] Redis timeout/connection error (non-fatal):', error.message);
+      } else {
+        console.error('[CacheService] Error setting cache:', error);
+      }
       return false;
     }
   }

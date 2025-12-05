@@ -40,8 +40,30 @@ process.on('uncaughtException', (e) => {
   process.exit(1);
 });
 process.on('unhandledRejection', (e) => {
-  console.error('[fatal] unhandledRejection', e);
   const error = e instanceof Error ? e : new Error(String(e));
+  const errorMessage = error.message?.toLowerCase() || '';
+  const errorStack = error.stack || '';
+  
+  // Handle Redis timeout errors gracefully - these are common and not fatal
+  if (errorMessage.includes('command timed out') || 
+      errorMessage.includes('timeout') ||
+      errorStack.includes('ioredis') ||
+      errorStack.includes('Command.js')) {
+    // Redis timeout - log as warning, not fatal
+    console.warn('[Redis] Unhandled Redis timeout (non-fatal):', error.message);
+    return; // Don't treat as fatal error
+  }
+  
+  // Handle Redis connection errors gracefully
+  if (errorMessage.includes('econnrefused') ||
+      errorMessage.includes('redis') ||
+      errorMessage.includes('connect econnrefused')) {
+    console.warn('[Redis] Unhandled Redis connection error (non-fatal):', error.message);
+    return; // Don't treat as fatal error
+  }
+  
+  // For other unhandled rejections, log as error
+  console.error('[fatal] unhandledRejection', e);
   monitoringService.captureError(error, {
     level: 'fatal',
     tags: { type: 'unhandledRejection' }
