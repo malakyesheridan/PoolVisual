@@ -1754,7 +1754,6 @@ export function OpportunityDetailDrawer({
               )}
             </CardContent>
           </Card>
-        </div>
           </TabsContent>
 
           {/* Buyer Profile Tab */}
