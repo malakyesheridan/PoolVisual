@@ -696,7 +696,17 @@ export function OpportunityDetailDrawer({
     // Edit mode state
     const [isEditing, setIsEditing] = useState(false);
     // Use local state for form - only save to parent on explicit save
-    const [localProfile, setLocalProfile] = useState<any>(initialProfile || {});
+    // Initialize arrays to empty arrays if they don't exist
+    const initializeProfile = (profile: any) => {
+      if (!profile) return {};
+      return {
+        ...profile,
+        preferredSuburbs: Array.isArray(profile.preferredSuburbs) ? profile.preferredSuburbs : [],
+        mustHaves: Array.isArray(profile.mustHaves) ? profile.mustHaves : [],
+        dealBreakers: Array.isArray(profile.dealBreakers) ? profile.dealBreakers : [],
+      };
+    };
+    const [localProfile, setLocalProfile] = useState<any>(initializeProfile(initialProfile));
     const [hasChanges, setHasChanges] = useState(false);
     const profileRef = React.useRef(initialProfile);
 
