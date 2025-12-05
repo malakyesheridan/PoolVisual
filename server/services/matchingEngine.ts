@@ -33,7 +33,7 @@ export interface BuyerProfile {
 export interface PropertyData {
   id: string;
   address?: string | null;
-  suburb?: string | null; // Explicit suburb field (mapped from schoolDistrict in DB)
+  suburb?: string | null; // Suburb where the property is located
   estimatedPrice?: number | null;
   bedrooms?: number | null;
   bathrooms?: number | null;

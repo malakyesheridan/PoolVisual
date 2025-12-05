@@ -281,7 +281,7 @@ export const jobs = pgTable("jobs", {
   propertyCondition: text("property_condition"),
   hoaFees: numeric("hoa_fees", { precision: 10, scale: 2 }),
   propertyTaxes: numeric("property_taxes", { precision: 10, scale: 2 }),
-  schoolDistrict: text("school_district"),
+  suburb: text("suburb"),
 });
 
 // Photos

@@ -1010,7 +1010,7 @@ export default function PropertyDetail() {
                       propertyDescription: job.propertyDescription,
                       propertyFeatures: job.propertyFeatures as string[] || [],
                       propertyCondition: job.propertyCondition as any,
-                      suburb: job.schoolDistrict, // Using schoolDistrict from DB, but renamed to suburb in form
+                      suburb: job.suburb,
                       estimatedPrice: job.estimatedPrice ? String(job.estimatedPrice) : null,
                     }}
                     onSubmit={async (data) => {
