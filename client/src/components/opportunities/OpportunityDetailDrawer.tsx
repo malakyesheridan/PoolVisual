@@ -843,10 +843,10 @@ export function OpportunityDetailDrawer({
     }, [isEditing]);
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         {/* Edit Button */}
         {!isEditing && (
-          <div className="flex justify-end">
+          <div className="flex justify-end pb-2">
             <Button variant="outline" size="sm" onClick={handleEdit}>
               <Edit className="w-4 h-4 mr-2" />
               Edit Profile
@@ -855,9 +855,9 @@ export function OpportunityDetailDrawer({
         )}
         
         {/* Budget Range */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-sm">Budget Min</Label>
+            <Label className="text-sm font-medium mb-2 block">Budget Min</Label>
             {isEditing ? (
               <Input
                 type="text"
@@ -885,13 +885,13 @@ export function OpportunityDetailDrawer({
                 className="mt-1"
               />
             ) : (
-              <div className="mt-1 text-sm text-slate-600">
-                {localProfile.budgetMin ? formatCurrencyDisplay(localProfile.budgetMin) : '—'}
+              <div className="mt-1 text-sm text-slate-700 font-medium">
+                {localProfile.budgetMin ? formatCurrencyDisplay(localProfile.budgetMin) : <span className="text-slate-400 font-normal">—</span>}
               </div>
             )}
           </div>
           <div>
-            <Label className="text-sm">Budget Max</Label>
+            <Label className="text-sm font-medium mb-2 block">Budget Max</Label>
             {isEditing ? (
               <Input
                 type="text"
@@ -919,17 +919,17 @@ export function OpportunityDetailDrawer({
                 className="mt-1"
               />
             ) : (
-              <div className="mt-1 text-sm text-slate-600">
-                {localProfile.budgetMax ? formatCurrencyDisplay(localProfile.budgetMax) : '—'}
+              <div className="mt-1 text-sm text-slate-700 font-medium">
+                {localProfile.budgetMax ? formatCurrencyDisplay(localProfile.budgetMax) : <span className="text-slate-400 font-normal">—</span>}
               </div>
             )}
           </div>
         </div>
 
         {/* Beds/Baths */}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-sm">Min Beds</Label>
+            <Label className="text-sm font-medium mb-2 block">Min Beds</Label>
             {isEditing ? (
               <Input
                 type="text"
@@ -943,13 +943,13 @@ export function OpportunityDetailDrawer({
                 className="mt-1"
               />
             ) : (
-              <div className="mt-1 text-sm text-slate-600">
-                {localProfile.bedsMin ?? '—'}
+              <div className="mt-1 text-sm text-slate-700 font-medium">
+                {localProfile.bedsMin ?? <span className="text-slate-400 font-normal">—</span>}
               </div>
             )}
           </div>
           <div>
-            <Label className="text-sm">Min Baths</Label>
+            <Label className="text-sm font-medium mb-2 block">Min Baths</Label>
             {isEditing ? (
               <Input
                 type="text"
@@ -963,8 +963,8 @@ export function OpportunityDetailDrawer({
                 className="mt-1"
               />
             ) : (
-              <div className="mt-1 text-sm text-slate-600">
-                {localProfile.bathsMin ?? '—'}
+              <div className="mt-1 text-sm text-slate-700 font-medium">
+                {localProfile.bathsMin ?? <span className="text-slate-400 font-normal">—</span>}
               </div>
             )}
           </div>
@@ -972,7 +972,7 @@ export function OpportunityDetailDrawer({
 
         {/* Property Type */}
         <div>
-          <Label className="text-sm">Property Type</Label>
+          <Label className="text-sm font-medium mb-2 block">Property Type</Label>
           {isEditing ? (
             <Select
               value={localProfile.propertyType || undefined}
@@ -990,15 +990,15 @@ export function OpportunityDetailDrawer({
               </SelectContent>
             </Select>
           ) : (
-            <div className="mt-1 text-sm text-slate-600 capitalize">
-              {localProfile.propertyType || '—'}
+            <div className="mt-1 text-sm text-slate-700 capitalize font-medium">
+              {localProfile.propertyType || <span className="text-slate-400 font-normal">—</span>}
             </div>
           )}
         </div>
 
         {/* Preferred Suburbs */}
         <div>
-          <Label className="text-sm">Preferred Suburbs</Label>
+          <Label className="text-sm font-medium mb-2 block">Preferred Suburbs</Label>
           {isEditing ? (
             <>
               <div className="mt-1 flex gap-2">
@@ -1073,7 +1073,7 @@ export function OpportunityDetailDrawer({
 
         {/* Finance Status */}
         <div>
-          <Label className="text-sm">Finance Status</Label>
+          <Label className="text-sm font-medium mb-2 block">Finance Status</Label>
           {isEditing ? (
             <Select
               value={localProfile.financeStatus || undefined}
@@ -1090,15 +1090,15 @@ export function OpportunityDetailDrawer({
               </SelectContent>
             </Select>
           ) : (
-            <div className="mt-1 text-sm text-slate-600 capitalize">
-              {localProfile.financeStatus ? localProfile.financeStatus.replace(/([A-Z])/g, ' $1').trim() : '—'}
+            <div className="mt-1 text-sm text-slate-700 capitalize font-medium">
+              {localProfile.financeStatus ? localProfile.financeStatus.replace(/([A-Z])/g, ' $1').trim() : <span className="text-slate-400 font-normal">—</span>}
             </div>
           )}
         </div>
 
         {/* Timeline */}
         <div>
-          <Label className="text-sm">Timeline</Label>
+          <Label className="text-sm font-medium mb-2 block">Timeline</Label>
           {isEditing ? (
             <Select
               value={localProfile.timeline || undefined}
@@ -1116,15 +1116,15 @@ export function OpportunityDetailDrawer({
               </SelectContent>
             </Select>
           ) : (
-            <div className="mt-1 text-sm text-slate-600">
-              {localProfile.timeline ? localProfile.timeline.replace(/([A-Z])/g, ' $1').trim() : '—'}
+            <div className="mt-1 text-sm text-slate-700 font-medium">
+              {localProfile.timeline ? localProfile.timeline.replace(/([A-Z])/g, ' $1').trim() : <span className="text-slate-400 font-normal">—</span>}
             </div>
           )}
         </div>
 
         {/* Must Haves */}
         <div>
-          <Label className="text-sm">Must Haves</Label>
+          <Label className="text-sm font-medium mb-2 block">Must Haves</Label>
           {isEditing ? (
             <>
               <div className="mt-1 flex gap-2">
@@ -1199,7 +1199,7 @@ export function OpportunityDetailDrawer({
 
         {/* Deal Breakers */}
         <div>
-          <Label className="text-sm">Deal Breakers</Label>
+          <Label className="text-sm font-medium mb-2 block">Deal Breakers</Label>
           {isEditing ? (
             <>
               <div className="mt-1 flex gap-2">
@@ -1274,7 +1274,7 @@ export function OpportunityDetailDrawer({
 
         {/* Free Notes */}
         <div>
-          <Label className="text-sm">Notes</Label>
+          <Label className="text-sm font-medium mb-2 block">Notes</Label>
           {isEditing ? (
             <Textarea
               value={localProfile.freeNotes !== undefined && localProfile.freeNotes !== null ? String(localProfile.freeNotes) : ''}
@@ -1295,7 +1295,7 @@ export function OpportunityDetailDrawer({
               rows={3}
             />
           ) : (
-            <div className="mt-1 text-sm text-slate-600 whitespace-pre-wrap">
+            <div className="mt-1 text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
               {localProfile.freeNotes || <span className="text-slate-400">—</span>}
             </div>
           )}
@@ -1626,7 +1626,7 @@ export function OpportunityDetailDrawer({
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <Label>Status</Label>
+                  <Label className="mb-2 block">Status</Label>
                   {isEditing ? (
                     <Select value={editedStatus} onValueChange={(v: any) => setEditedStatus(v)}>
                       <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
@@ -1640,7 +1640,7 @@ export function OpportunityDetailDrawer({
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Badge className={`mt-1 px-3 py-1 ${
+                    <Badge className={`mt-2 px-3 py-1.5 ${
                       editedStatus === 'won' ? 'bg-emerald-500 text-white' :
                       editedStatus === 'lost' ? 'bg-red-500 text-white' :
                       editedStatus === 'abandoned' ? 'bg-gray-500 text-white' :
@@ -1652,7 +1652,7 @@ export function OpportunityDetailDrawer({
                 </div>
 
                 <div>
-                  <Label>Type</Label>
+                  <Label className="mb-2 block">Type</Label>
                   {isEditing ? (
                     <Select value={editedOpportunityType} onValueChange={(v: 'buyer' | 'seller' | 'both') => setEditedOpportunityType(v)}>
                       <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
@@ -1665,7 +1665,7 @@ export function OpportunityDetailDrawer({
                       </SelectContent>
                     </Select>
                   ) : (
-                    <Badge className={`mt-1 px-3 py-1 ${
+                    <Badge className={`mt-2 px-3 py-1.5 ${
                       editedOpportunityType === 'buyer' ? 'bg-blue-500 text-white' :
                       editedOpportunityType === 'seller' ? 'bg-purple-500 text-white' :
                       'bg-indigo-500 text-white'
@@ -1676,7 +1676,7 @@ export function OpportunityDetailDrawer({
                 </div>
 
                 <div>
-                  <Label>Stage</Label>
+                  <Label className="mb-2 block">Stage</Label>
                   {isEditing ? (
                     <Select value={editedStageId} onValueChange={setEditedStageId}>
                       <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
@@ -1699,14 +1699,14 @@ export function OpportunityDetailDrawer({
                       </SelectContent>
                     </Select>
                   ) : (
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-2 flex items-center gap-2">
                       {opportunity?.stageId && stages.find(s => s.id === opportunity.stageId)?.color && (
                         <div 
                           className="w-3 h-3 rounded-full border-2 border-white shadow-sm" 
                           style={{ backgroundColor: stages.find(s => s.id === opportunity.stageId)?.color }}
                         />
                       )}
-                      <span className="font-medium">{opportunity?.stageName || 'Not assigned'}</span>
+                      <span className="font-medium text-slate-700">{opportunity?.stageName || 'Not assigned'}</span>
                     </div>
                   )}
                 </div>
