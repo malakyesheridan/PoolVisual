@@ -1259,9 +1259,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   };
 
   return (
-    <aside className="fixed right-4 top-20 w-[480px] max-h-[85vh] overflow-hidden bg-white/95 backdrop-blur-sm shadow-lg rounded-xl border border-gray-100 z-50 flex flex-col">
+    <aside className="fixed right-4 top-20 w-[480px] max-h-[85vh] bg-white/95 backdrop-blur-sm shadow-lg rounded-xl border border-gray-100 z-50 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 sticky top-0 bg-white/95 backdrop-blur-sm rounded-t-xl z-10">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 bg-white/95 backdrop-blur-sm rounded-t-xl z-10 flex-shrink-0">
         <div className="flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-primary" />
             <div className="font-semibold text-base text-gray-900">AI Enhancements</div>
@@ -1298,11 +1298,13 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         </div>
       </div>
 
-      {/* Bulk Action Toolbar */}
-      <BulkActionToolbar />
-      
-      {/* Search and Filters */}
-      <div className={`border-b border-gray-100 bg-gray-50/50 transition-all duration-200 ${showFilters ? 'max-h-96' : 'max-h-0'} overflow-hidden`}>
+      {/* Scrollable Content Area */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+        {/* Bulk Action Toolbar */}
+        <BulkActionToolbar />
+        
+        {/* Search and Filters */}
+        <div className={`border-b border-gray-100 bg-gray-50/50 transition-all duration-200 ${showFilters ? 'max-h-96' : 'max-h-0'} overflow-hidden`}>
         <div className="px-6 py-4 space-y-4">
           {/* Search */}
           <div className="relative">
@@ -1607,9 +1609,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         </div>
       )}
       
-      {/* Section 3: History (Collapsible) - Phase 2: Using JobCard */}
-      {historyJobs.length > 0 && (
-        <div className="flex-1 overflow-auto px-6 py-4 border-t border-gray-100">
+        {/* Section 3: History (Collapsible) - Phase 2: Using JobCard */}
+        {historyJobs.length > 0 && (
+          <div className="px-6 py-4 border-t border-gray-100">
           <button
             onClick={() => setHistoryExpanded(!historyExpanded)}
             className="w-full flex items-center justify-between py-2 text-sm font-semibold text-gray-900 hover:text-gray-700 transition-colors"
@@ -1641,6 +1643,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           )}
         </div>
       )}
+      </div>
 
       {/* Preview Modal */}
       {previewData && (
