@@ -33,6 +33,10 @@
       "destination": "/api/quotes/[id]/pdf"
     },
     {
+      "source": "/public/buyer-form/:token",
+      "destination": "/server/index.ts"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/server/index.ts"
     },
