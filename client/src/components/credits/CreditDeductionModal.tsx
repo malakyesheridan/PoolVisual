@@ -1,6 +1,6 @@
 /**
- * Credit Deduction Modal Component
- * Confirmation modal before enhancement showing credit cost
+ * Enhancement Deduction Modal Component
+ * Confirmation modal before enhancement showing enhancement cost
  * Modern UI inspired by top-tier AI apps (Midjourney, Runway, etc.)
  */
 
@@ -29,38 +29,38 @@ export function CreditDeductionModal({
   onCancel,
 }: CreditDeductionModalProps) {
   const [, setLocation] = useLocation();
-  const [credits, setCredits] = React.useState<number | null>(null);
+  const [enhancements, setEnhancements] = React.useState<number | null>(null);
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
     if (open) {
-      calculateCredits();
+      calculateEnhancements();
     }
   }, [open, enhancementType, hasMask]);
 
-  const calculateCredits = async () => {
+  const calculateEnhancements = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.calculateCredits(enhancementType, hasMask);
-      setCredits(response.credits);
+      const response = await apiClient.calculateEnhancements(enhancementType, hasMask);
+      setEnhancements(response.enhancements);
     } catch (error) {
-      console.error('Failed to calculate credits:', error);
-      setCredits(null);
+      console.error('Failed to calculate enhancements:', error);
+      setEnhancements(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePurchaseCredits = () => {
+  const handlePurchaseEnhancements = () => {
     onOpenChange(false);
     setLocation('/billing');
   };
 
   if (!open) return null;
 
-  const hasEnough = credits !== null && currentBalance >= credits;
-  const newBalance = credits !== null ? currentBalance - credits : currentBalance;
-  const shortfall = credits !== null && !hasEnough ? credits - currentBalance : 0;
+  const hasEnough = enhancements !== null && currentBalance >= enhancements;
+  const newBalance = enhancements !== null ? currentBalance - enhancements : currentBalance;
+  const shortfall = enhancements !== null && !hasEnough ? enhancements - currentBalance : 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -74,7 +74,7 @@ export function CreditDeductionModal({
               </div>
               <div>
                 <h2 className="text-lg font-semibold text-gray-900">Confirm Enhancement</h2>
-                <p className="text-xs text-gray-500 mt-0.5">Review credit cost before proceeding</p>
+                <p className="text-xs text-gray-500 mt-0.5">Review enhancement cost before proceeding</p>
               </div>
             </div>
             <button
@@ -94,9 +94,9 @@ export function CreditDeductionModal({
           {loading ? (
             <div className="text-center py-12">
               <div className="animate-spin rounded-full h-10 w-10 border-3 border-primary border-t-transparent mx-auto mb-4" />
-              <p className="text-sm text-gray-600">Calculating credit cost...</p>
+              <p className="text-sm text-gray-600">Calculating enhancement cost...</p>
             </div>
-          ) : credits === null ? (
+          ) : enhancements === null ? (
             <div className="text-center py-8">
               <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <AlertTriangle className="w-8 h-8 text-red-600" />
@@ -111,44 +111,44 @@ export function CreditDeductionModal({
                 <div className="w-20 h-20 bg-gradient-to-br from-amber-100 to-orange-100 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
                   <Coins className="w-10 h-10 text-amber-600" />
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-2">Insufficient Credits</h3>
+                <h3 className="text-xl font-bold text-gray-900 mb-2">Insufficient Enhancements</h3>
                 <p className="text-sm text-gray-600 mb-6">
-                  You need <span className="font-semibold text-gray-900">{credits} credits</span> for this enhancement
+                  You need <span className="font-semibold text-gray-900">{enhancements} enhancement{enhancements !== 1 ? 's' : ''}</span> for this job
                   <br />
-                  but only have <span className="font-semibold text-gray-900">{currentBalance} credits</span>
+                  but only have <span className="font-semibold text-gray-900">{currentBalance} enhancement{currentBalance !== 1 ? 's' : ''}</span>
                 </p>
               </div>
 
-              {/* Credit Breakdown */}
+              {/* Enhancement Breakdown */}
               <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-5 border border-gray-200">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">Required</span>
-                    <span className="text-lg font-bold text-gray-900">{credits} credits</span>
+                    <span className="text-lg font-bold text-gray-900">{enhancements} enhancement{enhancements !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium text-gray-700">Your Balance</span>
-                    <span className="text-lg font-semibold text-gray-600">{currentBalance} credits</span>
+                    <span className="text-lg font-semibold text-gray-600">{currentBalance} enhancement{currentBalance !== 1 ? 's' : ''}</span>
                   </div>
                   <div className="border-t border-gray-300 pt-3 flex items-center justify-between">
                     <span className="text-sm font-semibold text-amber-700">Shortfall</span>
-                    <span className="text-xl font-bold text-amber-600">{shortfall} credits</span>
+                    <span className="text-xl font-bold text-amber-600">{shortfall} enhancement{shortfall !== 1 ? 's' : ''}</span>
                   </div>
                 </div>
               </div>
 
               {/* CTA Button */}
               <button
-                onClick={handlePurchaseCredits}
+                onClick={handlePurchaseEnhancements}
                 className="w-full px-6 py-4 bg-gradient-to-r from-primary to-primary/90 text-white font-semibold rounded-xl hover:from-primary/90 hover:to-primary/80 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 group"
               >
                 <Coins className="w-5 h-5" />
-                <span>Purchase Credits</span>
+                <span>Purchase Enhancements</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </button>
 
               <p className="text-xs text-center text-gray-500">
-                Credits never expire • Secure payment via Stripe
+                Enhancements never expire • Secure payment via Stripe
               </p>
             </div>
           ) : (
@@ -163,7 +163,7 @@ export function CreditDeductionModal({
                   <p className="text-sm text-gray-600">You have sufficient credits to proceed</p>
                 </div>
 
-                {/* Credit Breakdown Card */}
+                {/* Enhancement Breakdown Card */}
                 <div className="bg-gradient-to-br from-gray-50 to-white rounded-xl p-5 border border-gray-200 shadow-sm">
                   <div className="space-y-4">
                     <div className="flex items-center justify-between pb-3 border-b border-gray-200">
@@ -177,18 +177,18 @@ export function CreditDeductionModal({
                     </div>
                     
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-600">Credit Cost</span>
-                      <span className="text-lg font-bold text-primary">{credits} credits</span>
+                      <span className="text-sm text-gray-600">Enhancement Cost</span>
+                      <span className="text-lg font-bold text-primary">{enhancements} enhancement{enhancements !== 1 ? 's' : ''}</span>
                     </div>
                     
                     <div className="flex items-center justify-between pt-3 border-t border-gray-200">
                       <span className="text-sm text-gray-600">Current Balance</span>
-                      <span className="text-base font-semibold text-gray-900">{currentBalance} credits</span>
+                      <span className="text-base font-semibold text-gray-900">{currentBalance} enhancement{currentBalance !== 1 ? 's' : ''}</span>
                     </div>
                     
                     <div className="flex items-center justify-between pt-2">
                       <span className="text-sm font-medium text-gray-900">Remaining After</span>
-                      <span className="text-lg font-bold text-green-600">{newBalance} credits</span>
+                      <span className="text-lg font-bold text-green-600">{newBalance} enhancement{newBalance !== 1 ? 's' : ''}</span>
                     </div>
                   </div>
                 </div>

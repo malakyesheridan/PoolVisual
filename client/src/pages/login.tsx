@@ -16,12 +16,19 @@ import { FormField } from '@/components/common/FormField';
 import { Logo } from '@/components/brand/Logo';
 
 export default function Login() {
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
   const login = useAuthStore((state) => state.login);
   const { setCurrentOrg } = useOrgStore();
   
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Extract referral code from URL query parameter
+  const getReferralCode = () => {
+    if (typeof window === 'undefined') return undefined;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('ref') || undefined;
+  };
 
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
@@ -87,12 +94,16 @@ export default function Login() {
     setError(null);
 
     try {
+      // Get referral code from URL if present
+      const referralCode = getReferralCode();
+      
       // Register user (without industry - will be set during subscription)
       const response = await apiClient.register(
         data.email, 
         data.username, 
         data.password,
-        data.orgName || undefined
+        data.orgName || undefined,
+        referralCode
         // Don't pass industry - will be set during subscription
       );
       

@@ -52,6 +52,8 @@ import {
   InsertUserStageName,
   OpportunityTask,
   InsertOpportunityTask,
+  Referral,
+  InsertReferral,
   users,
   orgs,
   orgMembers,
@@ -79,6 +81,7 @@ import {
   pipelines,
   pipelineStages,
   userStageNames,
+  referrals,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -309,6 +312,16 @@ export interface IStorage {
   // Admin Actions
   createAdminAction(data: InsertAdminAction): Promise<AdminAction>;
   getAdminActions(options?: { limit?: number; offset?: number; adminUserId?: string; actionType?: string }): Promise<AdminAction[]>;
+  
+  // Trial System
+  getExpiredTrials(): Promise<User[]>;
+  
+  // Referral System
+  getUserByReferralCode(referralCode: string): Promise<User | null>;
+  createReferral(data: InsertReferral): Promise<Referral>;
+  getReferralByReferee(refereeUserId: string): Promise<Referral | null>;
+  getReferralsByReferrer(referrerUserId: string): Promise<Referral[]>;
+  updateReferral(id: string, updates: Partial<Referral>): Promise<Referral>;
 }
 
 export class PostgresStorage implements IStorage {
@@ -2648,6 +2661,96 @@ export class PostgresStorage implements IStorage {
       .where(eq(orgMembers.userId, userId))
       .limit(1);
     return result[0]?.org || null;
+  }
+
+  async getExpiredTrials(): Promise<User[]> {
+    try {
+      // Get all users with active trials
+      const activeTrials = await ensureDb()
+        .select()
+        .from(users)
+        .where(eq(users.isTrial, true));
+      
+      return activeTrials;
+    } catch (error: any) {
+      // If column doesn't exist yet, return empty array
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+        console.warn('[Storage] Trial columns may not exist yet');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  // Referral System
+  async getUserByReferralCode(referralCode: string): Promise<User | null> {
+    try {
+      const result = await ensureDb()
+        .select()
+        .from(users)
+        .where(eq(users.referralCode, referralCode))
+        .limit(1);
+      return result[0] || null;
+    } catch (error: any) {
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async createReferral(data: InsertReferral): Promise<Referral> {
+    const db = ensureDb();
+    const result = await db.insert(referrals).values({
+      ...data,
+      id: randomUUID(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }).returning();
+    return result[0];
+  }
+
+  async getReferralByReferee(refereeUserId: string): Promise<Referral | null> {
+    try {
+      const result = await ensureDb()
+        .select()
+        .from(referrals)
+        .where(eq(referrals.refereeUserId, refereeUserId))
+        .limit(1);
+      return result[0] || null;
+    } catch (error: any) {
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async getReferralsByReferrer(referrerUserId: string): Promise<Referral[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(referrals)
+        .where(eq(referrals.referrerUserId, referrerUserId))
+        .orderBy(desc(referrals.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async updateReferral(id: string, updates: Partial<Referral>): Promise<Referral> {
+    const db = ensureDb();
+    const result = await db.update(referrals)
+      .set({
+        ...updates,
+        updatedAt: new Date(),
+      })
+      .where(eq(referrals.id, id))
+      .returning();
+    return result[0];
   }
 }
 

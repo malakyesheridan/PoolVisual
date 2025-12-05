@@ -1,6 +1,6 @@
 /**
  * Upgrade Modal Component
- * Modal for upgrading plan or purchasing credit top-ups
+ * Modal for upgrading plan or purchasing enhancement top-ups
  */
 
 import React, { useState } from 'react';
@@ -17,15 +17,16 @@ interface UpgradeModalProps {
 
 interface TopUpPack {
   priceId: string;
-  credits: number;
+  enhancements: number;
   price: number;
   popular?: boolean;
+  name?: string;
 }
 
 const TOP_UP_PACKS: TopUpPack[] = [
-  { priceId: 'price_1SZRjEEdvdAX5C3kdERuir64', credits: 25, price: 25.00 },
-  { priceId: 'price_1SZRjYEdvdAX5C3kmNRNfHPi', credits: 100, price: 75.00, popular: true },
-  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', credits: 300, price: 199.00 },
+  { priceId: 'price_1SZRjEEdvdAX5C3kdERuir64', enhancements: 30, price: 25.00, name: 'Basic' },
+  { priceId: 'price_1SZRjYEdvdAX5C3kmNRNfHPi', enhancements: 100, price: 75.00, popular: true, name: 'Standard' },
+  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', enhancements: 250, price: 199.00, name: 'Pro Pack' },
 ];
 
 export function UpgradeModal({ 
@@ -93,7 +94,7 @@ export function UpgradeModal({
           {mode === 'subscription' ? (
             <div className="space-y-4">
               <p className="text-sm text-gray-600 mb-6">
-                Choose a plan that fits your needs. All plans include monthly credit allocations.
+                Choose a plan that fits your needs. All plans include monthly enhancement allocations.
               </p>
               {/* Plan comparison would go here */}
               <div className="text-center text-gray-500">
@@ -103,7 +104,7 @@ export function UpgradeModal({
           ) : (
             <div className="space-y-4">
               <p className="text-sm text-gray-600 mb-6">
-                Purchase credit packs to continue using AI enhancements. Credits never expire.
+                Purchase enhancement packs to continue using AI image processing. Enhancements never expire.
               </p>
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -126,18 +127,21 @@ export function UpgradeModal({
                     )}
                     
                     <div className="text-center">
+                      {pack.name && (
+                        <div className="text-sm font-semibold text-gray-700 mb-2">{pack.name}</div>
+                      )}
                       <div className="flex items-center justify-center gap-2 mb-2">
                         <Coins className="w-5 h-5 text-primary" />
                         <span className="text-2xl font-bold text-gray-900">
-                          {pack.credits}
+                          {pack.enhancements}
                         </span>
                       </div>
-                      <div className="text-sm text-gray-600 mb-4">credits</div>
+                      <div className="text-sm text-gray-600 mb-4">enhancements</div>
                       <div className="text-2xl font-semibold text-gray-900 mb-1">
                         ${pack.price.toFixed(2)}
                       </div>
                       <div className="text-xs text-gray-500 mb-4">
-                        ${(pack.price / pack.credits).toFixed(2)} per credit
+                        ${(pack.price / pack.enhancements).toFixed(2)} per enhancement
                       </div>
                       
                       {selectedTopUp === pack.priceId && (
@@ -163,7 +167,7 @@ export function UpgradeModal({
                   disabled={!selectedTopUp || loading}
                   className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                  {loading ? 'Processing...' : 'Purchase Credits'}
+                  {loading ? 'Processing...' : 'Purchase Enhancements'}
                 </button>
               </div>
             </div>

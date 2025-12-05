@@ -140,15 +140,22 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.use('/api/subscription', subscriptionRoutes);
   console.log('✅ Subscription routes registered');
   
-  // Register credit routes
-  const { creditRoutes } = await import('./routes/credits.js');
-  app.use('/api/credits', creditRoutes);
-  console.log('✅ Credit routes registered');
+  // Register enhancement routes
+  const { enhancementRoutes } = await import('./routes/enhancements.js');
+  app.use('/api/enhancements', enhancementRoutes);
+  // Keep /api/credits for backward compatibility (redirects to enhancements)
+  app.use('/api/credits', enhancementRoutes);
+  console.log('✅ Enhancement routes registered');
   
   // Register feature routes
   const { featureRoutes } = await import('./routes/features.js');
   app.use('/api/features', featureRoutes);
   console.log('✅ Feature routes registered');
+  
+  // Register referral routes
+  const { referralRoutes } = await import('./routes/referrals.js');
+  app.use('/api/referrals', referralRoutes);
+  console.log('✅ Referral routes registered');
   
   // Texture proxy (must be early to avoid auth middleware conflicts)
   registerTextureProxyRoutes(app);
@@ -266,6 +273,58 @@ export async function registerRoutes(app: Express): Promise<void> {
       
       const user = await storage.createUser(userToCreate);
 
+      // Record referral if referral code is provided
+      const referralCode = req.body.referralCode || req.query.ref;
+      if (referralCode) {
+        try {
+          const { referralService } = await import('./lib/referralService.js');
+          const referralResult = await referralService.recordReferral(referralCode, user.id);
+          if (referralResult.success) {
+            logger.info({
+              msg: 'Referral recorded for new user',
+              userId: user.id,
+              referralCode,
+              referralId: referralResult.referralId,
+            });
+          } else {
+            logger.warn({
+              msg: 'Failed to record referral during registration',
+              userId: user.id,
+              referralCode,
+              reason: referralResult.message,
+            });
+          }
+        } catch (referralError) {
+          // Log but don't fail registration if referral recording fails
+          logger.warn({
+            msg: 'Failed to record referral during registration',
+            err: referralError,
+            userId: user.id,
+            referralCode,
+          });
+        }
+      }
+
+      // Activate free trial for new user (if they haven't used it before)
+      try {
+        const { trialService } = await import('./lib/trialService.js');
+        const trialResult = await trialService.activateTrial(user.id);
+        if (trialResult.success) {
+          logger.info({
+            msg: 'Trial activated for new user',
+            userId: user.id,
+            email: normalizedEmail,
+          });
+        }
+      } catch (trialError) {
+        // Log but don't fail registration if trial activation fails
+        logger.warn({
+          msg: 'Failed to activate trial during registration',
+          err: trialError,
+          userId: user.id,
+        });
+      }
+
       // Auto-create organization for the user with industry support
       // Get industry from request body, default to 'pool' for backward compatibility
       const industry = req.body.industry || 'pool';
@@ -314,6 +373,53 @@ export async function registerRoutes(app: Express): Promise<void> {
         });
       }
       console.error('[auth/register] DB error:', error);
+      res.status(500).json({ ok: false, error: (error as Error).message });
+    }
+  });
+
+  // Activate free trial endpoint
+  app.post("/api/trial/activate", async (req: any, res: any) => {
+    try {
+      const user = req.session?.user;
+      if (!user?.id) {
+        return res.status(401).json({ ok: false, error: 'Authentication required' });
+      }
+
+      const { trialService } = await import('./lib/trialService.js');
+      const result = await trialService.activateTrial(user.id);
+
+      if (!result.success) {
+        return res.status(400).json({ 
+          ok: false, 
+          error: result.message || 'Failed to activate trial' 
+        });
+      }
+
+      // Refresh user data
+      const updatedUser = await storage.getUser(user.id);
+      if (updatedUser) {
+        req.session.user = {
+          ...user,
+          isTrial: updatedUser.isTrial,
+          trialStartDate: updatedUser.trialStartDate,
+          trialEnhancements: updatedUser.trialEnhancements,
+          hasUsedTrial: updatedUser.hasUsedTrial,
+        };
+        await req.session.save();
+      }
+
+      res.json({ 
+        ok: true, 
+        message: 'Trial activated successfully',
+        user: updatedUser ? {
+          isTrial: updatedUser.isTrial,
+          trialStartDate: updatedUser.trialStartDate,
+          trialEnhancements: updatedUser.trialEnhancements,
+          hasUsedTrial: updatedUser.hasUsedTrial,
+        } : null,
+      });
+    } catch (error) {
+      logger.error({ msg: 'Failed to activate trial', err: error });
       res.status(500).json({ ok: false, error: (error as Error).message });
     }
   });
@@ -435,6 +541,28 @@ export async function registerRoutes(app: Express): Promise<void> {
       OnboardingCompleteSchema.parse(req.body || {});
       
       await storage.completeUserOnboarding(req.user.id);
+      
+      // Complete referral and award rewards if user was referred
+      try {
+        const { referralService } = await import('./lib/referralService.js');
+        const referralResult = await referralService.completeReferral(req.user.id);
+        if (referralResult.success) {
+          logger.info({
+            msg: 'Referral completed after onboarding',
+            userId: req.user.id,
+            referrerRewarded: referralResult.referrerRewarded,
+            refereeRewarded: referralResult.refereeRewarded,
+          });
+        }
+      } catch (referralError) {
+        // Log but don't fail onboarding completion if referral completion fails
+        logger.warn({
+          msg: 'Failed to complete referral after onboarding',
+          err: referralError,
+          userId: req.user.id,
+        });
+      }
+      
       res.json({ ok: true });
     } catch (error: any) {
       console.error('[onboarding/complete] Error:', error);

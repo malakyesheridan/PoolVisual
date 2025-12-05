@@ -4,7 +4,7 @@ import type { Job } from '../services/aiEnhancement';
 
 export type SortOption = 'newest' | 'oldest' | 'status' | 'progress';
 export type StatusFilter = 'all' | 'completed' | 'processing' | 'failed';
-export type TypeFilter = 'all' | 'add_pool' | 'add_decoration' | 'blend_materials';
+export type TypeFilter = 'all' | 'image_enhancement' | 'add_decoration' | 'blend_materials' | 'clutter_removal' | 'before_after' | 'stage_room' | 'item_removal' | 'renovation' | 'day_to_dusk';
 export type DateFilter = 'all' | 'today' | 'week' | 'month';
 export type GroupBy = 'none' | 'date' | 'status' | 'type';
 
@@ -256,9 +256,15 @@ export const useEnhancementStore = create<State & Actions>((set, get) => ({
       processing: allJobs.filter(j => isProcessing(j.status)).length,
       failed: allJobs.filter(j => j.status === 'failed').length,
       byType: {
-        add_pool: allJobs.filter(j => j.mode === 'add_pool').length,
+        image_enhancement: allJobs.filter(j => j.mode === 'image_enhancement').length,
         add_decoration: allJobs.filter(j => j.mode === 'add_decoration').length,
         blend_materials: allJobs.filter(j => j.mode === 'blend_materials').length,
+        clutter_removal: allJobs.filter(j => j.mode === 'clutter_removal').length,
+        before_after: allJobs.filter(j => j.mode === 'before_after').length,
+        stage_room: allJobs.filter(j => j.mode === 'stage_room').length,
+        item_removal: allJobs.filter(j => j.mode === 'item_removal').length,
+        renovation: allJobs.filter(j => j.mode === 'renovation').length,
+        day_to_dusk: allJobs.filter(j => j.mode === 'day_to_dusk').length,
       },
     };
     
@@ -502,9 +508,15 @@ export const useEnhancementStore = create<State & Actions>((set, get) => ({
       } else if (groupBy === 'type') {
         const type = job.mode || 'unknown';
         groupId = type;
-        label = type === 'add_pool' ? 'Add Pool' :
+        label = type === 'image_enhancement' ? 'Image Enhancement' :
                 type === 'add_decoration' ? 'Add Decoration' :
-                type === 'blend_materials' ? 'Blend Materials' :
+                type === 'blend_materials' ? 'Blend Material' :
+                type === 'clutter_removal' ? 'Clutter & Debris Removal' :
+                type === 'before_after' ? 'Before & After (AI Rework)' :
+                type === 'stage_room' ? 'Virtual Staging' :
+                type === 'item_removal' ? 'Item Removal' :
+                type === 'renovation' ? 'Renovation' :
+                type === 'day_to_dusk' ? 'Day to Dusk' :
                 'Unknown Type';
       }
       
@@ -521,7 +533,8 @@ export const useEnhancementStore = create<State & Actions>((set, get) => ({
       // Status order
       'completed': 0, 'queued': 1, 'downloading': 2, 'preprocessing': 3, 'rendering': 4, 'postprocessing': 5, 'uploading': 6, 'failed': 7, 'canceled': 8,
       // Type order
-      'add_pool': 0, 'add_decoration': 1, 'blend_materials': 2, 'unknown': 3,
+      'image_enhancement': 0, 'add_decoration': 1, 'blend_materials': 2, 'clutter_removal': 3, 'before_after': 4,
+      'stage_room': 5, 'item_removal': 6, 'renovation': 7, 'day_to_dusk': 8, 'unknown': 9,
     };
     
     return Array.from(groups.entries())
@@ -540,9 +553,15 @@ export const useEnhancementStore = create<State & Actions>((set, get) => ({
                   isProcessing(groupId as Job['status']) ? 'Processing' : 
                   'Queued';
         } else if (groupBy === 'type') {
-          label = groupId === 'add_pool' ? 'Add Pool' : 
+          label = groupId === 'image_enhancement' ? 'Image Enhancement' : 
                   groupId === 'add_decoration' ? 'Add Decoration' : 
-                  groupId === 'blend_materials' ? 'Blend Materials' : 
+                  groupId === 'blend_materials' ? 'Blend Material' : 
+                  groupId === 'clutter_removal' ? 'Clutter & Debris Removal' : 
+                  groupId === 'before_after' ? 'Before & After (AI Rework)' : 
+                  groupId === 'stage_room' ? 'Virtual Staging' : 
+                  groupId === 'item_removal' ? 'Item Removal' : 
+                  groupId === 'renovation' ? 'Renovation' : 
+                  groupId === 'day_to_dusk' ? 'Day to Dusk' : 
                   'Unknown Type';
         } else {
           label = groupId;

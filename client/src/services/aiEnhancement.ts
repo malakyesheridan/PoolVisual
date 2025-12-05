@@ -22,7 +22,7 @@ export type Job = {
   updated_at?: string;
   created_at?: string;
   completed_at?: string;
-  mode?: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal'; // Enhancement type
+  mode?: 'add_decoration' | 'blend_materials' | 'clutter_removal' | 'before_after' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal' | 'renovation'; // Enhancement type
 };
 
 const BASE = '/api/ai/enhancement';

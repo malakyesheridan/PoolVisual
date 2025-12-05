@@ -39,6 +39,9 @@ import {
   SheetContent,
   SheetTrigger,
 } from '@/components/ui/sheet';
+import { TrialBanner } from '@/components/trial/TrialBanner';
+import { TrialEndedModal } from '@/components/trial/TrialEndedModal';
+import { apiClient } from '@/lib/api-client';
 
 // Notifications Bell Component
 function NotificationsBell() {
@@ -164,6 +167,65 @@ export function AppShell({ children }: PropsWithChildren) {
   const { jobs, quotes } = useIndustryTerm();
   const jobsRoute = useJobsRoute();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  
+  // Trial state
+  const [trialInfo, setTrialInfo] = React.useState<{
+    isTrial: boolean;
+    trialDaysRemaining: number;
+    trialEnhancements: number;
+  } | null>(null);
+  const [showTrialEndedModal, setShowTrialEndedModal] = React.useState(false);
+  
+  // Calculate trial info from user data
+  React.useEffect(() => {
+    if (!user) {
+      setTrialInfo(null);
+      setShowTrialEndedModal(false);
+      return;
+    }
+    
+    const isTrial = user.isTrial === true;
+    const trialEnhancements = user.trialEnhancements || 0;
+    
+    // Calculate remaining trial days
+    let trialDaysRemaining = 0;
+    if (isTrial && user.trialStartDate) {
+      const startDate = typeof user.trialStartDate === 'string' 
+        ? new Date(user.trialStartDate) 
+        : user.trialStartDate;
+      const now = new Date();
+      const diffTime = startDate.getTime() + (7 * 24 * 60 * 60 * 1000) - now.getTime(); // 7 days from start
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      trialDaysRemaining = Math.max(0, diffDays);
+    }
+    
+    setTrialInfo({
+      isTrial,
+      trialDaysRemaining,
+      trialEnhancements,
+    });
+    
+    // Show trial ended modal if trial expired and user has no active plan
+    // Only show once per session (user can dismiss it)
+    if (!isTrial && user.hasUsedTrial && !user.subscriptionPlanId) {
+      // Check if trial actually expired (not just not started)
+      if (user.trialStartDate) {
+        const startDate = typeof user.trialStartDate === 'string' 
+          ? new Date(user.trialStartDate) 
+          : user.trialStartDate;
+        const now = new Date();
+        const trialEnd = new Date(startDate);
+        trialEnd.setDate(trialEnd.getDate() + 7); // 7 days from start
+        
+        if (now > trialEnd) {
+          // Trial has expired
+          setShowTrialEndedModal(true);
+        }
+      }
+    } else {
+      setShowTrialEndedModal(false);
+    }
+  }, [user]);
 
   const navItems = [
     { to: '/dashboard', label: 'Dashboard', icon: Home },
@@ -313,7 +375,7 @@ export function AppShell({ children }: PropsWithChildren) {
                     <DropdownMenuItem asChild>
                       <Link href="/billing" className="flex items-center gap-2">
                         <CreditCard className="h-4 w-4" />
-                        Billing & Credits
+                        Billing & Enhancements
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -341,6 +403,21 @@ export function AppShell({ children }: PropsWithChildren) {
           </div>
         </header>
       )}
+
+      {/* Trial Banner */}
+      {trialInfo && trialInfo.isTrial && (
+        <TrialBanner
+          isTrial={trialInfo.isTrial}
+          trialDaysRemaining={trialInfo.trialDaysRemaining}
+          trialEnhancements={trialInfo.trialEnhancements}
+        />
+      )}
+      
+      {/* Trial Ended Modal */}
+      <TrialEndedModal
+        open={showTrialEndedModal}
+        onOpenChange={setShowTrialEndedModal}
+      />
 
       {/* Main content ALWAYS renders - this prevents blank content issue */}
       <main className="app-main">

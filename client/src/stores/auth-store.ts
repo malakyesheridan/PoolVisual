@@ -11,8 +11,13 @@ interface User {
   adminPermissions?: string[];
   // User-centric fields (from migration 028)
   industryType?: string | null;
-  creditsBalance?: number | string | null;
-  trialCreditsGranted?: boolean;
+  enhancementsBalance?: number | string | null;
+  trialEnhancementsGranted?: boolean;
+  // Free trial system fields
+  isTrial?: boolean;
+  trialStartDate?: string | Date | null;
+  trialEnhancements?: number;
+  hasUsedTrial?: boolean;
   subscriptionStatus?: string;
   subscriptionPlanId?: string | null;
   // Settings fields (user-level)
@@ -28,7 +33,9 @@ interface AuthState {
   login: (user: User) => void;
   logout: () => void;
   setUser: (user: User) => void;
-  updateCredits: (delta: number) => void; // Optimistically update credits
+  updateEnhancements: (delta: number) => void; // Optimistically update enhancements
+  // Legacy method for backward compatibility
+  updateCredits: (delta: number) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -47,16 +54,32 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => {
         set({ user, isAuthenticated: !!user });
       },
-      updateCredits: (delta) => {
+      updateEnhancements: (delta) => {
         set((state) => {
           if (!state.user) return state;
-          const currentBalance = Number(state.user.creditsBalance || 0);
+          const currentBalance = Number(state.user.enhancementsBalance || 0);
           const newBalance = Math.max(0, currentBalance + delta); // Prevent negative
           return {
             ...state,
             user: {
               ...state.user,
-              creditsBalance: newBalance,
+              enhancementsBalance: newBalance,
+            },
+          };
+        });
+      },
+      // Legacy method for backward compatibility
+      updateCredits: (delta) => {
+        set((state) => {
+          if (!state.user) return state;
+          const currentBalance = Number(state.user.enhancementsBalance || state.user.creditsBalance || 0);
+          const newBalance = Math.max(0, currentBalance + delta); // Prevent negative
+          return {
+            ...state,
+            user: {
+              ...state.user,
+              enhancementsBalance: newBalance,
+              creditsBalance: newBalance, // Keep for backward compatibility
             },
           };
         });

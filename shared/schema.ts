@@ -42,9 +42,14 @@ export const users = pgTable("users", {
   // Personalization fields (from migration 028)
   // Made required in migration 038 - default 'pool' for backward compatibility
   industryType: text("industry_type").notNull().default("pool"),
-  creditsBalance: numeric("credits_balance", { precision: 20, scale: 0 }).default("0"),
-  trialCreditsGranted: boolean("trial_credits_granted").default(false),
+  enhancementsBalance: numeric("enhancements_balance", { precision: 20, scale: 0 }).default("0"),
+  trialEnhancementsGranted: boolean("trial_enhancements_granted").default(false),
   trialStartedAt: timestamp("trial_started_at"),
+  // Free trial system fields
+  isTrial: boolean("is_trial").default(false),
+  trialStartDate: timestamp("trial_start_date"),
+  trialEnhancements: integer("trial_enhancements").default(0),
+  hasUsedTrial: boolean("has_used_trial").default(false),
   // Subscription fields (user-level)
   subscriptionPlanId: uuid("subscription_plan_id").references(() => subscriptionPlans.id),
   subscriptionStatus: text("subscription_status").default("trial"),
@@ -60,6 +65,10 @@ export const users = pgTable("users", {
   depositDefaultPct: numeric("deposit_default_pct", { precision: 5, scale: 4 }).default("0.30"),
   validityDays: integer("validity_days").default(30),
   pdfTerms: text("pdf_terms"),
+  // Referral system fields
+  referralCode: text("referral_code").unique(),
+  referralRewardsEarned: integer("referral_rewards_earned").default(0),
+  referralRewardsLimit: integer("referral_rewards_limit").default(200),
 });
 
 // Organizations
@@ -138,6 +147,20 @@ export const userOnboarding = pgTable("user_onboarding", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Referrals table
+export const referrals = pgTable("referrals", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  referrerUserId: uuid("referrer_user_id").references(() => users.id).notNull(),
+  refereeUserId: uuid("referee_user_id").references(() => users.id).notNull(),
+  status: text("status").default("pending").notNull(), // 'pending', 'completed', 'rewarded'
+  referrerRewarded: boolean("referrer_rewarded").default(false),
+  refereeRewarded: boolean("referee_rewarded").default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueReferee: unique().on(table.refereeUserId), // Prevent duplicate referrals for same referee
+}));
 
 // Subscription Plans
 export const subscriptionPlans = pgTable("subscription_plans", {
@@ -920,6 +943,8 @@ export type TradeCategoryMapping = typeof tradeCategoryMapping.$inferSelect;
 export type InsertTradeCategoryMapping = typeof tradeCategoryMapping.$inferInsert;
 export type UserOnboarding = typeof userOnboarding.$inferSelect;
 export type InsertUserOnboarding = typeof userOnboarding.$inferInsert;
+export type Referral = typeof referrals.$inferSelect;
+export type InsertReferral = typeof referrals.$inferInsert;
 export type SubscriptionPlan = typeof subscriptionPlans.$inferSelect;
 export type InsertSubscriptionPlan = typeof subscriptionPlans.$inferInsert;
 export type SubscriptionHistory = typeof subscriptionHistory.$inferSelect;

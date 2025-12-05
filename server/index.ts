@@ -483,6 +483,20 @@ async function initializeServer() {
         console.error('[Outbox] Error stack:', e instanceof Error ? e.stack : 'No stack trace');
       });
     }, 5000);
+    
+    // Start trial expiration job (runs daily)
+    console.log('[Server] Starting trial expiration job (runs every 24 hours)');
+    const { runTrialExpirationJob } = await import('./jobs/trialExpirationJob.js');
+    // Run immediately on startup
+    runTrialExpirationJob().catch((e) => {
+      console.error('[Trial Expiration] Startup error:', e);
+    });
+    // Then run every 24 hours (86400000 ms)
+    setInterval(() => {
+      runTrialExpirationJob().catch((e) => {
+        console.error('[Trial Expiration] Loop error:', e);
+      });
+    }, 86400000);
   } else {
     console.log('[Server] Outbox processor not started (N8N_WEBHOOK_URL not set and SAFE_MODE enabled)');
   }

@@ -6,7 +6,7 @@
 import { storage } from '../storage.js';
 import { logger } from './logger.js';
 import Stripe from 'stripe';
-import { creditService } from './creditService.js';
+import { enhancementService } from './enhancementService.js';
 
 export interface SubscriptionPlan {
   id: string;
@@ -122,8 +122,8 @@ export class SubscriptionService {
       const previousStatus = user.subscriptionStatus || 'trial';
       const previousTier = user.subscriptionTier || 't1';
 
-      // Get monthly credits for this plan
-      const monthlyCredits = this.getMonthlyCreditsForPlan(planKey);
+      // Get monthly enhancements for this plan
+      const monthlyEnhancements = this.getMonthlyEnhancementsForPlan(planKey);
 
       // Update user
       await storage.updateUser(userId, {
@@ -137,9 +137,9 @@ export class SubscriptionService {
         subscriptionExpiresAt: this.calculateExpirationDate('yearly'), // Default to yearly
       });
 
-      // Allocate initial monthly credits
-      if (monthlyCredits > 0) {
-        await creditService.resetMonthlyCredits(userId, monthlyCredits);
+      // Allocate initial monthly enhancements
+      if (monthlyEnhancements > 0) {
+        await enhancementService.resetMonthlyEnhancements(userId, monthlyEnhancements);
       }
 
       // Record history
@@ -152,7 +152,7 @@ export class SubscriptionService {
         fromTier: previousTier,
         toTier: plan.tier,
         stripeSubscriptionId: stripeSubscriptionId || undefined,
-        metadata: { planKey, monthlyCredits },
+        metadata: { planKey, monthlyEnhancements },
       });
 
       logger.info({
@@ -161,7 +161,7 @@ export class SubscriptionService {
         planKey,
         tier: plan.tier,
         industry: plan.industry,
-        monthlyCredits,
+        monthlyEnhancements,
       });
     } catch (error) {
       logger.error({
@@ -175,15 +175,15 @@ export class SubscriptionService {
   }
 
   /**
-   * Get monthly credits for a plan
+   * Get monthly enhancements for a plan
    */
-  private getMonthlyCreditsForPlan(planKey: string): number {
-    const planCredits: Record<string, number> = {
-      'easyflow_solo': 250,
-      'easyflow_pro': 500,
-      'easyflow_business': 2500,
+  private getMonthlyEnhancementsForPlan(planKey: string): number {
+    const planEnhancements: Record<string, number> = {
+      'easyflow_solo': 50,
+      'easyflow_pro': 150,
+      'easyflow_business': 500,
     };
-    return planCredits[planKey] || 0;
+    return planEnhancements[planKey] || 0;
   }
 
   /**
@@ -289,13 +289,13 @@ export class SubscriptionService {
       throw new Error('Plan not found');
     }
 
-    // Use creditService to get plan details from price ID
+    // Use enhancementService to get plan details from price ID
     const priceId = billingPeriod === 'monthly'
       ? plan.stripePriceIdMonthly
       : plan.stripePriceIdYearly;
 
     if (priceId) {
-      const planDetails = creditService.getPlanFromPriceId(priceId);
+      const planDetails = enhancementService.getPlanFromPriceId(priceId);
       if (planDetails) {
         // Update planKey if it differs
         if (planDetails.planKey !== planKey) {
@@ -535,10 +535,10 @@ export class SubscriptionService {
       : null;
 
     if (plan) {
-      // Reset monthly credits on payment succeeded
-      const monthlyCredits = this.getMonthlyCreditsForPlan(plan.planKey);
-      if (monthlyCredits > 0) {
-        await creditService.resetMonthlyCredits(user.id, monthlyCredits);
+      // Reset monthly enhancements on payment succeeded
+      const monthlyEnhancements = this.getMonthlyEnhancementsForPlan(plan.planKey);
+      if (monthlyEnhancements > 0) {
+        await enhancementService.resetMonthlyEnhancements(user.id, monthlyEnhancements);
       }
     }
 

@@ -83,10 +83,10 @@ class ApiClient {
     });
   }
 
-  async register(email: string, username: string, password: string, orgName?: string) {
+  async register(email: string, username: string, password: string, orgName?: string, referralCode?: string) {
     return this.request<{ ok: boolean; user: any; org?: any }>('/auth/register', {
       method: 'POST',
-      body: JSON.stringify({ email, username, password, orgName }),
+      body: JSON.stringify({ email, username, password, orgName, referralCode }),
     });
   }
 
@@ -651,25 +651,65 @@ class ApiClient {
     }>('/health');
   }
 
-  // Credit methods
-  async getCreditBalance() {
-    return this.request<{ ok: boolean; balance: { total: number; subscriptionCredits: number; topUpCredits: number; usedThisMonth: number } }>('/credits/balance', {
+  // Enhancement methods
+  async getEnhancementBalance() {
+    return this.request<{ ok: boolean; balance: { total: number; subscriptionEnhancements: number; topUpEnhancements: number; usedThisMonth: number; trialEnhancements?: number; isTrial?: boolean; trialDaysRemaining?: number } }>('/enhancements/balance', {
       method: 'GET',
     });
   }
 
   async createTopUpCheckout(priceId: string) {
-    return this.request<{ ok: boolean; url: string; sessionId: string; credits: number }>('/credits/topup/checkout', {
+    return this.request<{ ok: boolean; url: string; sessionId: string; enhancements: number }>('/enhancements/topup/checkout', {
       method: 'POST',
       body: JSON.stringify({ priceId }),
     });
   }
 
-  async calculateCredits(enhancementType: string, hasMask: boolean) {
+  async calculateEnhancements(enhancementType: string, hasMask: boolean) {
     const params = new URLSearchParams();
     params.append('enhancementType', enhancementType);
     params.append('hasMask', hasMask.toString());
-    return this.request<{ ok: boolean; enhancementType: string; hasMask: boolean; credits: number }>(`/credits/calculate?${params.toString()}`, {
+    return this.request<{ ok: boolean; enhancementType: string; hasMask: boolean; enhancements: number }>(`/enhancements/calculate?${params.toString()}`, {
+      method: 'GET',
+    });
+  }
+
+  // Legacy credit methods (for backward compatibility - redirect to enhancements)
+  async getCreditBalance() {
+    return this.getEnhancementBalance();
+  }
+
+  async calculateCredits(enhancementType: string, hasMask: boolean) {
+    return this.calculateEnhancements(enhancementType, hasMask);
+  }
+
+  // Trial methods
+  async activateTrial() {
+    return this.request<{ ok: boolean; message: string; user: { isTrial: boolean; trialStartDate: string | Date | null; trialEnhancements: number; hasUsedTrial: boolean } | null }>('/trial/activate', {
+      method: 'POST',
+    });
+  }
+
+  // Referral methods
+  async getReferralInfo() {
+    return this.request<{
+      ok: boolean;
+      stats: {
+        referralCode: string;
+        referralLink: string;
+        totalReferrals: number;
+        completedReferrals: number;
+        rewardsEarned: number;
+        rewardsLimit: number;
+        referrals: Array<{
+          id: string;
+          refereeUserId: string;
+          status: string;
+          createdAt: string;
+          referrerRewarded: boolean;
+        }>;
+      };
+    }>('/referrals/info', {
       method: 'GET',
     });
   }

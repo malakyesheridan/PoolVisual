@@ -1,21 +1,26 @@
 /**
- * Billing & Credits Page
- * Manage subscription and purchase credits
+ * Billing & Enhancements Page
+ * Manage subscription and purchase enhancements
  */
 
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'wouter';
-import { Coins, Sparkles, ArrowRight } from 'lucide-react';
+import { Coins, Sparkles, ArrowRight, Clock, Gift, AlertCircle } from 'lucide-react';
 import { Badge } from '../components/ui/badge';
 import { apiClient } from '../lib/api-client';
 import { useAuthStore } from '../stores/auth-store';
 import { toast } from '../lib/toast';
+import { Alert, AlertDescription } from '../components/ui/alert';
+import { Button } from '../components/ui/button';
 
-interface CreditBalance {
+interface EnhancementBalance {
   total: number;
-  subscriptionCredits: number;
-  topUpCredits: number;
+  subscriptionEnhancements: number;
+  topUpEnhancements: number;
   usedThisMonth: number;
+  trialEnhancements?: number;
+  isTrial?: boolean;
+  trialDaysRemaining?: number;
 }
 
 interface SubscriptionStatus {
@@ -26,26 +31,26 @@ interface SubscriptionStatus {
   } | null;
   status: string;
   tier: string;
-  creditBalance: number;
+  enhancementBalance: number;
 }
 
 interface TopUpPack {
   priceId: string;
-  credits: number;
+  enhancements: number;
   price: number;
   popular?: boolean;
 }
 
 const TOP_UP_PACKS: TopUpPack[] = [
-  { priceId: 'price_1SZRjEEdvdAX5C3kdERuir64', credits: 25, price: 25.00 },
-  { priceId: 'price_1SZRjYEdvdAX5C3kmNRNfHPi', credits: 100, price: 75.00, popular: true },
-  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', credits: 300, price: 199.00 },
+  { priceId: 'price_1SZRjEEdvdAX5C3kdERuir64', enhancements: 30, price: 25.00, name: 'Basic' },
+  { priceId: 'price_1SZRjYEdvdAX5C3kmNRNfHPi', enhancements: 100, price: 75.00, popular: true, name: 'Standard' },
+  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', enhancements: 250, price: 199.00, name: 'Pro Pack' },
 ];
 
 export default function Billing() {
   const [, setLocation] = useLocation();
   const { user } = useAuthStore();
-  const [creditBalance, setCreditBalance] = useState<CreditBalance | null>(null);
+  const [enhancementBalance, setEnhancementBalance] = useState<EnhancementBalance | null>(null);
   const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -58,12 +63,12 @@ export default function Billing() {
     try {
       setLoading(true);
       const [balanceRes, subscriptionRes] = await Promise.all([
-        apiClient.getCreditBalance(),
+        apiClient.getEnhancementBalance(),
         apiClient.getSubscriptionStatus().catch(() => ({ ok: false, subscription: null })),
       ]);
 
       if (balanceRes.ok) {
-        setCreditBalance(balanceRes.balance);
+        setEnhancementBalance(balanceRes.balance);
       }
 
       if (subscriptionRes.ok && subscriptionRes.subscription) {
@@ -107,19 +112,74 @@ export default function Billing() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Billing & Credits</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Billing & Enhancements</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Manage your subscription and purchase credits for AI enhancements
+            Manage your subscription and purchase enhancements for AI image processing
           </p>
         </div>
 
-        {/* Credit Balance & Subscription Info Cards */}
+        {/* Trial Status Banner */}
+        {enhancementBalance?.isTrial && enhancementBalance.trialDaysRemaining !== undefined && (
+          <Alert className="mb-8 border-primary/20 bg-gradient-to-r from-primary/5 to-primary/10">
+            <Gift className="h-4 w-4 text-primary" />
+            <AlertDescription className="flex items-center justify-between flex-wrap gap-4">
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-gray-900">
+                  You're currently on a free trial
+                </span>
+                <Badge variant="outline" className="border-primary/30 text-primary">
+                  <Clock className="w-3 h-3 mr-1" />
+                  {enhancementBalance.trialDaysRemaining} {enhancementBalance.trialDaysRemaining === 1 ? 'day' : 'days'} left
+                </Badge>
+                <Badge variant="outline" className="border-primary/30 text-primary">
+                  <Sparkles className="w-3 h-3 mr-1" />
+                  {enhancementBalance.trialEnhancements || 0} enhancements remaining
+                </Badge>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setLocation('/subscribe')}
+                className="bg-primary hover:bg-primary/90"
+              >
+                Upgrade Now
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Post-Trial Upgrade Prompt */}
+        {user && !user.isTrial && !user.subscriptionPlanId && user.hasUsedTrial && (
+          <Alert className="mb-8 border-amber-200 bg-amber-50">
+            <AlertCircle className="h-4 w-4 text-amber-600" />
+            <AlertDescription className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <span className="font-semibold text-amber-900 block mb-1">
+                  Your free trial has ended
+                </span>
+                <span className="text-sm text-amber-700">
+                  Upgrade to a paid plan to continue using EasyFlow Studio
+                </span>
+              </div>
+              <Button
+                size="sm"
+                onClick={() => setLocation('/subscribe')}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                View Plans
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Enhancement Balance & Subscription Info Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Credit Balance Card */}
-          {creditBalance && (
+          {/* Enhancement Balance Card */}
+          {enhancementBalance && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">Remaining Credits</h2>
+                <h2 className="text-lg font-semibold text-gray-900">Remaining Enhancements</h2>
                 <div className="flex items-center gap-2 px-3 py-1 bg-primary/10 rounded-lg">
                   <Coins className="w-4 h-4 text-primary" />
                   <span className="text-xs font-medium text-primary">Active</span>
@@ -127,19 +187,19 @@ export default function Billing() {
               </div>
               <div className="flex items-baseline gap-2 mb-2">
                 <span className="text-5xl font-bold text-gray-900">
-                  {creditBalance.total.toLocaleString()}
+                  {enhancementBalance.total.toLocaleString()}
                 </span>
-                <span className="text-xl text-gray-500">credits</span>
+                <span className="text-xl text-gray-500">enhancements</span>
               </div>
-              {creditBalance.subscriptionCredits > 0 && (
+              {enhancementBalance.subscriptionEnhancements > 0 && (
                 <div className="text-sm text-gray-600 mt-3 pt-3 border-t border-gray-100">
                   <div className="flex justify-between">
                     <span>Monthly allocation:</span>
-                    <span className="font-medium">{creditBalance.subscriptionCredits}</span>
+                    <span className="font-medium">{enhancementBalance.subscriptionEnhancements}</span>
                   </div>
                   <div className="flex justify-between mt-1">
-                    <span>Top-up credits:</span>
-                    <span className="font-medium">{creditBalance.topUpCredits}</span>
+                    <span>Top-up enhancements:</span>
+                    <span className="font-medium">{enhancementBalance.topUpEnhancements}</span>
                   </div>
                 </div>
               )}
@@ -168,9 +228,9 @@ export default function Billing() {
                   </div>
                   <div className="text-sm text-gray-600 space-y-1">
                     <div className="flex justify-between">
-                      <span>Monthly credits:</span>
+                      <span>Monthly enhancements:</span>
                       <span className="font-medium">
-                        {subscription.creditBalance > 0 ? subscription.creditBalance : 'N/A'}
+                        {subscription.enhancementBalance > 0 ? subscription.enhancementBalance : 'N/A'}
                       </span>
                     </div>
                     {subscription.plan.tier && (
@@ -206,12 +266,12 @@ export default function Billing() {
           )}
         </div>
 
-        {/* Purchase Credits Section */}
+        {/* Purchase Enhancements Section */}
         <div className="mb-8">
           <div className="mb-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Purchase Credit Packs</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">Purchase Enhancement Packs</h2>
             <p className="text-sm text-gray-600">
-              Buy credits to use for AI enhancements. Credits never expire and can be used anytime.
+              Buy enhancements to use for AI image processing. Enhancements never expire and can be used anytime.
             </p>
           </div>
 
@@ -234,16 +294,19 @@ export default function Billing() {
                 )}
 
                 <div className="text-center">
+                  {pack.name && (
+                    <div className="text-sm font-semibold text-gray-700 mb-2">{pack.name}</div>
+                  )}
                   <div className="flex items-center justify-center gap-2 mb-3">
                     <Coins className="w-6 h-6 text-primary" />
-                    <span className="text-3xl font-bold text-gray-900">{pack.credits}</span>
+                    <span className="text-3xl font-bold text-gray-900">{pack.enhancements}</span>
                   </div>
-                  <div className="text-sm text-gray-600 mb-4">credits</div>
+                  <div className="text-sm text-gray-600 mb-4">enhancements</div>
                   <div className="text-3xl font-bold text-gray-900 mb-1">
                     ${pack.price.toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500 mb-6">
-                    ${(pack.price / pack.credits).toFixed(2)} per credit
+                    ${(pack.price / pack.enhancements).toFixed(2)} per enhancement
                   </div>
 
                   <button

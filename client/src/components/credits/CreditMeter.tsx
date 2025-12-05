@@ -1,21 +1,21 @@
 /**
- * Credit Meter Component
- * Displays user's credit balance with breakdown
+ * Enhancement Meter Component
+ * Displays user's enhancement balance with breakdown
  */
 
 import React from 'react';
 import { Coins, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../../lib/api-client';
 
-interface CreditBalance {
+interface EnhancementBalance {
   total: number;
-  subscriptionCredits: number;
-  topUpCredits: number;
+  subscriptionEnhancements: number;
+  topUpEnhancements: number;
   usedThisMonth: number;
 }
 
 interface CreditMeterProps {
-  balance?: CreditBalance;
+  balance?: EnhancementBalance;
   onUpgrade?: () => void;
   showLowCreditWarning?: boolean;
   lowCreditThreshold?: number;
@@ -27,7 +27,7 @@ export function CreditMeter({
   showLowCreditWarning = true,
   lowCreditThreshold = 10
 }: CreditMeterProps) {
-  const [currentBalance, setCurrentBalance] = React.useState<CreditBalance | null>(balance || null);
+  const [currentBalance, setCurrentBalance] = React.useState<EnhancementBalance | null>(balance || null);
   const [loading, setLoading] = React.useState(!balance);
 
   React.useEffect(() => {
@@ -39,10 +39,10 @@ export function CreditMeter({
   const loadBalance = async () => {
     try {
       setLoading(true);
-      const response = await apiClient.getCreditBalance();
+      const response = await apiClient.getEnhancementBalance();
       setCurrentBalance(response.balance);
     } catch (error) {
-      console.error('Failed to load credit balance:', error);
+      console.error('Failed to load enhancement balance:', error);
     } finally {
       setLoading(false);
     }
@@ -75,11 +75,11 @@ export function CreditMeter({
             <span className="text-sm font-semibold text-gray-900">
               {currentBalance.total.toLocaleString()}
             </span>
-            <span className="text-xs text-gray-500">credits</span>
+            <span className="text-xs text-gray-500">enhancements</span>
           </div>
-          {currentBalance.subscriptionCredits > 0 && (
+          {currentBalance.subscriptionEnhancements > 0 && (
             <div className="text-xs text-gray-500">
-              {currentBalance.subscriptionCredits} monthly + {currentBalance.topUpCredits} top-up
+              {currentBalance.subscriptionEnhancements} monthly + {currentBalance.topUpEnhancements} top-up
             </div>
           )}
         </div>
@@ -89,7 +89,7 @@ export function CreditMeter({
         <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
           <AlertTriangle className="w-4 h-4 text-amber-600" />
           <div className="flex flex-col">
-            <span className="text-xs font-medium text-amber-900">Low Credits</span>
+            <span className="text-xs font-medium text-amber-900">Low Enhancements</span>
             <button
               onClick={onUpgrade}
               className="text-xs text-amber-700 hover:text-amber-900 underline"

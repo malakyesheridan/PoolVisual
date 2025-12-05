@@ -21,7 +21,9 @@ import {
   Download,
   FileText,
   Palette,
-  Wand2
+  Wand2,
+  Gift,
+  Clock
 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -37,7 +39,7 @@ interface Plan {
   monthlyPrice: number;
   yearlyPrice: number; // Monthly equivalent when billed yearly
   yearlyTotal: number; // Total yearly price
-  monthlyCredits: number;
+  monthlyEnhancements: number;
   features: Array<{ text: string; icon: any }>;
   stripePriceIdMonthly: string;
   stripePriceIdYearly: string;
@@ -50,12 +52,12 @@ const PLANS: Plan[] = [
     monthlyPrice: 149,
     yearlyPrice: 124.17, // $1,490 / 12 months
     yearlyTotal: 1490,
-    monthlyCredits: 250,
+    monthlyEnhancements: 50,
     features: [
-      { text: '250 credits/month', icon: Sparkles },
+      { text: '50 enhancements/month', icon: Sparkles },
       { text: 'AI Image Enhancements', icon: Wand2 },
       { text: 'Custom Prompts', icon: FileText },
-      { text: 'Credit Top-Ups Available', icon: CreditCard },
+      { text: 'Enhancement Top-Ups Available', icon: CreditCard },
       { text: 'Standard Export Formats', icon: Download },
       { text: 'Email Support', icon: Headphones },
     ],
@@ -68,9 +70,9 @@ const PLANS: Plan[] = [
     monthlyPrice: 299,
     yearlyPrice: 249.92, // $2,999 / 12 months
     yearlyTotal: 2999,
-    monthlyCredits: 500,
+    monthlyEnhancements: 150,
     features: [
-      { text: '500 credits/month', icon: Sparkles },
+      { text: '150 enhancements/month', icon: Sparkles },
       { text: 'All Solo features included', icon: Check },
       { text: 'Advanced Brush Tool', icon: Brush },
       { text: 'Masked Prompts & Selections', icon: Layers },
@@ -87,9 +89,9 @@ const PLANS: Plan[] = [
     monthlyPrice: 995,
     yearlyPrice: 832.92, // $9,995 / 12 months
     yearlyTotal: 9995,
-    monthlyCredits: 2500,
+    monthlyEnhancements: 500,
     features: [
-      { text: '2500 credits/month', icon: Sparkles },
+      { text: '500 enhancements/month', icon: Sparkles },
       { text: 'All Pro features included', icon: Check },
       { text: 'White-Label Export', icon: Shield },
       { text: 'Priority Processing Queue', icon: Zap },
@@ -101,10 +103,10 @@ const PLANS: Plan[] = [
 ];
 
 const FEATURE_COMPARISON = [
-  { feature: 'Monthly Credits', solo: '250', pro: '500', business: '2500' },
+  { feature: 'Monthly Enhancements', solo: '50', pro: '150', business: '500' },
   { feature: 'AI Image Enhancements', solo: true, pro: true, business: true },
   { feature: 'Custom Prompts', solo: true, pro: true, business: true },
-  { feature: 'Credit Top-Ups', solo: true, pro: true, business: true },
+  { feature: 'Enhancement Top-Ups', solo: true, pro: true, business: true },
   { feature: 'Standard Export Formats', solo: true, pro: true, business: true },
   { feature: 'Advanced Brush Tool', solo: false, pro: true, business: true },
   { feature: 'Masked Prompts & Selections', solo: false, pro: true, business: true },
@@ -115,7 +117,6 @@ const FEATURE_COMPARISON = [
   { feature: 'Email Support', solo: true, pro: true, business: true },
   { feature: 'Priority Support', solo: false, pro: true, business: true },
   { feature: 'Dedicated Support', solo: false, pro: false, business: true },
-  { feature: '14-Day Free Trial', solo: true, pro: true, business: true },
   { feature: 'Cancel Anytime', solo: true, pro: true, business: true },
 ];
 
@@ -127,6 +128,7 @@ export default function Subscribe() {
   const [selectedPlan, setSelectedPlan] = useState<'solo' | 'pro' | 'business' | null>(null);
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [processing, setProcessing] = useState(false);
+  const [activatingTrial, setActivatingTrial] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentSubscription, setCurrentSubscription] = useState<{ planKey: string; status: string } | null>(null);
 
@@ -147,6 +149,41 @@ export default function Subscribe() {
       }
     } catch (err) {
       console.log('No existing subscription or error checking:', err);
+    }
+  };
+
+  const handleStartFreeTrial = async () => {
+    try {
+      setActivatingTrial(true);
+      setError(null);
+      
+      const response = await apiClient.activateTrial();
+      
+      if (response.ok) {
+        // Update user in auth store
+        const { setUser } = useAuthStore.getState();
+        if (response.user && user) {
+          setUser({
+            ...user,
+            isTrial: response.user.isTrial,
+            trialStartDate: response.user.trialStartDate,
+            trialEnhancements: response.user.trialEnhancements,
+            hasUsedTrial: response.user.hasUsedTrial,
+          });
+        }
+        
+        toast.success('Free trial activated! You have 30 enhancements to get started.');
+        
+        // Redirect to dashboard
+        navigate('/dashboard');
+      } else {
+        setError(response.error || 'Failed to activate trial');
+      }
+    } catch (err: any) {
+      console.error('Trial activation error:', err);
+      setError(err.message || 'Failed to activate trial. Please try again.');
+    } finally {
+      setActivatingTrial(false);
     }
   };
 
@@ -218,9 +255,120 @@ export default function Subscribe() {
             Choose Your Plan
           </h1>
           <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-            Select the perfect plan for your business. All plans include a 14-day free trial.
+            Start with a free trial or choose a plan that fits your needs.
           </p>
         </div>
+
+        {/* Free Trial Card - Only show if user hasn't used trial */}
+        {user && !user.hasUsedTrial && (
+          <div className="mb-12 max-w-4xl mx-auto">
+            <Card className="relative border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-white to-primary/5 shadow-xl overflow-hidden">
+              {/* Decorative badge */}
+              <div className="absolute top-0 right-0 bg-primary text-white px-4 py-1 text-xs font-semibold rounded-bl-lg">
+                No Credit Card Required
+              </div>
+              
+              <CardHeader className="pb-6 pt-8">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Gift className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-3xl font-bold text-slate-900">
+                      7-Day Free Trial
+                    </CardTitle>
+                    <CardDescription className="text-base mt-1">
+                      Try EasyFlow Studio with full feature access
+                    </CardDescription>
+                  </div>
+                </div>
+                
+                <div className="flex items-baseline gap-2 mb-4">
+                  <span className="text-5xl font-bold text-primary">
+                    Free
+                  </span>
+                </div>
+                
+                <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 rounded-lg border border-primary/20">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold text-slate-900">
+                    30 free enhancements included
+                  </p>
+                </div>
+              </CardHeader>
+              
+              <CardContent className="pt-0">
+                <Separator className="mb-6" />
+                
+                <ul className="space-y-4 mb-8">
+                  <li className="flex items-start gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-primary/10">
+                      <Check className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
+                      Full access to all features
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-primary/10">
+                      <Check className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
+                      30 enhancements to test the platform
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-primary/10">
+                      <Check className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
+                      No credit card required
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <div className="mt-0.5 p-1.5 rounded-md bg-primary/10">
+                      <Check className="h-4 w-4 text-primary" />
+                    </div>
+                    <span className="text-sm text-slate-700 font-medium leading-relaxed flex-1">
+                      Cancel anytime during trial
+                    </span>
+                  </li>
+                </ul>
+                
+                <Button
+                  onClick={handleStartFreeTrial}
+                  disabled={activatingTrial}
+                  className="w-full bg-primary hover:bg-primary/90 text-white font-semibold py-6 text-lg shadow-lg hover:shadow-xl transition-all"
+                >
+                  {activatingTrial ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Activating...
+                    </>
+                  ) : (
+                    <>
+                      Start Free Trial
+                      <ArrowRight className="ml-2 h-5 w-5" />
+                    </>
+                  )}
+                </Button>
+                
+                <p className="text-xs text-center text-slate-500 mt-4">
+                  No credit card required • 7 days full access
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Divider between trial and paid plans */}
+        {user && !user.hasUsedTrial && (
+          <div className="flex items-center gap-4 mb-12 max-w-4xl mx-auto">
+            <div className="flex-1 h-px bg-slate-200"></div>
+            <span className="text-sm font-medium text-slate-500">OR</span>
+            <div className="flex-1 h-px bg-slate-200"></div>
+          </div>
+        )}
 
         {/* Billing Period Toggle */}
         <div className="flex justify-center mb-10">
@@ -330,7 +478,7 @@ export default function Subscribe() {
                   <div className="flex items-center gap-2 mt-4 px-3 py-2 bg-slate-50 rounded-lg border border-slate-200">
                     <Sparkles className="h-4 w-4 text-slate-700" />
                     <p className="text-sm font-semibold text-slate-700">
-                      {plan.monthlyCredits} credits/month
+                      {plan.monthlyEnhancements} enhancements/month
                     </p>
                   </div>
                 </CardHeader>

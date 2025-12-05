@@ -10,7 +10,7 @@ interface PreviewModalProps {
   maskCount: number;
   materials: Array<{ id: string; name?: string }>;
   imageDimensions: { width: number; height: number };
-  mode: 'add_pool' | 'add_decoration' | 'blend_materials' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal';
+  mode: 'add_decoration' | 'blend_materials' | 'clutter_removal' | 'before_after' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal' | 'renovation';
   userPrompt?: string;
   showPromptInput?: boolean;
   onConfirm: () => void;
