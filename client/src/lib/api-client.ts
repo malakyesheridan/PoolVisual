@@ -1181,6 +1181,7 @@ class ApiClient {
       fields?: any;
     }>(`/public/buyer-form/${token}`, {
       method: 'GET',
+      credentials: 'omit', // Public route, no auth needed
     });
   }
 
