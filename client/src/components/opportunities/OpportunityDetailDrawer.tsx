@@ -13,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
@@ -124,6 +125,7 @@ export function OpportunityDetailDrawer({
   const [isLoadingBuyerProfile, setIsLoadingBuyerProfile] = useState(false);
   const [isSavingBuyerProfile, setIsSavingBuyerProfile] = useState(false);
   const [buyerProfileSaved, setBuyerProfileSaved] = useState(false);
+  const [activeTab, setActiveTab] = useState<'details' | 'buyer-profile'>('details');
 
   // Contact editing state
   const [editedContactName, setEditedContactName] = useState('');
@@ -211,6 +213,13 @@ export function OpportunityDetailDrawer({
       setIsEditing(false);
     }
   }, [opportunity?.id, isNewOpportunity]);
+
+  // Reset tab to details when opportunity type changes or it's a new opportunity
+  useEffect(() => {
+    if (isNewOpportunity || (editedOpportunityType !== 'buyer' && editedOpportunityType !== 'both')) {
+      setActiveTab('details');
+    }
+  }, [isNewOpportunity, editedOpportunityType]);
 
   // Load buyer profile when contactId is available and opportunity type is buyer/both
   useEffect(() => {
@@ -673,31 +682,41 @@ export function OpportunityDetailDrawer({
   // Buyer Profile Form Component
   const BuyerProfileForm = ({ 
     contactId, 
-    profile, 
-    onProfileChange, 
+    initialProfile, 
     onSave, 
     isSaving, 
     saved 
   }: { 
     contactId: string; 
-    profile: any; 
-    onProfileChange: (profile: any) => void; 
-    onSave: () => void; 
+    initialProfile: any; 
+    onSave: (profile: any) => Promise<void>; 
     isSaving: boolean; 
     saved: boolean;
   }) => {
+    // Use local state for form - only save to parent on explicit save
+    const [localProfile, setLocalProfile] = useState<any>(initialProfile || {});
+    const [hasChanges, setHasChanges] = useState(false);
+
+    // Update local profile when initialProfile changes (from server)
+    useEffect(() => {
+      setLocalProfile(initialProfile || {});
+      setHasChanges(false);
+    }, [initialProfile]);
+
     const updateField = (field: string, value: any) => {
-      onProfileChange({ ...profile, [field]: value });
+      const newProfile = { ...localProfile, [field]: value };
+      setLocalProfile(newProfile);
+      setHasChanges(true);
     };
 
     const addArrayItem = (field: string, value: string) => {
       if (!value.trim()) return;
-      const current = profile[field] || [];
+      const current = localProfile[field] || [];
       updateField(field, [...current, value.trim()]);
     };
 
     const removeArrayItem = (field: string, index: number) => {
-      const current = profile[field] || [];
+      const current = localProfile[field] || [];
       updateField(field, current.filter((_: any, i: number) => i !== index));
     };
 
@@ -708,9 +727,13 @@ export function OpportunityDetailDrawer({
           <div>
             <Label className="text-sm">Budget Min</Label>
             <Input
-              type="number"
-              value={profile.budgetMin || ''}
-              onChange={(e) => updateField('budgetMin', e.target.value ? Number(e.target.value) : null)}
+              type="text"
+              inputMode="numeric"
+              value={localProfile.budgetMin !== null && localProfile.budgetMin !== undefined ? String(localProfile.budgetMin) : ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                updateField('budgetMin', val ? Number(val) : null);
+              }}
               placeholder="Min"
               className="mt-1"
             />
@@ -718,9 +741,13 @@ export function OpportunityDetailDrawer({
           <div>
             <Label className="text-sm">Budget Max</Label>
             <Input
-              type="number"
-              value={profile.budgetMax || ''}
-              onChange={(e) => updateField('budgetMax', e.target.value ? Number(e.target.value) : null)}
+              type="text"
+              inputMode="numeric"
+              value={localProfile.budgetMax !== null && localProfile.budgetMax !== undefined ? String(localProfile.budgetMax) : ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                updateField('budgetMax', val ? Number(val) : null);
+              }}
               placeholder="Max"
               className="mt-1"
             />
@@ -732,9 +759,13 @@ export function OpportunityDetailDrawer({
           <div>
             <Label className="text-sm">Min Beds</Label>
             <Input
-              type="number"
-              value={profile.bedsMin || ''}
-              onChange={(e) => updateField('bedsMin', e.target.value ? Number(e.target.value) : null)}
+              type="text"
+              inputMode="numeric"
+              value={localProfile.bedsMin !== null && localProfile.bedsMin !== undefined ? String(localProfile.bedsMin) : ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                updateField('bedsMin', val ? Number(val) : null);
+              }}
               placeholder="Beds"
               className="mt-1"
             />
@@ -742,9 +773,13 @@ export function OpportunityDetailDrawer({
           <div>
             <Label className="text-sm">Min Baths</Label>
             <Input
-              type="number"
-              value={profile.bathsMin || ''}
-              onChange={(e) => updateField('bathsMin', e.target.value ? Number(e.target.value) : null)}
+              type="text"
+              inputMode="numeric"
+              value={localProfile.bathsMin !== null && localProfile.bathsMin !== undefined ? String(localProfile.bathsMin) : ''}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[^0-9]/g, '');
+                updateField('bathsMin', val ? Number(val) : null);
+              }}
               placeholder="Baths"
               className="mt-1"
             />
@@ -755,7 +790,7 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Property Type</Label>
           <Select
-            value={profile.propertyType || ''}
+            value={localProfile.propertyType || undefined}
             onValueChange={(v) => updateField('propertyType', v || null)}
           >
             <SelectTrigger className="mt-1">
@@ -786,9 +821,9 @@ export function OpportunityDetailDrawer({
               }}
             />
           </div>
-          {profile.preferredSuburbs && profile.preferredSuburbs.length > 0 && (
+          {localProfile.preferredSuburbs && localProfile.preferredSuburbs.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {profile.preferredSuburbs.map((suburb: string, idx: number) => (
+              {localProfile.preferredSuburbs.map((suburb: string, idx: number) => (
                 <Badge key={idx} variant="secondary" className="flex items-center gap-1">
                   {suburb}
                   <button
@@ -807,7 +842,7 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Finance Status</Label>
           <Select
-            value={profile.financeStatus || undefined}
+            value={localProfile.financeStatus || undefined}
             onValueChange={(v) => updateField('financeStatus', v || null)}
           >
             <SelectTrigger className="mt-1">
@@ -826,7 +861,7 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Timeline</Label>
           <Select
-            value={profile.timeline || undefined}
+            value={localProfile.timeline || undefined}
             onValueChange={(v) => updateField('timeline', v || null)}
           >
             <SelectTrigger className="mt-1">
@@ -857,9 +892,9 @@ export function OpportunityDetailDrawer({
               }}
             />
           </div>
-          {profile.mustHaves && profile.mustHaves.length > 0 && (
+          {localProfile.mustHaves && localProfile.mustHaves.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {profile.mustHaves.map((item: string, idx: number) => (
+              {localProfile.mustHaves.map((item: string, idx: number) => (
                 <Badge key={idx} variant="secondary" className="flex items-center gap-1">
                   {item}
                   <button
@@ -889,9 +924,9 @@ export function OpportunityDetailDrawer({
               }}
             />
           </div>
-          {profile.dealBreakers && profile.dealBreakers.length > 0 && (
+          {localProfile.dealBreakers && localProfile.dealBreakers.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {profile.dealBreakers.map((item: string, idx: number) => (
+              {localProfile.dealBreakers.map((item: string, idx: number) => (
                 <Badge key={idx} variant="secondary" className="flex items-center gap-1">
                   {item}
                   <button
@@ -910,7 +945,7 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Notes</Label>
           <Textarea
-            value={profile.freeNotes || ''}
+            value={localProfile.freeNotes || ''}
             onChange={(e) => updateField('freeNotes', e.target.value || null)}
             placeholder="Additional notes..."
             className="mt-1"
@@ -918,33 +953,38 @@ export function OpportunityDetailDrawer({
           />
         </div>
 
-        {/* Save Button */}
-        <div className="flex items-center gap-2 pt-2">
-          <Button
-            onClick={onSave}
-            disabled={isSaving}
-            size="sm"
-            className="flex-1"
-          >
-            {isSaving ? (
-              <>
-                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4 mr-2" />
-                Save Profile
-              </>
+        {/* Save Button - Only show when there are changes */}
+        {hasChanges && (
+          <div className="flex items-center gap-2 pt-4 border-t">
+            <Button
+              onClick={async () => {
+                await onSave(localProfile);
+                setHasChanges(false);
+              }}
+              disabled={isSaving}
+              size="sm"
+              className="flex-1"
+            >
+              {isSaving ? (
+                <>
+                  <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save Profile
+                </>
+              )}
+            </Button>
+            {saved && (
+              <div className="flex items-center gap-1 text-sm text-green-600">
+                <CheckCircle className="w-4 h-4" />
+                Saved
+              </div>
             )}
-          </Button>
-          {saved && (
-            <div className="flex items-center gap-1 text-sm text-green-600">
-              <CheckCircle className="w-4 h-4" />
-              Saved
-            </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -995,7 +1035,33 @@ export function OpportunityDetailDrawer({
           </div>
         </DialogHeader>
 
-        <div className="space-y-6 mt-4">
+        {/* Tabs for Details and Buyer Profile */}
+        <Tabs 
+          value={activeTab} 
+          onValueChange={(v) => setActiveTab(v as 'details' | 'buyer-profile')} 
+          className="mt-4"
+        >
+          {(!isNewOpportunity && (editedOpportunityType === 'buyer' || editedOpportunityType === 'both')) ? (
+            <TabsList className="grid w-full grid-cols-2 mb-6">
+              <TabsTrigger value="details" className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Details
+              </TabsTrigger>
+              <TabsTrigger value="buyer-profile" className="flex items-center gap-2">
+                <Home className="w-4 h-4" />
+                Buyer Profile
+              </TabsTrigger>
+            </TabsList>
+          ) : (
+            <TabsList className="grid w-full grid-cols-1 mb-6">
+              <TabsTrigger value="details" className="flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Details
+              </TabsTrigger>
+            </TabsList>
+          )}
+
+          <TabsContent value="details" className="space-y-6 mt-0">
           {/* Title Section */}
           <div>
             {isEditing ? (
@@ -1334,69 +1400,6 @@ export function OpportunityDetailDrawer({
               </div>
             </CardContent>
           </Card>
-
-          {/* Buyer Profile Card - Only show for buyer/both opportunities */}
-          {!isNewOpportunity && 
-           (editedOpportunityType === 'buyer' || editedOpportunityType === 'both') && (
-            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base font-semibold flex items-center gap-2">
-                  <Home className="w-4 h-4" />
-                  Buyer Profile
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {!currentContactId ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-slate-500 mb-2">
-                      Please add contact information above and save to enable buyer profile.
-                    </p>
-                  </div>
-                ) : isLoadingBuyerProfile ? (
-                  <div className="text-center py-4">
-                    <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
-                    <p className="text-sm text-slate-500 mt-2">Loading buyer profile...</p>
-                  </div>
-                ) : (
-                  <BuyerProfileForm
-                    contactId={currentContactId}
-                    profile={buyerProfile || {}}
-                    onProfileChange={setBuyerProfile}
-                    onSave={() => {
-                      if (!currentContactId) {
-                        toast({
-                          title: 'Error',
-                          description: 'Please save contact information first',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-                      setIsSavingBuyerProfile(true);
-                      setBuyerProfileSaved(false);
-                      apiClient.updateBuyerProfile(currentContactId, buyerProfile || {})
-                        .then(() => {
-                          setBuyerProfileSaved(true);
-                          toast({ title: 'Buyer profile saved', description: 'Profile updated successfully.' });
-                          setTimeout(() => setBuyerProfileSaved(false), 3000);
-                        })
-                        .catch((error: any) => {
-                          toast({
-                            title: 'Error',
-                            description: error.message || 'Failed to save buyer profile',
-                            variant: 'destructive',
-                          });
-                        })
-                        .finally(() => {
-                          setIsSavingBuyerProfile(false);
-                        });
-                    }}
-                    isSaving={isSavingBuyerProfile}
-                    saved={buyerProfileSaved}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          )}
 
           {/* Quick Actions Card */}
           {!isNewOpportunity && (opportunity?.contactEmail || opportunity?.contactPhone || opportunity?.propertyJobId) && (
@@ -1752,6 +1755,68 @@ export function OpportunityDetailDrawer({
             </CardContent>
           </Card>
         </div>
+          </TabsContent>
+
+          {/* Buyer Profile Tab */}
+          {!isNewOpportunity && (editedOpportunityType === 'buyer' || editedOpportunityType === 'both') && (
+            <TabsContent value="buyer-profile" className="space-y-6 mt-0">
+              <div className="space-y-6">
+                {!currentContactId ? (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <Home className="w-12 h-12 mx-auto mb-4 text-slate-400" />
+                      <p className="text-sm text-slate-500 mb-2">
+                        Please add contact information in the Details tab and save to enable buyer profile.
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : isLoadingBuyerProfile ? (
+                  <Card>
+                    <CardContent className="py-8 text-center">
+                      <div className="animate-spin w-8 h-8 border-2 border-primary border-t-transparent rounded-full mx-auto mb-4"></div>
+                      <p className="text-sm text-slate-500">Loading buyer profile...</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <BuyerProfileForm
+                    contactId={currentContactId}
+                    initialProfile={buyerProfile || {}}
+                    onSave={async (profile: any) => {
+                      if (!currentContactId) {
+                        toast({
+                          title: 'Error',
+                          description: 'Please save contact information first',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      setIsSavingBuyerProfile(true);
+                      setBuyerProfileSaved(false);
+                      try {
+                        await apiClient.updateBuyerProfile(currentContactId, profile);
+                        setBuyerProfileSaved(true);
+                        setBuyerProfile(profile);
+                        toast({ title: 'Buyer profile saved', description: 'Profile updated successfully.' });
+                        setTimeout(() => setBuyerProfileSaved(false), 3000);
+                      } catch (error: any) {
+                        toast({
+                          title: 'Error',
+                          description: error.message || 'Failed to save buyer profile',
+                          variant: 'destructive',
+                        });
+                        throw error;
+                      } finally {
+                        setIsSavingBuyerProfile(false);
+                      }
+                    }}
+                    isSaving={isSavingBuyerProfile}
+                    saved={buyerProfileSaved}
+                  />
+                )}
+              </div>
+            </TabsContent>
+          )}
+        </Tabs>
       </DialogContent>
     </Dialog>
 
