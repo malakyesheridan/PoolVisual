@@ -3710,7 +3710,13 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Contact not found" });
       }
 
+      // Check both userId and orgId for proper scoping
       if (contact.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Also verify org membership if orgId is present
+      if (contact.orgId && req.user.orgId && contact.orgId !== req.user.orgId) {
         return res.status(403).json({ message: "Access denied" });
       }
 
@@ -3768,10 +3774,24 @@ export async function registerRoutes(app: Express): Promise<void> {
       const mergedProfile = { ...existingProfile, ...buyerProfile };
 
       // Update contact with merged buyer profile
-      const updated = await storage.updateContact(contactId, { buyerProfile: mergedProfile });
-      res.json((updated as any).buyerProfile || {});
-    } catch (error) {
-      res.status(500).json({ message: (error as Error).message });
+      // Use Promise.race to add a timeout to prevent hanging
+      const updatePromise = storage.updateContact(contactId, { buyerProfile: mergedProfile });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Update operation timed out')), 10000)
+      );
+      
+      const updated = await Promise.race([updatePromise, timeoutPromise]) as any;
+      const buyerProfile = (updated as any).buyerProfile || {};
+      
+      // Send response immediately without waiting for any background operations
+      res.json(buyerProfile);
+    } catch (error: any) {
+      // Log error but don't wait for Redis or other services
+      console.error('[Buyer Profile Update Error]', error?.message || error);
+      const statusCode = error?.message?.includes('timeout') ? 504 : 500;
+      res.status(statusCode).json({ 
+        message: error?.message || 'Failed to update buyer profile' 
+      });
     }
   });
 
