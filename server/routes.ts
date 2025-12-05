@@ -1167,6 +1167,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       const propertyData = {
         id: job.id,
         address: job.address || null,
+        suburb: job.schoolDistrict || null, // Map schoolDistrict to suburb for matching engine
         estimatedPrice: estimatedPrice,
         bedrooms: job.bedrooms ? Number(job.bedrooms) : null,
         bathrooms: job.bathrooms ? Number(job.bathrooms) : null,
@@ -1460,6 +1461,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       }
 
+      // Map 'suburb' from form to 'schoolDistrict' in database
+      if (updates.suburb !== undefined) {
+        updates.schoolDistrict = updates.suburb;
+        delete updates.suburb;
+      }
+
       // Update job with provided fields
       const updatedJob = await storage.updateJob(jobId, updates);
       
@@ -1467,6 +1474,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Only if price, suburb, beds, baths, or property type changed
       const relevantFieldsChanged = 
         updates.estimatedPrice !== undefined ||
+        updates.schoolDistrict !== undefined ||
         updates.address !== undefined ||
         updates.bedrooms !== undefined ||
         updates.bathrooms !== undefined ||

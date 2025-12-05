@@ -69,6 +69,7 @@ export async function generateMatchSuggestions(
     const propertyData = {
       id: property.id,
       address: property.address || null,
+      suburb: property.schoolDistrict || null, // Map schoolDistrict to suburb for matching engine
       estimatedPrice: property.estimatedPrice ? parseFloat(String(property.estimatedPrice).replace(/[$,]/g, '')) : null,
       bedrooms: property.bedrooms ? Number(property.bedrooms) : null,
       bathrooms: property.bathrooms ? Number(property.bathrooms) : null,

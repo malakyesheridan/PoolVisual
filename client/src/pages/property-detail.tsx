@@ -50,6 +50,7 @@ import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm
 import { PropertyNotes } from "@/components/properties/PropertyNotes";
 import { BuyerFormLinkDialog } from "@/components/buyer-forms/BuyerFormLinkDialog";
 import { MatchedBuyersPanel } from "@/components/properties/MatchedBuyersPanel";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function PropertyDetail() {
   const [, params] = useRoute('/properties/:id');
@@ -58,6 +59,7 @@ export default function PropertyDetail() {
   const { toast } = useToast();
   const [previewPhoto, setPreviewPhoto] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPropertyDetailsModal, setShowPropertyDetailsModal] = useState(false);
   const [showDeletePhotoConfirm, setShowDeletePhotoConfirm] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [showQuoteEditor, setShowQuoteEditor] = useState(false);
@@ -266,6 +268,7 @@ export default function PropertyDetail() {
     mutationFn: (data: any) => apiClient.updateJob(jobId!, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId] });
+      setShowPropertyDetailsModal(false);
       toast({
         title: "Property details updated",
         description: "The property details have been updated successfully.",
@@ -473,11 +476,7 @@ export default function PropertyDetail() {
   };
 
   const handleEditJob = () => {
-    // For now, just show a toast message since we don't have a full property edit modal
-    toast({
-      title: "Edit Property",
-      description: "Property editing functionality will be available soon.",
-    });
+    setShowPropertyDetailsModal(true);
   };
 
   const handleDeleteJob = () => {
@@ -1011,7 +1010,7 @@ export default function PropertyDetail() {
                       propertyDescription: job.propertyDescription,
                       propertyFeatures: job.propertyFeatures as string[] || [],
                       propertyCondition: job.propertyCondition as any,
-                      schoolDistrict: job.schoolDistrict,
+                      suburb: job.schoolDistrict, // Using schoolDistrict from DB, but renamed to suburb in form
                       estimatedPrice: job.estimatedPrice ? String(job.estimatedPrice) : null,
                     }}
                     onSubmit={async (data) => {
@@ -1482,6 +1481,41 @@ export default function PropertyDetail() {
         propertyId={jobId || undefined}
         propertyName={job?.clientName || job?.address || undefined}
       />
+
+      {/* Property Details Edit Modal */}
+      <Dialog open={showPropertyDetailsModal} onOpenChange={setShowPropertyDetailsModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Property Details</DialogTitle>
+          </DialogHeader>
+          {job && (
+            <PropertyDetailsForm
+              initialData={{
+                bedrooms: job.bedrooms,
+                bathrooms: job.bathrooms ? parseFloat(job.bathrooms.toString()) : null,
+                garageSpaces: job.garageSpaces,
+                estimatedPrice: job.estimatedPrice ? String(job.estimatedPrice) : null,
+                propertyType: job.propertyType as any,
+                landSizeM2: job.landSizeM2 ? parseFloat(job.landSizeM2.toString()) : null,
+                interiorSizeM2: job.interiorSizeM2 ? parseFloat(job.interiorSizeM2.toString()) : null,
+                yearBuilt: job.yearBuilt,
+                yearRenovated: job.yearRenovated,
+                propertyStatus: job.propertyStatus as any,
+                listingDate: job.listingDate ? new Date(job.listingDate).toISOString().split('T')[0] : null,
+                propertyDescription: job.propertyDescription,
+                propertyFeatures: job.propertyFeatures as string[] || [],
+                propertyCondition: job.propertyCondition as any,
+                suburb: job.schoolDistrict, // Using schoolDistrict from DB, but renamed to suburb in form
+              }}
+              onSubmit={async (data) => {
+                await updatePropertyDetailsMutation.mutateAsync(data);
+              }}
+              onCancel={() => setShowPropertyDetailsModal(false)}
+              isLoading={updatePropertyDetailsMutation.isPending}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

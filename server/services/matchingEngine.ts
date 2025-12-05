@@ -33,6 +33,7 @@ export interface BuyerProfile {
 export interface PropertyData {
   id: string;
   address?: string | null;
+  suburb?: string | null; // Explicit suburb field (mapped from schoolDistrict in DB)
   estimatedPrice?: number | null;
   bedrooms?: number | null;
   bathrooms?: number | null;
@@ -96,24 +97,33 @@ const TIER_THRESHOLDS = {
 };
 
 /**
- * Extract suburb from address string
+ * Get suburb from property data
+ * Priority: explicit suburb field > extract from address
  */
-function extractSuburb(address: string | null | undefined): string | null {
-  if (!address) return null;
-  
-  // Simple extraction: take the last word (assuming format like "123 Main St, Suburb")
-  const parts = address.split(',').map(p => p.trim());
-  if (parts.length > 1) {
-    return parts[parts.length - 1].toLowerCase();
+function getPropertySuburb(property: PropertyData): string | null {
+  // First, try explicit suburb field
+  if (property.suburb) {
+    return property.suburb.trim();
   }
   
-  // If no comma, try to get last word
-  const words = address.trim().split(/\s+/);
-  if (words.length > 1) {
-    return words[words.length - 1].toLowerCase();
+  // Fallback: extract from address if no explicit suburb
+  if (property.address) {
+    // Simple extraction: take the last word (assuming format like "123 Main St, Suburb")
+    const parts = property.address.split(',').map(p => p.trim());
+    if (parts.length > 1) {
+      return parts[parts.length - 1].trim();
+    }
+    
+    // If no comma, try to get last word
+    const words = property.address.trim().split(/\s+/);
+    if (words.length > 1) {
+      return words[words.length - 1].trim();
+    }
+    
+    return property.address.trim();
   }
   
-  return address.toLowerCase();
+  return null;
 }
 
 /**
@@ -210,7 +220,7 @@ function scoreBudget(property: PropertyData, profile: BuyerProfile): { score: nu
 function scoreLocation(property: PropertyData, profile: BuyerProfile): { score: number; reasons: string[] } {
   const reasons: string[] = [];
   
-  const propertySuburb = extractSuburb(property.address);
+  const propertySuburb = getPropertySuburb(property);
   const buyerPreferredSuburbs = profile.preferredSuburbs || [];
   
   // If buyer has no explicit suburbs – neutral (0) but no penalty reason

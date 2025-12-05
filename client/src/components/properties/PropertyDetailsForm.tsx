@@ -29,7 +29,7 @@ const propertyDetailsSchema = z.object({
   propertyDescription: z.string().optional().nullable(),
   propertyFeatures: z.array(z.string()).optional().nullable(),
   propertyCondition: z.enum(['excellent', 'good', 'fair', 'needs_renovation', 'other']).optional().nullable(),
-  schoolDistrict: z.string().optional().nullable(),
+  suburb: z.string().optional().nullable(),
 });
 
 type PropertyDetailsFormData = z.infer<typeof propertyDetailsSchema>;
@@ -64,7 +64,7 @@ export function PropertyDetailsForm({
       propertyDescription: initialData?.propertyDescription ?? null,
       propertyFeatures: initialData?.propertyFeatures ?? [],
       propertyCondition: initialData?.propertyCondition ?? null,
-      schoolDistrict: initialData?.schoolDistrict ?? null,
+      suburb: initialData?.suburb ?? null,
     },
   });
 
@@ -337,10 +337,10 @@ export function PropertyDetailsForm({
 
           <FormField
             control={form.control}
-            name="schoolDistrict"
+            name="suburb"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>School District</FormLabel>
+                <FormLabel>Suburb</FormLabel>
                 <FormControl>
                   <Input
                     {...field}
