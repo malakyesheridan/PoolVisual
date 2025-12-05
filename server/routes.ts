@@ -3776,6 +3776,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Merge with existing buyer profile to avoid overwriting with empty values
       const existingProfile = (contact as any).buyerProfile || {};
       const mergedProfile = { ...existingProfile, ...buyerProfile };
+      
+      // Log for debugging array fields
+      console.log('[Buyer Profile Update] Received arrays:', {
+        preferredSuburbs: preferredSuburbs,
+        mustHaves: mustHaves,
+        dealBreakers: dealBreakers,
+      });
+      console.log('[Buyer Profile Update] Merged profile:', JSON.stringify(mergedProfile, null, 2));
 
       // Update contact with merged buyer profile
       // Use Promise.race to add a timeout to prevent hanging

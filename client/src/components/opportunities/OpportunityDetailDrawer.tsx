@@ -705,7 +705,7 @@ export function OpportunityDetailDrawer({
       // Only update if the profile actually changed and user isn't editing
       if (!isEditing) {
         if (JSON.stringify(profileRef.current) !== JSON.stringify(initialProfile)) {
-          setLocalProfile(initialProfile || {});
+          setLocalProfile(initializeProfile(initialProfile));
           profileRef.current = initialProfile;
           setHasChanges(false);
         }
@@ -715,7 +715,7 @@ export function OpportunityDetailDrawer({
     // Reset form when entering edit mode
     const handleEdit = () => {
       setIsEditing(true);
-      setLocalProfile(initialProfile || {});
+      setLocalProfile(initializeProfile(initialProfile));
       setHasChanges(false);
       profileRef.current = initialProfile;
     };
@@ -723,7 +723,7 @@ export function OpportunityDetailDrawer({
     // Cancel editing
     const handleCancel = () => {
       setIsEditing(false);
-      setLocalProfile(initialProfile || {});
+      setLocalProfile(initializeProfile(initialProfile));
       setHasChanges(false);
     };
 
@@ -732,10 +732,10 @@ export function OpportunityDetailDrawer({
       const newProfile = { ...localProfile, [field]: value };
       setLocalProfile(newProfile);
       setHasChanges(true);
-      // Debug log for text fields
-      if (field === 'freeNotes') {
-        console.log('[BuyerProfileForm] Updated freeNotes:', value, 'Type:', typeof value, 'Length:', value?.length);
-        console.log('[BuyerProfileForm] New localProfile:', JSON.stringify(newProfile, null, 2));
+      // Debug log for array fields and text fields
+      if (field === 'freeNotes' || field === 'preferredSuburbs' || field === 'mustHaves' || field === 'dealBreakers') {
+        console.log(`[BuyerProfileForm] Updated ${field}:`, value, 'Type:', typeof value, 'IsArray:', Array.isArray(value), 'Length:', Array.isArray(value) ? value.length : value?.length);
+        console.log(`[BuyerProfileForm] New localProfile.${field}:`, newProfile[field]);
       }
     };
 
@@ -1201,13 +1201,16 @@ export function OpportunityDetailDrawer({
                 
                 // Create a clean profile object with all fields explicitly set
                 // CRITICAL: Always include ALL fields, even if they're null or empty
+                // For arrays, ensure they're always defined (even if empty) so backend processes them
                 const profileToSave: any = {
                   budgetMin: budgetMinValue !== undefined ? (budgetMinValue === null || budgetMinValue === '' ? null : Number(budgetMinValue)) : null,
                   budgetMax: budgetMaxValue !== undefined ? (budgetMaxValue === null || budgetMaxValue === '' ? null : Number(budgetMaxValue)) : null,
+                  // CRITICAL: Always include arrays - ensure they're always defined as arrays
                   preferredSuburbs: Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs : [],
                   bedsMin: localProfile.bedsMin !== undefined ? (localProfile.bedsMin === null || localProfile.bedsMin === '' ? null : Number(localProfile.bedsMin)) : null,
                   bathsMin: localProfile.bathsMin !== undefined ? (localProfile.bathsMin === null || localProfile.bathsMin === '' ? null : Number(localProfile.bathsMin)) : null,
                   propertyType: localProfile.propertyType || null,
+                  // CRITICAL: Always include arrays - ensure they're always defined as arrays
                   mustHaves: Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves : [],
                   dealBreakers: Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers : [],
                   financeStatus: localProfile.financeStatus || null,
@@ -1220,8 +1223,14 @@ export function OpportunityDetailDrawer({
                 };
                 
                 console.log('[BuyerProfileForm] Saving profile:', JSON.stringify(profileToSave, null, 2));
-                console.log('[BuyerProfileForm] freeNotes in localProfile:', localProfile.freeNotes, 'Type:', typeof localProfile.freeNotes);
-                console.log('[BuyerProfileForm] freeNotes in profileToSave:', profileToSave.freeNotes, 'Type:', typeof profileToSave.freeNotes);
+                console.log('[BuyerProfileForm] Array fields in localProfile:');
+                console.log('  - preferredSuburbs:', localProfile.preferredSuburbs, 'Type:', typeof localProfile.preferredSuburbs, 'IsArray:', Array.isArray(localProfile.preferredSuburbs));
+                console.log('  - mustHaves:', localProfile.mustHaves, 'Type:', typeof localProfile.mustHaves, 'IsArray:', Array.isArray(localProfile.mustHaves));
+                console.log('  - dealBreakers:', localProfile.dealBreakers, 'Type:', typeof localProfile.dealBreakers, 'IsArray:', Array.isArray(localProfile.dealBreakers));
+                console.log('[BuyerProfileForm] Array fields in profileToSave:');
+                console.log('  - preferredSuburbs:', profileToSave.preferredSuburbs, 'Type:', typeof profileToSave.preferredSuburbs, 'IsArray:', Array.isArray(profileToSave.preferredSuburbs));
+                console.log('  - mustHaves:', profileToSave.mustHaves, 'Type:', typeof profileToSave.mustHaves, 'IsArray:', Array.isArray(profileToSave.mustHaves));
+                console.log('  - dealBreakers:', profileToSave.dealBreakers, 'Type:', typeof profileToSave.dealBreakers, 'IsArray:', Array.isArray(profileToSave.dealBreakers));
                 
                 await onSave(profileToSave);
                 setHasChanges(false);
