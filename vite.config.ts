@@ -35,21 +35,14 @@ export default defineConfig({
     rollupOptions: {
       external: [],
       output: {
-        manualChunks: (id) => {
-          // Vendor chunks - must be loaded first
-          if (id.includes('node_modules')) {
-            if (id.includes('react') || id.includes('react-dom')) {
-              return 'react-vendor';
-            }
-            if (id.includes('@radix-ui')) {
-              return 'radix-vendor';
-            }
-            // Other vendor libraries
-            return 'vendor';
-          }
-          // Don't create separate chunk for opportunities - let Vite handle it
-          // This ensures React is available when the chunk loads
+        manualChunks: {
+          // React must be in its own chunk and loaded first
+          'react-vendor': ['react', 'react-dom'],
+          // Radix UI components
+          'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-portal'],
         },
+        // Ensure proper chunk loading order
+        chunkFileNames: 'assets/[name]-[hash].js',
       },
     },
   },
