@@ -62,6 +62,7 @@ export default function Opportunities() {
   const [opportunityTypeFilter, setOpportunityTypeFilter] = useState<string | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [showBuyerFormDialog, setShowBuyerFormDialog] = useState(false);
   const { toast } = useToast();
   const { user } = useAuthStore();
   const isRealEstate = useIsRealEstate();
