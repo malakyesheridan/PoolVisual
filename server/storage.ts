@@ -1853,9 +1853,21 @@ export class PostgresStorage implements IStorage {
       
       return opp;
     } catch (error: any) {
-      if (error?.message?.includes('opportunities') || error?.code === '42P01') {
+      // Log the actual error for debugging
+      console.error('[createOpportunity] Error details:', {
+        message: error?.message,
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+        stack: error?.stack?.substring(0, 500), // Limit stack trace length
+      });
+      
+      // Only catch actual table-not-found errors (code '42P01' = relation does not exist)
+      if (error?.code === '42P01' && error?.message?.includes('opportunities')) {
         throw new Error("Opportunities feature requires database migration. Please run migration 035_create_opportunities_tables.sql");
       }
+      
+      // Re-throw the actual error so we can see what went wrong
       throw error;
     }
   }
