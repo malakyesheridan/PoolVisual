@@ -144,7 +144,7 @@ BEGIN
     m.category,
     m.unit,
     m.price,
-    m.image_url,
+    m.thumbnail_url AS image_url,  -- Use thumbnail_url as image_url for backward compatibility
     m.texture_url,
     m.is_active,
     m.created_at,

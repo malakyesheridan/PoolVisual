@@ -814,7 +814,6 @@ export function OpportunityDetailDrawer({
               <SelectValue placeholder="Select status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
               <SelectItem value="preapproved">Pre-approved</SelectItem>
               <SelectItem value="needsFinance">Needs Finance</SelectItem>
               <SelectItem value="cash">Cash</SelectItem>
