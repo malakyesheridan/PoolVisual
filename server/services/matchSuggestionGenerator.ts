@@ -85,12 +85,14 @@ export async function generateMatchSuggestions(
 
     // 5. Load existing match suggestions for this property
     const existingSuggestions = await storage.getMatchSuggestionsByProperty(orgId, propertyId);
+    console.log(`[MatchSuggestionGenerator] Found ${existingSuggestions.length} existing suggestions for property ${propertyId}`);
 
     // 6. Create a map of existing suggestions by opportunityId
     const existingByOpportunity = new Map<string, typeof existingSuggestions[0]>();
     for (const suggestion of existingSuggestions) {
       existingByOpportunity.set(suggestion.opportunityId, suggestion);
     }
+    console.log(`[MatchSuggestionGenerator] Processing ${matchingResult.matches.length} matches, ${existingByOpportunity.size} already have suggestions`);
 
     // 7. Process each match and create/update suggestions
     const results: MatchSuggestionOutput[] = [];
@@ -101,6 +103,7 @@ export async function generateMatchSuggestions(
       if (!existing) {
         // Create new suggestion
         try {
+          console.log(`[MatchSuggestionGenerator] Creating suggestion for property ${propertyId}, opportunity ${match.opportunityId}, score ${match.matchScore}`);
           const newSuggestion = await storage.createMatchSuggestion({
             orgId,
             propertyId,
@@ -124,7 +127,7 @@ export async function generateMatchSuggestions(
             createdAt: newSuggestion.createdAt,
           });
 
-          console.log(`[MatchSuggestionGenerator] Created new suggestion for property ${propertyId}, opportunity ${match.opportunityId} (score: ${match.matchScore})`);
+          console.log(`[MatchSuggestionGenerator] ✅ Created new suggestion ${newSuggestion.id} for property ${propertyId}, opportunity ${match.opportunityId} (score: ${match.matchScore}, tier: ${match.matchTier})`);
 
           // Enqueue outbox event for new match suggestion (best effort only)
           try {
@@ -148,27 +151,39 @@ export async function generateMatchSuggestions(
             console.warn(`[MatchSuggestionGenerator] Failed to enqueue outbox event:`, outboxError?.message);
           }
         } catch (error: any) {
+          const errorMsg = error?.message || String(error);
+          const errorCode = error?.code;
+          
           // Handle unique constraint violation (if suggestion was created concurrently)
-          if (error?.code === '23505' || error?.message?.includes('unique')) {
+          if (errorCode === '23505' || errorMsg.includes('unique') || errorMsg.includes('duplicate')) {
+            console.log(`[MatchSuggestionGenerator] Suggestion already exists for property ${propertyId}, opportunity ${match.opportunityId}, fetching existing...`);
             // Try to fetch the existing suggestion
-            const existingSuggestion = await storage.getMatchSuggestionByPropertyAndOpportunity(
-              propertyId,
-              match.opportunityId
-            );
-            if (existingSuggestion) {
-              results.push({
-                id: existingSuggestion.id,
-                propertyId: existingSuggestion.propertyId,
-                opportunityId: existingSuggestion.opportunityId,
-                contactId: existingSuggestion.contactId,
-                matchScore: existingSuggestion.matchScore,
-                matchTier: existingSuggestion.matchTier as 'strong' | 'medium' | 'weak',
-                status: existingSuggestion.status as 'new' | 'in_progress' | 'completed' | 'dismissed',
-                createdAt: existingSuggestion.createdAt,
-              });
+            try {
+              const existingSuggestion = await storage.getMatchSuggestionByPropertyAndOpportunity(
+                propertyId,
+                match.opportunityId
+              );
+              if (existingSuggestion) {
+                results.push({
+                  id: existingSuggestion.id,
+                  propertyId: existingSuggestion.propertyId,
+                  opportunityId: existingSuggestion.opportunityId,
+                  contactId: existingSuggestion.contactId,
+                  matchScore: existingSuggestion.matchScore,
+                  matchTier: existingSuggestion.matchTier as 'strong' | 'medium' | 'weak',
+                  status: existingSuggestion.status as 'new' | 'in_progress' | 'completed' | 'dismissed',
+                  createdAt: existingSuggestion.createdAt,
+                });
+                console.log(`[MatchSuggestionGenerator] ✅ Using existing suggestion ${existingSuggestion.id}`);
+              } else {
+                console.warn(`[MatchSuggestionGenerator] ⚠️  Unique constraint error but couldn't find existing suggestion`);
+              }
+            } catch (fetchError: any) {
+              console.error(`[MatchSuggestionGenerator] Error fetching existing suggestion:`, fetchError?.message);
             }
           } else {
-            console.error(`[MatchSuggestionGenerator] Error creating suggestion:`, error);
+            console.error(`[MatchSuggestionGenerator] ❌ Error creating suggestion for property ${propertyId}, opportunity ${match.opportunityId}:`, errorMsg);
+            console.error(`[MatchSuggestionGenerator] Error code: ${errorCode}, Stack:`, error?.stack);
           }
         }
       } else {
@@ -224,11 +239,12 @@ export async function generateMatchSuggestions(
       }
     }
 
-    console.log(`[MatchSuggestionGenerator] Generated ${results.length} match suggestions for property ${propertyId}`);
+    console.log(`[MatchSuggestionGenerator] ✅ Completed: ${results.length} suggestions processed (${results.filter(r => r.status === 'new').length} new)`);
     return results;
 
-  } catch (error) {
-    console.error(`[MatchSuggestionGenerator] Error generating suggestions:`, error);
+  } catch (error: any) {
+    console.error(`[MatchSuggestionGenerator] ❌ Error generating suggestions:`, error?.message || error);
+    console.error(`[MatchSuggestionGenerator] Stack:`, error?.stack);
     throw error;
   }
 }

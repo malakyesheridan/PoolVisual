@@ -1204,14 +1204,20 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Generate match suggestions after computing matches
       try {
         const { generateMatchSuggestions } = await import('./services/matchSuggestionGenerator.js');
-        await generateMatchSuggestions({
+        const suggestions = await generateMatchSuggestions({
           orgId,
           propertyId: jobId,
           createdByUserId: req.user.id,
         });
+        console.log(`[Matched Buyers] Generated ${suggestions.length} match suggestions`);
       } catch (suggestionError: any) {
         // Log but don't fail the request if suggestion generation fails
-        console.warn('[Matched Buyers] Failed to generate suggestions:', suggestionError?.message);
+        const errorMsg = suggestionError?.message || String(suggestionError);
+        console.warn('[Matched Buyers] Failed to generate suggestions:', errorMsg);
+        // If it's a migration error, log it prominently
+        if (errorMsg.includes('migration') || errorMsg.includes('match_suggestions')) {
+          console.error('[Matched Buyers] ⚠️  Match suggestions feature requires migration 049_add_match_suggestions.sql to be run');
+        }
       }
 
       res.json(matchingResult);
@@ -1258,7 +1264,23 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       // Get match suggestions
-      const suggestions = await storage.getMatchSuggestionsByProperty(orgId, jobId, status);
+      let suggestions: any[] = [];
+      try {
+        suggestions = await storage.getMatchSuggestionsByProperty(orgId, jobId, status);
+        console.log(`[Match Suggestions] Found ${suggestions.length} suggestions for property ${jobId}`);
+      } catch (error: any) {
+        console.error('[Match Suggestions] Error fetching suggestions:', error?.message || error);
+        // If table doesn't exist, return empty array (migration not run yet)
+        if (error?.code === '42P01' || error?.message?.includes('match_suggestions')) {
+          console.warn('[Match Suggestions] match_suggestions table may not exist. Run migration 049_add_match_suggestions.sql');
+          return res.json({
+            propertyId: jobId,
+            suggestions: [],
+            error: 'Migration not run',
+          });
+        }
+        throw error;
+      }
 
       // Enrich with opportunity and contact data
       const enrichedSuggestions = await Promise.all(

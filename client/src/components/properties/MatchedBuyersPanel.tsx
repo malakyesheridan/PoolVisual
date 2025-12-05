@@ -35,11 +35,21 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
-  const { data: suggestionsData } = useQuery({
+  const { data: suggestionsData, error: suggestionsError, isLoading: suggestionsLoading } = useQuery({
     queryKey: ['/api/jobs', jobId, 'match-suggestions'],
-    queryFn: () => apiClient.getMatchSuggestions(jobId),
+    queryFn: async () => {
+      try {
+        const result = await apiClient.getMatchSuggestions(jobId);
+        console.log('[MatchedBuyersPanel] Suggestions data:', result);
+        return result;
+      } catch (error: any) {
+        console.error('[MatchedBuyersPanel] Error fetching suggestions:', error);
+        throw error;
+      }
+    },
     enabled: !!jobId,
     staleTime: 2 * 60 * 1000,
+    retry: 1,
   });
 
   const updateStatusMutation = useMutation({
@@ -88,12 +98,23 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
     updateStatusMutation.mutate({ suggestionId, status });
   };
 
+  // Debug logging
+  if (suggestionsError) {
+    console.error('[MatchedBuyersPanel] Suggestions query error:', suggestionsError);
+  }
+  if (suggestionsData) {
+    console.log('[MatchedBuyersPanel] Suggestions loaded:', suggestionsData);
+  }
+
   // Create a map of suggestions by opportunityId
-  const suggestionsByOpportunity = new Map<string, typeof suggestionsData.suggestions[0]>();
+  const suggestionsByOpportunity = new Map<string, typeof suggestionsData?.suggestions?.[0]>();
   if (suggestionsData?.suggestions) {
+    console.log(`[MatchedBuyersPanel] Mapping ${suggestionsData.suggestions.length} suggestions`);
     for (const suggestion of suggestionsData.suggestions) {
       suggestionsByOpportunity.set(suggestion.opportunityId, suggestion);
     }
+  } else {
+    console.log('[MatchedBuyersPanel] No suggestions data available');
   }
 
   if (isLoading) {
@@ -177,9 +198,14 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
           <Badge variant="outline" className="ml-2">
             {matchingResult.matches.length}
           </Badge>
-          {suggestionsData && suggestionsData.suggestions.filter(s => s.status === 'new').length > 0 && (
+          {suggestionsData && suggestionsData.suggestions && suggestionsData.suggestions.filter(s => s.status === 'new').length > 0 && (
             <Badge variant="default" className="ml-2 bg-amber-500">
               {suggestionsData.suggestions.filter(s => s.status === 'new').length} new
+            </Badge>
+          )}
+          {suggestionsError && (
+            <Badge variant="destructive" className="ml-2 text-xs">
+              Error loading suggestions
             </Badge>
           )}
         </CardTitle>
