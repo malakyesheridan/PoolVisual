@@ -1186,22 +1186,11 @@ class ApiClient {
   }
 
   async submitPublicBuyerForm(token: string, data: any) {
-    // Public routes don't use /api prefix, so call directly
-    const response = await fetch(`/public/buyer-form/${token}`, {
+    return this.request<{ success: boolean; message?: string }>(`/public/buyer-form/${token}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      credentials: 'omit', // Public route, no auth needed
       body: JSON.stringify(data),
+      credentials: 'omit', // Public route, no auth needed
     });
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({ message: 'Failed to submit form' }));
-      throw new Error(body.message || 'Failed to submit form');
-    }
-
-    return response.json();
   }
 
   // Pipelines

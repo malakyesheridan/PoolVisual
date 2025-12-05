@@ -4038,7 +4038,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/public/buyer-form/:token", async (req: any, res: any) => {
+  app.post("/api/public/buyer-form/:token", async (req: any, res: any) => {
     try {
       const { token } = req.params;
       const {
