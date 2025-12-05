@@ -4257,7 +4257,39 @@ export async function registerRoutes(app: Express): Promise<void> {
           createdContactId = newContact.id;
         }
 
-        // 2. Create buyer opportunity
+        // 2. Get default pipeline and find "Contacted" stage for the user who created the form link
+        let contactedStageId: string | null = null;
+        let defaultPipelineId: string | null = null;
+        
+        try {
+          const pipelines = await storage.getPipelines(formLink.createdByUserId);
+          const defaultPipeline = pipelines.find((p: any) => p.isDefault) || pipelines[0];
+          
+          if (defaultPipeline) {
+            defaultPipelineId = defaultPipeline.id;
+            const stages = await storage.getPipelineStages(defaultPipeline.id, formLink.createdByUserId);
+            // Find "Contacted" stage (case-insensitive, also check for user custom names)
+            const contactedStage = stages.find((s: any) => 
+              s.name.toLowerCase() === 'contacted' || 
+              (s.customName && s.customName.toLowerCase() === 'contacted')
+            );
+            
+            if (contactedStage) {
+              contactedStageId = contactedStage.id;
+            } else if (stages.length > 1) {
+              // If no "Contacted" stage found, use the second stage (usually "Contacted" is order 1)
+              contactedStageId = stages[1]?.id || stages[0]?.id || null;
+            } else if (stages.length > 0) {
+              // Fallback to first stage if only one exists
+              contactedStageId = stages[0].id;
+            }
+          }
+        } catch (error: any) {
+          console.warn('[Buyer Form Submission] Failed to get pipeline/stages, using defaults:', error.message);
+          // Continue without pipeline/stage - will use defaults
+        }
+
+        // 3. Create buyer opportunity
         const opportunityTitle = `${firstName} ${lastName} - Buyer Inquiry${formLink.propertyId ? ' (Property)' : ''}`;
         const opportunityNotes = `Created from Buyer Inquiry Form${freeNotes ? `\n\nAdditional Notes:\n${freeNotes}` : ''}`;
 
@@ -4269,8 +4301,10 @@ export async function registerRoutes(app: Express): Promise<void> {
           contactId: createdContactId,
           propertyJobId: formLink.propertyId || null,
           opportunityType: 'buyer',
-          status: 'new',
-          pipelineStage: 'new',
+          status: 'open', // Use 'open' instead of 'new' for better compatibility
+          pipelineStage: 'contacted', // Set to 'contacted' for legacy field
+          pipelineId: defaultPipelineId,
+          stageId: contactedStageId, // Set the actual stage ID
           notes: opportunityNotes,
           source: 'buyer_inquiry_form',
         });

@@ -1166,29 +1166,39 @@ class ApiClient {
     return this.request<any[]>('/buyer-forms');
   }
 
-  // Public buyer form endpoints
+  // Public buyer form endpoints (no /api prefix)
   async getPublicBuyerFormMetadata(token: string) {
-    return this.request<{
-      valid: boolean;
-      message?: string;
-      orgName?: string;
-      orgLogoUrl?: string;
-      property?: {
-        id: string;
-        address: string;
-        photoUrl: string | null;
-      };
-      fields?: any;
-    }>(`/public/buyer-form/${token}`, {
+    // Public routes don't use /api prefix, so call directly
+    const response = await fetch(`/public/buyer-form/${token}`, {
       method: 'GET',
+      credentials: 'omit', // Public route, no auth needed
     });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ message: 'Failed to load form' }));
+      throw new Error(body.message || 'Failed to load form');
+    }
+
+    return response.json();
   }
 
   async submitPublicBuyerForm(token: string, data: any) {
-    return this.request<{ success: boolean; message?: string }>(`/public/buyer-form/${token}`, {
+    // Public routes don't use /api prefix, so call directly
+    const response = await fetch(`/public/buyer-form/${token}`, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'omit', // Public route, no auth needed
       body: JSON.stringify(data),
     });
+
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({ message: 'Failed to submit form' }));
+      throw new Error(body.message || 'Failed to submit form');
+    }
+
+    return response.json();
   }
 
   // Pipelines
