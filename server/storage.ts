@@ -972,16 +972,21 @@ export class PostgresStorage implements IStorage {
     try {
       // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
       return await this.getMaterialsSystem(undefined, undefined);
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Storage] Failed to get all materials:', error);
-      // Fallback to direct query if system function fails
-      try {
-        return await ensureDb().select().from(materials)
-          .where(eq(materials.isActive, true))
-          .orderBy(desc(materials.createdAt));
-      } catch (fallbackError) {
-        throw new Error(`Failed to get materials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      // Fallback to direct query if system function fails or column doesn't exist
+      if (error?.message?.includes('updated_at') || error?.code === '42703' || error?.message?.includes('system_get_materials')) {
+        console.warn('[Storage] Falling back to direct query due to missing column or function');
+        try {
+          return await ensureDb().select().from(materials)
+            .where(eq(materials.isActive, true))
+            .orderBy(desc(materials.createdAt));
+        } catch (fallbackError) {
+          console.error('[Storage] Fallback query also failed:', fallbackError);
+          throw new Error(`Failed to get materials: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
       }
+      throw error;
     }
   }
 
@@ -1019,12 +1024,18 @@ export class PostgresStorage implements IStorage {
         textureUrl: row.texture_url,
         isActive: row.is_active,
         createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        updatedAt: row.updated_at || row.created_at || new Date(), // Fallback to created_at if updated_at doesn't exist
       })) as Material[];
     } catch (error: any) {
       // If function doesn't exist, fall back to direct query
       if (error?.message?.includes('system_get_materials') || error?.code === '42883') {
         throw new Error('system_get_materials function not found - run migration 027');
+      }
+      // If updated_at column doesn't exist, try again without it
+      if (error?.message?.includes('updated_at') || error?.code === '42703') {
+        console.warn('[Storage] updated_at column not found in materials, using created_at as fallback');
+        // Re-throw to trigger fallback in getAllMaterials/getMaterials
+        throw error;
       }
       throw error;
     }
