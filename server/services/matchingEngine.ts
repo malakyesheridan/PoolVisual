@@ -27,6 +27,8 @@ export interface PropertyData {
   bathrooms?: number | null;
   propertyType?: string | null;
   propertyFeatures?: string[] | null;
+  propertyDescription?: string | null;
+  propertyNotes?: string[] | null; // Array of note texts
 }
 
 export interface BuyerOpportunity {
@@ -303,6 +305,7 @@ function scorePropertyType(property: PropertyData, profile: BuyerProfile): { sco
 
 /**
  * Score must-haves and deal-breakers (0-100)
+ * Now includes property description and notes in the matching
  */
 function scoreMustHavesDealBreakers(property: PropertyData, profile: BuyerProfile): { score: number; reasons: string[] } {
   const reasons: string[] = [];
@@ -312,16 +315,48 @@ function scoreMustHavesDealBreakers(property: PropertyData, profile: BuyerProfil
   const mustHaves = Array.isArray(profile.mustHaves) ? profile.mustHaves : [];
   const dealBreakers = Array.isArray(profile.dealBreakers) ? profile.dealBreakers : [];
   
+  // Combine property features, description, and notes into a single searchable text
+  const propertyDescription = property.propertyDescription ? String(property.propertyDescription).toLowerCase() : '';
+  const propertyNotes = Array.isArray(property.propertyNotes) 
+    ? property.propertyNotes.map(n => String(n).toLowerCase()).join(' ')
+    : '';
+  
+  // Create a combined searchable text from all property sources
+  const allPropertyText = [
+    ...propertyFeatures.map(f => String(f).toLowerCase()),
+    propertyDescription,
+    propertyNotes,
+  ].filter(t => t && t.trim()).join(' ').toLowerCase();
+  
   // Normalize to lowercase for comparison
   const normalizedFeatures = propertyFeatures.map(f => String(f).toLowerCase().trim());
   const normalizedMustHaves = mustHaves.map(m => String(m).toLowerCase().trim());
   const normalizedDealBreakers = dealBreakers.map(d => String(d).toLowerCase().trim());
   
+  // Helper function to check if a term appears in any property text
+  const checkPropertyText = (term: string): boolean => {
+    // Check in features
+    if (normalizedFeatures.some(f => f.includes(term) || term.includes(f))) {
+      return true;
+    }
+    // Check in description
+    if (propertyDescription && (propertyDescription.includes(term) || term.includes(propertyDescription))) {
+      return true;
+    }
+    // Check in notes
+    if (propertyNotes && (propertyNotes.includes(term) || term.includes(propertyNotes))) {
+      return true;
+    }
+    // Check in combined text
+    if (allPropertyText && (allPropertyText.includes(term) || term.includes(allPropertyText))) {
+      return true;
+    }
+    return false;
+  };
+  
   // Check deal-breakers first (hard constraint - zero out if violated)
   for (const dealBreaker of normalizedDealBreakers) {
-    // Simple substring matching for v1
-    const matches = normalizedFeatures.some(f => f.includes(dealBreaker) || dealBreaker.includes(f));
-    if (matches) {
+    if (checkPropertyText(dealBreaker)) {
       score = 0;
       reasons.push(`Deal-breaker: ${dealBreaker}`);
       return { score, reasons }; // Early return - deal-breaker violated
@@ -332,8 +367,7 @@ function scoreMustHavesDealBreakers(property: PropertyData, profile: BuyerProfil
   if (normalizedMustHaves.length > 0) {
     let matchedCount = 0;
     for (const mustHave of normalizedMustHaves) {
-      const matches = normalizedFeatures.some(f => f.includes(mustHave) || mustHave.includes(f));
-      if (matches) {
+      if (checkPropertyText(mustHave)) {
         matchedCount++;
         reasons.push(`Has: ${mustHave}`);
       }

@@ -1154,6 +1154,16 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       }
       
+      // Get property notes for matching
+      let propertyNotesTexts: string[] = [];
+      try {
+        const notes = await storage.getPropertyNotes(jobId);
+        propertyNotesTexts = notes.map((note: any) => note.noteText || '').filter((text: string) => text.trim());
+      } catch (error: any) {
+        // If notes can't be loaded, continue without them (non-critical)
+        console.warn('[Matched Buyers] Could not load property notes:', error?.message);
+      }
+      
       const propertyData = {
         id: job.id,
         address: job.address || null,
@@ -1162,6 +1172,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         bathrooms: job.bathrooms ? Number(job.bathrooms) : null,
         propertyType: job.propertyType || null,
         propertyFeatures: Array.isArray(job.propertyFeatures) ? job.propertyFeatures : (job.propertyFeatures ? [String(job.propertyFeatures)] : []),
+        propertyDescription: job.propertyDescription || null,
+        propertyNotes: propertyNotesTexts,
       };
       
       console.log('[Matched Buyers] Property data:', JSON.stringify(propertyData, null, 2));
@@ -3320,8 +3332,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access (same pattern as other endpoints)
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -3347,11 +3359,29 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ message: "Note ID is required" });
       }
 
-      const note = await storage.updatePropertyNote(noteId, {
+      // Get note to verify access
+      const note = await storage.getPropertyNote(noteId);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+
+      // Get the job to verify access
+      const job = await storage.getJob(note.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updatedNote = await storage.updatePropertyNote(noteId, {
         noteText: noteText?.trim(),
         tags,
       });
-      res.json(note);
+      res.json(updatedNote);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }
@@ -3362,6 +3392,24 @@ export async function registerRoutes(app: Express): Promise<void> {
       const noteId = req.params.id;
       if (!noteId) {
         return res.status(400).json({ message: "Note ID is required" });
+      }
+
+      // Get note to verify access
+      const note = await storage.getPropertyNote(noteId);
+      if (!note) {
+        return res.status(404).json({ message: "Note not found" });
+      }
+
+      // Get the job to verify access
+      const job = await storage.getJob(note.jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
       }
 
       await storage.deletePropertyNote(noteId);

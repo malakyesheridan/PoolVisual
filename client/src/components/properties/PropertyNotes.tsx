@@ -10,7 +10,6 @@ import { Trash2, Edit, Plus, Save, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '@/stores/auth-store';
 import { useToast } from '@/hooks/use-toast';
-import { useToast } from '@/hooks/use-toast';
 
 interface PropertyNotesProps {
   jobId: string;

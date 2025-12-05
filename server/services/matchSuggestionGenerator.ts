@@ -55,7 +55,17 @@ export async function generateMatchSuggestions(
     // 2. Get buyer opportunities with profiles
     const buyerOpportunities = await storage.getBuyerOpportunitiesWithProfiles(orgId);
 
-    // 3. Prepare property data for matching engine
+    // 3. Get property notes for matching
+    let propertyNotesTexts: string[] = [];
+    try {
+      const notes = await storage.getPropertyNotes(propertyId);
+      propertyNotesTexts = notes.map((note: any) => note.noteText || '').filter((text: string) => text.trim());
+    } catch (error: any) {
+      // If notes can't be loaded, continue without them (non-critical)
+      console.warn('[MatchSuggestionGenerator] Could not load property notes:', error?.message);
+    }
+    
+    // 4. Prepare property data for matching engine
     const propertyData = {
       id: property.id,
       address: property.address || null,
@@ -66,6 +76,8 @@ export async function generateMatchSuggestions(
       propertyFeatures: Array.isArray(property.propertyFeatures) 
         ? property.propertyFeatures 
         : (property.propertyFeatures ? [String(property.propertyFeatures)] : []),
+      propertyDescription: property.propertyDescription || null,
+      propertyNotes: propertyNotesTexts,
     };
 
     // 4. Run matching engine

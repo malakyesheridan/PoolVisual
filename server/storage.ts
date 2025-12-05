@@ -174,6 +174,7 @@ export interface IStorage {
   
   // Property Notes (for real estate)
   getPropertyNotes(jobId: string): Promise<any[]>;
+  getPropertyNote(id: string): Promise<any | undefined>;
   createPropertyNote(data: { jobId: string; userId: string; noteText: string; tags?: string[] }): Promise<any>;
   updatePropertyNote(id: string, data: { noteText?: string; tags?: string[] }): Promise<any>;
   deletePropertyNote(id: string): Promise<void>;
@@ -1734,6 +1735,22 @@ export class PostgresStorage implements IStorage {
       if (error?.message?.includes('property_notes') || error?.code === '42P01') {
         console.warn('[getPropertyNotes] property_notes table not found, returning empty array');
         return [];
+      }
+      throw error;
+    }
+  }
+
+  async getPropertyNote(id: string): Promise<PropertyNote | undefined> {
+    try {
+      const [note] = await ensureDb()
+        .select()
+        .from(propertyNotes)
+        .where(eq(propertyNotes.id, id))
+        .limit(1);
+      return note;
+    } catch (error: any) {
+      if (error?.message?.includes('property_notes') || error?.code === '42P01') {
+        return undefined;
       }
       throw error;
     }
