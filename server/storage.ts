@@ -1932,6 +1932,7 @@ export class PostgresStorage implements IStorage {
   async getBuyerOpportunitiesWithProfiles(orgId: string): Promise<any[]> {
     try {
       // Get all buyer/both opportunities for this org, joined with contacts to get buyerProfile
+      // Use notInArray to exclude closed_lost and abandoned statuses
       const results = await ensureDb()
         .select({
           id: opportunities.id,
@@ -1951,8 +1952,7 @@ export class PostgresStorage implements IStorage {
               eq(opportunities.opportunityType, 'buyer'),
               eq(opportunities.opportunityType, 'both')
             ),
-            ne(opportunities.status, 'closed_lost'),
-            ne(opportunities.status, 'abandoned')
+            notInArray(opportunities.status, ['closed_lost', 'abandoned'])
           )
         )
         .orderBy(desc(opportunities.createdAt));

@@ -267,7 +267,7 @@ export const jobs = pgTable("jobs", {
   bedrooms: integer("bedrooms"),
   bathrooms: numeric("bathrooms", { precision: 3, scale: 1 }),
   garageSpaces: integer("garage_spaces"),
-  estimatedPrice: numeric("estimated_price", { precision: 12, scale: 2 }),
+  estimatedPrice: text("estimated_price"), // Changed to text to support special values like "POA", "$600,000", etc.
   propertyType: text("property_type"),
   landSizeM2: numeric("land_size_m2", { precision: 10, scale: 2 }),
   interiorSizeM2: numeric("interior_size_m2", { precision: 10, scale: 2 }),
