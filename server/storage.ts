@@ -1942,7 +1942,7 @@ export class PostgresStorage implements IStorage {
           o.opportunity_type as "opportunityType",
           o.status,
           o.title,
-          c.name as "contactName",
+          CONCAT(c.first_name, ' ', c.last_name) as "contactName",
           c.buyer_profile as "buyerProfile"
         FROM opportunities o
         LEFT JOIN contacts c ON o.contact_id = c.id
