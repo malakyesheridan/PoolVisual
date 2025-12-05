@@ -6,15 +6,7 @@
  */
 
 // Guarded import - only load Redis if enabled
-let Redis: any = null;
-
-try {
-  if (process.env.REDIS_ENABLED === 'true') {
-    Redis = require('ioredis');
-  }
-} catch (error) {
-  console.warn('[CacheService] Redis not available, using no-op mode');
-}
+// Redis will be imported dynamically when needed
 
 export interface CacheOptions {
   ttl?: number; // Time to live in seconds
@@ -42,10 +34,26 @@ export class CacheService {
     // Use existing Redis URL from environment
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     
-    if (!Redis) {
-      console.log('[CacheService] Running in no-op mode');
-      this.redis = null;
+    // Initialize Redis lazily if enabled
+    this.redis = null;
+    if (process.env.REDIS_ENABLED === 'true') {
+      this.initializeRedis(redisUrl).catch((error) => {
+        console.warn('[CacheService] Redis initialization failed, using no-op mode:', error);
+        this.redis = null;
+      });
     } else {
+      console.log('[CacheService] Running in no-op mode');
+    }
+
+    this.defaultTTL = options.defaultTTL || 300; // 5 minutes default
+    this.keyPrefix = options.keyPrefix || 'poolvisual:';
+    this.stats = { hits: 0, misses: 0 };
+  }
+
+  private async initializeRedis(redisUrl: string): Promise<void> {
+    try {
+      const RedisModule = await import('ioredis');
+      const Redis = RedisModule.default || RedisModule;
       this.redis = new Redis(redisUrl, {
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
@@ -54,20 +62,19 @@ export class CacheService {
         family: 4,
         keepAlive: true
       });
+
+      // Handle Redis connection errors gracefully
+      this.redis.on('error', (error: Error) => {
+        console.warn('[CacheService] Redis connection error:', error.message);
+      });
+
+      this.redis.on('connect', () => {
+        console.log('[CacheService] Connected to Redis');
+      });
+    } catch (error) {
+      console.warn('[CacheService] Redis not available, using no-op mode');
+      this.redis = null;
     }
-
-    this.defaultTTL = options.defaultTTL || 300; // 5 minutes default
-    this.keyPrefix = options.keyPrefix || 'poolvisual:';
-    this.stats = { hits: 0, misses: 0 };
-
-    // Handle Redis connection errors gracefully
-    this.redis.on('error', (error) => {
-      console.warn('[CacheService] Redis connection error:', error.message);
-    });
-
-    this.redis.on('connect', () => {
-      console.log('[CacheService] Connected to Redis');
-    });
   }
 
   /**

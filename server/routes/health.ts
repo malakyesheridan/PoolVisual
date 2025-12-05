@@ -5,6 +5,7 @@
 import { Router } from 'express';
 import { withHandler } from '../lib/routeWrapper.js';
 import { AppError } from '../lib/errors.js';
+import os from 'os';
 
 const router = Router();
 
@@ -133,7 +134,7 @@ router.get('/health/metrics', withHandler(async (req, res) => {
       platform: process.platform,
       arch: process.arch,
       nodeVersion: process.version,
-      loadAverage: process.platform === 'linux' ? require('os').loadavg() : null
+      loadAverage: process.platform === 'linux' ? os.loadavg() : null
     },
     environment: {
       nodeEnv: process.env.NODE_ENV,

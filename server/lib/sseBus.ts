@@ -7,13 +7,14 @@ import { SSEManager } from './sseManager.js';
 let sub: any = null;
 const SAFE_MODE = process.env.SAFE_MODE === '1';
 
-export function initSSEBus() {
+export async function initSSEBus() {
   if (SAFE_MODE) return null;
   if (sub) return sub;
   
   try {
     // Lazy import to avoid Redis connection on module load
-    const Redis = require('ioredis');
+    const RedisModule = await import('ioredis');
+    const Redis = RedisModule.default || RedisModule;
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     const isTLS = redisUrl.startsWith('rediss://');
     

@@ -8,13 +8,7 @@
 // Guarded import - only load Sentry if enabled
 let Sentry: any = null;
 
-try {
-  if (process.env.SENTRY_NODE_ENABLED === 'true' && process.env.SENTRY_DSN) {
-    Sentry = require('@sentry/node');
-  }
-} catch (error) {
-  console.warn('[MonitoringService] Sentry not available, using no-op mode');
-}
+// Initialize Sentry lazily when needed (handled in initSentry method)
 
 // Simple logger fallback
 const logger = {
@@ -79,16 +73,11 @@ export class MonitoringService {
         return;
       }
 
-      // No-op mode if Sentry not available
-      if (!Sentry) {
-        console.log('[MonitoringService] Running in no-op mode');
-        this.isInitialized = true;
-        return;
-      }
-
       // Initialize Sentry if DSN is provided
-      if (this.config.sentryDsn) {
+      if (this.config.sentryDsn && process.env.SENTRY_NODE_ENABLED === 'true') {
         await this.initSentry();
+      } else {
+        console.log('[MonitoringService] Running in no-op mode (Sentry not enabled or DSN not provided)');
       }
 
       // Initialize performance monitoring
@@ -117,7 +106,9 @@ export class MonitoringService {
    */
   private async initSentry(): Promise<void> {
     try {
-      const Sentry = await import('@sentry/node');
+      const SentryModule = await import('@sentry/node');
+      // Handle both ESM and CommonJS exports
+      const Sentry = SentryModule.default || SentryModule;
       
       Sentry.init({
         dsn: this.config.sentryDsn,

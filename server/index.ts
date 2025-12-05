@@ -437,7 +437,7 @@ async function initializeServer() {
   if (!SAFE_MODE) {
     // SSE system initialization
     SSEManager.init();
-    initSSEBus();
+    await initSSEBus();
     
     // Start worker if enabled
     if (START_WORKER) {

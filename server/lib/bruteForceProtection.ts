@@ -6,16 +6,7 @@
  */
 
 // Guarded import - only load Redis if enabled
-let Redis: any = null;
-let redisClient: any = null;
-
-try {
-  if (process.env.REDIS_ENABLED === 'true' && process.env.BRUTE_FORCE_PROTECTION_ENABLED === 'true') {
-    Redis = require('ioredis');
-  }
-} catch (error) {
-  console.warn('[BruteForceProtection] Redis not available, using no-op mode');
-}
+// Redis will be imported dynamically when needed
 
 export interface BruteForceConfig {
   maxAttempts: number;
@@ -38,15 +29,15 @@ export class BruteForceProtection {
     // Use existing Redis URL from environment
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
     
-    if (!Redis) {
-      console.log('[BruteForceProtection] Running in no-op mode');
-      this.redis = null;
-    } else {
-      this.redis = new Redis(redisUrl, {
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3,
-        lazyConnect: true
+    // Initialize Redis lazily if enabled
+    this.redis = null;
+    if (process.env.REDIS_ENABLED === 'true' && process.env.BRUTE_FORCE_PROTECTION_ENABLED === 'true') {
+      this.initializeRedis(redisUrl).catch((error) => {
+        console.warn('[BruteForceProtection] Redis initialization failed, using no-op mode:', error);
+        this.redis = null;
       });
+    } else {
+      console.log('[BruteForceProtection] Running in no-op mode');
     }
 
     // Default configuration
@@ -266,6 +257,25 @@ export class BruteForceProtection {
     } catch (error) {
       console.error('[BruteForceProtection] Error cleaning up expired entries:', error);
       return 0;
+    }
+  }
+
+  /**
+   * Initialize Redis connection
+   * @param redisUrl Redis connection URL
+   */
+  private async initializeRedis(redisUrl: string): Promise<void> {
+    try {
+      const RedisModule = await import('ioredis');
+      const Redis = RedisModule.default || RedisModule;
+      this.redis = new Redis(redisUrl, {
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        lazyConnect: true
+      });
+    } catch (error) {
+      console.warn('[BruteForceProtection] Redis not available, using no-op mode');
+      this.redis = null;
     }
   }
 
