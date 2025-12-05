@@ -48,6 +48,10 @@ import {
   InsertPipeline,
   PipelineStage,
   InsertPipelineStage,
+  BuyerFormLink,
+  InsertBuyerFormLink,
+  BuyerFormSubmission,
+  InsertBuyerFormSubmission,
   UserStageName,
   InsertUserStageName,
   OpportunityTask,
@@ -82,6 +86,8 @@ import {
   pipelineStages,
   userStageNames,
   referrals,
+  buyerFormLinks,
+  buyerFormSubmissions,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -221,6 +227,16 @@ export interface IStorage {
   // User Stage Name Overrides
   upsertUserStageName(userId: string, stageId: string, customName: string): Promise<any>;
   deleteUserStageName(userId: string, stageId: string): Promise<void>;
+  
+  // Buyer Form Links
+  createBuyerFormLink(data: any): Promise<any>;
+  getBuyerFormLinkByToken(token: string): Promise<any | undefined>;
+  getBuyerFormLinks(orgId: string, userId?: string): Promise<any[]>;
+  updateBuyerFormLink(id: string, updates: any): Promise<any>;
+  
+  // Buyer Form Submissions
+  createBuyerFormSubmission(data: any): Promise<any>;
+  getBuyerFormSubmissions(formLinkId: string): Promise<any[]>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -2766,6 +2782,111 @@ export class PostgresStorage implements IStorage {
       .where(eq(referrals.id, id))
       .returning();
     return result[0];
+  }
+
+  // Buyer Form Links methods
+  async createBuyerFormLink(data: InsertBuyerFormLink): Promise<BuyerFormLink> {
+    try {
+      const [formLink] = await ensureDb()
+        .insert(buyerFormLinks)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!formLink) throw new Error("Failed to create buyer form link");
+      return formLink;
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_links') || error?.code === '42P01') {
+        throw new Error("Buyer form links feature requires database migration. Please run migration 047_add_buyer_inquiry_forms.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getBuyerFormLinkByToken(token: string): Promise<BuyerFormLink | undefined> {
+    try {
+      const [formLink] = await ensureDb()
+        .select()
+        .from(buyerFormLinks)
+        .where(eq(buyerFormLinks.token, token))
+        .limit(1);
+      return formLink;
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_links') || error?.code === '42P01') {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async getBuyerFormLinks(orgId: string, userId?: string): Promise<BuyerFormLink[]> {
+    try {
+      const conditions = [eq(buyerFormLinks.orgId, orgId)];
+      if (userId) {
+        conditions.push(eq(buyerFormLinks.createdByUserId, userId));
+      }
+      
+      return await ensureDb()
+        .select()
+        .from(buyerFormLinks)
+        .where(and(...conditions))
+        .orderBy(desc(buyerFormLinks.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_links') || error?.code === '42P01') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async updateBuyerFormLink(id: string, updates: Partial<BuyerFormLink>): Promise<BuyerFormLink> {
+    try {
+      const [updated] = await ensureDb()
+        .update(buyerFormLinks)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(buyerFormLinks.id, id))
+        .returning();
+      if (!updated) throw new Error("Failed to update buyer form link");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_links') || error?.code === '42P01') {
+        throw new Error("Buyer form links feature requires database migration. Please run migration 047_add_buyer_inquiry_forms.sql");
+      }
+      throw error;
+    }
+  }
+
+  // Buyer Form Submissions methods
+  async createBuyerFormSubmission(data: InsertBuyerFormSubmission): Promise<BuyerFormSubmission> {
+    try {
+      const [submission] = await ensureDb()
+        .insert(buyerFormSubmissions)
+        .values(data)
+        .returning();
+      if (!submission) throw new Error("Failed to create buyer form submission");
+      return submission;
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_submissions') || error?.code === '42P01') {
+        throw new Error("Buyer form submissions feature requires database migration. Please run migration 047_add_buyer_inquiry_forms.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getBuyerFormSubmissions(formLinkId: string): Promise<BuyerFormSubmission[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(buyerFormSubmissions)
+        .where(eq(buyerFormSubmissions.formLinkId, formLinkId))
+        .orderBy(desc(buyerFormSubmissions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('buyer_form_submissions') || error?.code === '42P01') {
+        return [];
+      }
+      throw error;
+    }
   }
 }
 

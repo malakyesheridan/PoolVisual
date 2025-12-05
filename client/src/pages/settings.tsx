@@ -5,6 +5,7 @@ import { SecuritySettings } from "@/components/settings/SecuritySettings";
 import { UserPreferencesSettings } from "@/components/settings/UserPreferencesSettings";
 import { OrganizationSettings } from "@/components/settings/OrganizationSettings";
 import { NotificationsSettings } from "@/components/settings/NotificationsSettings";
+import { ReferralsSection } from "@/components/referrals/ReferralsSection";
 import { useOrgs } from "@/hooks/useOrgs";
 import { useOrgStore } from "@/stores/orgStore";
 import { Settings as SettingsIcon, Menu, X } from "lucide-react";
@@ -46,6 +47,8 @@ export default function Settings() {
         return <OrganizationSettings orgId={selectedOrgId} />;
       case 'notifications':
         return <NotificationsSettings />;
+      case 'referrals':
+        return <ReferralsSection />;
       default:
         return <AccountSettings />;
     }

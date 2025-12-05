@@ -19,7 +19,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 // JWT removed - using session-based authentication
 import multer from "multer";
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import express from "express";
 import { registerMaterialRoutes } from './materialRoutes.js';
 import { registerMaterialRoutesV2 } from "./routes/materials.js";
@@ -3830,6 +3830,495 @@ export async function registerRoutes(app: Express): Promise<void> {
       const statusCode = error?.message?.includes('timeout') ? 504 : 500;
       res.status(statusCode).json({ 
         message: error?.message || 'Failed to update buyer profile' 
+      });
+    }
+  });
+
+  // Buyer Inquiry Form Links endpoints
+  app.post("/api/buyer-forms", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { propertyId, expiresAt } = req.body;
+      const userId = req.user.id;
+      
+      // Get user's org (from session or first org)
+      const userOrgs = await storage.getUserOrgs(userId);
+      if (!userOrgs || userOrgs.length === 0) {
+        return res.status(400).json({ message: "User must belong to an organization" });
+      }
+      const orgId = userOrgs[0].id;
+
+      // Validate propertyId if provided
+      if (propertyId) {
+        const job = await storage.getJob(propertyId);
+        if (!job) {
+          return res.status(404).json({ message: "Property not found" });
+        }
+        // Verify user has access to this property
+        if (job.userId !== userId && !req.user.isAdmin) {
+          return res.status(403).json({ message: "Access denied to property" });
+        }
+      }
+
+      // Generate secure token
+      let token: string;
+      let attempts = 0;
+      do {
+        token = randomBytes(32).toString('hex');
+        const existing = await storage.getBuyerFormLinkByToken(token);
+        if (!existing) break;
+        attempts++;
+        if (attempts > 5) {
+          throw new Error("Failed to generate unique token");
+        }
+      } while (true);
+
+      // Parse expiresAt if provided
+      let expiresAtDate: Date | null = null;
+      if (expiresAt) {
+        expiresAtDate = new Date(expiresAt);
+        if (isNaN(expiresAtDate.getTime())) {
+          return res.status(400).json({ message: "Invalid expiresAt date format" });
+        }
+      }
+
+      // Create form link
+      const formLink = await storage.createBuyerFormLink({
+        orgId,
+        createdByUserId: userId,
+        propertyId: propertyId || null,
+        token,
+        status: 'active',
+        expiresAt: expiresAtDate,
+      });
+
+      // Construct shareable URL
+      const baseUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+      const shareUrl = `${baseUrl}/public/buyer-form/${token}`;
+
+      res.json({
+        id: formLink.id,
+        token: formLink.token,
+        shareUrl,
+        propertyId: formLink.propertyId,
+        expiresAt: formLink.expiresAt,
+        status: formLink.status,
+        createdAt: formLink.createdAt,
+      });
+    } catch (error: any) {
+      console.error('[Buyer Form Link Creation Error]', error?.message || error);
+      res.status(500).json({ 
+        message: error?.message || 'Failed to create buyer form link' 
+      });
+    }
+  });
+
+  app.get("/api/buyer-forms", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const userId = req.user.id;
+      
+      // Get user's org
+      const userOrgs = await storage.getUserOrgs(userId);
+      if (!userOrgs || userOrgs.length === 0) {
+        return res.json([]);
+      }
+      const orgId = userOrgs[0].id;
+
+      // Get all form links for this org (optionally filtered by user)
+      const formLinks = await storage.getBuyerFormLinks(orgId, userId);
+
+      // Construct shareable URLs
+      const baseUrl = process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000';
+      const linksWithUrls = formLinks.map(link => ({
+        ...link,
+        shareUrl: `${baseUrl}/public/buyer-form/${link.token}`,
+      }));
+
+      res.json(linksWithUrls);
+    } catch (error: any) {
+      console.error('[Get Buyer Form Links Error]', error?.message || error);
+      res.status(500).json({ 
+        message: error?.message || 'Failed to get buyer form links' 
+      });
+    }
+  });
+
+  // Public buyer form endpoints (no authentication required)
+  app.get("/public/buyer-form/:token", async (req: any, res: any) => {
+    try {
+      const { token } = req.params;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      // Look up form link
+      const formLink = await storage.getBuyerFormLinkByToken(token);
+      
+      if (!formLink) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link is invalid or has been removed" 
+        });
+      }
+
+      // Validate status
+      if (formLink.status !== 'active') {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link has been disabled" 
+        });
+      }
+
+      // Validate expiry
+      if (formLink.expiresAt && new Date(formLink.expiresAt) < new Date()) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link has expired" 
+        });
+      }
+
+      // Get org info for branding
+      const org = await storage.getOrg(formLink.orgId);
+      if (!org) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "Organization not found" 
+        });
+      }
+
+      // Get property info if linked
+      let propertyInfo: any = null;
+      if (formLink.propertyId) {
+        const job = await storage.getJob(formLink.propertyId);
+        if (job) {
+          // Get first photo for property
+          const photos = await storage.getJobPhotos(formLink.propertyId);
+          const firstPhoto = photos && photos.length > 0 ? photos[0] : null;
+          
+          propertyInfo = {
+            id: job.id,
+            address: job.address || job.clientName || 'Property',
+            photoUrl: firstPhoto ? (firstPhoto.originalUrl?.startsWith('/uploads/') 
+              ? `/api/photos/${firstPhoto.id}/image` 
+              : firstPhoto.originalUrl || firstPhoto.url) : null,
+          };
+        }
+      }
+
+      // Return safe metadata
+      res.json({
+        valid: true,
+        orgName: org.name,
+        orgLogoUrl: org.logoUrl,
+        property: propertyInfo,
+        // Form fields schema (static for v1)
+        fields: {
+          fullName: { type: 'text', required: true, label: 'Full Name' },
+          email: { type: 'email', required: true, label: 'Email' },
+          phone: { type: 'tel', required: false, label: 'Phone' },
+          preferredSuburbs: { type: 'array', required: false, label: 'Preferred Suburbs' },
+          budgetMin: { type: 'number', required: false, label: 'Budget Min' },
+          budgetMax: { type: 'number', required: false, label: 'Budget Max' },
+          bedsMin: { type: 'number', required: false, label: 'Min Beds' },
+          bathsMin: { type: 'number', required: false, label: 'Min Baths' },
+          propertyType: { type: 'select', required: false, label: 'Property Type', options: ['house', 'townhouse', 'apartment', 'land', 'acreage'] },
+          mustHaves: { type: 'array', required: false, label: 'Must Haves' },
+          dealBreakers: { type: 'array', required: false, label: 'Deal Breakers' },
+          financeStatus: { type: 'select', required: false, label: 'Finance Status', options: ['preapproved', 'needsFinance', 'cash', 'unknown'] },
+          timeline: { type: 'select', required: false, label: 'Timeline', options: ['asap', '30days', '60days', '3to6months', 'unknown'] },
+          freeNotes: { type: 'textarea', required: false, label: 'Additional Notes' },
+        },
+      });
+    } catch (error: any) {
+      console.error('[Get Buyer Form Metadata Error]', error?.message || error);
+      res.status(500).json({ 
+        valid: false,
+        message: "Failed to load form" 
+      });
+    }
+  });
+
+  app.post("/public/buyer-form/:token", async (req: any, res: any) => {
+    try {
+      const { token } = req.params;
+      const {
+        fullName,
+        email,
+        phone,
+        preferredSuburbs,
+        budgetMin,
+        budgetMax,
+        bedsMin,
+        bathsMin,
+        propertyType,
+        mustHaves,
+        dealBreakers,
+        financeStatus,
+        timeline,
+        freeNotes,
+        _hp, // Honeypot field
+      } = req.body;
+
+      // Honeypot check - if filled, treat as spam
+      if (_hp && _hp.trim() !== '') {
+        // Return success but don't create anything
+        return res.json({ success: true, message: "Thank you for your submission." });
+      }
+
+      // Validate token and form link
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      const formLink = await storage.getBuyerFormLinkByToken(token);
+      
+      if (!formLink) {
+        return res.status(404).json({ message: "Invalid form link" });
+      }
+
+      if (formLink.status !== 'active') {
+        return res.status(404).json({ message: "This form link has been disabled" });
+      }
+
+      if (formLink.expiresAt && new Date(formLink.expiresAt) < new Date()) {
+        return res.status(404).json({ message: "This form link has expired" });
+      }
+
+      // Basic rate limiting per token + IP (simple in-memory for v1)
+      const clientIp = req.ip || req.socket?.remoteAddress || 'unknown';
+      const rateLimitKey = `buyer_form_submit:${token}:${clientIp}`;
+      // Note: For production, use Redis or a proper rate limiter
+      // For v1, we'll rely on the honeypot and basic validation
+
+      // Validation
+      if (!fullName || !fullName.trim()) {
+        return res.status(400).json({ message: "Full name is required" });
+      }
+
+      if (!email && !phone) {
+        return res.status(400).json({ message: "Either email or phone is required" });
+      }
+
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ message: "Invalid email format" });
+      }
+
+      // Validate numeric fields
+      if (budgetMin !== undefined && budgetMin !== null && budgetMin !== '') {
+        const min = Number(budgetMin);
+        if (isNaN(min) || min < 0) {
+          return res.status(400).json({ message: "Budget minimum must be a non-negative number" });
+        }
+      }
+
+      if (budgetMax !== undefined && budgetMax !== null && budgetMax !== '') {
+        const max = Number(budgetMax);
+        if (isNaN(max) || max < 0) {
+          return res.status(400).json({ message: "Budget maximum must be a non-negative number" });
+        }
+      }
+
+      if (budgetMin !== undefined && budgetMax !== undefined && 
+          budgetMin !== null && budgetMax !== null && 
+          budgetMin !== '' && budgetMax !== '') {
+        const min = Number(budgetMin);
+        const max = Number(budgetMax);
+        if (!isNaN(min) && !isNaN(max) && min > max) {
+          return res.status(400).json({ message: "Budget minimum must be less than or equal to maximum" });
+        }
+      }
+
+      if (bedsMin !== undefined && bedsMin !== null && bedsMin !== '') {
+        const beds = Number(bedsMin);
+        if (isNaN(beds) || beds < 0) {
+          return res.status(400).json({ message: "Minimum beds must be a non-negative number" });
+        }
+      }
+
+      if (bathsMin !== undefined && bathsMin !== null && bathsMin !== '') {
+        const baths = Number(bathsMin);
+        if (isNaN(baths) || baths < 0) {
+          return res.status(400).json({ message: "Minimum baths must be a non-negative number" });
+        }
+      }
+
+      // Parse arrays (handle both array and string formats)
+      const preferredSuburbsArray = Array.isArray(preferredSuburbs) 
+        ? preferredSuburbs.filter(s => s && s.trim())
+        : (typeof preferredSuburbs === 'string' && preferredSuburbs.trim() 
+          ? preferredSuburbs.split(',').map(s => s.trim()).filter(s => s)
+          : []);
+
+      const mustHavesArray = Array.isArray(mustHaves)
+        ? mustHaves.filter(m => m && m.trim())
+        : (typeof mustHaves === 'string' && mustHaves.trim()
+          ? mustHaves.split('\n').map(m => m.trim()).filter(m => m)
+          : []);
+
+      const dealBreakersArray = Array.isArray(dealBreakers)
+        ? dealBreakers.filter(d => d && d.trim())
+        : (typeof dealBreakers === 'string' && dealBreakers.trim()
+          ? dealBreakers.split('\n').map(d => d.trim()).filter(d => d)
+          : []);
+
+      // Split full name into first and last
+      const nameParts = fullName.trim().split(/\s+/);
+      const firstName = nameParts[0] || '';
+      const lastName = nameParts.slice(1).join(' ') || 'Unknown';
+
+      // Use a transaction-like approach: try to create everything, rollback on error
+      let createdContactId: string | null = null;
+      let createdOpportunityId: string | null = null;
+
+      try {
+        // 1. Find or create contact
+        let contact: any = null;
+        
+        // Try to find existing contact by email first, then phone
+        // Search within the org's contacts (scoped to the form creator's user)
+        if (email) {
+          const contacts = await storage.getContacts(formLink.createdByUserId);
+          // Match by email within the same org
+          contact = contacts.find((c: any) => 
+            c.orgId === formLink.orgId && 
+            c.email && 
+            c.email.toLowerCase() === email.toLowerCase()
+          );
+        }
+        
+        if (!contact && phone) {
+          const contacts = await storage.getContacts(formLink.createdByUserId);
+          // Match by phone within the same org
+          contact = contacts.find((c: any) => 
+            c.orgId === formLink.orgId && 
+            c.phone && 
+            c.phone === phone
+          );
+        }
+
+        // Build buyer profile from form data
+        const buyerProfile: any = {};
+        if (budgetMin !== undefined && budgetMin !== null && budgetMin !== '') {
+          buyerProfile.budgetMin = Number(budgetMin);
+        }
+        if (budgetMax !== undefined && budgetMax !== null && budgetMax !== '') {
+          buyerProfile.budgetMax = Number(budgetMax);
+        }
+        if (preferredSuburbsArray.length > 0) {
+          buyerProfile.preferredSuburbs = preferredSuburbsArray;
+        }
+        if (bedsMin !== undefined && bedsMin !== null && bedsMin !== '') {
+          buyerProfile.bedsMin = Number(bedsMin);
+        }
+        if (bathsMin !== undefined && bathsMin !== null && bathsMin !== '') {
+          buyerProfile.bathsMin = Number(bathsMin);
+        }
+        if (propertyType) {
+          buyerProfile.propertyType = propertyType;
+        }
+        if (mustHavesArray.length > 0) {
+          buyerProfile.mustHaves = mustHavesArray;
+        }
+        if (dealBreakersArray.length > 0) {
+          buyerProfile.dealBreakers = dealBreakersArray;
+        }
+        if (financeStatus) {
+          buyerProfile.financeStatus = financeStatus;
+        }
+        if (timeline) {
+          buyerProfile.timeline = timeline;
+        }
+        if (freeNotes !== undefined && freeNotes !== null) {
+          buyerProfile.freeNotes = (typeof freeNotes === 'string' && freeNotes.trim() === '') ? null : freeNotes;
+        }
+
+        if (contact) {
+          // Update existing contact
+          const existingProfile = (contact.buyerProfile || {}) as any;
+          const mergedProfile = { ...existingProfile, ...buyerProfile };
+          
+          await storage.updateContact(contact.id, {
+            email: email || contact.email,
+            phone: phone || contact.phone,
+            buyerProfile: mergedProfile,
+          });
+          createdContactId = contact.id;
+        } else {
+          // Create new contact
+          const newContact = await storage.createContact({
+            userId: formLink.createdByUserId,
+            orgId: formLink.orgId,
+            firstName,
+            lastName,
+            email: email || null,
+            phone: phone || null,
+            buyerProfile,
+          });
+          createdContactId = newContact.id;
+        }
+
+        // 2. Create buyer opportunity
+        const opportunityTitle = `${firstName} ${lastName} - Buyer Inquiry${formLink.propertyId ? ' (Property)' : ''}`;
+        const opportunityNotes = `Created from Buyer Inquiry Form${freeNotes ? `\n\nAdditional Notes:\n${freeNotes}` : ''}`;
+
+        const opportunity = await storage.createOpportunity({
+          userId: formLink.createdByUserId,
+          orgId: formLink.orgId,
+          createdBy: formLink.createdByUserId,
+          title: opportunityTitle,
+          contactId: createdContactId,
+          propertyJobId: formLink.propertyId || null,
+          opportunityType: 'buyer',
+          status: 'new',
+          pipelineStage: 'new',
+          notes: opportunityNotes,
+          source: 'buyer_inquiry_form',
+        });
+        createdOpportunityId = opportunity.id;
+
+        // 3. Record submission
+        await storage.createBuyerFormSubmission({
+          formLinkId: formLink.id,
+          orgId: formLink.orgId,
+          createdContactId,
+          createdOpportunityId,
+          payload: {
+            fullName,
+            email: email || null,
+            phone: phone || null,
+            preferredSuburbs: preferredSuburbsArray,
+            budgetMin: budgetMin ? Number(budgetMin) : null,
+            budgetMax: budgetMax ? Number(budgetMax) : null,
+            bedsMin: bedsMin ? Number(bedsMin) : null,
+            bathsMin: bathsMin ? Number(bathsMin) : null,
+            propertyType: propertyType || null,
+            mustHaves: mustHavesArray,
+            dealBreakers: dealBreakersArray,
+            financeStatus: financeStatus || null,
+            timeline: timeline || null,
+            freeNotes: freeNotes || null,
+          },
+          requestIp: clientIp,
+          userAgent: req.get('user-agent') || null,
+        });
+
+        // Success response
+        res.json({ 
+          success: true, 
+          message: "Thank you for your inquiry. We'll be in touch soon!" 
+        });
+      } catch (error: any) {
+        console.error('[Buyer Form Submission Error]', error?.message || error);
+        // If we created a contact or opportunity but submission failed, log it
+        // In a production system, you might want to clean up or retry
+        res.status(500).json({ 
+          message: "Something went wrong. Please try again later." 
+        });
+      }
+    } catch (error: any) {
+      console.error('[Buyer Form Submission Error]', error?.message || error);
+      res.status(500).json({ 
+        message: "Something went wrong. Please try again later." 
       });
     }
   });

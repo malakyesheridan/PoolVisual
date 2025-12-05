@@ -13,7 +13,6 @@ import { MetricCards } from './MetricCards';
 import { ProjectList } from './ProjectList';
 import { QuickInsights } from './QuickInsights';
 import { RecentActivityCompact } from './RecentActivityCompact';
-import { ReferralsSection } from '../referrals/ReferralsSection';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, Plus, Eye } from 'lucide-react';
@@ -125,7 +124,6 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
           </div>
           <div className="space-y-6">
             <RecentActivityCompact jobs={jobs} />
-            <ReferralsSection />
           </div>
         </div>
 

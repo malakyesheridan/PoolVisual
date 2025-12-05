@@ -35,6 +35,7 @@ const JobsNew = React.lazy(() => import("@/pages/jobs-new"));
 const Quotes = React.lazy(() => import("@/pages/quotes"));
 const Opportunities = React.lazy(() => import("@/pages/opportunities"));
 const ShareQuote = React.lazy(() => import("@/pages/share-quote"));
+const PublicBuyerForm = React.lazy(() => import("@/pages/public-buyer-form"));
 const Settings = React.lazy(() => import("@/pages/settings"));
 const MaterialsNew = React.lazy(() => import("@/pages/MaterialsNew"));
 const Library = React.lazy(() => import("@/pages/Library"));
@@ -321,6 +322,11 @@ function PublicRouter() {
         </Suspense>
       </Route>
       <Route path="/share/q/:token" component={ShareQuote} />
+      <Route path="/public/buyer-form/:token">
+        <Suspense fallback={<PageLoader />}>
+          <PublicBuyerForm />
+        </Suspense>
+      </Route>
       
       {/* Redirect everything else to login for non-authenticated users */}
       <Route>

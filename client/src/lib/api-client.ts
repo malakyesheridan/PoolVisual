@@ -1146,6 +1146,51 @@ class ApiClient {
     return this.request(`/contacts/${id}`, { method: 'DELETE' });
   }
 
+  // Buyer Form Links
+  async createBuyerFormLink(data: { propertyId?: string; expiresAt?: string }) {
+    return this.request<{
+      id: string;
+      token: string;
+      shareUrl: string;
+      propertyId: string | null;
+      expiresAt: string | null;
+      status: string;
+      createdAt: string;
+    }>('/buyer-forms', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getBuyerFormLinks() {
+    return this.request<any[]>('/buyer-forms');
+  }
+
+  // Public buyer form endpoints
+  async getPublicBuyerFormMetadata(token: string) {
+    return this.request<{
+      valid: boolean;
+      message?: string;
+      orgName?: string;
+      orgLogoUrl?: string;
+      property?: {
+        id: string;
+        address: string;
+        photoUrl: string | null;
+      };
+      fields?: any;
+    }>(`/public/buyer-form/${token}`, {
+      method: 'GET',
+    });
+  }
+
+  async submitPublicBuyerForm(token: string, data: any) {
+    return this.request<{ success: boolean; message?: string }>(`/public/buyer-form/${token}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
   // Pipelines
   async getPipelines() {
     return this.request<any[]>('/pipelines');

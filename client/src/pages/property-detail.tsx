@@ -26,7 +26,8 @@ import {
   Send,
   X,
   ImageIcon,
-  DollarSign
+  DollarSign,
+  Link as LinkIcon
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PhotoGridSkeleton } from "@/components/ui/skeleton-variants";
@@ -47,6 +48,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { PhotoCard } from "@/components/photos/PhotoCard";
 import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm";
 import { PropertyNotes } from "@/components/properties/PropertyNotes";
+import { BuyerFormLinkDialog } from "@/components/buyer-forms/BuyerFormLinkDialog";
 
 export default function PropertyDetail() {
   const [, params] = useRoute('/properties/:id');
@@ -58,6 +60,7 @@ export default function PropertyDetail() {
   const [showDeletePhotoConfirm, setShowDeletePhotoConfirm] = useState<string | null>(null);
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [showQuoteEditor, setShowQuoteEditor] = useState(false);
+  const [showBuyerFormDialog, setShowBuyerFormDialog] = useState(false);
   const isRealEstate = useIsRealEstate();
   const { user } = useAuthStore();
 
@@ -542,6 +545,14 @@ export default function PropertyDetail() {
           </div>
           
           <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowBuyerFormDialog(true)}
+              data-testid="button-share-buyer-form"
+            >
+              <LinkIcon className="w-4 h-4 mr-2" />
+              Share Buyer Form
+            </Button>
             <Button variant="outline" onClick={handleEditJob} data-testid="button-edit-job">
               <Edit className="w-4 h-4 mr-2" />
               Edit Property
@@ -1454,6 +1465,14 @@ export default function PropertyDetail() {
           onSyncFromCanvas={(itemId, measurementData) => syncFromCanvasMutation.mutate({ quoteId: editingQuoteId, itemId, measurementData })}
         />
       )}
+
+      {/* Buyer Form Link Dialog */}
+      <BuyerFormLinkDialog
+        open={showBuyerFormDialog}
+        onOpenChange={setShowBuyerFormDialog}
+        propertyId={jobId || undefined}
+        propertyName={job?.clientName || job?.address || undefined}
+      />
     </div>
   );
 }

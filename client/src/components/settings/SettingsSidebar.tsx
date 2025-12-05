@@ -1,4 +1,4 @@
-import { Settings, User, Lock, Palette, Building, Bell } from 'lucide-react';
+import { Settings, User, Lock, Palette, Building, Bell, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export type SettingsSection = 
@@ -6,7 +6,8 @@ export type SettingsSection =
   | 'security' 
   | 'preferences' 
   | 'organization' 
-  | 'notifications';
+  | 'notifications'
+  | 'referrals';
 
 interface SettingsSidebarProps {
   activeSection: SettingsSection;
@@ -24,6 +25,7 @@ const sections: Array<{
   { id: 'preferences', label: 'Preferences', icon: Settings },
   { id: 'organization', label: 'Organization', icon: Building },
   { id: 'notifications', label: 'Notifications', icon: Bell },
+  { id: 'referrals', label: 'Referrals', icon: Users },
 ];
 
 export function SettingsSidebar({ 

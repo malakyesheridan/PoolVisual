@@ -969,6 +969,37 @@ export type OpportunityTask = typeof opportunityTasks.$inferSelect;
 export type InsertOpportunityTask = typeof opportunityTasks.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
+
+// Buyer Form Links (for shareable buyer inquiry forms)
+export const buyerFormLinks = pgTable("buyer_form_links", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id).notNull(),
+  propertyId: uuid("property_id").references(() => jobs.id), // Optional: link to a specific property
+  token: text("token").notNull().unique(), // Secure random token for public access
+  status: text("status").default("active").notNull(), // 'active' | 'disabled'
+  expiresAt: timestamp("expires_at"), // Optional expiry
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// Buyer Form Submissions (tracks form submissions)
+export const buyerFormSubmissions = pgTable("buyer_form_submissions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  formLinkId: uuid("form_link_id").references(() => buyerFormLinks.id).notNull(),
+  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  createdContactId: uuid("created_contact_id").references(() => contacts.id), // Contact created/updated from submission
+  createdOpportunityId: uuid("created_opportunity_id").references(() => opportunities.id), // Opportunity created from submission
+  payload: jsonb("payload").default(sql`'{}'::jsonb`).notNull(), // Full form submission data
+  requestIp: text("request_ip"), // Optional: IP address (privacy-conscious)
+  userAgent: text("user_agent"), // Optional: user agent string
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type BuyerFormLink = typeof buyerFormLinks.$inferSelect;
+export type InsertBuyerFormLink = typeof buyerFormLinks.$inferInsert;
+export type BuyerFormSubmission = typeof buyerFormSubmissions.$inferSelect;
+export type InsertBuyerFormSubmission = typeof buyerFormSubmissions.$inferInsert;
 export type Pipeline = typeof pipelines.$inferSelect;
 export type InsertPipeline = typeof pipelines.$inferInsert;
 export type PipelineStage = typeof pipelineStages.$inferSelect;

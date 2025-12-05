@@ -21,11 +21,13 @@ import {
   Plus, 
   Filter,
   CheckCircle,
+  Link as LinkIcon,
 } from "lucide-react";
 import { KanbanBoard } from "@/components/opportunities/KanbanBoard";
 import { OpportunityDetailDrawer } from "@/components/opportunities/OpportunityDetailDrawer";
 import { EmptyState } from "@/components/common/EmptyState";
 import { FileText } from "lucide-react";
+import { BuyerFormLinkDialog } from "@/components/buyer-forms/BuyerFormLinkDialog";
 
 interface Opportunity {
   id: string;
@@ -548,6 +550,13 @@ export default function Opportunities() {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowBuyerFormDialog(true)}
+          >
+            <LinkIcon className="w-4 h-4 mr-2" />
+            Buyer Form Link
+          </Button>
           <Button onClick={() => {
             setSelectedOpportunity({
               id: '',
@@ -677,6 +686,12 @@ export default function Opportunities() {
         stages={stages}
         onOpportunityUpdated={handleOpportunityUpdated}
         onOpportunityCreated={handleOpportunityCreated}
+      />
+
+      {/* Buyer Form Link Dialog */}
+      <BuyerFormLinkDialog
+        open={showBuyerFormDialog}
+        onOpenChange={setShowBuyerFormDialog}
       />
     </div>
   );
