@@ -2,8 +2,19 @@
  * Property-Buyer Matching Engine (Rule-based v1)
  * 
  * Given a property and buyer opportunities, scores and ranks matches
- * based on budget, location, beds/baths, property type, and preferences.
+ * based on budget, location, beds/baths, property type, preferences, and timeframe.
  */
+
+import {
+  normaliseSuburbName,
+  getSuburbZoneId,
+  areSuburbsInSameZone,
+  getSuburbZoneLabel,
+  LOCATION_SCORE_MAX,
+  LOCATION_SCORE_EXACT_SUBURB,
+  LOCATION_SCORE_SAME_ZONE,
+  TIMEFRAME_SCORE_MAX,
+} from './matchingConfig.js';
 
 export interface BuyerProfile {
   budgetMin?: number | null;
@@ -29,6 +40,7 @@ export interface PropertyData {
   propertyFeatures?: string[] | null;
   propertyDescription?: string | null;
   propertyNotes?: string[] | null; // Array of note texts
+  listingDate?: Date | string | null; // Property listing date
 }
 
 export interface BuyerOpportunity {
@@ -65,12 +77,15 @@ export interface MatchingResult {
 }
 
 // Scoring weights
+// Note: These should sum to 0.90 (90%) to leave room for timeframe (10%)
+// Timeframe is added separately as a flat 10 points (TIMEFRAME_SCORE_MAX)
 const WEIGHTS = {
-  BUDGET: 0.35,
-  LOCATION: 0.25,
-  BEDS_BATHS: 0.20,
-  PROPERTY_TYPE: 0.10,
-  MUST_HAVES_DEAL_BREAKERS: 0.10,
+  BUDGET: 0.35,              // 35%
+  LOCATION: 0.25,            // 25%
+  BEDS_BATHS: 0.20,          // 20%
+  PROPERTY_TYPE: 0.05,       // 5% (reduced from 10% to make room for timeframe)
+  MUST_HAVES_DEAL_BREAKERS: 0.05, // 5% (reduced from 10% to make room for timeframe)
+  // TIMEFRAME: 10 points added separately (10% of total)
 };
 
 // Match tier thresholds
@@ -185,36 +200,65 @@ function scoreBudget(property: PropertyData, profile: BuyerProfile): { score: nu
 }
 
 /**
- * Score location match (0-100)
+ * Score location match using zone-based matching (0-100)
+ * 
+ * Uses progressive scoring:
+ * - Exact suburb match: 100% of location weight
+ * - Same zone match: 75% of location weight
+ * - No match: 0 (neutral, no penalty)
  */
 function scoreLocation(property: PropertyData, profile: BuyerProfile): { score: number; reasons: string[] } {
   const reasons: string[] = [];
-  let score = 0;
   
   const propertySuburb = extractSuburb(property.address);
-  const preferredSuburbs = profile.preferredSuburbs || [];
+  const buyerPreferredSuburbs = profile.preferredSuburbs || [];
   
-  // If buyer didn't specify suburbs, return neutral
-  if (preferredSuburbs.length === 0) {
-    return { score: 0, reasons: [] };
+  // If buyer has no explicit suburbs – neutral (0) but no penalty reason
+  if (!buyerPreferredSuburbs || buyerPreferredSuburbs.length === 0) {
+    return { score: 0, reasons };
   }
   
-  // If property has no address, return neutral
+  // If property has no suburb, return neutral
   if (!propertySuburb) {
-    return { score: 0, reasons: [] };
+    return { score: 0, reasons };
   }
   
-  // Check for exact match (case-insensitive)
-  const normalizedPreferred = preferredSuburbs.map(s => s.toLowerCase().trim());
-  if (normalizedPreferred.includes(propertySuburb)) {
-    score = 100;
-    reasons.push(`Suburb match: ${propertySuburb}`);
-  } else {
-    // No match - return 0 (no penalty, just no bonus)
-    score = 0;
+  const propertyNorm = normaliseSuburbName(propertySuburb);
+  const preferredNorms = buyerPreferredSuburbs
+    .map(normaliseSuburbName)
+    .filter((s): s is string => !!s);
+  
+  if (preferredNorms.length === 0 || !propertyNorm) {
+    return { score: 0, reasons };
   }
   
-  return { score, reasons };
+  // 1) Exact suburb match
+  if (preferredNorms.includes(propertyNorm)) {
+    reasons.push("Exact suburb match");
+    // Return as percentage of LOCATION_SCORE_MAX (which is 25, matching 0.25 weight)
+    // But we need to return 0-100 for the weighted calculation
+    // So we return 100 here, and the weight (0.25) will be applied in the main function
+    return { score: 100, reasons };
+  }
+  
+  // 2) Same zone match (any preferred suburb is in same zone)
+  const propertyZoneId = getSuburbZoneId(propertyNorm);
+  if (propertyZoneId) {
+    const anySameZone = preferredNorms.some(sub => areSuburbsInSameZone(sub, propertyNorm));
+    if (anySameZone) {
+      const zoneLabel = getSuburbZoneLabel(propertyNorm);
+      if (zoneLabel) {
+        reasons.push(`Same zone as preferred suburbs (${zoneLabel})`);
+      } else {
+        reasons.push("Same zone as preferred suburbs");
+      }
+      // Return 75% for same zone match
+      return { score: 75, reasons };
+    }
+  }
+  
+  // 3) No match in this v1 – keep score 0, but we don't need to add a negative reason
+  return { score: 0, reasons };
 }
 
 /**
@@ -390,6 +434,127 @@ function scoreMustHavesDealBreakers(property: PropertyData, profile: BuyerProfil
 }
 
 /**
+ * Normalize buyer timeline string to enum
+ */
+type BuyerTimeline = "asap" | "30days" | "60days" | "90days" | "flexible" | "unknown";
+
+function normaliseBuyerTimeline(timelineRaw: string | null | undefined): BuyerTimeline {
+  if (!timelineRaw) return "unknown";
+  
+  const normalized = timelineRaw.trim().toLowerCase();
+  
+  // Map various input formats to enum
+  if (normalized.includes("asap") || normalized.includes("immediate") || normalized.includes("urgent")) {
+    return "asap";
+  }
+  if (normalized.includes("30") || normalized === "30 days" || normalized === "30day") {
+    return "30days";
+  }
+  if (normalized.includes("60") || normalized === "60 days" || normalized === "60day") {
+    return "60days";
+  }
+  if (normalized.includes("90") || normalized === "90 days" || normalized === "90day") {
+    return "90days";
+  }
+  if (normalized.includes("flexible") || normalized.includes("flex") || normalized.includes("no rush")) {
+    return "flexible";
+  }
+  
+  return "unknown";
+}
+
+/**
+ * Score timeframe match based on listing date vs buyer timeline (0-100)
+ * 
+ * Scores how well the property's listing date aligns with the buyer's timeline.
+ * Fresh listings score higher for buyers with urgent timelines.
+ */
+function computeTimeframeScore(
+  listingDate: Date | string | null | undefined,
+  buyerTimelineRaw: string | null | undefined
+): { score: number; reasons: string[] } {
+  const reasons: string[] = [];
+  
+  if (!listingDate || !buyerTimelineRaw) {
+    return { score: 0, reasons };
+  }
+  
+  const buyerTimeline = normaliseBuyerTimeline(buyerTimelineRaw);
+  if (buyerTimeline === "unknown") {
+    return { score: 0, reasons };
+  }
+  
+  const listing = new Date(listingDate);
+  if (Number.isNaN(listing.getTime())) {
+    return { score: 0, reasons };
+  }
+  
+  const now = new Date();
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysListed = Math.max(
+    0,
+    Math.floor((now.getTime() - listing.getTime()) / msPerDay)
+  );
+  
+  let score = 0;
+  
+  switch (buyerTimeline) {
+    case "asap": {
+      if (daysListed <= 7) {
+        score = 100;
+      } else if (daysListed <= 21) {
+        // Linear falloff between 7 and 21 days
+        const t = (21 - daysListed) / (21 - 7);
+        score = Math.round(100 * Math.max(0, t));
+      } else {
+        score = 0;
+      }
+      break;
+    }
+    case "30days": {
+      if (daysListed <= 21) {
+        score = 100;
+      } else if (daysListed <= 45) {
+        const t = (45 - daysListed) / (45 - 21);
+        score = Math.round(100 * Math.max(0, t));
+      } else {
+        score = 0;
+      }
+      break;
+    }
+    case "60days": {
+      if (daysListed <= 45) {
+        score = 100;
+      } else if (daysListed <= 90) {
+        const t = (90 - daysListed) / (90 - 45);
+        score = Math.round(100 * Math.max(0, t));
+      } else {
+        score = 0;
+      }
+      break;
+    }
+    case "90days":
+    case "flexible": {
+      if (daysListed <= 60) {
+        score = 100;
+      } else if (daysListed <= 120) {
+        const t = (120 - daysListed) / (120 - 60);
+        score = Math.round(100 * Math.max(0, t));
+      } else {
+        score = 0;
+      }
+      break;
+    }
+  }
+  
+  reasons.push(
+    `Listed ${daysListed} days ago, buyer timeline: ${buyerTimeline}`
+  );
+  
+  return { score, reasons };
+}
+
+/**
  * Determine match tier from score
  */
 function getMatchTier(score: number): 'strong' | 'medium' | 'weak' {
@@ -480,16 +645,24 @@ export function matchBuyersToProperty(
     const bedsBathsResult = scoreBedsBaths(property, profile);
     const propertyTypeResult = scorePropertyType(property, profile);
     const mustHavesResult = scoreMustHavesDealBreakers(property, profile);
+    const timeframeResult = computeTimeframeScore(property.listingDate, profile.timeline);
     
     // Calculate weighted total score
-    let totalScore = 
+    // Weighted components (sum to 90 points max):
+    const weightedScore = 
       (budgetResult.score * WEIGHTS.BUDGET) +
       (locationResult.score * WEIGHTS.LOCATION) +
       (bedsBathsResult.score * WEIGHTS.BEDS_BATHS) +
       (propertyTypeResult.score * WEIGHTS.PROPERTY_TYPE) +
       (mustHavesResult.score * WEIGHTS.MUST_HAVES_DEAL_BREAKERS);
     
-    // Normalize to 0-100
+    // Add timeframe as flat 10 points (10% of total)
+    const timeframePoints = (timeframeResult.score / 100) * TIMEFRAME_SCORE_MAX;
+    
+    // Total score: weighted (0-90) + timeframe (0-10) = 0-100
+    let totalScore = weightedScore + timeframePoints;
+    
+    // Normalize to 0-100 (should already be in range, but ensure)
     totalScore = Math.round(Math.max(0, Math.min(100, totalScore)));
     
     // Skip if score is too low (below weak threshold) and track it
@@ -498,13 +671,14 @@ export function matchBuyersToProperty(
       continue;
     }
     
-    // Collect key reasons (top 3 most important)
+    // Collect key reasons from all components
     const allReasons = [
       ...budgetResult.reasons,
       ...locationResult.reasons,
       ...bedsBathsResult.reasons,
       ...propertyTypeResult.reasons,
       ...mustHavesResult.reasons,
+      ...timeframeResult.reasons,
     ];
     
     // Determine tier

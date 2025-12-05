@@ -78,6 +78,7 @@ export async function generateMatchSuggestions(
         : (property.propertyFeatures ? [String(property.propertyFeatures)] : []),
       propertyDescription: property.propertyDescription || null,
       propertyNotes: propertyNotesTexts,
+      listingDate: property.listingDate || null,
     };
 
     // 4. Run matching engine

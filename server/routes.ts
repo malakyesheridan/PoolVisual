@@ -1174,6 +1174,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         propertyFeatures: Array.isArray(job.propertyFeatures) ? job.propertyFeatures : (job.propertyFeatures ? [String(job.propertyFeatures)] : []),
         propertyDescription: job.propertyDescription || null,
         propertyNotes: propertyNotesTexts,
+        listingDate: job.listingDate || null,
       };
       
       console.log('[Matched Buyers] Property data:', JSON.stringify(propertyData, null, 2));
