@@ -1221,36 +1221,44 @@ export function OpportunityDetailDrawer({
                 
                 // Create a clean profile object with all fields explicitly set
                 // CRITICAL: Always include ALL fields, even if they're null or empty
-                // For arrays, ensure they're always defined (even if empty) so backend processes them
+                // For arrays, directly read from localProfile and ensure they're arrays
+                const preferredSuburbsArray = Array.isArray(localProfile.preferredSuburbs) 
+                  ? [...localProfile.preferredSuburbs] 
+                  : [];
+                const mustHavesArray = Array.isArray(localProfile.mustHaves) 
+                  ? [...localProfile.mustHaves] 
+                  : [];
+                const dealBreakersArray = Array.isArray(localProfile.dealBreakers) 
+                  ? [...localProfile.dealBreakers] 
+                  : [];
+                
+                console.log('[BuyerProfileForm] BEFORE SAVE - localProfile arrays:');
+                console.log('  - preferredSuburbs:', localProfile.preferredSuburbs, 'Length:', Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs.length : 'NOT ARRAY');
+                console.log('  - mustHaves:', localProfile.mustHaves, 'Length:', Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves.length : 'NOT ARRAY');
+                console.log('  - dealBreakers:', localProfile.dealBreakers, 'Length:', Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers.length : 'NOT ARRAY');
+                console.log('[BuyerProfileForm] Arrays to save:');
+                console.log('  - preferredSuburbsArray:', preferredSuburbsArray, 'Length:', preferredSuburbsArray.length);
+                console.log('  - mustHavesArray:', mustHavesArray, 'Length:', mustHavesArray.length);
+                console.log('  - dealBreakersArray:', dealBreakersArray, 'Length:', dealBreakersArray.length);
+                
                 const profileToSave: any = {
                   budgetMin: budgetMinValue !== undefined ? (budgetMinValue === null || budgetMinValue === '' ? null : Number(budgetMinValue)) : null,
                   budgetMax: budgetMaxValue !== undefined ? (budgetMaxValue === null || budgetMaxValue === '' ? null : Number(budgetMaxValue)) : null,
-                  // CRITICAL: Always include arrays - ensure they're always defined as arrays
-                  preferredSuburbs: Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs : [],
+                  preferredSuburbs: preferredSuburbsArray,
                   bedsMin: localProfile.bedsMin !== undefined ? (localProfile.bedsMin === null || localProfile.bedsMin === '' ? null : Number(localProfile.bedsMin)) : null,
                   bathsMin: localProfile.bathsMin !== undefined ? (localProfile.bathsMin === null || localProfile.bathsMin === '' ? null : Number(localProfile.bathsMin)) : null,
                   propertyType: localProfile.propertyType || null,
-                  // CRITICAL: Always include arrays - ensure they're always defined as arrays
-                  mustHaves: Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves : [],
-                  dealBreakers: Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers : [],
+                  mustHaves: mustHavesArray,
+                  dealBreakers: dealBreakersArray,
                   financeStatus: localProfile.financeStatus || null,
                   timeline: localProfile.timeline || null,
                   // CRITICAL: Always include freeNotes - preserve the exact value
-                  // Check both localProfile and ensure we have the current value
                   freeNotes: (localProfile.freeNotes !== undefined && localProfile.freeNotes !== null)
                     ? (typeof localProfile.freeNotes === 'string' && localProfile.freeNotes.trim() === '' ? null : String(localProfile.freeNotes))
                     : null,
                 };
                 
-                console.log('[BuyerProfileForm] Saving profile:', JSON.stringify(profileToSave, null, 2));
-                console.log('[BuyerProfileForm] Array fields in localProfile:');
-                console.log('  - preferredSuburbs:', localProfile.preferredSuburbs, 'Type:', typeof localProfile.preferredSuburbs, 'IsArray:', Array.isArray(localProfile.preferredSuburbs));
-                console.log('  - mustHaves:', localProfile.mustHaves, 'Type:', typeof localProfile.mustHaves, 'IsArray:', Array.isArray(localProfile.mustHaves));
-                console.log('  - dealBreakers:', localProfile.dealBreakers, 'Type:', typeof localProfile.dealBreakers, 'IsArray:', Array.isArray(localProfile.dealBreakers));
-                console.log('[BuyerProfileForm] Array fields in profileToSave:');
-                console.log('  - preferredSuburbs:', profileToSave.preferredSuburbs, 'Type:', typeof profileToSave.preferredSuburbs, 'IsArray:', Array.isArray(profileToSave.preferredSuburbs));
-                console.log('  - mustHaves:', profileToSave.mustHaves, 'Type:', typeof profileToSave.mustHaves, 'IsArray:', Array.isArray(profileToSave.mustHaves));
-                console.log('  - dealBreakers:', profileToSave.dealBreakers, 'Type:', typeof profileToSave.dealBreakers, 'IsArray:', Array.isArray(profileToSave.dealBreakers));
+                console.log('[BuyerProfileForm] FINAL profileToSave:', JSON.stringify(profileToSave, null, 2));
                 
                 await onSave(profileToSave);
                 setHasChanges(false);
