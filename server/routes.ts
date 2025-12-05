@@ -2957,6 +2957,9 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       if (req.query.pipelineStage) filters.pipelineStage = req.query.pipelineStage;
       if (req.query.propertyJobId) filters.propertyJobId = req.query.propertyJobId;
+      if (req.query.opportunityType && ['buyer', 'seller', 'both'].includes(req.query.opportunityType as string)) {
+        filters.opportunityType = req.query.opportunityType;
+      }
 
       // CRITICAL: Use the authenticated user's ID directly - no transformations
       // Ensure userId is a string (UUIDs in PostgreSQL are stored as UUID type but compared as strings in Drizzle)
@@ -3029,7 +3032,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const { 
         // New fields (Kanban board)
-        title, value, stageId, pipelineId, contactId, ownerId, tags,
+        title, value, stageId, pipelineId, contactId, ownerId, tags, opportunityType,
         // Legacy fields (backward compatibility)
         clientName, clientPhone, clientEmail, propertyAddress, propertyJobId, 
         status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes 
@@ -3100,6 +3103,12 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (contactId) opportunityData.contactId = contactId;
       if (ownerId) opportunityData.ownerId = ownerId;
       if (tags) opportunityData.tags = tags;
+      // Validate and set opportunityType (must be 'buyer', 'seller', or 'both')
+      if (opportunityType && ['buyer', 'seller', 'both'].includes(opportunityType)) {
+        opportunityData.opportunityType = opportunityType;
+      } else {
+        opportunityData.opportunityType = 'buyer'; // Default to 'buyer'
+      }
       
       console.log('[POST /api/opportunities] Creating opportunity with userId:', authenticatedUserId);
       const opportunity = await storage.createOpportunity(opportunityData);
@@ -3666,6 +3675,101 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       await storage.deleteContact(contactId);
       res.json({ message: "Contact deleted successfully" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Buyer Profile endpoints
+  app.get("/api/contacts/:id/buyer-profile", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const contactId = req.params.id;
+      const contact = await storage.getContact(contactId);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      if (contact.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const buyerProfile = (contact as any).buyerProfile || {};
+      res.json(buyerProfile);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/contacts/:id/buyer-profile", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const contactId = req.params.id;
+      const contact = await storage.getContact(contactId);
+      
+      if (!contact) {
+        return res.status(404).json({ message: "Contact not found" });
+      }
+
+      if (contact.userId !== req.user.id) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Validate buyer profile data
+      const {
+        budgetMin,
+        budgetMax,
+        preferredSuburbs,
+        bedsMin,
+        bathsMin,
+        propertyType,
+        mustHaves,
+        dealBreakers,
+        financeStatus,
+        timeline,
+        freeNotes,
+      } = req.body;
+
+      // Validation: budgetMin <= budgetMax if both exist
+      if (budgetMin !== undefined && budgetMax !== undefined) {
+        const min = Number(budgetMin);
+        const max = Number(budgetMax);
+        if (!isNaN(min) && !isNaN(max) && min > max) {
+          return res.status(400).json({ message: "Budget minimum must be less than or equal to maximum" });
+        }
+        if (min < 0 || max < 0) {
+          return res.status(400).json({ message: "Budget values must be non-negative" });
+        }
+      }
+
+      // Validate bedsMin and bathsMin are non-negative
+      if (bedsMin !== undefined && Number(bedsMin) < 0) {
+        return res.status(400).json({ message: "Minimum beds must be non-negative" });
+      }
+      if (bathsMin !== undefined && Number(bathsMin) < 0) {
+        return res.status(400).json({ message: "Minimum baths must be non-negative" });
+      }
+
+      // Build buyer profile object (only include defined fields)
+      const buyerProfile: any = {};
+      if (budgetMin !== undefined) buyerProfile.budgetMin = budgetMin === null || budgetMin === '' ? null : Number(budgetMin);
+      if (budgetMax !== undefined) buyerProfile.budgetMax = budgetMax === null || budgetMax === '' ? null : Number(budgetMax);
+      if (preferredSuburbs !== undefined) buyerProfile.preferredSuburbs = Array.isArray(preferredSuburbs) ? preferredSuburbs : [];
+      if (bedsMin !== undefined) buyerProfile.bedsMin = bedsMin === null || bedsMin === '' ? null : Number(bedsMin);
+      if (bathsMin !== undefined) buyerProfile.bathsMin = bathsMin === null || bathsMin === '' ? null : Number(bathsMin);
+      if (propertyType !== undefined) buyerProfile.propertyType = propertyType || null;
+      if (mustHaves !== undefined) buyerProfile.mustHaves = Array.isArray(mustHaves) ? mustHaves : [];
+      if (dealBreakers !== undefined) buyerProfile.dealBreakers = Array.isArray(dealBreakers) ? dealBreakers : [];
+      if (financeStatus !== undefined) buyerProfile.financeStatus = financeStatus || null;
+      if (timeline !== undefined) buyerProfile.timeline = timeline || null;
+      if (freeNotes !== undefined) buyerProfile.freeNotes = freeNotes || null;
+
+      // Merge with existing buyer profile to avoid overwriting with empty values
+      const existingProfile = (contact as any).buyerProfile || {};
+      const mergedProfile = { ...existingProfile, ...buyerProfile };
+
+      // Update contact with merged buyer profile
+      const updated = await storage.updateContact(contactId, { buyerProfile: mergedProfile });
+      res.json((updated as any).buyerProfile || {});
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

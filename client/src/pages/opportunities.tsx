@@ -36,6 +36,7 @@ interface Opportunity {
   contactEmail?: string;
   value?: number | string;
   status: 'open' | 'won' | 'lost' | 'abandoned';
+  opportunityType?: 'buyer' | 'seller' | 'both';
   stageId?: string;
   stageName?: string;
   tags?: string[];
@@ -56,6 +57,7 @@ export default function Opportunities() {
   const [, navigate] = useLocation();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [opportunityTypeFilter, setOpportunityTypeFilter] = useState<string | null>(null);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const { toast } = useToast();
@@ -184,7 +186,10 @@ export default function Opportunities() {
     setIsLoadingOpportunities(true);
     
     try {
-      const data = await apiClient.getOpportunities(statusFilter ? { status: statusFilter } : undefined);
+      const filters: any = {};
+      if (statusFilter) filters.status = statusFilter;
+      if (opportunityTypeFilter) filters.opportunityType = opportunityTypeFilter;
+      const data = await apiClient.getOpportunities(Object.keys(filters).length > 0 ? filters : undefined);
       const opportunities = Array.isArray(data) ? data : [];
       
       console.log('[Opportunities] Loaded from server:', opportunities.length, 'opportunities');
@@ -265,7 +270,7 @@ export default function Opportunities() {
       setIsLoadingOpportunities(false);
       isRefetchingRef.current = false;
     }
-  }, [statusFilter, toast]);
+  }, [statusFilter, opportunityTypeFilter, toast]);
 
   // Load opportunities on mount
   useEffect(() => {
@@ -274,13 +279,13 @@ export default function Opportunities() {
     }
   }, [loadOpportunities]);
 
-  // Load opportunities when statusFilter changes (after initial load)
+  // Load opportunities when filters change (after initial load)
   useEffect(() => {
     if (hasLoadedOnce.current) {
       loadOpportunities(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, [statusFilter, opportunityTypeFilter]);
 
   // Fetch tasks for each opportunity to get task counts
   const { data: allTasks = {} } = useQuery({
@@ -585,6 +590,23 @@ export default function Opportunities() {
             <DropdownMenuItem onClick={() => setStatusFilter('won')}>Won</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setStatusFilter('lost')}>Lost</DropdownMenuItem>
             <DropdownMenuItem onClick={() => setStatusFilter('abandoned')}>Abandoned</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <Filter className="w-4 h-4 mr-2" />
+              {opportunityTypeFilter ? (opportunityTypeFilter === 'buyer' ? 'Buyers' : opportunityTypeFilter === 'seller' ? 'Sellers' : 'Both') : 'All Types'}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuItem onClick={() => setOpportunityTypeFilter(null)}>
+              All Types
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setOpportunityTypeFilter('buyer')}>Buyers</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setOpportunityTypeFilter('seller')}>Sellers</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setOpportunityTypeFilter('both')}>Both</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

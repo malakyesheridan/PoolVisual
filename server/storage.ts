@@ -1781,6 +1781,7 @@ export class PostgresStorage implements IStorage {
         createdBy: normalizedCreatedBy, // CRITICAL: Set second, explicitly
         title: opportunity.title || 'Untitled Opportunity', // REQUIRED by schema
         status: opportunity.status || 'new',
+        opportunityType: opportunity.opportunityType || 'buyer', // Default to 'buyer' for new opportunities
         updatedAt: new Date(),
       };
       
@@ -1848,7 +1849,7 @@ export class PostgresStorage implements IStorage {
     }
   }
 
-  async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string; propertyJobId?: string }): Promise<Opportunity[]> {
+  async getOpportunities(userId: string, filters?: { status?: string; pipelineStage?: string; propertyJobId?: string; opportunityType?: string }): Promise<Opportunity[]> {
     try {
       // Ensure userId is a valid string UUID
       const normalizedUserId = String(userId).trim();
@@ -1867,6 +1868,9 @@ export class PostgresStorage implements IStorage {
       }
       if (filters?.propertyJobId) {
         conditions.push(eq(opportunities.propertyJobId, filters.propertyJobId));
+      }
+      if (filters?.opportunityType) {
+        conditions.push(eq(opportunities.opportunityType, filters.opportunityType));
       }
       
       // Execute query - this will return ALL opportunities for this userId

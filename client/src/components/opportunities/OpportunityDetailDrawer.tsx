@@ -35,7 +35,9 @@ import {
   MapPin,
   FileText,
   ChevronDown,
-  Eye
+  Eye,
+  Home,
+  Save
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
 import { format } from 'date-fns';
@@ -49,6 +51,7 @@ interface Opportunity {
   contactEmail?: string;
   value?: number | string;
   status: 'open' | 'won' | 'lost' | 'abandoned';
+  opportunityType?: 'buyer' | 'seller' | 'both';
   stageId?: string;
   stageName?: string;
   ownerId?: string;
@@ -101,6 +104,7 @@ export function OpportunityDetailDrawer({
   const [editedTitle, setEditedTitle] = useState('');
   const [editedValue, setEditedValue] = useState('');
   const [editedStatus, setEditedStatus] = useState<'open' | 'won' | 'lost' | 'abandoned'>('open');
+  const [editedOpportunityType, setEditedOpportunityType] = useState<'buyer' | 'seller' | 'both'>('buyer');
   const [editedStageId, setEditedStageId] = useState<string>('');
   const [editedPropertyJobId, setEditedPropertyJobId] = useState<string>('');
   const [editedTags, setEditedTags] = useState<string[]>([]);
@@ -114,6 +118,12 @@ export function OpportunityDetailDrawer({
   const [editingTaskTitle, setEditingTaskTitle] = useState('');
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteText, setEditingNoteText] = useState('');
+
+  // Buyer Profile state
+  const [buyerProfile, setBuyerProfile] = useState<any>(null);
+  const [isLoadingBuyerProfile, setIsLoadingBuyerProfile] = useState(false);
+  const [isSavingBuyerProfile, setIsSavingBuyerProfile] = useState(false);
+  const [buyerProfileSaved, setBuyerProfileSaved] = useState(false);
 
   const isNewOpportunity = !opportunity?.id;
 
@@ -144,6 +154,7 @@ export function OpportunityDetailDrawer({
       setEditedTitle(opportunity.title || '');
       setEditedValue(opportunity.value?.toString() || '');
       setEditedStatus(opportunity.status || 'open');
+      setEditedOpportunityType(opportunity.opportunityType || 'buyer');
       setEditedStageId(opportunity.stageId || '');
       setEditedPropertyJobId(opportunity.propertyJobId || '');
       setEditedTags(opportunity.tags || []);
@@ -152,6 +163,7 @@ export function OpportunityDetailDrawer({
       setEditedTitle('');
       setEditedValue('');
       setEditedStatus('open');
+      setEditedOpportunityType('buyer');
       setEditedStageId('');
       setEditedPropertyJobId('');
       setEditedTags([]);
@@ -295,6 +307,7 @@ export function OpportunityDetailDrawer({
         clientName: editedTitle.trim(),
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
+        opportunityType: editedOpportunityType,
         stageId: finalStageId, // ALWAYS set stageId
         pipelineStage: defaultStage?.name || 'new',
         propertyJobId: editedPropertyJobId || null,
@@ -305,6 +318,7 @@ export function OpportunityDetailDrawer({
         title: editedTitle,
         value: editedValue ? parseFloat(editedValue.replace(/[,$]/g, '')) : null,
         status: editedStatus,
+        opportunityType: editedOpportunityType,
         stageId: editedStageId,
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
@@ -535,6 +549,288 @@ export function OpportunityDetailDrawer({
     }
   };
 
+  // Buyer Profile Form Component
+  const BuyerProfileForm = ({ 
+    contactId, 
+    profile, 
+    onProfileChange, 
+    onSave, 
+    isSaving, 
+    saved 
+  }: { 
+    contactId: string; 
+    profile: any; 
+    onProfileChange: (profile: any) => void; 
+    onSave: () => void; 
+    isSaving: boolean; 
+    saved: boolean;
+  }) => {
+    const updateField = (field: string, value: any) => {
+      onProfileChange({ ...profile, [field]: value });
+    };
+
+    const addArrayItem = (field: string, value: string) => {
+      if (!value.trim()) return;
+      const current = profile[field] || [];
+      updateField(field, [...current, value.trim()]);
+    };
+
+    const removeArrayItem = (field: string, index: number) => {
+      const current = profile[field] || [];
+      updateField(field, current.filter((_: any, i: number) => i !== index));
+    };
+
+    return (
+      <div className="space-y-4">
+        {/* Budget Range */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-sm">Budget Min</Label>
+            <Input
+              type="number"
+              value={profile.budgetMin || ''}
+              onChange={(e) => updateField('budgetMin', e.target.value ? Number(e.target.value) : null)}
+              placeholder="Min"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Budget Max</Label>
+            <Input
+              type="number"
+              value={profile.budgetMax || ''}
+              onChange={(e) => updateField('budgetMax', e.target.value ? Number(e.target.value) : null)}
+              placeholder="Max"
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        {/* Beds/Baths */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label className="text-sm">Min Beds</Label>
+            <Input
+              type="number"
+              value={profile.bedsMin || ''}
+              onChange={(e) => updateField('bedsMin', e.target.value ? Number(e.target.value) : null)}
+              placeholder="Beds"
+              className="mt-1"
+            />
+          </div>
+          <div>
+            <Label className="text-sm">Min Baths</Label>
+            <Input
+              type="number"
+              value={profile.bathsMin || ''}
+              onChange={(e) => updateField('bathsMin', e.target.value ? Number(e.target.value) : null)}
+              placeholder="Baths"
+              className="mt-1"
+            />
+          </div>
+        </div>
+
+        {/* Property Type */}
+        <div>
+          <Label className="text-sm">Property Type</Label>
+          <Select
+            value={profile.propertyType || ''}
+            onValueChange={(v) => updateField('propertyType', v || null)}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="Select type" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              <SelectItem value="house">House</SelectItem>
+              <SelectItem value="townhouse">Townhouse</SelectItem>
+              <SelectItem value="apartment">Apartment</SelectItem>
+              <SelectItem value="land">Land</SelectItem>
+              <SelectItem value="acreage">Acreage</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Preferred Suburbs */}
+        <div>
+          <Label className="text-sm">Preferred Suburbs</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              placeholder="Add suburb"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addArrayItem('preferredSuburbs', (e.target as HTMLInputElement).value);
+                  (e.target as HTMLInputElement).value = '';
+                }
+              }}
+            />
+          </div>
+          {profile.preferredSuburbs && profile.preferredSuburbs.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {profile.preferredSuburbs.map((suburb: string, idx: number) => (
+                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                  {suburb}
+                  <button
+                    onClick={() => removeArrayItem('preferredSuburbs', idx)}
+                    className="ml-1 hover:text-red-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Finance Status */}
+        <div>
+          <Label className="text-sm">Finance Status</Label>
+          <Select
+            value={profile.financeStatus || ''}
+            onValueChange={(v) => updateField('financeStatus', v || null)}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="Select status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              <SelectItem value="preapproved">Pre-approved</SelectItem>
+              <SelectItem value="needsFinance">Needs Finance</SelectItem>
+              <SelectItem value="cash">Cash</SelectItem>
+              <SelectItem value="unknown">Unknown</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Timeline */}
+        <div>
+          <Label className="text-sm">Timeline</Label>
+          <Select
+            value={profile.timeline || ''}
+            onValueChange={(v) => updateField('timeline', v || null)}
+          >
+            <SelectTrigger className="mt-1">
+              <SelectValue placeholder="Select timeline" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">None</SelectItem>
+              <SelectItem value="asap">ASAP</SelectItem>
+              <SelectItem value="30days">30 Days</SelectItem>
+              <SelectItem value="60days">60 Days</SelectItem>
+              <SelectItem value="3to6months">3-6 Months</SelectItem>
+              <SelectItem value="unknown">Unknown</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Must Haves */}
+        <div>
+          <Label className="text-sm">Must Haves</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              placeholder="Add requirement"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addArrayItem('mustHaves', (e.target as HTMLInputElement).value);
+                  (e.target as HTMLInputElement).value = '';
+                }
+              }}
+            />
+          </div>
+          {profile.mustHaves && profile.mustHaves.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {profile.mustHaves.map((item: string, idx: number) => (
+                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                  {item}
+                  <button
+                    onClick={() => removeArrayItem('mustHaves', idx)}
+                    className="ml-1 hover:text-red-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Deal Breakers */}
+        <div>
+          <Label className="text-sm">Deal Breakers</Label>
+          <div className="mt-1 flex gap-2">
+            <Input
+              placeholder="Add deal breaker"
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addArrayItem('dealBreakers', (e.target as HTMLInputElement).value);
+                  (e.target as HTMLInputElement).value = '';
+                }
+              }}
+            />
+          </div>
+          {profile.dealBreakers && profile.dealBreakers.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {profile.dealBreakers.map((item: string, idx: number) => (
+                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                  {item}
+                  <button
+                    onClick={() => removeArrayItem('dealBreakers', idx)}
+                    className="ml-1 hover:text-red-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Free Notes */}
+        <div>
+          <Label className="text-sm">Notes</Label>
+          <Textarea
+            value={profile.freeNotes || ''}
+            onChange={(e) => updateField('freeNotes', e.target.value || null)}
+            placeholder="Additional notes..."
+            className="mt-1"
+            rows={3}
+          />
+        </div>
+
+        {/* Save Button */}
+        <div className="flex items-center gap-2 pt-2">
+          <Button
+            onClick={onSave}
+            disabled={isSaving}
+            size="sm"
+            className="flex-1"
+          >
+            {isSaving ? (
+              <>
+                <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full mr-2"></div>
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Profile
+              </>
+            )}
+          </Button>
+          {saved && (
+            <div className="flex items-center gap-1 text-sm text-green-600">
+              <CheckCircle className="w-4 h-4" />
+              Saved
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -694,6 +990,30 @@ export function OpportunityDetailDrawer({
                 </div>
 
                 <div>
+                  <Label>Type</Label>
+                  {isEditing ? (
+                    <Select value={editedOpportunityType} onValueChange={(v: 'buyer' | 'seller' | 'both') => setEditedOpportunityType(v)}>
+                      <SelectTrigger className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="buyer">Buyer</SelectItem>
+                        <SelectItem value="seller">Seller</SelectItem>
+                        <SelectItem value="both">Both</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Badge className={`mt-1 px-3 py-1 ${
+                      editedOpportunityType === 'buyer' ? 'bg-blue-500 text-white' :
+                      editedOpportunityType === 'seller' ? 'bg-purple-500 text-white' :
+                      'bg-indigo-500 text-white'
+                    }`}>
+                      {editedOpportunityType === 'buyer' ? 'Buyer' : editedOpportunityType === 'seller' ? 'Seller' : 'Both'}
+                    </Badge>
+                  )}
+                </div>
+
+                <div>
                   <Label>Stage</Label>
                   {isEditing ? (
                     <Select value={editedStageId} onValueChange={setEditedStageId}>
@@ -830,6 +1150,55 @@ export function OpportunityDetailDrawer({
               </div>
             </CardContent>
           </Card>
+
+          {/* Buyer Profile Card - Only show for buyer/both opportunities with contact */}
+          {!isNewOpportunity && opportunity?.contactId && 
+           (opportunity?.opportunityType === 'buyer' || opportunity?.opportunityType === 'both') && (
+            <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <Home className="w-4 h-4" />
+                  Buyer Profile
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {isLoadingBuyerProfile ? (
+                  <div className="text-center py-4">
+                    <div className="animate-spin w-6 h-6 border-2 border-primary border-t-transparent rounded-full mx-auto"></div>
+                    <p className="text-sm text-slate-500 mt-2">Loading buyer profile...</p>
+                  </div>
+                ) : (
+                  <BuyerProfileForm
+                    contactId={opportunity.contactId}
+                    profile={buyerProfile || {}}
+                    onProfileChange={setBuyerProfile}
+                    onSave={() => {
+                      setIsSavingBuyerProfile(true);
+                      setBuyerProfileSaved(false);
+                      apiClient.updateBuyerProfile(opportunity.contactId!, buyerProfile || {})
+                        .then(() => {
+                          setBuyerProfileSaved(true);
+                          toast({ title: 'Buyer profile saved', description: 'Profile updated successfully.' });
+                          setTimeout(() => setBuyerProfileSaved(false), 3000);
+                        })
+                        .catch((error: any) => {
+                          toast({
+                            title: 'Error',
+                            description: error.message || 'Failed to save buyer profile',
+                            variant: 'destructive',
+                          });
+                        })
+                        .finally(() => {
+                          setIsSavingBuyerProfile(false);
+                        });
+                    }}
+                    isSaving={isSavingBuyerProfile}
+                    saved={buyerProfileSaved}
+                  />
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quick Actions Card */}
           {!isNewOpportunity && (opportunity?.contactEmail || opportunity?.contactPhone || opportunity?.propertyJobId) && (

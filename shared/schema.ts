@@ -425,6 +425,7 @@ export const contacts = pgTable("contacts", {
   address: text("address"),
   notes: text("notes"),
   tags: text("tags").array().default(sql`'{}'::text[]`),
+  buyerProfile: jsonb("buyer_profile").default(sql`'{}'::jsonb`), // Structured buyer specifications
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -474,6 +475,7 @@ export const opportunities = pgTable("opportunities", {
   pipelineId: uuid("pipeline_id").references(() => pipelines.id),
   stageId: uuid("stage_id").references(() => pipelineStages.id),
   status: text("status").default("open").notNull(), // 'open' | 'won' | 'lost' | 'abandoned'
+  opportunityType: text("opportunity_type").default("buyer").notNull(), // 'buyer' | 'seller' | 'both'
   value: numeric("value", { precision: 12, scale: 2 }), // potential revenue (renamed from estimatedValue)
   ownerId: uuid("owner_id").references(() => users.id), // assigned user
   tags: text("tags").array().default(sql`'{}'::text[]`),

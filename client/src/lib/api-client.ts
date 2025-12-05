@@ -1131,6 +1131,17 @@ class ApiClient {
     });
   }
 
+  async getBuyerProfile(contactId: string) {
+    return this.request<any>(`/contacts/${contactId}/buyer-profile`);
+  }
+
+  async updateBuyerProfile(contactId: string, data: any) {
+    return this.request(`/contacts/${contactId}/buyer-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
   async deleteContact(id: string) {
     return this.request(`/contacts/${id}`, { method: 'DELETE' });
   }

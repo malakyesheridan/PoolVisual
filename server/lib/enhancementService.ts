@@ -331,7 +331,7 @@ export async function resetMonthlyEnhancements(userId: string, monthlyEnhancemen
  */
 export function getEnhancementsFromPriceId(priceId: string): number | null {
   const topUpMap: Record<string, number> = {
-    'price_1SZRjuEdvdAX5C3kF5PzjpMb': 250,  // 250 enhancements - $199 AUD (Pro Pack)
+    'price_1SZRjuEdvdAX5C3kF5PzjpMb': 350,  // 350 enhancements - $199 AUD (Pro Pack)
     'price_1SZRjYEdvdAX5C3kmNRNfHPi': 100,  // 100 enhancements - $75 AUD (Standard)
     'price_1SZRjEEdvdAX5C3kdERuir64': 30,   // 30 enhancements - $25 AUD (Basic)
   };
@@ -397,7 +397,7 @@ export function getProductIdFromPriceId(priceId: string): string | null {
 
   // Check top-up products
   const topUpProductMap: Record<string, string> = {
-    'price_1SZRjuEdvdAX5C3kF5PzjpMb': 'prod_TWUj0L0LbCseYc',  // 250 enhancements - $199 AUD
+    'price_1SZRjuEdvdAX5C3kF5PzjpMb': 'prod_TWUj0L0LbCseYc',  // 350 enhancements - $199 AUD
     'price_1SZRjYEdvdAX5C3kmNRNfHPi': 'prod_TWUjIWUJ5I1uCY',  // 100 enhancements - $75 AUD
     'price_1SZRjEEdvdAX5C3kdERuir64': 'prod_TWUiiGAGwSb03w',  // 30 enhancements - $25 AUD
   };

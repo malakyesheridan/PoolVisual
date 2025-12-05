@@ -44,7 +44,7 @@ interface TopUpPack {
 const TOP_UP_PACKS: TopUpPack[] = [
   { priceId: 'price_1SZRjEEdvdAX5C3kdERuir64', enhancements: 30, price: 25.00, name: 'Basic' },
   { priceId: 'price_1SZRjYEdvdAX5C3kmNRNfHPi', enhancements: 100, price: 75.00, popular: true, name: 'Standard' },
-  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', enhancements: 250, price: 199.00, name: 'Pro Pack' },
+  { priceId: 'price_1SZRjuEdvdAX5C3kF5PzjpMb', enhancements: 350, price: 199.00, name: 'Pro Pack' },
 ];
 
 export default function Billing() {

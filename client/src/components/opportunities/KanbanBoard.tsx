@@ -37,6 +37,7 @@ interface Opportunity {
   contactEmail?: string;
   value?: number | string;
   status: 'open' | 'won' | 'lost' | 'abandoned';
+  opportunityType?: 'buyer' | 'seller' | 'both';
   stageId?: string;
   tags?: string[];
   taskCount?: number;
@@ -152,10 +153,26 @@ function OpportunityCard({
           <h3 className="font-semibold text-base text-slate-900 mb-2 leading-tight">
             {opportunity.title || 'Untitled Opportunity'}
           </h3>
-          <Badge variant="outline" className={`text-xs ${getStatusBadgeColor(opportunity.status)}`}>
-            <StatusIcon className="w-3 h-3 mr-1" />
-            {opportunity.status}
-          </Badge>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className={`text-xs ${getStatusBadgeColor(opportunity.status)}`}>
+              <StatusIcon className="w-3 h-3 mr-1" />
+              {opportunity.status}
+            </Badge>
+            {opportunity.opportunityType && (
+              <Badge 
+                variant="outline" 
+                className={`text-xs ${
+                  opportunity.opportunityType === 'buyer' 
+                    ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                    : opportunity.opportunityType === 'seller'
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                }`}
+              >
+                {opportunity.opportunityType === 'buyer' ? 'Buyer' : opportunity.opportunityType === 'seller' ? 'Seller' : 'Both'}
+              </Badge>
+            )}
+          </div>
         </div>
 
         {opportunity.contactName && (
