@@ -696,12 +696,18 @@ export function OpportunityDetailDrawer({
     // Use local state for form - only save to parent on explicit save
     const [localProfile, setLocalProfile] = useState<any>(initialProfile || {});
     const [hasChanges, setHasChanges] = useState(false);
+    const profileRef = React.useRef(initialProfile);
 
-    // Update local profile when initialProfile changes (from server)
+    // Update local profile when initialProfile changes (from server) - but only if user hasn't made changes
     useEffect(() => {
-      setLocalProfile(initialProfile || {});
-      setHasChanges(false);
-    }, [initialProfile]);
+      // Only update if the profile actually changed and user hasn't made local changes
+      if (JSON.stringify(profileRef.current) !== JSON.stringify(initialProfile)) {
+        if (!hasChanges) {
+          setLocalProfile(initialProfile || {});
+          profileRef.current = initialProfile;
+        }
+      }
+    }, [initialProfile, hasChanges]);
 
     const updateField = (field: string, value: any) => {
       const newProfile = { ...localProfile, [field]: value };
@@ -720,6 +726,52 @@ export function OpportunityDetailDrawer({
       updateField(field, current.filter((_: any, i: number) => i !== index));
     };
 
+    // Format currency for display
+    const formatCurrencyDisplay = (value: number | null | undefined): string => {
+      if (value === null || value === undefined) return '';
+      return value.toLocaleString('en-US', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      });
+    };
+
+    // Parse currency input (allows $, commas, decimals)
+    const parseCurrencyInput = (value: string): number | null => {
+      // Remove $, commas, and spaces, keep numbers and decimal point
+      const cleaned = value.replace(/[^0-9.]/g, '');
+      if (!cleaned) return null;
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? null : num;
+    };
+
+    // State for formatted display values (for budget fields)
+    const [budgetMinDisplay, setBudgetMinDisplay] = useState<string>(
+      localProfile.budgetMin !== null && localProfile.budgetMin !== undefined 
+        ? formatCurrencyDisplay(localProfile.budgetMin) 
+        : ''
+    );
+    const [budgetMaxDisplay, setBudgetMaxDisplay] = useState<string>(
+      localProfile.budgetMax !== null && localProfile.budgetMax !== undefined 
+        ? formatCurrencyDisplay(localProfile.budgetMax) 
+        : ''
+    );
+
+    // Sync display values when profile changes (but not when user is typing)
+    useEffect(() => {
+      if (!hasChanges) {
+        setBudgetMinDisplay(
+          localProfile.budgetMin !== null && localProfile.budgetMin !== undefined 
+            ? formatCurrencyDisplay(localProfile.budgetMin) 
+            : ''
+        );
+        setBudgetMaxDisplay(
+          localProfile.budgetMax !== null && localProfile.budgetMax !== undefined 
+            ? formatCurrencyDisplay(localProfile.budgetMax) 
+            : ''
+        );
+      }
+    }, [localProfile.budgetMin, localProfile.budgetMax, hasChanges]);
+
     return (
       <div className="space-y-4">
         {/* Budget Range */}
@@ -729,12 +781,23 @@ export function OpportunityDetailDrawer({
             <Input
               type="text"
               inputMode="numeric"
-              value={localProfile.budgetMin !== null && localProfile.budgetMin !== undefined ? String(localProfile.budgetMin) : ''}
+              value={budgetMinDisplay}
               onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                updateField('budgetMin', val ? Number(val) : null);
+                const inputValue = e.target.value;
+                setBudgetMinDisplay(inputValue);
+                const parsed = parseCurrencyInput(inputValue);
+                updateField('budgetMin', parsed);
               }}
-              placeholder="Min"
+              onBlur={(e) => {
+                // Format on blur
+                const parsed = parseCurrencyInput(e.target.value);
+                if (parsed !== null) {
+                  setBudgetMinDisplay(formatCurrencyDisplay(parsed));
+                } else {
+                  setBudgetMinDisplay('');
+                }
+              }}
+              placeholder="$0"
               className="mt-1"
             />
           </div>
@@ -743,12 +806,23 @@ export function OpportunityDetailDrawer({
             <Input
               type="text"
               inputMode="numeric"
-              value={localProfile.budgetMax !== null && localProfile.budgetMax !== undefined ? String(localProfile.budgetMax) : ''}
+              value={budgetMaxDisplay}
               onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                updateField('budgetMax', val ? Number(val) : null);
+                const inputValue = e.target.value;
+                setBudgetMaxDisplay(inputValue);
+                const parsed = parseCurrencyInput(inputValue);
+                updateField('budgetMax', parsed);
               }}
-              placeholder="Max"
+              onBlur={(e) => {
+                // Format on blur
+                const parsed = parseCurrencyInput(e.target.value);
+                if (parsed !== null) {
+                  setBudgetMaxDisplay(formatCurrencyDisplay(parsed));
+                } else {
+                  setBudgetMaxDisplay('');
+                }
+              }}
+              placeholder="$0"
               className="mt-1"
             />
           </div>
@@ -945,8 +1019,11 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Notes</Label>
           <Textarea
-            value={localProfile.freeNotes || ''}
-            onChange={(e) => updateField('freeNotes', e.target.value || null)}
+            value={localProfile.freeNotes ?? ''}
+            onChange={(e) => {
+              const value = e.target.value;
+              updateField('freeNotes', value === '' ? null : value);
+            }}
             placeholder="Additional notes..."
             className="mt-1"
             rows={3}
@@ -960,6 +1037,7 @@ export function OpportunityDetailDrawer({
               onClick={async () => {
                 await onSave(localProfile);
                 setHasChanges(false);
+                profileRef.current = localProfile;
               }}
               disabled={isSaving}
               size="sm"
