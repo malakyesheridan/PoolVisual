@@ -129,8 +129,6 @@ if (SAFE_MODE) {
     connection = null;
     enhancementQueue = null;
   }
-  
-  return enhancementQueue;
 }
 
 export { enhancementQueue };
