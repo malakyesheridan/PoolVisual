@@ -751,13 +751,23 @@ export function OpportunityDetailDrawer({
 
     const addArrayItem = (field: string, value: string) => {
       if (!value.trim()) return;
-      const current = localProfile[field] || [];
-      updateField(field, [...current, value.trim()]);
+      // Get current array, ensuring it's always an array
+      const currentArray = Array.isArray(localProfile[field]) ? localProfile[field] : [];
+      const newArray = [...currentArray, value.trim()];
+      console.log(`[BuyerProfileForm] Adding to ${field}:`, value.trim());
+      console.log(`[BuyerProfileForm] Current array:`, currentArray);
+      console.log(`[BuyerProfileForm] New array:`, newArray);
+      updateField(field, newArray);
     };
 
     const removeArrayItem = (field: string, index: number) => {
-      const current = localProfile[field] || [];
-      updateField(field, current.filter((_: any, i: number) => i !== index));
+      // Get current array, ensuring it's always an array
+      const currentArray = Array.isArray(localProfile[field]) ? localProfile[field] : [];
+      const newArray = currentArray.filter((_: any, i: number) => i !== index);
+      console.log(`[BuyerProfileForm] Removing from ${field} at index ${index}`);
+      console.log(`[BuyerProfileForm] Current array:`, currentArray);
+      console.log(`[BuyerProfileForm] New array:`, newArray);
+      updateField(field, newArray);
     };
 
     // Format currency for display
