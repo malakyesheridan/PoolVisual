@@ -3781,10 +3781,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       );
       
       const updated = await Promise.race([updatePromise, timeoutPromise]) as any;
-      const buyerProfile = (updated as any).buyerProfile || {};
+      const updatedBuyerProfile = (updated as any).buyerProfile || {};
       
       // Send response immediately without waiting for any background operations
-      res.json(buyerProfile);
+      res.json(updatedBuyerProfile);
     } catch (error: any) {
       // Log error but don't wait for Redis or other services
       console.error('[Buyer Profile Update Error]', error?.message || error);
