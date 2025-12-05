@@ -1152,6 +1152,12 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Get buyer opportunities with profiles
       const buyerOpportunities = await storage.getBuyerOpportunitiesWithProfiles(orgId);
 
+      // Validate buyerOpportunities is an array
+      if (!Array.isArray(buyerOpportunities)) {
+        console.error('[Matched Buyers] buyerOpportunities is not an array:', typeof buyerOpportunities, buyerOpportunities);
+        return res.status(500).json({ message: "Invalid data format from storage" });
+      }
+
       // Run matching engine
       const matchingResult = matchBuyersToProperty(propertyData, buyerOpportunities);
 
@@ -1161,6 +1167,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(matchingResult);
     } catch (error: any) {
       console.error('[Matched Buyers] Error:', error?.message || error);
+      console.error('[Matched Buyers] Stack:', error?.stack);
       res.status(500).json({ message: error?.message || "Failed to get matched buyers" });
     }
   });
@@ -1184,7 +1191,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Prepare updates - convert date strings to Date objects
+      // Prepare updates - convert date strings to Date objects and parse currency
       const updates: any = { ...req.body };
       
       // Convert listingDate string to Date if provided
@@ -1198,6 +1205,25 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       } else if (updates.listingDate === '' || updates.listingDate === null) {
         updates.listingDate = null;
+      }
+
+      // Parse estimatedPrice from currency string to number
+      if (updates.estimatedPrice !== undefined && updates.estimatedPrice !== null) {
+        if (typeof updates.estimatedPrice === 'string') {
+          // Remove currency symbols and commas, then parse
+          const cleaned = updates.estimatedPrice.replace(/[$,]/g, '').trim();
+          if (cleaned === '') {
+            updates.estimatedPrice = null;
+          } else {
+            const parsed = parseFloat(cleaned);
+            updates.estimatedPrice = isNaN(parsed) ? null : parsed;
+          }
+        } else if (typeof updates.estimatedPrice === 'number') {
+          // Already a number, keep it
+          updates.estimatedPrice = updates.estimatedPrice;
+        } else {
+          updates.estimatedPrice = null;
+        }
       }
 
       // Update job with provided fields

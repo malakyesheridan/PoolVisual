@@ -1957,15 +1957,28 @@ export class PostgresStorage implements IStorage {
         )
         .orderBy(desc(opportunities.createdAt));
       
-      return results.map(row => ({
-        id: row.id,
-        contactId: row.contactId,
-        contactName: row.contactName || null,
-        opportunityType: row.opportunityType,
-        status: row.status,
-        title: row.title,
-        buyerProfile: row.buyerProfile || null,
-      }));
+      return results.map(row => {
+        // Ensure buyerProfile is a valid object or null
+        let buyerProfile = row.buyerProfile;
+        if (buyerProfile && typeof buyerProfile === 'object') {
+          // Check if it's an empty object
+          if (Object.keys(buyerProfile).length === 0) {
+            buyerProfile = null;
+          }
+        } else {
+          buyerProfile = null;
+        }
+        
+        return {
+          id: row.id,
+          contactId: row.contactId || null,
+          contactName: row.contactName || null,
+          opportunityType: row.opportunityType || 'buyer',
+          status: row.status || 'open',
+          title: row.title || null,
+          buyerProfile: buyerProfile,
+        };
+      });
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         console.warn('[getBuyerOpportunitiesWithProfiles] opportunities/contacts table not found, returning empty array');

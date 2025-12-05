@@ -85,7 +85,6 @@ export function PropertyDetailsForm({
                 <FormControl>
                   <Input
                     type="number"
-                    placeholder="3"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
@@ -106,7 +105,6 @@ export function PropertyDetailsForm({
                   <Input
                     type="number"
                     step="0.5"
-                    placeholder="2.5"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
@@ -126,7 +124,6 @@ export function PropertyDetailsForm({
                 <FormControl>
                   <Input
                     type="number"
-                    placeholder="2"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
@@ -146,7 +143,6 @@ export function PropertyDetailsForm({
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="$500,000"
                     {...field}
                     value={field.value ?? ''}
                   />
@@ -225,7 +221,6 @@ export function PropertyDetailsForm({
                   <Input
                     type="number"
                     step="0.01"
-                    placeholder="500"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
@@ -246,7 +241,6 @@ export function PropertyDetailsForm({
                   <Input
                     type="number"
                     step="0.01"
-                    placeholder="200"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : null)}
@@ -266,7 +260,6 @@ export function PropertyDetailsForm({
                 <FormControl>
                   <Input
                     type="number"
-                    placeholder="2020"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
@@ -286,7 +279,6 @@ export function PropertyDetailsForm({
                 <FormControl>
                   <Input
                     type="number"
-                    placeholder="2023"
                     {...field}
                     value={field.value ?? ''}
                     onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : null)}
@@ -351,7 +343,6 @@ export function PropertyDetailsForm({
                 <FormLabel>School District</FormLabel>
                 <FormControl>
                   <Input
-                    placeholder="Springfield School District"
                     {...field}
                     value={field.value ?? ''}
                   />
@@ -370,7 +361,6 @@ export function PropertyDetailsForm({
               <FormLabel>Property Description</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder="Describe the property..."
                   rows={4}
                   {...field}
                   value={field.value ?? ''}

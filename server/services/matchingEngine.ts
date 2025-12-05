@@ -394,27 +394,38 @@ export function matchBuyersToProperty(
   
   // Filter candidates: must have buyer profile and be buyer/both type
   const candidates = buyerOpportunities.filter(opp => {
-    // Must be buyer or both
-    if (opp.opportunityType !== 'buyer' && opp.opportunityType !== 'both') {
+    try {
+      // Must be buyer or both
+      if (!opp || opp.opportunityType !== 'buyer' && opp.opportunityType !== 'both') {
+        return false;
+      }
+      
+      // Must have buyer profile (check for null, undefined, or empty object)
+      if (!opp.buyerProfile || typeof opp.buyerProfile !== 'object') {
+        return false;
+      }
+      
+      // Check if it's an empty object
+      if (Object.keys(opp.buyerProfile).length === 0) {
+        return false;
+      }
+      
+      // Must have at least some profile data
+      const profile = opp.buyerProfile;
+      const hasData = 
+        (profile.budgetMin !== null && profile.budgetMin !== undefined) ||
+        (profile.budgetMax !== null && profile.budgetMax !== undefined) ||
+        (Array.isArray(profile.preferredSuburbs) && profile.preferredSuburbs.length > 0) ||
+        (profile.bedsMin !== null && profile.bedsMin !== undefined) ||
+        (profile.bathsMin !== null && profile.bathsMin !== undefined) ||
+        (profile.propertyType !== null && profile.propertyType !== undefined);
+      
+      return hasData;
+    } catch (error) {
+      // If any error occurs during filtering, skip this opportunity
+      console.warn('[MatchingEngine] Error filtering candidate:', error, opp);
       return false;
     }
-    
-    // Must have buyer profile (check for null, undefined, or empty object)
-    if (!opp.buyerProfile || typeof opp.buyerProfile !== 'object') {
-      return false;
-    }
-    
-    // Must have at least some profile data
-    const profile = opp.buyerProfile;
-    const hasData = 
-      (profile.budgetMin !== null && profile.budgetMin !== undefined) ||
-      (profile.budgetMax !== null && profile.budgetMax !== undefined) ||
-      (Array.isArray(profile.preferredSuburbs) && profile.preferredSuburbs.length > 0) ||
-      (profile.bedsMin !== null && profile.bedsMin !== undefined) ||
-      (profile.bathsMin !== null && profile.bathsMin !== undefined) ||
-      (profile.propertyType !== null && profile.propertyType !== undefined);
-    
-    return hasData;
   });
   
   // Score each candidate
