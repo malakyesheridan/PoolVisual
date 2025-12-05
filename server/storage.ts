@@ -1932,8 +1932,16 @@ export class PostgresStorage implements IStorage {
   async getBuyerOpportunitiesWithProfiles(orgId: string): Promise<any[]> {
     try {
       // Get all buyer/both opportunities for this org, joined with contacts to get buyerProfile
-      // Use notInArray to exclude closed_lost and abandoned statuses
-      const results = await ensureDb()
+      // Use a simpler approach: filter status in application code to avoid Drizzle issues
+      const db = ensureDb();
+      
+      // First verify table references exist
+      if (!opportunities || !contacts) {
+        console.error('[getBuyerOpportunitiesWithProfiles] Table references are undefined');
+        return [];
+      }
+      
+      const results = await db
         .select({
           id: opportunities.id,
           contactId: opportunities.contactId,
@@ -1951,34 +1959,36 @@ export class PostgresStorage implements IStorage {
             or(
               eq(opportunities.opportunityType, 'buyer'),
               eq(opportunities.opportunityType, 'both')
-            ),
-            notInArray(opportunities.status, ['closed_lost', 'abandoned'])
+            )
           )
         )
         .orderBy(desc(opportunities.createdAt));
       
-      return results.map(row => {
-        // Ensure buyerProfile is a valid object or null
-        let buyerProfile = row.buyerProfile;
-        if (buyerProfile && typeof buyerProfile === 'object') {
-          // Check if it's an empty object
-          if (Object.keys(buyerProfile).length === 0) {
+      // Filter out closed_lost and abandoned in application code
+      return results
+        .filter(row => row.status !== 'closed_lost' && row.status !== 'abandoned')
+        .map(row => {
+          // Ensure buyerProfile is a valid object or null
+          let buyerProfile = row.buyerProfile;
+          if (buyerProfile && typeof buyerProfile === 'object') {
+            // Check if it's an empty object
+            if (Object.keys(buyerProfile).length === 0) {
+              buyerProfile = null;
+            }
+          } else {
             buyerProfile = null;
           }
-        } else {
-          buyerProfile = null;
-        }
-        
-        return {
-          id: row.id,
-          contactId: row.contactId || null,
-          contactName: row.contactName || null,
-          opportunityType: row.opportunityType || 'buyer',
-          status: row.status || 'open',
-          title: row.title || null,
-          buyerProfile: buyerProfile,
-        };
-      });
+          
+          return {
+            id: row.id,
+            contactId: row.contactId || null,
+            contactName: row.contactName || null,
+            opportunityType: row.opportunityType || 'buyer',
+            status: row.status || 'open',
+            title: row.title || null,
+            buyerProfile: buyerProfile,
+          };
+        });
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         console.warn('[getBuyerOpportunitiesWithProfiles] opportunities/contacts table not found, returning empty array');
