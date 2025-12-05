@@ -4344,15 +4344,26 @@ export async function registerRoutes(app: Express): Promise<void> {
           message: "Thank you for your inquiry. We'll be in touch soon!" 
         });
       } catch (error: any) {
-        console.error('[Buyer Form Submission Error]', error?.message || error);
+        console.error('[Buyer Form Submission Error - Inner]', {
+          message: error?.message,
+          code: error?.code,
+          detail: error?.detail,
+          constraint: error?.constraint,
+        });
         // If we created a contact or opportunity but submission failed, log it
         // In a production system, you might want to clean up or retry
         res.status(500).json({ 
-          message: "Something went wrong. Please try again later." 
+          success: false,
+          message: error?.message || "Something went wrong. Please try again later." 
         });
       }
     } catch (error: any) {
-      console.error('[Buyer Form Submission Error]', error?.message || error);
+      console.error('[Buyer Form Submission Error - Outer]', {
+        message: error?.message,
+        code: error?.code,
+        detail: error?.detail,
+        constraint: error?.constraint,
+      });
       res.status(500).json({ 
         message: "Something went wrong. Please try again later." 
       });
