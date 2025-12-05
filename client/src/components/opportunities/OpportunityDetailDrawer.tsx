@@ -693,21 +693,39 @@ export function OpportunityDetailDrawer({
     isSaving: boolean; 
     saved: boolean;
   }) => {
+    // Edit mode state
+    const [isEditing, setIsEditing] = useState(false);
     // Use local state for form - only save to parent on explicit save
     const [localProfile, setLocalProfile] = useState<any>(initialProfile || {});
     const [hasChanges, setHasChanges] = useState(false);
     const profileRef = React.useRef(initialProfile);
 
-    // Update local profile when initialProfile changes (from server) - but only if user hasn't made changes
+    // Update local profile when initialProfile changes (from server) - but only if not editing
     useEffect(() => {
-      // Only update if the profile actually changed and user hasn't made local changes
-      if (JSON.stringify(profileRef.current) !== JSON.stringify(initialProfile)) {
-        if (!hasChanges) {
+      // Only update if the profile actually changed and user isn't editing
+      if (!isEditing) {
+        if (JSON.stringify(profileRef.current) !== JSON.stringify(initialProfile)) {
           setLocalProfile(initialProfile || {});
           profileRef.current = initialProfile;
+          setHasChanges(false);
         }
       }
-    }, [initialProfile, hasChanges]);
+    }, [initialProfile, isEditing]);
+    
+    // Reset form when entering edit mode
+    const handleEdit = () => {
+      setIsEditing(true);
+      setLocalProfile(initialProfile || {});
+      setHasChanges(false);
+      profileRef.current = initialProfile;
+    };
+    
+    // Cancel editing
+    const handleCancel = () => {
+      setIsEditing(false);
+      setLocalProfile(initialProfile || {});
+      setHasChanges(false);
+    };
 
     const updateField = (field: string, value: any) => {
       const newProfile = { ...localProfile, [field]: value };
@@ -774,57 +792,79 @@ export function OpportunityDetailDrawer({
 
     return (
       <div className="space-y-4">
+        {/* Edit Button */}
+        {!isEditing && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleEdit}>
+              <Edit className="w-4 h-4 mr-2" />
+              Edit Profile
+            </Button>
+          </div>
+        )}
+        
         {/* Budget Range */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-sm">Budget Min</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={budgetMinDisplay}
-              onChange={(e) => {
-                const inputValue = e.target.value;
-                setBudgetMinDisplay(inputValue);
-                const parsed = parseCurrencyInput(inputValue);
-                updateField('budgetMin', parsed);
-              }}
-              onBlur={(e) => {
-                // Format on blur
-                const parsed = parseCurrencyInput(e.target.value);
-                if (parsed !== null) {
-                  setBudgetMinDisplay(formatCurrencyDisplay(parsed));
-                } else {
-                  setBudgetMinDisplay('');
-                }
-              }}
-              placeholder="$0"
-              className="mt-1"
-            />
+            {isEditing ? (
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={budgetMinDisplay}
+                onChange={(e) => {
+                  const inputValue = e.target.value;
+                  setBudgetMinDisplay(inputValue);
+                  const parsed = parseCurrencyInput(inputValue);
+                  updateField('budgetMin', parsed);
+                }}
+                onBlur={(e) => {
+                  // Format on blur
+                  const parsed = parseCurrencyInput(e.target.value);
+                  if (parsed !== null) {
+                    setBudgetMinDisplay(formatCurrencyDisplay(parsed));
+                  } else {
+                    setBudgetMinDisplay('');
+                  }
+                }}
+                placeholder="$0"
+                className="mt-1"
+              />
+            ) : (
+              <div className="mt-1 text-sm text-slate-600">
+                {localProfile.budgetMin ? formatCurrencyDisplay(localProfile.budgetMin) : '—'}
+              </div>
+            )}
           </div>
           <div>
             <Label className="text-sm">Budget Max</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={budgetMaxDisplay}
-              onChange={(e) => {
-                const inputValue = e.target.value;
-                setBudgetMaxDisplay(inputValue);
-                const parsed = parseCurrencyInput(inputValue);
-                updateField('budgetMax', parsed);
-              }}
-              onBlur={(e) => {
-                // Format on blur
-                const parsed = parseCurrencyInput(e.target.value);
-                if (parsed !== null) {
-                  setBudgetMaxDisplay(formatCurrencyDisplay(parsed));
-                } else {
-                  setBudgetMaxDisplay('');
-                }
-              }}
-              placeholder="$0"
-              className="mt-1"
-            />
+            {isEditing ? (
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={budgetMaxDisplay}
+                onChange={(e) => {
+                  const inputValue = e.target.value;
+                  setBudgetMaxDisplay(inputValue);
+                  const parsed = parseCurrencyInput(inputValue);
+                  updateField('budgetMax', parsed);
+                }}
+                onBlur={(e) => {
+                  // Format on blur
+                  const parsed = parseCurrencyInput(e.target.value);
+                  if (parsed !== null) {
+                    setBudgetMaxDisplay(formatCurrencyDisplay(parsed));
+                  } else {
+                    setBudgetMaxDisplay('');
+                  }
+                }}
+                placeholder="$0"
+                className="mt-1"
+              />
+            ) : (
+              <div className="mt-1 text-sm text-slate-600">
+                {localProfile.budgetMax ? formatCurrencyDisplay(localProfile.budgetMax) : '—'}
+              </div>
+            )}
           </div>
         </div>
 
@@ -832,82 +872,116 @@ export function OpportunityDetailDrawer({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-sm">Min Beds</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={localProfile.bedsMin !== null && localProfile.bedsMin !== undefined ? String(localProfile.bedsMin) : ''}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                updateField('bedsMin', val ? Number(val) : null);
-              }}
-              placeholder="Beds"
-              className="mt-1"
-            />
+            {isEditing ? (
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={localProfile.bedsMin !== null && localProfile.bedsMin !== undefined ? String(localProfile.bedsMin) : ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  updateField('bedsMin', val ? Number(val) : null);
+                }}
+                placeholder="Beds"
+                className="mt-1"
+              />
+            ) : (
+              <div className="mt-1 text-sm text-slate-600">
+                {localProfile.bedsMin ?? '—'}
+              </div>
+            )}
           </div>
           <div>
             <Label className="text-sm">Min Baths</Label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              value={localProfile.bathsMin !== null && localProfile.bathsMin !== undefined ? String(localProfile.bathsMin) : ''}
-              onChange={(e) => {
-                const val = e.target.value.replace(/[^0-9]/g, '');
-                updateField('bathsMin', val ? Number(val) : null);
-              }}
-              placeholder="Baths"
-              className="mt-1"
-            />
+            {isEditing ? (
+              <Input
+                type="text"
+                inputMode="numeric"
+                value={localProfile.bathsMin !== null && localProfile.bathsMin !== undefined ? String(localProfile.bathsMin) : ''}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  updateField('bathsMin', val ? Number(val) : null);
+                }}
+                placeholder="Baths"
+                className="mt-1"
+              />
+            ) : (
+              <div className="mt-1 text-sm text-slate-600">
+                {localProfile.bathsMin ?? '—'}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Property Type */}
         <div>
           <Label className="text-sm">Property Type</Label>
-          <Select
-            value={localProfile.propertyType || undefined}
-            onValueChange={(v) => updateField('propertyType', v || null)}
-          >
-            <SelectTrigger className="mt-1">
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="house">House</SelectItem>
-              <SelectItem value="townhouse">Townhouse</SelectItem>
-              <SelectItem value="apartment">Apartment</SelectItem>
-              <SelectItem value="land">Land</SelectItem>
-              <SelectItem value="acreage">Acreage</SelectItem>
-            </SelectContent>
-          </Select>
+          {isEditing ? (
+            <Select
+              value={localProfile.propertyType || undefined}
+              onValueChange={(v) => updateField('propertyType', v || null)}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="house">House</SelectItem>
+                <SelectItem value="townhouse">Townhouse</SelectItem>
+                <SelectItem value="apartment">Apartment</SelectItem>
+                <SelectItem value="land">Land</SelectItem>
+                <SelectItem value="acreage">Acreage</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="mt-1 text-sm text-slate-600 capitalize">
+              {localProfile.propertyType || '—'}
+            </div>
+          )}
         </div>
 
         {/* Preferred Suburbs */}
         <div>
           <Label className="text-sm">Preferred Suburbs</Label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              placeholder="Add suburb"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addArrayItem('preferredSuburbs', (e.target as HTMLInputElement).value);
-                  (e.target as HTMLInputElement).value = '';
-                }
-              }}
-            />
-          </div>
-          {localProfile.preferredSuburbs && localProfile.preferredSuburbs.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {localProfile.preferredSuburbs.map((suburb: string, idx: number) => (
-                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
-                  {suburb}
-                  <button
-                    onClick={() => removeArrayItem('preferredSuburbs', idx)}
-                    className="ml-1 hover:text-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              ))}
+          {isEditing ? (
+            <>
+              <div className="mt-1 flex gap-2">
+                <Input
+                  placeholder="Add suburb"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addArrayItem('preferredSuburbs', (e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+              </div>
+              {localProfile.preferredSuburbs && localProfile.preferredSuburbs.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {localProfile.preferredSuburbs.map((suburb: string, idx: number) => (
+                    <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                      {suburb}
+                      <button
+                        onClick={() => removeArrayItem('preferredSuburbs', idx)}
+                        className="ml-1 hover:text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mt-1">
+              {localProfile.preferredSuburbs && localProfile.preferredSuburbs.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {localProfile.preferredSuburbs.map((suburb: string, idx: number) => (
+                    <Badge key={idx} variant="secondary">{suburb}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-400">—</div>
+              )}
             </div>
           )}
         </div>
@@ -915,70 +989,98 @@ export function OpportunityDetailDrawer({
         {/* Finance Status */}
         <div>
           <Label className="text-sm">Finance Status</Label>
-          <Select
-            value={localProfile.financeStatus || undefined}
-            onValueChange={(v) => updateField('financeStatus', v || null)}
-          >
-            <SelectTrigger className="mt-1">
-              <SelectValue placeholder="Select status" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="preapproved">Pre-approved</SelectItem>
-              <SelectItem value="needsFinance">Needs Finance</SelectItem>
-              <SelectItem value="cash">Cash</SelectItem>
-              <SelectItem value="unknown">Unknown</SelectItem>
-            </SelectContent>
-          </Select>
+          {isEditing ? (
+            <Select
+              value={localProfile.financeStatus || undefined}
+              onValueChange={(v) => updateField('financeStatus', v || null)}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="preapproved">Pre-approved</SelectItem>
+                <SelectItem value="needsFinance">Needs Finance</SelectItem>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="unknown">Unknown</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="mt-1 text-sm text-slate-600 capitalize">
+              {localProfile.financeStatus ? localProfile.financeStatus.replace(/([A-Z])/g, ' $1').trim() : '—'}
+            </div>
+          )}
         </div>
 
         {/* Timeline */}
         <div>
           <Label className="text-sm">Timeline</Label>
-          <Select
-            value={localProfile.timeline || undefined}
-            onValueChange={(v) => updateField('timeline', v || null)}
-          >
-            <SelectTrigger className="mt-1">
-              <SelectValue placeholder="Select timeline" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="asap">ASAP</SelectItem>
-              <SelectItem value="30days">30 Days</SelectItem>
-              <SelectItem value="60days">60 Days</SelectItem>
-              <SelectItem value="3to6months">3-6 Months</SelectItem>
-              <SelectItem value="unknown">Unknown</SelectItem>
-            </SelectContent>
-          </Select>
+          {isEditing ? (
+            <Select
+              value={localProfile.timeline || undefined}
+              onValueChange={(v) => updateField('timeline', v || null)}
+            >
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Select timeline" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="asap">ASAP</SelectItem>
+                <SelectItem value="30days">30 Days</SelectItem>
+                <SelectItem value="60days">60 Days</SelectItem>
+                <SelectItem value="3to6months">3-6 Months</SelectItem>
+                <SelectItem value="unknown">Unknown</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="mt-1 text-sm text-slate-600">
+              {localProfile.timeline ? localProfile.timeline.replace(/([A-Z])/g, ' $1').trim() : '—'}
+            </div>
+          )}
         </div>
 
         {/* Must Haves */}
         <div>
           <Label className="text-sm">Must Haves</Label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              placeholder="Add requirement"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addArrayItem('mustHaves', (e.target as HTMLInputElement).value);
-                  (e.target as HTMLInputElement).value = '';
-                }
-              }}
-            />
-          </div>
-          {localProfile.mustHaves && localProfile.mustHaves.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {localProfile.mustHaves.map((item: string, idx: number) => (
-                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
-                  {item}
-                  <button
-                    onClick={() => removeArrayItem('mustHaves', idx)}
-                    className="ml-1 hover:text-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              ))}
+          {isEditing ? (
+            <>
+              <div className="mt-1 flex gap-2">
+                <Input
+                  placeholder="Add requirement"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addArrayItem('mustHaves', (e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+              </div>
+              {localProfile.mustHaves && localProfile.mustHaves.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {localProfile.mustHaves.map((item: string, idx: number) => (
+                    <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                      {item}
+                      <button
+                        onClick={() => removeArrayItem('mustHaves', idx)}
+                        className="ml-1 hover:text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mt-1">
+              {localProfile.mustHaves && localProfile.mustHaves.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {localProfile.mustHaves.map((item: string, idx: number) => (
+                    <Badge key={idx} variant="secondary">{item}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-400">—</div>
+              )}
             </div>
           )}
         </div>
@@ -986,31 +1088,47 @@ export function OpportunityDetailDrawer({
         {/* Deal Breakers */}
         <div>
           <Label className="text-sm">Deal Breakers</Label>
-          <div className="mt-1 flex gap-2">
-            <Input
-              placeholder="Add deal breaker"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  addArrayItem('dealBreakers', (e.target as HTMLInputElement).value);
-                  (e.target as HTMLInputElement).value = '';
-                }
-              }}
-            />
-          </div>
-          {localProfile.dealBreakers && localProfile.dealBreakers.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2">
-              {localProfile.dealBreakers.map((item: string, idx: number) => (
-                <Badge key={idx} variant="secondary" className="flex items-center gap-1">
-                  {item}
-                  <button
-                    onClick={() => removeArrayItem('dealBreakers', idx)}
-                    className="ml-1 hover:text-red-600"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </Badge>
-              ))}
+          {isEditing ? (
+            <>
+              <div className="mt-1 flex gap-2">
+                <Input
+                  placeholder="Add deal breaker"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addArrayItem('dealBreakers', (e.target as HTMLInputElement).value);
+                      (e.target as HTMLInputElement).value = '';
+                    }
+                  }}
+                />
+              </div>
+              {localProfile.dealBreakers && localProfile.dealBreakers.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {localProfile.dealBreakers.map((item: string, idx: number) => (
+                    <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                      {item}
+                      <button
+                        onClick={() => removeArrayItem('dealBreakers', idx)}
+                        className="ml-1 hover:text-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="mt-1">
+              {localProfile.dealBreakers && localProfile.dealBreakers.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {localProfile.dealBreakers.map((item: string, idx: number) => (
+                    <Badge key={idx} variant="secondary">{item}</Badge>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-sm text-slate-400">—</div>
+              )}
             </div>
           )}
         </div>
@@ -1018,25 +1136,32 @@ export function OpportunityDetailDrawer({
         {/* Free Notes */}
         <div>
           <Label className="text-sm">Notes</Label>
-          <Textarea
-            value={localProfile.freeNotes ?? ''}
-            onChange={(e) => {
-              const value = e.target.value;
-              updateField('freeNotes', value === '' ? null : value);
-            }}
-            placeholder="Additional notes..."
-            className="mt-1"
-            rows={3}
-          />
+          {isEditing ? (
+            <Textarea
+              value={localProfile.freeNotes ?? ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                updateField('freeNotes', value === '' ? null : value);
+              }}
+              placeholder="Additional notes..."
+              className="mt-1"
+              rows={3}
+            />
+          ) : (
+            <div className="mt-1 text-sm text-slate-600 whitespace-pre-wrap">
+              {localProfile.freeNotes || <span className="text-slate-400">—</span>}
+            </div>
+          )}
         </div>
 
-        {/* Save Button - Only show when there are changes */}
-        {hasChanges && (
+        {/* Save/Cancel Buttons - Only show when editing */}
+        {isEditing && (
           <div className="flex items-center gap-2 pt-4 border-t">
             <Button
               onClick={async () => {
                 await onSave(localProfile);
                 setHasChanges(false);
+                setIsEditing(false);
                 profileRef.current = localProfile;
               }}
               disabled={isSaving}
@@ -1054,6 +1179,14 @@ export function OpportunityDetailDrawer({
                   Save Profile
                 </>
               )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCancel}
+              disabled={isSaving}
+            >
+              Cancel
             </Button>
             {saved && (
               <div className="flex items-center gap-1 text-sm text-green-600">
