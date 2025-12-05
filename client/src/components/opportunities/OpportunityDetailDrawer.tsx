@@ -762,7 +762,6 @@ export function OpportunityDetailDrawer({
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
               <SelectItem value="house">House</SelectItem>
               <SelectItem value="townhouse">Townhouse</SelectItem>
               <SelectItem value="apartment">Apartment</SelectItem>
@@ -808,7 +807,7 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Finance Status</Label>
           <Select
-            value={profile.financeStatus || ''}
+            value={profile.financeStatus || undefined}
             onValueChange={(v) => updateField('financeStatus', v || null)}
           >
             <SelectTrigger className="mt-1">
@@ -828,14 +827,13 @@ export function OpportunityDetailDrawer({
         <div>
           <Label className="text-sm">Timeline</Label>
           <Select
-            value={profile.timeline || ''}
+            value={profile.timeline || undefined}
             onValueChange={(v) => updateField('timeline', v || null)}
           >
             <SelectTrigger className="mt-1">
               <SelectValue placeholder="Select timeline" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None</SelectItem>
               <SelectItem value="asap">ASAP</SelectItem>
               <SelectItem value="30days">30 Days</SelectItem>
               <SelectItem value="60days">60 Days</SelectItem>
