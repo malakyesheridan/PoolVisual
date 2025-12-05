@@ -4,6 +4,7 @@
  * Should be run daily via cron or scheduled task
  */
 
+import { fileURLToPath } from 'url';
 import { trialService } from '../lib/trialService.js';
 import { logger } from '../lib/logger.js';
 
@@ -36,7 +37,10 @@ export async function runTrialExpirationJob(): Promise<void> {
 }
 
 // If run directly (for testing or manual execution)
-if (require.main === module) {
+const __filename = fileURLToPath(import.meta.url);
+const isMainModule = process.argv[1] === __filename;
+
+if (isMainModule) {
   runTrialExpirationJob()
     .then(() => {
       console.log('Trial expiration job completed successfully');
