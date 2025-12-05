@@ -4298,6 +4298,9 @@ export async function registerRoutes(app: Express): Promise<void> {
           orgId: formLink.orgId,
           createdBy: formLink.createdByUserId,
           title: opportunityTitle,
+          clientName: `${firstName} ${lastName}`, // Required field - set from form data
+          clientEmail: email || null,
+          clientPhone: phone || null,
           contactId: createdContactId,
           propertyJobId: formLink.propertyId || null,
           opportunityType: 'buyer',
