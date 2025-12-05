@@ -61,6 +61,7 @@ export interface MatchResult {
 export interface MatchingResult {
   propertyId: string;
   matches: MatchResult[];
+  filteredCount?: number; // Count of buyers filtered out (score < 30%)
 }
 
 // Scoring weights
@@ -462,7 +463,9 @@ export function matchBuyersToProperty(
     }
   });
   
-  // Score each candidate
+  // Score each candidate and track filtered buyers
+  let filteredCount = 0;
+  
   for (const candidate of candidates) {
     // Safety check - should not happen due to filter, but be defensive
     if (!candidate.buyerProfile || typeof candidate.buyerProfile !== 'object') {
@@ -489,8 +492,9 @@ export function matchBuyersToProperty(
     // Normalize to 0-100
     totalScore = Math.round(Math.max(0, Math.min(100, totalScore)));
     
-    // Skip if score is too low (below weak threshold)
+    // Skip if score is too low (below weak threshold) and track it
     if (totalScore < TIER_THRESHOLDS.WEAK) {
+      filteredCount++;
       continue;
     }
     
@@ -534,6 +538,7 @@ export function matchBuyersToProperty(
   return {
     propertyId: property.id,
     matches: topMatches,
+    filteredCount,
   };
 }
 

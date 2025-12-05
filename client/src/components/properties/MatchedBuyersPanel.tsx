@@ -162,6 +162,17 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
             title="No matched buyers yet"
             description="Make sure buyer profiles are filled out with budget, location, and property preferences."
           />
+          {/* Show filtered count even when no matches */}
+          {matchingResult.filteredCount !== undefined && matchingResult.filteredCount > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-200">
+              <div className="flex items-center gap-2 text-sm text-slate-600">
+                <User className="w-4 h-4 text-slate-400" />
+                <span>
+                  <span className="font-medium text-slate-700">{matchingResult.filteredCount}</span> buyer{matchingResult.filteredCount !== 1 ? 's' : ''} below 30% match (not shown)
+                </span>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     );
@@ -420,6 +431,18 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
           );
         })}
       </CardContent>
+      
+      {/* Filtered Buyers Info Card */}
+      {matchingResult.filteredCount !== undefined && matchingResult.filteredCount > 0 && (
+        <div className="border-t border-slate-200 bg-slate-50/50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-slate-600">
+            <User className="w-4 h-4 text-slate-400" />
+            <span>
+              <span className="font-medium text-slate-700">{matchingResult.filteredCount}</span> buyer{matchingResult.filteredCount !== 1 ? 's' : ''} below 30% match (not shown)
+            </span>
+          </div>
+        </div>
+      )}
       
       {followUpDialog && (
         <FollowUpMessageDialog
