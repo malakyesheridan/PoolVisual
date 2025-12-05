@@ -4304,7 +4304,7 @@ export async function registerRoutes(app: Express): Promise<void> {
           contactId: createdContactId,
           propertyJobId: formLink.propertyId || null,
           opportunityType: 'buyer',
-          status: 'open', // Use 'open' instead of 'new' for better compatibility
+          status: 'contacted', // Use 'contacted' to match the stage - valid values: 'new', 'contacted', 'qualified', 'viewing', 'offer', 'closed_won', 'closed_lost'
           pipelineStage: 'contacted', // Set to 'contacted' for legacy field
           pipelineId: defaultPipelineId,
           stageId: contactedStageId, // Set the actual stage ID
