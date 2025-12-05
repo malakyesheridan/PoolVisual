@@ -1,9 +1,10 @@
 /**
  * Public Buyer Inquiry Form Page
  * Accessible via token, no authentication required
+ * Standalone form matching the buyer profile form exactly
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useRoute } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
@@ -20,28 +21,57 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle, AlertCircle, Loader2, Home } from 'lucide-react';
+import { CheckCircle, AlertCircle, Loader2, Home, X } from 'lucide-react';
+
+// Format currency for display
+const formatCurrencyDisplay = (value: number): string => {
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+};
+
+// Parse currency input (allows $, commas, decimals)
+const parseCurrencyInput = (value: string): number | null => {
+  const cleaned = value.replace(/[^0-9.]/g, '');
+  if (!cleaned) return null;
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? null : num;
+};
 
 export default function PublicBuyerForm() {
   const [, params] = useRoute('/public/buyer-form/:token');
   const token = params?.token;
+  
+  // Form state - matching buyer profile form structure
   const [formData, setFormData] = useState({
     fullName: '',
     email: '',
     phone: '',
-    preferredSuburbs: '',
     budgetMin: '',
     budgetMax: '',
     bedsMin: '',
     bathsMin: '',
     propertyType: '',
-    mustHaves: '',
-    dealBreakers: '',
+    preferredSuburbs: [] as string[],
+    mustHaves: [] as string[],
+    dealBreakers: [] as string[],
     financeStatus: '',
     timeline: '',
     freeNotes: '',
     _hp: '', // Honeypot field
   });
+
+  // Refs for array inputs
+  const preferredSuburbsInputRef = useRef<HTMLInputElement>(null);
+  const mustHavesInputRef = useRef<HTMLInputElement>(null);
+  const dealBreakersInputRef = useRef<HTMLInputElement>(null);
+
+  // Display values for budget (allows currency formatting)
+  const [budgetMinDisplay, setBudgetMinDisplay] = useState<string>('');
+  const [budgetMaxDisplay, setBudgetMaxDisplay] = useState<string>('');
 
   // Fetch form metadata
   const { data: formMetadata, isLoading: metadataLoading, error: metadataError } = useQuery({
@@ -54,26 +84,28 @@ export default function PublicBuyerForm() {
   // Submit mutation
   const submitMutation = useMutation({
     mutationFn: (data: any) => apiClient.submitPublicBuyerForm(token!, data),
-    onSuccess: () => {
-      setFormData({
-        fullName: '',
-        email: '',
-        phone: '',
-        preferredSuburbs: '',
-        budgetMin: '',
-        budgetMax: '',
-        bedsMin: '',
-        bathsMin: '',
-        propertyType: '',
-        mustHaves: '',
-        dealBreakers: '',
-        financeStatus: '',
-        timeline: '',
-        freeNotes: '',
-        _hp: '',
-      });
-    },
   });
+
+  // Add item to array field
+  const addArrayItem = (field: 'preferredSuburbs' | 'mustHaves' | 'dealBreakers', value: string) => {
+    const trimmedValue = value.trim();
+    if (!trimmedValue) return;
+    
+    setFormData((prev) => {
+      const currentArray = prev[field] || [];
+      const newArray = [...currentArray, trimmedValue];
+      return { ...prev, [field]: newArray };
+    });
+  };
+
+  // Remove item from array field
+  const removeArrayItem = (field: 'preferredSuburbs' | 'mustHaves' | 'dealBreakers', index: number) => {
+    setFormData((prev) => {
+      const currentArray = prev[field] || [];
+      const newArray = currentArray.filter((_, i) => i !== index);
+      return { ...prev, [field]: newArray };
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -84,22 +116,29 @@ export default function PublicBuyerForm() {
       return;
     }
 
-    submitMutation.mutate({
+    // Parse budget values
+    const budgetMinValue = budgetMinDisplay ? parseCurrencyInput(budgetMinDisplay) : null;
+    const budgetMaxValue = budgetMaxDisplay ? parseCurrencyInput(budgetMaxDisplay) : null;
+
+    // Build submission data
+    const submissionData: any = {
       fullName: formData.fullName.trim(),
       email: formData.email.trim() || undefined,
       phone: formData.phone.trim() || undefined,
-      preferredSuburbs: formData.preferredSuburbs.trim() || undefined,
-      budgetMin: formData.budgetMin.trim() || undefined,
-      budgetMax: formData.budgetMax.trim() || undefined,
-      bedsMin: formData.bedsMin.trim() || undefined,
-      bathsMin: formData.bathsMin.trim() || undefined,
+      preferredSuburbs: formData.preferredSuburbs.length > 0 ? formData.preferredSuburbs : undefined,
+      budgetMin: budgetMinValue !== null ? budgetMinValue : undefined,
+      budgetMax: budgetMaxValue !== null ? budgetMaxValue : undefined,
+      bedsMin: formData.bedsMin ? Number(formData.bedsMin) : undefined,
+      bathsMin: formData.bathsMin ? Number(formData.bathsMin) : undefined,
       propertyType: formData.propertyType || undefined,
-      mustHaves: formData.mustHaves.trim() || undefined,
-      dealBreakers: formData.dealBreakers.trim() || undefined,
+      mustHaves: formData.mustHaves.length > 0 ? formData.mustHaves : undefined,
+      dealBreakers: formData.dealBreakers.length > 0 ? formData.dealBreakers : undefined,
       financeStatus: formData.financeStatus || undefined,
       timeline: formData.timeline || undefined,
       freeNotes: formData.freeNotes.trim() || undefined,
-    });
+    };
+
+    submitMutation.mutate(submissionData);
   };
 
   if (!token) {
@@ -235,6 +274,7 @@ export default function PublicBuyerForm() {
                     value={formData.fullName}
                     onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                     placeholder="John Smith"
+                    className="mt-1"
                   />
                 </div>
 
@@ -247,6 +287,7 @@ export default function PublicBuyerForm() {
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     placeholder="john@example.com"
+                    className="mt-1"
                   />
                 </div>
 
@@ -259,187 +300,321 @@ export default function PublicBuyerForm() {
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     placeholder="+61 400 000 000"
+                    className="mt-1"
                   />
                 </div>
               </div>
 
-              {/* Budget */}
+              {/* Budget Range */}
               <div className="space-y-4">
                 <h3 className="font-semibold text-slate-900">Budget</h3>
                 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label htmlFor="budgetMin">Min Budget</Label>
+                    <Label className="text-sm">Budget Min</Label>
                     <Input
-                      id="budgetMin"
-                      type="number"
-                      min="0"
-                      value={formData.budgetMin}
-                      onChange={(e) => setFormData({ ...formData, budgetMin: e.target.value })}
+                      type="text"
+                      inputMode="numeric"
+                      value={budgetMinDisplay}
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        setBudgetMinDisplay(inputValue);
+                      }}
+                      onBlur={(e) => {
+                        const parsed = parseCurrencyInput(e.target.value);
+                        if (parsed !== null) {
+                          const formatted = formatCurrencyDisplay(parsed);
+                          setBudgetMinDisplay(formatted);
+                        } else {
+                          setBudgetMinDisplay('');
+                        }
+                      }}
                       placeholder="$0"
+                      className="mt-1"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="budgetMax">Max Budget</Label>
+                    <Label className="text-sm">Budget Max</Label>
                     <Input
-                      id="budgetMax"
-                      type="number"
-                      min="0"
-                      value={formData.budgetMax}
-                      onChange={(e) => setFormData({ ...formData, budgetMax: e.target.value })}
+                      type="text"
+                      inputMode="numeric"
+                      value={budgetMaxDisplay}
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        setBudgetMaxDisplay(inputValue);
+                      }}
+                      onBlur={(e) => {
+                        const parsed = parseCurrencyInput(e.target.value);
+                        if (parsed !== null) {
+                          const formatted = formatCurrencyDisplay(parsed);
+                          setBudgetMaxDisplay(formatted);
+                        } else {
+                          setBudgetMaxDisplay('');
+                        }
+                      }}
                       placeholder="$0"
+                      className="mt-1"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Property Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-slate-900">Property Details</h3>
-                
+              {/* Beds/Baths */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <Label htmlFor="preferredSuburbs">Preferred Suburbs</Label>
+                  <Label className="text-sm">Min Beds</Label>
                   <Input
-                    id="preferredSuburbs"
-                    value={formData.preferredSuburbs}
-                    onChange={(e) => setFormData({ ...formData, preferredSuburbs: e.target.value })}
-                    placeholder="Suburb 1, Suburb 2, Suburb 3"
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.bedsMin}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9]/g, '');
+                      setFormData({ ...formData, bedsMin: val });
+                    }}
+                    placeholder="Beds"
+                    className="mt-1"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Separate multiple suburbs with commas
-                  </p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="bedsMin">Min Beds</Label>
-                    <Input
-                      id="bedsMin"
-                      type="number"
-                      min="0"
-                      value={formData.bedsMin}
-                      onChange={(e) => setFormData({ ...formData, bedsMin: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="bathsMin">Min Baths</Label>
-                    <Input
-                      id="bathsMin"
-                      type="number"
-                      min="0"
-                      step="0.5"
-                      value={formData.bathsMin}
-                      onChange={(e) => setFormData({ ...formData, bathsMin: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <Label htmlFor="propertyType">Property Type</Label>
-                  <Select
-                    value={formData.propertyType}
-                    onValueChange={(value) => setFormData({ ...formData, propertyType: value })}
-                  >
-                    <SelectTrigger id="propertyType">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="house">House</SelectItem>
-                      <SelectItem value="townhouse">Townhouse</SelectItem>
-                      <SelectItem value="apartment">Apartment</SelectItem>
-                      <SelectItem value="land">Land</SelectItem>
-                      <SelectItem value="acreage">Acreage</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label className="text-sm">Min Baths</Label>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    value={formData.bathsMin}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/[^0-9.]/g, '');
+                      setFormData({ ...formData, bathsMin: val });
+                    }}
+                    placeholder="Baths"
+                    className="mt-1"
+                  />
                 </div>
               </div>
 
-              {/* Finance & Timeline */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-slate-900">Finance & Timeline</h3>
-                
-                <div>
-                  <Label htmlFor="financeStatus">Finance Status</Label>
-                  <Select
-                    value={formData.financeStatus}
-                    onValueChange={(value) => setFormData({ ...formData, financeStatus: value })}
-                  >
-                    <SelectTrigger id="financeStatus">
-                      <SelectValue placeholder="Select status" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="preapproved">Pre-approved</SelectItem>
-                      <SelectItem value="needsFinance">Needs Finance</SelectItem>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="unknown">Unknown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label htmlFor="timeline">Timeline</Label>
-                  <Select
-                    value={formData.timeline}
-                    onValueChange={(value) => setFormData({ ...formData, timeline: value })}
-                  >
-                    <SelectTrigger id="timeline">
-                      <SelectValue placeholder="Select timeline" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="asap">ASAP</SelectItem>
-                      <SelectItem value="30days">30 Days</SelectItem>
-                      <SelectItem value="60days">60 Days</SelectItem>
-                      <SelectItem value="3to6months">3-6 Months</SelectItem>
-                      <SelectItem value="unknown">Unknown</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Must Haves & Deal Breakers */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-slate-900">Requirements</h3>
-                
-                <div>
-                  <Label htmlFor="mustHaves">Must Haves</Label>
-                  <Textarea
-                    id="mustHaves"
-                    value={formData.mustHaves}
-                    onChange={(e) => setFormData({ ...formData, mustHaves: e.target.value })}
-                    placeholder="One requirement per line"
-                    rows={3}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    List one requirement per line
-                  </p>
-                </div>
-
-                <div>
-                  <Label htmlFor="dealBreakers">Deal Breakers</Label>
-                  <Textarea
-                    id="dealBreakers"
-                    value={formData.dealBreakers}
-                    onChange={(e) => setFormData({ ...formData, dealBreakers: e.target.value })}
-                    placeholder="One deal breaker per line"
-                    rows={3}
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    List one deal breaker per line
-                  </p>
-                </div>
-              </div>
-
-              {/* Additional Notes */}
+              {/* Property Type */}
               <div>
-                <Label htmlFor="freeNotes">Additional Notes</Label>
+                <Label className="text-sm">Property Type</Label>
+                <Select
+                  value={formData.propertyType || undefined}
+                  onValueChange={(v) => setFormData({ ...formData, propertyType: v || '' })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="house">House</SelectItem>
+                    <SelectItem value="townhouse">Townhouse</SelectItem>
+                    <SelectItem value="apartment">Apartment</SelectItem>
+                    <SelectItem value="land">Land</SelectItem>
+                    <SelectItem value="acreage">Acreage</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Preferred Suburbs */}
+              <div>
+                <Label className="text-sm">Preferred Suburbs</Label>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    ref={preferredSuburbsInputRef}
+                    placeholder="Add suburb"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const input = preferredSuburbsInputRef.current;
+                        if (input) {
+                          addArrayItem('preferredSuburbs', input.value);
+                          input.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const input = preferredSuburbsInputRef.current;
+                      if (input) {
+                        addArrayItem('preferredSuburbs', input.value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {formData.preferredSuburbs.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {formData.preferredSuburbs.map((suburb, idx) => (
+                      <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                        {suburb}
+                        <button
+                          type="button"
+                          onClick={() => removeArrayItem('preferredSuburbs', idx)}
+                          className="ml-1 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Finance Status */}
+              <div>
+                <Label className="text-sm">Finance Status</Label>
+                <Select
+                  value={formData.financeStatus || undefined}
+                  onValueChange={(v) => setFormData({ ...formData, financeStatus: v || '' })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="preapproved">Pre-approved</SelectItem>
+                    <SelectItem value="needsFinance">Needs Finance</SelectItem>
+                    <SelectItem value="cash">Cash</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Timeline */}
+              <div>
+                <Label className="text-sm">Timeline</Label>
+                <Select
+                  value={formData.timeline || undefined}
+                  onValueChange={(v) => setFormData({ ...formData, timeline: v || '' })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select timeline" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="asap">ASAP</SelectItem>
+                    <SelectItem value="30days">30 Days</SelectItem>
+                    <SelectItem value="60days">60 Days</SelectItem>
+                    <SelectItem value="3to6months">3-6 Months</SelectItem>
+                    <SelectItem value="unknown">Unknown</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Must Haves */}
+              <div>
+                <Label className="text-sm">Must Haves</Label>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    ref={mustHavesInputRef}
+                    placeholder="Add requirement"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const input = mustHavesInputRef.current;
+                        if (input) {
+                          addArrayItem('mustHaves', input.value);
+                          input.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const input = mustHavesInputRef.current;
+                      if (input) {
+                        addArrayItem('mustHaves', input.value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {formData.mustHaves.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {formData.mustHaves.map((item, idx) => (
+                      <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => removeArrayItem('mustHaves', idx)}
+                          className="ml-1 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Deal Breakers */}
+              <div>
+                <Label className="text-sm">Deal Breakers</Label>
+                <div className="mt-1 flex gap-2">
+                  <Input
+                    ref={dealBreakersInputRef}
+                    placeholder="Add deal breaker"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const input = dealBreakersInputRef.current;
+                        if (input) {
+                          addArrayItem('dealBreakers', input.value);
+                          input.value = '';
+                        }
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const input = dealBreakersInputRef.current;
+                      if (input) {
+                        addArrayItem('dealBreakers', input.value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {formData.dealBreakers.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {formData.dealBreakers.map((item, idx) => (
+                      <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => removeArrayItem('dealBreakers', idx)}
+                          className="ml-1 hover:text-red-600"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Free Notes */}
+              <div>
+                <Label className="text-sm">Notes</Label>
                 <Textarea
-                  id="freeNotes"
                   value={formData.freeNotes}
                   onChange={(e) => setFormData({ ...formData, freeNotes: e.target.value })}
-                  placeholder="Any additional information..."
-                  rows={4}
+                  placeholder="Additional notes..."
+                  className="mt-1"
+                  rows={3}
                 />
               </div>
 
@@ -488,4 +663,3 @@ export default function PublicBuyerForm() {
     </div>
   );
 }
-

@@ -88,222 +88,234 @@ function ProtectedRouter() {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   return (
-    <AppShell>
-      <div className="page-scroll">
-        <Switch>
-          {/* Protected routes within app shell */}
-          <Route path="/">
-            {isAuthenticated ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
-          </Route>
-          
-          <Route path="/dashboard">
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/materials-old">
-            <ProtectedRoute>
-              <Materials />
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/materials">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Library />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/library">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Library />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Jobs />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/properties">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Properties />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/properties/new">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <JobsNew />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs/new">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <JobsNew />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs/:jobId/photo/:photoId/edit">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <NewEditor />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs/:jobId/photo/:photoId/edit-canvas">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <NewEditor />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs/:jobId/photo/:photoId/view">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <CanvasEditorPage />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/jobs/:id">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <JobDetail />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/properties/:id">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <PropertyDetail />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/canvas-editor">
-            <ProtectedRoute>
-              <Redirect to="/new-editor" />
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/canvas-editor-v2">
-            <ProtectedRoute>
-              <Redirect to="/new-editor" />
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/new-editor">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <NewEditor />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/quotes">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Quotes />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/quotes/:id">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Quotes />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/opportunities">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Opportunities />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/opportunities/:id">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Opportunities />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/settings">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Settings />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/subscribe/success">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <SubscribeSuccess />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/subscribe">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Subscribe />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/billing">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Billing />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/onboarding">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <Onboarding />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          <Route path="/admin">
-            <ProtectedRoute>
-              <Suspense fallback={<PageLoader />}>
-                <AdminDashboard />
-              </Suspense>
-            </ProtectedRoute>
-          </Route>
-          
-          {/* Fallback to 404 */}
-          <Route component={NotFound} />
-        </Switch>
-        
-        {/* Mobile bottom navigation spacer */}
-        <div className="bottom-nav-spacer md:hidden" />
-      </div>
-    </AppShell>
+    <Switch>
+      {/* Public routes that should render without AppShell */}
+      <Route path="/public/buyer-form/:token">
+        <Suspense fallback={<PageLoader />}>
+          <PublicBuyerForm />
+        </Suspense>
+      </Route>
+      <Route path="/share/q/:token" component={ShareQuote} />
+      
+      {/* Protected routes within app shell */}
+      <Route>
+        <AppShell>
+          <div className="page-scroll">
+            <Switch>
+              <Route path="/">
+                {isAuthenticated ? <Redirect to="/dashboard" /> : <Redirect to="/login" />}
+              </Route>
+              
+              <Route path="/dashboard">
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/materials-old">
+                <ProtectedRoute>
+                  <Materials />
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/materials">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Library />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/library">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Library />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Jobs />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/properties">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Properties />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/properties/new">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <JobsNew />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs/new">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <JobsNew />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs/:jobId/photo/:photoId/edit">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <NewEditor />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs/:jobId/photo/:photoId/edit-canvas">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <NewEditor />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs/:jobId/photo/:photoId/view">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <CanvasEditorPage />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/jobs/:id">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <JobDetail />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/properties/:id">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <PropertyDetail />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/canvas-editor">
+                <ProtectedRoute>
+                  <Redirect to="/new-editor" />
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/canvas-editor-v2">
+                <ProtectedRoute>
+                  <Redirect to="/new-editor" />
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/new-editor">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <NewEditor />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/quotes">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Quotes />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/quotes/:id">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Quotes />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/opportunities">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Opportunities />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/opportunities/:id">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Opportunities />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/settings">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Settings />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/subscribe/success">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <SubscribeSuccess />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/subscribe">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Subscribe />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/billing">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Billing />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/onboarding">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Onboarding />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/admin">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <AdminDashboard />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              {/* Fallback to 404 */}
+              <Route component={NotFound} />
+            </Switch>
+            
+            {/* Mobile bottom navigation spacer */}
+            <div className="bottom-nav-spacer md:hidden" />
+          </div>
+        </AppShell>
+      </Route>
+    </Switch>
   );
 }
 
