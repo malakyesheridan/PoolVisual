@@ -308,14 +308,14 @@ function scoreMustHavesDealBreakers(property: PropertyData, profile: BuyerProfil
   const reasons: string[] = [];
   let score = 100; // Start at full score
   
-  const propertyFeatures = property.propertyFeatures || [];
-  const mustHaves = profile.mustHaves || [];
-  const dealBreakers = profile.dealBreakers || [];
+  const propertyFeatures = Array.isArray(property.propertyFeatures) ? property.propertyFeatures : [];
+  const mustHaves = Array.isArray(profile.mustHaves) ? profile.mustHaves : [];
+  const dealBreakers = Array.isArray(profile.dealBreakers) ? profile.dealBreakers : [];
   
   // Normalize to lowercase for comparison
-  const normalizedFeatures = propertyFeatures.map(f => f.toLowerCase().trim());
-  const normalizedMustHaves = mustHaves.map(m => m.toLowerCase().trim());
-  const normalizedDealBreakers = dealBreakers.map(d => d.toLowerCase().trim());
+  const normalizedFeatures = propertyFeatures.map(f => String(f).toLowerCase().trim());
+  const normalizedMustHaves = mustHaves.map(m => String(m).toLowerCase().trim());
+  const normalizedDealBreakers = dealBreakers.map(d => String(d).toLowerCase().trim());
   
   // Check deal-breakers first (hard constraint - zero out if violated)
   for (const dealBreaker of normalizedDealBreakers) {
@@ -399,8 +399,8 @@ export function matchBuyersToProperty(
       return false;
     }
     
-    // Must have buyer profile
-    if (!opp.buyerProfile) {
+    // Must have buyer profile (check for null, undefined, or empty object)
+    if (!opp.buyerProfile || typeof opp.buyerProfile !== 'object') {
       return false;
     }
     
@@ -409,7 +409,7 @@ export function matchBuyersToProperty(
     const hasData = 
       (profile.budgetMin !== null && profile.budgetMin !== undefined) ||
       (profile.budgetMax !== null && profile.budgetMax !== undefined) ||
-      (profile.preferredSuburbs && profile.preferredSuburbs.length > 0) ||
+      (Array.isArray(profile.preferredSuburbs) && profile.preferredSuburbs.length > 0) ||
       (profile.bedsMin !== null && profile.bedsMin !== undefined) ||
       (profile.bathsMin !== null && profile.bathsMin !== undefined) ||
       (profile.propertyType !== null && profile.propertyType !== undefined);
@@ -419,7 +419,12 @@ export function matchBuyersToProperty(
   
   // Score each candidate
   for (const candidate of candidates) {
-    const profile = candidate.buyerProfile!;
+    // Safety check - should not happen due to filter, but be defensive
+    if (!candidate.buyerProfile || typeof candidate.buyerProfile !== 'object') {
+      continue;
+    }
+    
+    const profile = candidate.buyerProfile;
     
     // Calculate component scores
     const budgetResult = scoreBudget(property, profile);
@@ -466,7 +471,7 @@ export function matchBuyersToProperty(
       buyerProfileSummary: {
         budgetMin: profile.budgetMin ?? undefined,
         budgetMax: profile.budgetMax ?? undefined,
-        preferredSuburbs: profile.preferredSuburbs ?? undefined,
+        preferredSuburbs: Array.isArray(profile.preferredSuburbs) ? profile.preferredSuburbs : undefined,
         bedsMin: profile.bedsMin ?? undefined,
         bathsMin: profile.bathsMin ?? undefined,
         propertyType: profile.propertyType ?? undefined,

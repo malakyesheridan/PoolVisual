@@ -1184,8 +1184,24 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Prepare updates - convert date strings to Date objects
+      const updates: any = { ...req.body };
+      
+      // Convert listingDate string to Date if provided
+      if (updates.listingDate && typeof updates.listingDate === 'string') {
+        const dateValue = new Date(updates.listingDate);
+        if (!isNaN(dateValue.getTime())) {
+          updates.listingDate = dateValue;
+        } else {
+          // Invalid date, set to null
+          updates.listingDate = null;
+        }
+      } else if (updates.listingDate === '' || updates.listingDate === null) {
+        updates.listingDate = null;
+      }
+
       // Update job with provided fields
-      const updatedJob = await storage.updateJob(jobId, req.body);
+      const updatedJob = await storage.updateJob(jobId, updates);
       res.json(updatedJob);
     } catch (error) {
       console.error('[Routes] Error updating job:', error);
