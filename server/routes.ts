@@ -1139,15 +1139,32 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { matchBuyersToProperty } = await import('./services/matchingEngine.js');
       
       // Prepare property data
+      // Parse estimatedPrice - try to extract numeric value from string if needed
+      let estimatedPrice: number | null = null;
+      if (job.estimatedPrice) {
+        if (typeof job.estimatedPrice === 'string') {
+          // Try to extract number from string (e.g., "$600,000" -> 600000)
+          const cleaned = job.estimatedPrice.replace(/[$,]/g, '').trim();
+          const parsed = parseFloat(cleaned);
+          if (!isNaN(parsed)) {
+            estimatedPrice = parsed;
+          }
+        } else {
+          estimatedPrice = Number(job.estimatedPrice);
+        }
+      }
+      
       const propertyData = {
         id: job.id,
         address: job.address || null,
-        estimatedPrice: job.estimatedPrice ? Number(job.estimatedPrice) : null,
+        estimatedPrice: estimatedPrice,
         bedrooms: job.bedrooms ? Number(job.bedrooms) : null,
         bathrooms: job.bathrooms ? Number(job.bathrooms) : null,
         propertyType: job.propertyType || null,
         propertyFeatures: Array.isArray(job.propertyFeatures) ? job.propertyFeatures : (job.propertyFeatures ? [String(job.propertyFeatures)] : []),
       };
+      
+      console.log('[Matched Buyers] Property data:', JSON.stringify(propertyData, null, 2));
 
       // Get buyer opportunities with profiles
       const buyerOpportunities = await storage.getBuyerOpportunitiesWithProfiles(orgId);
@@ -1158,11 +1175,19 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(500).json({ message: "Invalid data format from storage" });
       }
 
+      console.log(`[Matched Buyers] Found ${buyerOpportunities.length} buyer opportunities`);
+      if (buyerOpportunities.length > 0) {
+        console.log('[Matched Buyers] Sample opportunity:', JSON.stringify(buyerOpportunities[0], null, 2));
+      }
+
       // Run matching engine
       const matchingResult = matchBuyersToProperty(propertyData, buyerOpportunities);
 
       // Log for debugging
       console.log(`[MatchingEngine] Property ${jobId} → ${buyerOpportunities.length} candidates, ${matchingResult.matches.length} matches`);
+      if (matchingResult.matches.length > 0) {
+        console.log('[MatchingEngine] Top match:', JSON.stringify(matchingResult.matches[0], null, 2));
+      }
 
       res.json(matchingResult);
     } catch (error: any) {
@@ -1191,7 +1216,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
-      // Prepare updates - convert date strings to Date objects and parse currency
+      // Prepare updates - convert date strings to Date objects
       const updates: any = { ...req.body };
       
       // Convert listingDate string to Date if provided
@@ -1207,20 +1232,18 @@ export async function registerRoutes(app: Express): Promise<void> {
         updates.listingDate = null;
       }
 
-      // Parse estimatedPrice from currency string to number
+      // Handle estimatedPrice - allow strings (e.g., "POA", "$600,000") or numbers
+      // Store as string in database to support special values
       if (updates.estimatedPrice !== undefined && updates.estimatedPrice !== null) {
         if (typeof updates.estimatedPrice === 'string') {
-          // Remove currency symbols and commas, then parse
-          const cleaned = updates.estimatedPrice.replace(/[$,]/g, '').trim();
-          if (cleaned === '') {
+          // Keep as string - allows values like "POA", "Contact for price", "$600,000"
+          updates.estimatedPrice = updates.estimatedPrice.trim();
+          if (updates.estimatedPrice === '') {
             updates.estimatedPrice = null;
-          } else {
-            const parsed = parseFloat(cleaned);
-            updates.estimatedPrice = isNaN(parsed) ? null : parsed;
           }
         } else if (typeof updates.estimatedPrice === 'number') {
-          // Already a number, keep it
-          updates.estimatedPrice = updates.estimatedPrice;
+          // Convert number to string for storage
+          updates.estimatedPrice = String(updates.estimatedPrice);
         } else {
           updates.estimatedPrice = null;
         }

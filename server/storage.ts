@@ -100,7 +100,7 @@ import {
   type AdminAction,
   type InsertAdminAction
 } from "../shared/schema.js";
-import { eq, desc, and, sql, gte, ne, asc, inArray, or } from "drizzle-orm";
+import { eq, desc, and, sql, gte, ne, asc, inArray, or, neq, notInArray } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { getDatabase } from './db.js';
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http';
@@ -1951,8 +1951,8 @@ export class PostgresStorage implements IStorage {
               eq(opportunities.opportunityType, 'buyer'),
               eq(opportunities.opportunityType, 'both')
             ),
-            sql`${opportunities.status} != 'closed_lost'`,
-            sql`${opportunities.status} != 'abandoned'`
+            ne(opportunities.status, 'closed_lost'),
+            ne(opportunities.status, 'abandoned')
           )
         )
         .orderBy(desc(opportunities.createdAt));
