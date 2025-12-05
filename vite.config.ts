@@ -35,9 +35,20 @@ export default defineConfig({
     rollupOptions: {
       external: [],
       output: {
-        manualChunks: {
-          'react-vendor': ['react', 'react-dom'],
-          'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-portal'],
+        manualChunks: (id) => {
+          // Create a separate chunk for opportunities page to make it more stable
+          if (id.includes('/pages/opportunities') || id.includes('\\pages\\opportunities')) {
+            return 'opportunities';
+          }
+          // Vendor chunks
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('@radix-ui')) {
+              return 'radix-vendor';
+            }
+          }
         },
       },
     },

@@ -33,7 +33,36 @@ const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page")
 const NewEditor = React.lazy(() => import("@/new_editor/NewEditor").then(m => ({ default: m.NewEditor })));
 const JobsNew = React.lazy(() => import("@/pages/jobs-new"));
 const Quotes = React.lazy(() => import("@/pages/quotes"));
-const Opportunities = React.lazy(() => import("@/pages/opportunities"));
+const Opportunities = React.lazy(() => 
+  import("@/pages/opportunities").catch((error) => {
+    console.error('[App] Failed to load Opportunities module:', error);
+    // Retry once after a short delay
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        import("@/pages/opportunities").then(resolve).catch((retryError) => {
+          console.error('[App] Retry also failed:', retryError);
+          // Return a fallback component that shows an error
+          resolve({
+            default: () => (
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold mb-2">Failed to load page</h2>
+                  <p className="text-slate-600 mb-4">Please refresh the page to try again.</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              </div>
+            ),
+          });
+        });
+      }, 1000);
+    });
+  })
+);
 const ShareQuote = React.lazy(() => import("@/pages/share-quote"));
 const PublicBuyerForm = React.lazy(() => import("@/pages/public-buyer-form"));
 const Settings = React.lazy(() => import("@/pages/settings"));
