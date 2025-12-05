@@ -750,24 +750,38 @@ export function OpportunityDetailDrawer({
     };
 
     const addArrayItem = (field: string, value: string) => {
-      if (!value.trim()) return;
-      // Get current array, ensuring it's always an array
-      const currentArray = Array.isArray(localProfile[field]) ? localProfile[field] : [];
-      const newArray = [...currentArray, value.trim()];
-      console.log(`[BuyerProfileForm] Adding to ${field}:`, value.trim());
-      console.log(`[BuyerProfileForm] Current array:`, currentArray);
-      console.log(`[BuyerProfileForm] New array:`, newArray);
-      updateField(field, newArray);
+      const trimmedValue = value.trim();
+      if (!trimmedValue) {
+        console.log(`[BuyerProfileForm] addArrayItem called with empty value for ${field}`);
+        return;
+      }
+      
+      // Use functional update to ensure we have the latest state
+      setLocalProfile((prev: any) => {
+        const currentArray = Array.isArray(prev[field]) ? prev[field] : [];
+        const newArray = [...currentArray, trimmedValue];
+        console.log(`[BuyerProfileForm] Adding "${trimmedValue}" to ${field}`);
+        console.log(`[BuyerProfileForm] Previous array:`, currentArray, 'Length:', currentArray.length);
+        console.log(`[BuyerProfileForm] New array:`, newArray, 'Length:', newArray.length);
+        const updated = { ...prev, [field]: newArray };
+        console.log(`[BuyerProfileForm] Updated profile ${field}:`, updated[field]);
+        setHasChanges(true);
+        return updated;
+      });
     };
 
     const removeArrayItem = (field: string, index: number) => {
-      // Get current array, ensuring it's always an array
-      const currentArray = Array.isArray(localProfile[field]) ? localProfile[field] : [];
-      const newArray = currentArray.filter((_: any, i: number) => i !== index);
-      console.log(`[BuyerProfileForm] Removing from ${field} at index ${index}`);
-      console.log(`[BuyerProfileForm] Current array:`, currentArray);
-      console.log(`[BuyerProfileForm] New array:`, newArray);
-      updateField(field, newArray);
+      // Use functional update to ensure we have the latest state
+      setLocalProfile((prev: any) => {
+        const currentArray = Array.isArray(prev[field]) ? prev[field] : [];
+        const newArray = currentArray.filter((_: any, i: number) => i !== index);
+        console.log(`[BuyerProfileForm] Removing from ${field} at index ${index}`);
+        console.log(`[BuyerProfileForm] Previous array:`, currentArray, 'Length:', currentArray.length);
+        console.log(`[BuyerProfileForm] New array:`, newArray, 'Length:', newArray.length);
+        const updated = { ...prev, [field]: newArray };
+        setHasChanges(true);
+        return updated;
+      });
     };
 
     // Format currency for display
