@@ -36,11 +36,7 @@ export default defineConfig({
       external: [],
       output: {
         manualChunks: (id) => {
-          // Create a separate chunk for opportunities page to make it more stable
-          if (id.includes('/pages/opportunities') || id.includes('\\pages\\opportunities')) {
-            return 'opportunities';
-          }
-          // Vendor chunks
+          // Vendor chunks - must be loaded first
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) {
               return 'react-vendor';
@@ -48,7 +44,11 @@ export default defineConfig({
             if (id.includes('@radix-ui')) {
               return 'radix-vendor';
             }
+            // Other vendor libraries
+            return 'vendor';
           }
+          // Don't create separate chunk for opportunities - let Vite handle it
+          // This ensures React is available when the chunk loads
         },
       },
     },
