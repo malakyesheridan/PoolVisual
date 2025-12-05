@@ -127,6 +127,105 @@ const verifyOrgMembership = async (req: AuthenticatedRequest, res: any, next: an
 export async function registerRoutes(app: Express): Promise<void> {
   console.log('🔧 Registering routes...');
   
+  // Public buyer form endpoints (must be registered early, before catch-all routes)
+  // These are registered inline here to ensure they're available before static file serving
+  app.get("/public/buyer-form/:token", async (req: any, res: any) => {
+    try {
+      const { token } = req.params;
+      
+      if (!token) {
+        return res.status(400).json({ message: "Token is required" });
+      }
+
+      // Look up form link
+      const formLink = await storage.getBuyerFormLinkByToken(token);
+      
+      if (!formLink) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link is invalid or has been removed" 
+        });
+      }
+
+      // Validate status
+      if (formLink.status !== 'active') {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link has been disabled" 
+        });
+      }
+
+      // Validate expiry
+      if (formLink.expiresAt && new Date(formLink.expiresAt) < new Date()) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "This form link has expired" 
+        });
+      }
+
+      // Get org info for branding
+      const org = await storage.getOrg(formLink.orgId);
+      if (!org) {
+        return res.status(404).json({ 
+          valid: false,
+          message: "Organization not found" 
+        });
+      }
+
+      // Get property info if linked
+      let propertyInfo: any = null;
+      if (formLink.propertyId) {
+        const job = await storage.getJob(formLink.propertyId);
+        if (job) {
+          // Get first photo for property
+          const photos = await storage.getJobPhotos(formLink.propertyId);
+          const firstPhoto = photos && photos.length > 0 ? photos[0] : null;
+          
+          propertyInfo = {
+            id: job.id,
+            address: job.address || job.clientName || 'Property',
+            photoUrl: firstPhoto ? (firstPhoto.originalUrl?.startsWith('/uploads/') 
+              ? `/api/photos/${firstPhoto.id}/image` 
+              : firstPhoto.originalUrl || firstPhoto.url) : null,
+          };
+        }
+      }
+
+      // Return safe metadata
+      res.json({
+        valid: true,
+        orgName: org.name,
+        orgLogoUrl: org.logoUrl,
+        property: propertyInfo,
+        // Form fields schema (static for v1)
+        fields: {
+          fullName: { type: 'text', required: true, label: 'Full Name' },
+          email: { type: 'email', required: true, label: 'Email' },
+          phone: { type: 'tel', required: false, label: 'Phone' },
+          preferredSuburbs: { type: 'array', required: false, label: 'Preferred Suburbs' },
+          budgetMin: { type: 'number', required: false, label: 'Budget Min' },
+          budgetMax: { type: 'number', required: false, label: 'Budget Max' },
+          bedsMin: { type: 'number', required: false, label: 'Min Beds' },
+          bathsMin: { type: 'number', required: false, label: 'Min Baths' },
+          propertyType: { type: 'select', required: false, label: 'Property Type', options: ['house', 'townhouse', 'apartment', 'land', 'acreage'] },
+          mustHaves: { type: 'array', required: false, label: 'Must Haves' },
+          dealBreakers: { type: 'array', required: false, label: 'Deal Breakers' },
+          financeStatus: { type: 'select', required: false, label: 'Finance Status', options: ['preapproved', 'needsFinance', 'cash', 'unknown'] },
+          timeline: { type: 'select', required: false, label: 'Timeline', options: ['asap', '30days', '60days', '3to6months', 'unknown'] },
+          freeNotes: { type: 'textarea', required: false, label: 'Additional Notes' },
+        },
+      });
+    } catch (error: any) {
+      console.error('[Get Buyer Form Metadata Error]', error?.message || error);
+      res.status(500).json({ 
+        valid: false,
+        message: "Failed to load form" 
+      });
+    }
+  });
+  
+  console.log('✅ Public buyer form GET route registered');
+  
   // Register admin routes
   const { adminRouter } = await import('./routes/admin.js');
   app.use('/api/admin', adminRouter);
@@ -3938,102 +4037,6 @@ export async function registerRoutes(app: Express): Promise<void> {
       console.error('[Get Buyer Form Links Error]', error?.message || error);
       res.status(500).json({ 
         message: error?.message || 'Failed to get buyer form links' 
-      });
-    }
-  });
-
-  // Public buyer form endpoints (no authentication required)
-  app.get("/public/buyer-form/:token", async (req: any, res: any) => {
-    try {
-      const { token } = req.params;
-      
-      if (!token) {
-        return res.status(400).json({ message: "Token is required" });
-      }
-
-      // Look up form link
-      const formLink = await storage.getBuyerFormLinkByToken(token);
-      
-      if (!formLink) {
-        return res.status(404).json({ 
-          valid: false,
-          message: "This form link is invalid or has been removed" 
-        });
-      }
-
-      // Validate status
-      if (formLink.status !== 'active') {
-        return res.status(404).json({ 
-          valid: false,
-          message: "This form link has been disabled" 
-        });
-      }
-
-      // Validate expiry
-      if (formLink.expiresAt && new Date(formLink.expiresAt) < new Date()) {
-        return res.status(404).json({ 
-          valid: false,
-          message: "This form link has expired" 
-        });
-      }
-
-      // Get org info for branding
-      const org = await storage.getOrg(formLink.orgId);
-      if (!org) {
-        return res.status(404).json({ 
-          valid: false,
-          message: "Organization not found" 
-        });
-      }
-
-      // Get property info if linked
-      let propertyInfo: any = null;
-      if (formLink.propertyId) {
-        const job = await storage.getJob(formLink.propertyId);
-        if (job) {
-          // Get first photo for property
-          const photos = await storage.getJobPhotos(formLink.propertyId);
-          const firstPhoto = photos && photos.length > 0 ? photos[0] : null;
-          
-          propertyInfo = {
-            id: job.id,
-            address: job.address || job.clientName || 'Property',
-            photoUrl: firstPhoto ? (firstPhoto.originalUrl?.startsWith('/uploads/') 
-              ? `/api/photos/${firstPhoto.id}/image` 
-              : firstPhoto.originalUrl || firstPhoto.url) : null,
-          };
-        }
-      }
-
-      // Return safe metadata
-      res.json({
-        valid: true,
-        orgName: org.name,
-        orgLogoUrl: org.logoUrl,
-        property: propertyInfo,
-        // Form fields schema (static for v1)
-        fields: {
-          fullName: { type: 'text', required: true, label: 'Full Name' },
-          email: { type: 'email', required: true, label: 'Email' },
-          phone: { type: 'tel', required: false, label: 'Phone' },
-          preferredSuburbs: { type: 'array', required: false, label: 'Preferred Suburbs' },
-          budgetMin: { type: 'number', required: false, label: 'Budget Min' },
-          budgetMax: { type: 'number', required: false, label: 'Budget Max' },
-          bedsMin: { type: 'number', required: false, label: 'Min Beds' },
-          bathsMin: { type: 'number', required: false, label: 'Min Baths' },
-          propertyType: { type: 'select', required: false, label: 'Property Type', options: ['house', 'townhouse', 'apartment', 'land', 'acreage'] },
-          mustHaves: { type: 'array', required: false, label: 'Must Haves' },
-          dealBreakers: { type: 'array', required: false, label: 'Deal Breakers' },
-          financeStatus: { type: 'select', required: false, label: 'Finance Status', options: ['preapproved', 'needsFinance', 'cash', 'unknown'] },
-          timeline: { type: 'select', required: false, label: 'Timeline', options: ['asap', '30days', '60days', '3to6months', 'unknown'] },
-          freeNotes: { type: 'textarea', required: false, label: 'Additional Notes' },
-        },
-      });
-    } catch (error: any) {
-      console.error('[Get Buyer Form Metadata Error]', error?.message || error);
-      res.status(500).json({ 
-        valid: false,
-        message: "Failed to load form" 
       });
     }
   });
