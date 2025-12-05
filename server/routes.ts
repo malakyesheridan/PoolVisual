@@ -3717,6 +3717,9 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
 
+      // Log the entire request body for debugging
+      console.log('[Buyer Profile Update] Full request body:', JSON.stringify(req.body, null, 2));
+      
       // Validate buyer profile data
       const {
         budgetMin,
@@ -3731,6 +3734,19 @@ export async function registerRoutes(app: Express): Promise<void> {
         timeline,
         freeNotes,
       } = req.body;
+
+      // Log what we extracted from the body
+      console.log('[Buyer Profile Update] Extracted fields:', {
+        preferredSuburbs: preferredSuburbs,
+        preferredSuburbsType: typeof preferredSuburbs,
+        preferredSuburbsIsArray: Array.isArray(preferredSuburbs),
+        mustHaves: mustHaves,
+        mustHavesType: typeof mustHaves,
+        mustHavesIsArray: Array.isArray(mustHaves),
+        dealBreakers: dealBreakers,
+        dealBreakersType: typeof dealBreakers,
+        dealBreakersIsArray: Array.isArray(dealBreakers),
+      });
 
       // Validation: budgetMin <= budgetMax if both exist
       if (budgetMin !== undefined && budgetMax !== undefined) {
@@ -3753,15 +3769,29 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       // Build buyer profile object (only include defined fields)
+      // CRITICAL: For array fields, always include them if they're in the request body (even if empty)
+      // This ensures that empty arrays can clear existing values
       const buyerProfile: any = {};
       if (budgetMin !== undefined) buyerProfile.budgetMin = budgetMin === null || budgetMin === '' ? null : Number(budgetMin);
       if (budgetMax !== undefined) buyerProfile.budgetMax = budgetMax === null || budgetMax === '' ? null : Number(budgetMax);
-      if (preferredSuburbs !== undefined) buyerProfile.preferredSuburbs = Array.isArray(preferredSuburbs) ? preferredSuburbs : [];
+      // CRITICAL: Always include array fields if they're present in the request, even if empty
+      // Check if the field exists in req.body (not just undefined check)
+      if ('preferredSuburbs' in req.body) {
+        buyerProfile.preferredSuburbs = Array.isArray(preferredSuburbs) ? preferredSuburbs : [];
+        console.log('[Buyer Profile Update] Setting preferredSuburbs:', buyerProfile.preferredSuburbs);
+      }
       if (bedsMin !== undefined) buyerProfile.bedsMin = bedsMin === null || bedsMin === '' ? null : Number(bedsMin);
       if (bathsMin !== undefined) buyerProfile.bathsMin = bathsMin === null || bathsMin === '' ? null : Number(bathsMin);
       if (propertyType !== undefined) buyerProfile.propertyType = propertyType || null;
-      if (mustHaves !== undefined) buyerProfile.mustHaves = Array.isArray(mustHaves) ? mustHaves : [];
-      if (dealBreakers !== undefined) buyerProfile.dealBreakers = Array.isArray(dealBreakers) ? dealBreakers : [];
+      // CRITICAL: Always include array fields if they're present in the request, even if empty
+      if ('mustHaves' in req.body) {
+        buyerProfile.mustHaves = Array.isArray(mustHaves) ? mustHaves : [];
+        console.log('[Buyer Profile Update] Setting mustHaves:', buyerProfile.mustHaves);
+      }
+      if ('dealBreakers' in req.body) {
+        buyerProfile.dealBreakers = Array.isArray(dealBreakers) ? dealBreakers : [];
+        console.log('[Buyer Profile Update] Setting dealBreakers:', buyerProfile.dealBreakers);
+      }
       if (financeStatus !== undefined) buyerProfile.financeStatus = financeStatus || null;
       if (timeline !== undefined) buyerProfile.timeline = timeline || null;
       // CRITICAL: Always include freeNotes if it's defined, even if it's an empty string

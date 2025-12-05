@@ -709,6 +709,10 @@ export function OpportunityDetailDrawer({
     const [localProfile, setLocalProfile] = useState<any>(initializeProfile(initialProfile));
     const [hasChanges, setHasChanges] = useState(false);
     const profileRef = React.useRef(initialProfile);
+    // Refs for array input fields to avoid closure issues
+    const preferredSuburbsInputRef = React.useRef<HTMLInputElement>(null);
+    const mustHavesInputRef = React.useRef<HTMLInputElement>(null);
+    const dealBreakersInputRef = React.useRef<HTMLInputElement>(null);
 
     // Update local profile when initialProfile changes (from server) - but only if not editing
     useEffect(() => {
@@ -999,15 +1003,42 @@ export function OpportunityDetailDrawer({
             <>
               <div className="mt-1 flex gap-2">
                 <Input
+                  ref={preferredSuburbsInputRef}
                   placeholder="Add suburb"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      addArrayItem('preferredSuburbs', (e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
+                      const input = preferredSuburbsInputRef.current;
+                      if (input) {
+                        const value = input.value.trim();
+                        if (value) {
+                          console.log('[BuyerProfileForm] Adding preferredSuburb:', value);
+                          addArrayItem('preferredSuburbs', value);
+                          input.value = '';
+                        }
+                      }
                     }
                   }}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const input = preferredSuburbsInputRef.current;
+                    if (input) {
+                      const value = input.value.trim();
+                      if (value) {
+                        console.log('[BuyerProfileForm] Adding preferredSuburb (button):', value);
+                        addArrayItem('preferredSuburbs', value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }
+                  }}
+                >
+                  Add
+                </Button>
               </div>
               {localProfile.preferredSuburbs && localProfile.preferredSuburbs.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -1098,15 +1129,42 @@ export function OpportunityDetailDrawer({
             <>
               <div className="mt-1 flex gap-2">
                 <Input
+                  ref={mustHavesInputRef}
                   placeholder="Add requirement"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      addArrayItem('mustHaves', (e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
+                      const input = mustHavesInputRef.current;
+                      if (input) {
+                        const value = input.value.trim();
+                        if (value) {
+                          console.log('[BuyerProfileForm] Adding mustHave:', value);
+                          addArrayItem('mustHaves', value);
+                          input.value = '';
+                        }
+                      }
                     }
                   }}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const input = mustHavesInputRef.current;
+                    if (input) {
+                      const value = input.value.trim();
+                      if (value) {
+                        console.log('[BuyerProfileForm] Adding mustHave (button):', value);
+                        addArrayItem('mustHaves', value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }
+                  }}
+                >
+                  Add
+                </Button>
               </div>
               {localProfile.mustHaves && localProfile.mustHaves.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
@@ -1146,15 +1204,42 @@ export function OpportunityDetailDrawer({
             <>
               <div className="mt-1 flex gap-2">
                 <Input
+                  ref={dealBreakersInputRef}
                   placeholder="Add deal breaker"
-                  onKeyPress={(e) => {
+                  onKeyDown={(e) => {
                     if (e.key === 'Enter') {
                       e.preventDefault();
-                      addArrayItem('dealBreakers', (e.target as HTMLInputElement).value);
-                      (e.target as HTMLInputElement).value = '';
+                      const input = dealBreakersInputRef.current;
+                      if (input) {
+                        const value = input.value.trim();
+                        if (value) {
+                          console.log('[BuyerProfileForm] Adding dealBreaker:', value);
+                          addArrayItem('dealBreakers', value);
+                          input.value = '';
+                        }
+                      }
                     }
                   }}
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const input = dealBreakersInputRef.current;
+                    if (input) {
+                      const value = input.value.trim();
+                      if (value) {
+                        console.log('[BuyerProfileForm] Adding dealBreaker (button):', value);
+                        addArrayItem('dealBreakers', value);
+                        input.value = '';
+                        input.focus();
+                      }
+                    }
+                  }}
+                >
+                  Add
+                </Button>
               </div>
               {localProfile.dealBreakers && localProfile.dealBreakers.length > 0 && (
                 <div className="flex flex-wrap gap-2 mt-2">
