@@ -3767,7 +3767,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (dealBreakers !== undefined) buyerProfile.dealBreakers = Array.isArray(dealBreakers) ? dealBreakers : [];
       if (financeStatus !== undefined) buyerProfile.financeStatus = financeStatus || null;
       if (timeline !== undefined) buyerProfile.timeline = timeline || null;
-      if (freeNotes !== undefined) buyerProfile.freeNotes = freeNotes || null;
+      // CRITICAL: Always include freeNotes if it's defined, even if it's an empty string
+      // Convert empty string to null, but preserve actual text content
+      if (freeNotes !== undefined) {
+        buyerProfile.freeNotes = (typeof freeNotes === 'string' && freeNotes.trim() === '') ? null : freeNotes;
+      }
 
       // Merge with existing buyer profile to avoid overwriting with empty values
       const existingProfile = (contact as any).buyerProfile || {};

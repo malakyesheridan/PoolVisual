@@ -734,7 +734,8 @@ export function OpportunityDetailDrawer({
       setHasChanges(true);
       // Debug log for text fields
       if (field === 'freeNotes') {
-        console.log('[BuyerProfileForm] Updated freeNotes:', value, 'Type:', typeof value);
+        console.log('[BuyerProfileForm] Updated freeNotes:', value, 'Type:', typeof value, 'Length:', value?.length);
+        console.log('[BuyerProfileForm] New localProfile:', JSON.stringify(newProfile, null, 2));
       }
     };
 
@@ -767,21 +768,13 @@ export function OpportunityDetailDrawer({
       return isNaN(num) ? null : num;
     };
 
-    // State for formatted display values (for budget fields)
-    const [budgetMinDisplay, setBudgetMinDisplay] = useState<string>(
-      localProfile.budgetMin !== null && localProfile.budgetMin !== undefined 
-        ? formatCurrencyDisplay(localProfile.budgetMin) 
-        : ''
-    );
-    const [budgetMaxDisplay, setBudgetMaxDisplay] = useState<string>(
-      localProfile.budgetMax !== null && localProfile.budgetMax !== undefined 
-        ? formatCurrencyDisplay(localProfile.budgetMax) 
-        : ''
-    );
+    // State for raw input values (for budget fields) - allows special characters during typing
+    const [budgetMinDisplay, setBudgetMinDisplay] = useState<string>('');
+    const [budgetMaxDisplay, setBudgetMaxDisplay] = useState<string>('');
 
-    // Sync display values when profile changes (but not when user is typing)
+    // Initialize display values from profile
     useEffect(() => {
-      if (!hasChanges) {
+      if (!isEditing && !hasChanges) {
         setBudgetMinDisplay(
           localProfile.budgetMin !== null && localProfile.budgetMin !== undefined 
             ? formatCurrencyDisplay(localProfile.budgetMin) 
@@ -793,7 +786,23 @@ export function OpportunityDetailDrawer({
             : ''
         );
       }
-    }, [localProfile.budgetMin, localProfile.budgetMax, hasChanges]);
+    }, [localProfile.budgetMin, localProfile.budgetMax, isEditing, hasChanges]);
+    
+    // Initialize when entering edit mode
+    useEffect(() => {
+      if (isEditing) {
+        setBudgetMinDisplay(
+          localProfile.budgetMin !== null && localProfile.budgetMin !== undefined 
+            ? formatCurrencyDisplay(localProfile.budgetMin) 
+            : ''
+        );
+        setBudgetMaxDisplay(
+          localProfile.budgetMax !== null && localProfile.budgetMax !== undefined 
+            ? formatCurrencyDisplay(localProfile.budgetMax) 
+            : ''
+        );
+      }
+    }, [isEditing]);
 
     return (
       <div className="space-y-4">
@@ -817,18 +826,21 @@ export function OpportunityDetailDrawer({
                 inputMode="numeric"
                 value={budgetMinDisplay}
                 onChange={(e) => {
+                  // Allow any characters during typing - don't parse yet
                   const inputValue = e.target.value;
                   setBudgetMinDisplay(inputValue);
-                  const parsed = parseCurrencyInput(inputValue);
-                  updateField('budgetMin', parsed);
+                  // Store the raw input value temporarily, parse on save
                 }}
                 onBlur={(e) => {
-                  // Format on blur
+                  // Parse and format on blur, but keep the display value
                   const parsed = parseCurrencyInput(e.target.value);
                   if (parsed !== null) {
-                    setBudgetMinDisplay(formatCurrencyDisplay(parsed));
+                    const formatted = formatCurrencyDisplay(parsed);
+                    setBudgetMinDisplay(formatted);
+                    updateField('budgetMin', parsed);
                   } else {
                     setBudgetMinDisplay('');
+                    updateField('budgetMin', null);
                   }
                 }}
                 placeholder="$0"
@@ -848,18 +860,21 @@ export function OpportunityDetailDrawer({
                 inputMode="numeric"
                 value={budgetMaxDisplay}
                 onChange={(e) => {
+                  // Allow any characters during typing - don't parse yet
                   const inputValue = e.target.value;
                   setBudgetMaxDisplay(inputValue);
-                  const parsed = parseCurrencyInput(inputValue);
-                  updateField('budgetMax', parsed);
+                  // Store the raw input value temporarily, parse on save
                 }}
                 onBlur={(e) => {
-                  // Format on blur
+                  // Parse and format on blur, but keep the display value
                   const parsed = parseCurrencyInput(e.target.value);
                   if (parsed !== null) {
-                    setBudgetMaxDisplay(formatCurrencyDisplay(parsed));
+                    const formatted = formatCurrencyDisplay(parsed);
+                    setBudgetMaxDisplay(formatted);
+                    updateField('budgetMax', parsed);
                   } else {
                     setBudgetMaxDisplay('');
+                    updateField('budgetMax', null);
                   }
                 }}
                 placeholder="$0"
@@ -1146,7 +1161,14 @@ export function OpportunityDetailDrawer({
               value={localProfile.freeNotes !== undefined && localProfile.freeNotes !== null ? String(localProfile.freeNotes) : ''}
               onChange={(e) => {
                 const value = e.target.value;
-                // Always update the field with the actual value
+                // Always update the field with the actual value - preserve exactly what user types
+                console.log('[BuyerProfileForm] Textarea onChange:', value, 'Length:', value.length);
+                updateField('freeNotes', value);
+              }}
+              onBlur={(e) => {
+                // Ensure value is saved on blur
+                const value = e.target.value;
+                console.log('[BuyerProfileForm] Textarea onBlur:', value, 'Length:', value.length);
                 updateField('freeNotes', value);
               }}
               placeholder="Additional notes..."
@@ -1165,32 +1187,42 @@ export function OpportunityDetailDrawer({
           <div className="flex items-center gap-2 pt-4 border-t">
             <Button
               onClick={async () => {
-                // Create a clean profile object with all fields explicitly set
-                // This ensures all fields are sent to the backend, even if they're null/empty
-                const profileToSave: any = {};
+                // Parse budget values from display strings if they haven't been parsed yet
+                let budgetMinValue = localProfile.budgetMin;
+                let budgetMaxValue = localProfile.budgetMax;
                 
-                // Always include all fields so backend can merge properly
-                profileToSave.budgetMin = localProfile.budgetMin !== undefined ? (localProfile.budgetMin === null || localProfile.budgetMin === '' ? null : Number(localProfile.budgetMin)) : undefined;
-                profileToSave.budgetMax = localProfile.budgetMax !== undefined ? (localProfile.budgetMax === null || localProfile.budgetMax === '' ? null : Number(localProfile.budgetMax)) : undefined;
-                profileToSave.preferredSuburbs = localProfile.preferredSuburbs !== undefined ? (Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs : []) : undefined;
-                profileToSave.bedsMin = localProfile.bedsMin !== undefined ? (localProfile.bedsMin === null || localProfile.bedsMin === '' ? null : Number(localProfile.bedsMin)) : undefined;
-                profileToSave.bathsMin = localProfile.bathsMin !== undefined ? (localProfile.bathsMin === null || localProfile.bathsMin === '' ? null : Number(localProfile.bathsMin)) : undefined;
-                profileToSave.propertyType = localProfile.propertyType !== undefined ? (localProfile.propertyType || null) : undefined;
-                profileToSave.mustHaves = localProfile.mustHaves !== undefined ? (Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves : []) : undefined;
-                profileToSave.dealBreakers = localProfile.dealBreakers !== undefined ? (Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers : []) : undefined;
-                profileToSave.financeStatus = localProfile.financeStatus !== undefined ? (localProfile.financeStatus || null) : undefined;
-                profileToSave.timeline = localProfile.timeline !== undefined ? (localProfile.timeline || null) : undefined;
-                // CRITICAL: Always include freeNotes - preserve the value exactly as entered
-                // Only convert to null if it's truly empty (empty string or whitespace only)
-                if (localProfile.freeNotes !== undefined) {
-                  const notesValue = typeof localProfile.freeNotes === 'string' ? localProfile.freeNotes.trim() : localProfile.freeNotes;
-                  profileToSave.freeNotes = notesValue === '' ? null : notesValue;
-                } else {
-                  profileToSave.freeNotes = undefined;
+                // If display values exist but profile values don't match, parse from display
+                if (budgetMinDisplay && (localProfile.budgetMin === undefined || localProfile.budgetMin === null)) {
+                  budgetMinValue = parseCurrencyInput(budgetMinDisplay);
+                }
+                if (budgetMaxDisplay && (localProfile.budgetMax === undefined || localProfile.budgetMax === null)) {
+                  budgetMaxValue = parseCurrencyInput(budgetMaxDisplay);
                 }
                 
+                // Create a clean profile object with all fields explicitly set
+                // CRITICAL: Always include ALL fields, even if they're null or empty
+                const profileToSave: any = {
+                  budgetMin: budgetMinValue !== undefined ? (budgetMinValue === null || budgetMinValue === '' ? null : Number(budgetMinValue)) : null,
+                  budgetMax: budgetMaxValue !== undefined ? (budgetMaxValue === null || budgetMaxValue === '' ? null : Number(budgetMaxValue)) : null,
+                  preferredSuburbs: Array.isArray(localProfile.preferredSuburbs) ? localProfile.preferredSuburbs : [],
+                  bedsMin: localProfile.bedsMin !== undefined ? (localProfile.bedsMin === null || localProfile.bedsMin === '' ? null : Number(localProfile.bedsMin)) : null,
+                  bathsMin: localProfile.bathsMin !== undefined ? (localProfile.bathsMin === null || localProfile.bathsMin === '' ? null : Number(localProfile.bathsMin)) : null,
+                  propertyType: localProfile.propertyType || null,
+                  mustHaves: Array.isArray(localProfile.mustHaves) ? localProfile.mustHaves : [],
+                  dealBreakers: Array.isArray(localProfile.dealBreakers) ? localProfile.dealBreakers : [],
+                  financeStatus: localProfile.financeStatus || null,
+                  timeline: localProfile.timeline || null,
+                  // CRITICAL: Always include freeNotes - preserve the exact value
+                  // Check both localProfile and ensure we have the current value
+                  freeNotes: (localProfile.freeNotes !== undefined && localProfile.freeNotes !== null)
+                    ? (typeof localProfile.freeNotes === 'string' && localProfile.freeNotes.trim() === '' ? null : String(localProfile.freeNotes))
+                    : null,
+                };
+                
                 console.log('[BuyerProfileForm] Saving profile:', JSON.stringify(profileToSave, null, 2));
-                console.log('[BuyerProfileForm] freeNotes value:', profileToSave.freeNotes, 'Type:', typeof profileToSave.freeNotes);
+                console.log('[BuyerProfileForm] freeNotes in localProfile:', localProfile.freeNotes, 'Type:', typeof localProfile.freeNotes);
+                console.log('[BuyerProfileForm] freeNotes in profileToSave:', profileToSave.freeNotes, 'Type:', typeof profileToSave.freeNotes);
+                
                 await onSave(profileToSave);
                 setHasChanges(false);
                 setIsEditing(false);
@@ -2036,12 +2068,17 @@ export function OpportunityDetailDrawer({
                       setIsSavingBuyerProfile(true);
                       setBuyerProfileSaved(false);
                       try {
-                        await apiClient.updateBuyerProfile(currentContactId, profile);
+                        console.log('[OpportunityDetailDrawer] Calling updateBuyerProfile with profile:', JSON.stringify(profile, null, 2));
+                        console.log('[OpportunityDetailDrawer] freeNotes value:', profile.freeNotes, 'Type:', typeof profile.freeNotes);
+                        const savedProfile = await apiClient.updateBuyerProfile(currentContactId, profile);
+                        console.log('[OpportunityDetailDrawer] Saved profile response:', JSON.stringify(savedProfile, null, 2));
                         setBuyerProfileSaved(true);
-                        setBuyerProfile(profile);
+                        // Use the saved profile from server, not the local one
+                        setBuyerProfile(savedProfile || profile);
                         toast({ title: 'Buyer profile saved', description: 'Profile updated successfully.' });
                         setTimeout(() => setBuyerProfileSaved(false), 3000);
                       } catch (error: any) {
+                        console.error('[OpportunityDetailDrawer] Error saving buyer profile:', error);
                         toast({
                           title: 'Error',
                           description: error.message || 'Failed to save buyer profile',
