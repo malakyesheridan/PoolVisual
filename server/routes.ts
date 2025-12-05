@@ -1189,11 +1189,187 @@ export async function registerRoutes(app: Express): Promise<void> {
         console.log('[MatchingEngine] Top match:', JSON.stringify(matchingResult.matches[0], null, 2));
       }
 
+      // Generate match suggestions after computing matches
+      try {
+        const { generateMatchSuggestions } = await import('./services/matchSuggestionGenerator.js');
+        await generateMatchSuggestions({
+          orgId,
+          propertyId: jobId,
+          createdByUserId: req.user.id,
+        });
+      } catch (suggestionError: any) {
+        // Log but don't fail the request if suggestion generation fails
+        console.warn('[Matched Buyers] Failed to generate suggestions:', suggestionError?.message);
+      }
+
       res.json(matchingResult);
     } catch (error: any) {
       console.error('[Matched Buyers] Error:', error?.message || error);
       console.error('[Matched Buyers] Stack:', error?.stack);
       res.status(500).json({ message: error?.message || "Failed to get matched buyers" });
+    }
+  });
+
+  // Match Suggestions endpoints
+  app.get("/api/jobs/:id/match-suggestions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      const status = req.query.status as string | undefined;
+
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+
+      // Get property/job
+      const job = await storage.getJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Verify user-centric access
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Get orgId
+      let orgId: string | null = job.orgId || null;
+      if (!orgId) {
+        const userOrgs = await storage.getUserOrgs(req.user.id);
+        if (userOrgs && userOrgs.length > 0) {
+          orgId = userOrgs[0].id;
+        }
+      }
+
+      if (!orgId) {
+        return res.status(400).json({ message: "User must belong to an organization" });
+      }
+
+      // Get match suggestions
+      const suggestions = await storage.getMatchSuggestionsByProperty(orgId, jobId, status);
+
+      // Enrich with opportunity and contact data
+      const enrichedSuggestions = await Promise.all(
+        suggestions.map(async (suggestion) => {
+          const opportunity = await storage.getOpportunity(suggestion.opportunityId);
+          const contact = await storage.getContact(suggestion.contactId);
+          
+          return {
+            id: suggestion.id,
+            opportunityId: suggestion.opportunityId,
+            contactId: suggestion.contactId,
+            contactName: contact ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || 'Unknown' : 'Unknown',
+            matchScore: suggestion.matchScore,
+            matchTier: suggestion.matchTier,
+            status: suggestion.status,
+            createdAt: suggestion.createdAt,
+            actedAt: suggestion.actedAt,
+            buyerProfileSummary: contact?.buyerProfile ? {
+              budgetMin: (contact.buyerProfile as any)?.budgetMin,
+              budgetMax: (contact.buyerProfile as any)?.budgetMax,
+              preferredSuburbs: (contact.buyerProfile as any)?.preferredSuburbs,
+              bedsMin: (contact.buyerProfile as any)?.bedsMin,
+              bathsMin: (contact.buyerProfile as any)?.bathsMin,
+              propertyType: (contact.buyerProfile as any)?.propertyType,
+              timeline: (contact.buyerProfile as any)?.timeline,
+            } : null,
+          };
+        })
+      );
+
+      res.json({
+        propertyId: jobId,
+        suggestions: enrichedSuggestions,
+      });
+    } catch (error: any) {
+      console.error('[Match Suggestions] Error:', error?.message || error);
+      res.status(500).json({ message: error?.message || "Failed to get match suggestions" });
+    }
+  });
+
+  app.patch("/api/match-suggestions/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const suggestionId = req.params.id;
+      const { status } = req.body;
+
+      if (!suggestionId) {
+        return res.status(400).json({ message: "Suggestion ID is required" });
+      }
+
+      if (!status || !['new', 'in_progress', 'completed', 'dismissed'].includes(status)) {
+        return res.status(400).json({ message: "Valid status is required" });
+      }
+
+      // Get existing suggestion
+      const suggestion = await storage.getMatchSuggestion(suggestionId);
+      if (!suggestion) {
+        return res.status(404).json({ message: "Match suggestion not found" });
+      }
+
+      // Verify org access
+      const job = await storage.getJob(suggestion.propertyId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update suggestion
+      const updates: any = { status };
+      
+      // Set acted fields when moving to completed or dismissed
+      if (status === 'completed' || status === 'dismissed') {
+        updates.actedByUserId = req.user.id;
+        updates.actedAt = new Date();
+      }
+
+      const updated = await storage.updateMatchSuggestion(suggestionId, updates);
+      res.json(updated);
+    } catch (error: any) {
+      console.error('[Match Suggestions] Error updating:', error?.message || error);
+      res.status(500).json({ message: error?.message || "Failed to update match suggestion" });
+    }
+  });
+
+  app.post("/api/match-suggestions/:id/generate-followup", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const suggestionId = req.params.id;
+
+      if (!suggestionId) {
+        return res.status(400).json({ message: "Suggestion ID is required" });
+      }
+
+      // Get existing suggestion
+      const suggestion = await storage.getMatchSuggestion(suggestionId);
+      if (!suggestion) {
+        return res.status(404).json({ message: "Match suggestion not found" });
+      }
+
+      // Verify org access
+      const job = await storage.getJob(suggestion.propertyId);
+      if (!job) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Generate follow-up message
+      const { generateFollowUpMessage } = await import('./services/aiFollowUpGenerator.js');
+      const followUp = await generateFollowUpMessage({ matchSuggestionId: suggestionId });
+
+      res.json({
+        ...suggestion,
+        ...followUp,
+      });
+    } catch (error: any) {
+      console.error('[Match Suggestions] Error generating follow-up:', error?.message || error);
+      res.status(500).json({ message: error?.message || "Failed to generate follow-up message" });
     }
   });
 
@@ -1251,6 +1427,43 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // Update job with provided fields
       const updatedJob = await storage.updateJob(jobId, updates);
+      
+      // Generate match suggestions after property update (async, don't block response)
+      // Only if price, suburb, beds, baths, or property type changed
+      const relevantFieldsChanged = 
+        updates.estimatedPrice !== undefined ||
+        updates.address !== undefined ||
+        updates.bedrooms !== undefined ||
+        updates.bathrooms !== undefined ||
+        updates.propertyType !== undefined ||
+        updates.propertyFeatures !== undefined;
+
+      if (relevantFieldsChanged) {
+        // Run suggestion generation in background (don't await)
+        (async () => {
+          try {
+            const { generateMatchSuggestions } = await import('./services/matchSuggestionGenerator.js');
+            let orgId: string | null = updatedJob.orgId || null;
+            if (!orgId) {
+              const userOrgs = await storage.getUserOrgs(req.user.id);
+              if (userOrgs && userOrgs.length > 0) {
+                orgId = userOrgs[0].id;
+              }
+            }
+            if (orgId) {
+              await generateMatchSuggestions({
+                orgId,
+                propertyId: jobId,
+                createdByUserId: req.user.id,
+              });
+            }
+          } catch (suggestionError: any) {
+            // Log but don't fail the request
+            console.warn('[Property Update] Failed to generate suggestions:', suggestionError?.message);
+          }
+        })();
+      }
+
       res.json(updatedJob);
     } catch (error) {
       console.error('[Routes] Error updating job:', error);

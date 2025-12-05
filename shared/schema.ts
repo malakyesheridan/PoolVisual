@@ -1000,6 +1000,28 @@ export type BuyerFormLink = typeof buyerFormLinks.$inferSelect;
 export type InsertBuyerFormLink = typeof buyerFormLinks.$inferInsert;
 export type BuyerFormSubmission = typeof buyerFormSubmissions.$inferSelect;
 export type InsertBuyerFormSubmission = typeof buyerFormSubmissions.$inferInsert;
+
+// Match Suggestions (for Buyer-Property Match Alerts & Follow-Up Prompts)
+export const matchSuggestions = pgTable("match_suggestions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => orgs.id).notNull(),
+  propertyId: uuid("property_id").references(() => jobs.id).notNull(),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
+  contactId: uuid("contact_id").references(() => contacts.id).notNull(),
+  matchScore: integer("match_score").notNull(),
+  matchTier: text("match_tier").notNull(),
+  status: text("status").default("new").notNull(),
+  source: text("source").default("auto_match_v1").notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  actedByUserId: uuid("acted_by_user_id").references(() => users.id),
+  actedAt: timestamp("acted_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export type MatchSuggestion = typeof matchSuggestions.$inferSelect;
+export type InsertMatchSuggestion = typeof matchSuggestions.$inferInsert;
+
 export type Pipeline = typeof pipelines.$inferSelect;
 export type InsertPipeline = typeof pipelines.$inferInsert;
 export type PipelineStage = typeof pipelineStages.$inferSelect;

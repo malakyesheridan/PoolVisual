@@ -88,6 +88,7 @@ import {
   referrals,
   buyerFormLinks,
   buyerFormSubmissions,
+  matchSuggestions,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -238,6 +239,13 @@ export interface IStorage {
   // Buyer Form Submissions
   createBuyerFormSubmission(data: any): Promise<any>;
   getBuyerFormSubmissions(formLinkId: string): Promise<any[]>;
+  
+  // Match Suggestions
+  createMatchSuggestion(data: any): Promise<any>;
+  getMatchSuggestionsByProperty(orgId: string, propertyId: string, status?: string): Promise<any[]>;
+  getMatchSuggestion(id: string): Promise<any | undefined>;
+  updateMatchSuggestion(id: string, updates: any): Promise<any>;
+  getMatchSuggestionByPropertyAndOpportunity(propertyId: string, opportunityId: string): Promise<any | undefined>;
   
   // Materials
   getAllMaterials(): Promise<Material[]>;
@@ -2956,6 +2964,103 @@ export class PostgresStorage implements IStorage {
     } catch (error: any) {
       if (error?.message?.includes('buyer_form_submissions') || error?.code === '42P01') {
         return [];
+      }
+      throw error;
+    }
+  }
+
+  // Match Suggestions methods
+  async createMatchSuggestion(data: InsertMatchSuggestion): Promise<MatchSuggestion> {
+    try {
+      const [suggestion] = await ensureDb()
+        .insert(matchSuggestions)
+        .values({
+          ...data,
+          updatedAt: new Date(),
+        })
+        .returning();
+      if (!suggestion) throw new Error("Failed to create match suggestion");
+      return suggestion;
+    } catch (error: any) {
+      if (error?.message?.includes('match_suggestions') || error?.code === '42P01') {
+        throw new Error("Match suggestions feature requires database migration. Please run migration 049_add_match_suggestions.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getMatchSuggestionsByProperty(orgId: string, propertyId: string, status?: string): Promise<MatchSuggestion[]> {
+    try {
+      const conditions: any[] = [
+        eq(matchSuggestions.orgId, orgId),
+        eq(matchSuggestions.propertyId, propertyId),
+      ];
+      if (status) {
+        conditions.push(eq(matchSuggestions.status, status));
+      }
+      
+      return await ensureDb()
+        .select()
+        .from(matchSuggestions)
+        .where(and(...conditions))
+        .orderBy(desc(matchSuggestions.matchScore), desc(matchSuggestions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('match_suggestions') || error?.code === '42P01') {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getMatchSuggestion(id: string): Promise<MatchSuggestion | undefined> {
+    try {
+      const [suggestion] = await ensureDb()
+        .select()
+        .from(matchSuggestions)
+        .where(eq(matchSuggestions.id, id))
+        .limit(1);
+      return suggestion;
+    } catch (error: any) {
+      if (error?.message?.includes('match_suggestions') || error?.code === '42P01') {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
+  async updateMatchSuggestion(id: string, updates: Partial<MatchSuggestion>): Promise<MatchSuggestion> {
+    try {
+      const [updated] = await ensureDb()
+        .update(matchSuggestions)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(matchSuggestions.id, id))
+        .returning();
+      if (!updated) throw new Error("Failed to update match suggestion");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('match_suggestions') || error?.code === '42P01') {
+        throw new Error("Match suggestions feature requires database migration. Please run migration 049_add_match_suggestions.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getMatchSuggestionByPropertyAndOpportunity(propertyId: string, opportunityId: string): Promise<MatchSuggestion | undefined> {
+    try {
+      const [suggestion] = await ensureDb()
+        .select()
+        .from(matchSuggestions)
+        .where(
+          and(
+            eq(matchSuggestions.propertyId, propertyId),
+            eq(matchSuggestions.opportunityId, opportunityId)
+          )
+        )
+        .limit(1);
+      return suggestion;
+    } catch (error: any) {
+      if (error?.message?.includes('match_suggestions') || error?.code === '42P01') {
+        return undefined;
       }
       throw error;
     }

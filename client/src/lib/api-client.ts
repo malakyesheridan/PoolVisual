@@ -252,6 +252,45 @@ class ApiClient {
     return this.request<any>(`/jobs/${id}`);
   }
 
+  async getMatchSuggestions(jobId: string, status?: string) {
+    const url = status 
+      ? `/jobs/${jobId}/match-suggestions?status=${status}`
+      : `/jobs/${jobId}/match-suggestions`;
+    return this.request<{
+      propertyId: string;
+      suggestions: Array<{
+        id: string;
+        opportunityId: string;
+        contactId: string;
+        contactName: string;
+        matchScore: number;
+        matchTier: 'strong' | 'medium' | 'weak';
+        status: 'new' | 'in_progress' | 'completed' | 'dismissed';
+        createdAt: string;
+        actedAt?: string;
+        buyerProfileSummary: any;
+      }>;
+    }>(url);
+  }
+
+  async updateMatchSuggestion(suggestionId: string, status: 'new' | 'in_progress' | 'completed' | 'dismissed') {
+    return this.request(`/match-suggestions/${suggestionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  }
+
+  async generateFollowUpMessage(suggestionId: string) {
+    return this.request<{
+      id: string;
+      suggestedSmsText: string;
+      suggestedEmailSubject: string;
+      suggestedEmailBody: string;
+    }>(`/match-suggestions/${suggestionId}/generate-followup`, {
+      method: 'POST',
+    });
+  }
+
   async getMatchedBuyers(jobId: string) {
     return this.request<{
       propertyId: string;

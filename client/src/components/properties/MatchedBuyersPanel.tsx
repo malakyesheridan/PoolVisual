@@ -1,11 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { apiClient } from "@/lib/api-client";
 import { formatCurrency } from "@/lib/measurement-utils";
-import { User, DollarSign, MapPin, Home, Calendar, Loader2, ChevronRight } from "lucide-react";
+import { User, DollarSign, MapPin, Home, Calendar, Loader2, ChevronRight, MessageSquare, CheckCircle2, XCircle, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { useState } from "react";
+import { FollowUpMessageDialog } from "./FollowUpMessageDialog";
 import type { ReactNode } from "react";
 
 interface MatchedBuyersPanelProps {
@@ -14,12 +18,83 @@ interface MatchedBuyersPanelProps {
 }
 
 export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPanelProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [followUpDialog, setFollowUpDialog] = useState<{
+    isOpen: boolean;
+    smsText: string;
+    emailSubject: string;
+    emailBody: string;
+  } | null>(null);
+  const [generatingFollowUp, setGeneratingFollowUp] = useState<string | null>(null);
+
   const { data: matchingResult, isLoading } = useQuery({
     queryKey: ['/api/jobs', jobId, 'matched-buyers'],
     queryFn: () => apiClient.getMatchedBuyers(jobId),
     enabled: !!jobId,
     staleTime: 2 * 60 * 1000, // 2 minutes
   });
+
+  const { data: suggestionsData } = useQuery({
+    queryKey: ['/api/jobs', jobId, 'match-suggestions'],
+    queryFn: () => apiClient.getMatchSuggestions(jobId),
+    enabled: !!jobId,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ suggestionId, status }: { suggestionId: string; status: 'new' | 'in_progress' | 'completed' | 'dismissed' }) =>
+      apiClient.updateMatchSuggestion(suggestionId, status),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'match-suggestions'] });
+      toast({ title: 'Status updated', description: 'Match suggestion status has been updated.' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to update status',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const generateFollowUpMutation = useMutation({
+    mutationFn: (suggestionId: string) => apiClient.generateFollowUpMessage(suggestionId),
+    onSuccess: (data) => {
+      setFollowUpDialog({
+        isOpen: true,
+        smsText: data.suggestedSmsText || '',
+        emailSubject: data.suggestedEmailSubject || '',
+        emailBody: data.suggestedEmailBody || '',
+      });
+      setGeneratingFollowUp(null);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to generate follow-up message',
+        variant: 'destructive',
+      });
+      setGeneratingFollowUp(null);
+    },
+  });
+
+  const handleGenerateFollowUp = async (suggestionId: string) => {
+    setGeneratingFollowUp(suggestionId);
+    generateFollowUpMutation.mutate(suggestionId);
+  };
+
+  const handleStatusUpdate = (suggestionId: string, status: 'completed' | 'dismissed') => {
+    updateStatusMutation.mutate({ suggestionId, status });
+  };
+
+  // Create a map of suggestions by opportunityId
+  const suggestionsByOpportunity = new Map<string, typeof suggestionsData.suggestions[0]>();
+  if (suggestionsData?.suggestions) {
+    for (const suggestion of suggestionsData.suggestions) {
+      suggestionsByOpportunity.set(suggestion.opportunityId, suggestion);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -102,6 +177,11 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
           <Badge variant="outline" className="ml-2">
             {matchingResult.matches.length}
           </Badge>
+          {suggestionsData && suggestionsData.suggestions.filter(s => s.status === 'new').length > 0 && (
+            <Badge variant="default" className="ml-2 bg-amber-500">
+              {suggestionsData.suggestions.filter(s => s.status === 'new').length} new
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -122,22 +202,44 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
             }
           });
           
+          const suggestion = suggestionsByOpportunity.get(match.opportunityId);
+          const status = suggestion?.status || 'new';
+          
+          const getStatusBadge = (status: string) => {
+            switch (status) {
+              case 'new':
+                return <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">New</Badge>;
+              case 'in_progress':
+                return <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">In Progress</Badge>;
+              case 'completed':
+                return <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">Contacted</Badge>;
+              case 'dismissed':
+                return <Badge variant="outline" className="text-xs bg-slate-50 text-slate-500 border-slate-200">Dismissed</Badge>;
+              default:
+                return null;
+            }
+          };
+
           return (
             <div
               key={match.opportunityId}
-              onClick={() => onOpenOpportunity?.(match.opportunityId)}
               className={cn(
-                "border rounded-lg p-3 transition-all cursor-pointer group",
+                "border rounded-lg p-3 transition-all group",
                 tierStyles.border,
                 tierStyles.background,
-                "hover:bg-slate-50 hover:shadow-sm",
-                onOpenOpportunity && "hover:border-slate-300"
+                "hover:bg-slate-50 hover:shadow-sm"
               )}
             >
-              {/* Header Row: Buyer Name + Tier Badge + Score */}
+              {/* Header Row: Buyer Name + Tier Badge + Score + Status */}
               <div className="flex items-center justify-between mb-2">
-                <h4 className="font-semibold text-slate-900 text-sm">{match.contactName}</h4>
+                <h4 
+                  className="font-semibold text-slate-900 text-sm cursor-pointer hover:text-slate-700"
+                  onClick={() => onOpenOpportunity?.(match.opportunityId)}
+                >
+                  {match.contactName}
+                </h4>
                 <div className="flex items-center gap-1.5">
+                  {suggestion && getStatusBadge(status)}
                   <Badge 
                     variant="outline" 
                     className={cn("text-xs font-medium border px-2 py-0.5", tierStyles.badge)}
@@ -145,7 +247,10 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
                     {getTierLabel(match.matchTier)} · {match.matchScore}%
                   </Badge>
                   {onOpenOpportunity && (
-                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" />
+                    <ChevronRight 
+                      className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors cursor-pointer"
+                      onClick={() => onOpenOpportunity(match.opportunityId)}
+                    />
                   )}
                 </div>
               </div>
@@ -218,10 +323,75 @@ export function MatchedBuyersPanel({ jobId, onOpenOpportunity }: MatchedBuyersPa
                   ))}
                 </div>
               )}
+
+              {/* Quick Actions Row */}
+              {suggestion && (
+                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-slate-200">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleGenerateFollowUp(suggestion.id);
+                    }}
+                    disabled={generatingFollowUp === suggestion.id}
+                  >
+                    {generatingFollowUp === suggestion.id ? (
+                      <>
+                        <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3 h-3 mr-1" />
+                        Generate Follow-Up
+                      </>
+                    )}
+                  </Button>
+                  {status !== 'completed' && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStatusUpdate(suggestion.id, 'completed');
+                      }}
+                    >
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                      Contacted
+                    </Button>
+                  )}
+                  {status !== 'dismissed' && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStatusUpdate(suggestion.id, 'dismissed');
+                      }}
+                    >
+                      <XCircle className="w-3 h-3" />
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
       </CardContent>
+      
+      {followUpDialog && (
+        <FollowUpMessageDialog
+          isOpen={followUpDialog.isOpen}
+          onClose={() => setFollowUpDialog(null)}
+          smsText={followUpDialog.smsText}
+          emailSubject={followUpDialog.emailSubject}
+          emailBody={followUpDialog.emailBody}
+        />
+      )}
     </Card>
   );
 }
