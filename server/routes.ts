@@ -3302,8 +3302,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access (same pattern as other endpoints)
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
       }
