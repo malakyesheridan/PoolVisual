@@ -4,7 +4,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api-client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Download, Mail, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Mail, Loader2, Save, Check } from 'lucide-react';
 import { ReportLayout } from '@/components/reports/ReportLayout';
 import { ReportHeroImage } from '@/components/reports/ReportHeroImage';
 import { ReportCampaignOverview } from '@/components/reports/ReportCampaignOverview';
@@ -52,6 +52,29 @@ export default function SellerReportBuilder() {
   const [agentTitle, setAgentTitle] = useState('');
   const [agentPhone, setAgentPhone] = useState('');
   const [agentEmail, setAgentEmail] = useState('');
+  const [isSaved, setIsSaved] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Reset saved state when any field changes (but not on initial load)
+  const isInitialMount = useRef(true);
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    setIsSaved(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentCommentary, marketInsights, heroSummary, propertySummary, medianSuburbPrice, daysOnMarket, recentComparableSales, logoUrl, headshotUrl, agentName, agentTitle, agentPhone, agentEmail]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load property data
   const { data: property, isLoading: propertyLoading } = useQuery({
@@ -74,16 +97,44 @@ export default function SellerReportBuilder() {
     enabled: !!propertyId,
   });
 
-  // Load selected images from URL params or localStorage
+  // Load saved report state from localStorage
   useEffect(() => {
     if (propertyId) {
-      const stored = localStorage.getItem(`report-images-${propertyId}`);
-      if (stored) {
+      // Load selected images
+      const storedImages = localStorage.getItem(`report-images-${propertyId}`);
+      if (storedImages) {
         try {
-          const parsed = JSON.parse(stored);
+          const parsed = JSON.parse(storedImages);
           setSelectedImages(parsed);
         } catch (e) {
           console.error('Failed to parse stored images', e);
+        }
+      }
+
+      // Load saved report data
+      const savedReport = localStorage.getItem(`report-data-${propertyId}`);
+      if (savedReport) {
+        try {
+          const parsed = JSON.parse(savedReport);
+          setAgentCommentary(parsed.agentCommentary || '');
+          setMarketInsights(parsed.marketInsights || '');
+          setHeroSummary(parsed.heroSummary || '');
+          setPropertySummary(parsed.propertySummary || '');
+          setMedianSuburbPrice(parsed.medianSuburbPrice || '');
+          setDaysOnMarket(parsed.daysOnMarket || '');
+          setRecentComparableSales(parsed.recentComparableSales || '');
+          setLogoUrl(parsed.logoUrl || null);
+          setHeadshotUrl(parsed.headshotUrl || null);
+          setAgentName(parsed.agentName || '');
+          setAgentTitle(parsed.agentTitle || '');
+          setAgentPhone(parsed.agentPhone || '');
+          setAgentEmail(parsed.agentEmail || '');
+          if (parsed.lastSaved) {
+            setLastSaved(new Date(parsed.lastSaved));
+            setIsSaved(true);
+          }
+        } catch (e) {
+          console.error('Failed to parse saved report data', e);
         }
       }
     }
@@ -184,6 +235,56 @@ export default function SellerReportBuilder() {
     }
   };
 
+  const handleSaveReport = () => {
+    if (!propertyId) return;
+
+    const reportData = {
+      agentCommentary,
+      marketInsights,
+      heroSummary,
+      propertySummary,
+      medianSuburbPrice,
+      daysOnMarket,
+      recentComparableSales,
+      logoUrl,
+      headshotUrl,
+      agentName,
+      agentTitle,
+      agentPhone,
+      agentEmail,
+      lastSaved: new Date().toISOString(),
+    };
+
+    try {
+      localStorage.setItem(`report-data-${propertyId}`, JSON.stringify(reportData));
+      setIsSaved(true);
+      const savedTime = new Date();
+      setLastSaved(savedTime);
+      
+      // Clear any existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+      
+      // Reset saved state after 3 seconds
+      saveTimeoutRef.current = setTimeout(() => {
+        setIsSaved(false);
+      }, 3000);
+      
+      toast({
+        title: 'Report saved',
+        description: 'Your report has been saved successfully.',
+      });
+    } catch (error) {
+      console.error('Failed to save report', error);
+      toast({
+        title: 'Error saving report',
+        description: 'Failed to save report data. Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (propertyLoading || buyersLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -263,8 +364,30 @@ export default function SellerReportBuilder() {
                 Back
               </Button>
               <h1 className="text-lg font-semibold">Seller Activity Report</h1>
+              {lastSaved && (
+                <span className="text-xs text-gray-500">
+                  Last saved: {lastSaved.toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                onClick={handleSaveReport}
+                variant="outline"
+                className={isSaved ? 'bg-green-50 border-green-200 text-green-700 hover:bg-green-100' : ''}
+              >
+                {isSaved ? (
+                  <>
+                    <Check className="w-4 h-4 mr-2" />
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save Report
+                  </>
+                )}
+              </Button>
               <Button
                 onClick={handleDownloadPdf}
                 variant="outline"
