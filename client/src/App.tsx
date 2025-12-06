@@ -28,6 +28,7 @@ const Jobs = React.lazy(() => import("@/pages/jobs"));
 const Properties = React.lazy(() => import("@/pages/properties"));
 const JobDetail = React.lazy(() => import("@/pages/job-detail"));
 const PropertyDetail = React.lazy(() => import("@/pages/property-detail"));
+const SellerReportBuilder = React.lazy(() => import("@/pages/seller-report-builder"));
 const CanvasEditorPage = React.lazy(() => import("@/pages/CanvasEditorPage"));
 const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page"));
 const NewEditor = React.lazy(() => import("@/new_editor/NewEditor").then(m => ({ default: m.NewEditor })));
@@ -231,6 +232,14 @@ function ProtectedRouter() {
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
                     <PropertyDetail />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/seller-report-builder/:propertyId">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <SellerReportBuilder />
                   </Suspense>
                 </ProtectedRoute>
               </Route>

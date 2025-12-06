@@ -51,6 +51,7 @@ import { PropertyNotes } from "@/components/properties/PropertyNotes";
 import { BuyerFormLinkDialog } from "@/components/buyer-forms/BuyerFormLinkDialog";
 import { MatchedBuyersPanel } from "@/components/properties/MatchedBuyersPanel";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ReportImageSelectionModal, type SelectedImages } from "@/components/reports/ReportImageSelectionModal";
 
 export default function PropertyDetail() {
   const [, params] = useRoute('/properties/:id');
@@ -64,6 +65,7 @@ export default function PropertyDetail() {
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [showQuoteEditor, setShowQuoteEditor] = useState(false);
   const [showBuyerFormDialog, setShowBuyerFormDialog] = useState(false);
+  const [showImageSelectionModal, setShowImageSelectionModal] = useState(false);
   const isRealEstate = useIsRealEstate();
   const { user } = useAuthStore();
 
@@ -553,6 +555,16 @@ export default function PropertyDetail() {
               <LinkIcon className="w-4 h-4 mr-2" />
               Share Buyer Form
             </Button>
+            {isRealEstate && (
+              <Button 
+                variant="default" 
+                onClick={() => setShowImageSelectionModal(true)}
+                data-testid="button-generate-seller-report"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Generate Seller Report
+              </Button>
+            )}
             <Button variant="outline" onClick={handleEditJob} data-testid="button-edit-job">
               <Edit className="w-4 h-4 mr-2" />
               Edit Property
@@ -1516,6 +1528,40 @@ export default function PropertyDetail() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Report Image Selection Modal */}
+      <ReportImageSelectionModal
+        open={showImageSelectionModal}
+        onClose={() => setShowImageSelectionModal(false)}
+        onConfirm={(selection: SelectedImages) => {
+          // Guard against missing jobId
+          if (!jobId) {
+            toast({
+              title: 'Error',
+              description: 'Property ID is missing. Cannot generate report.',
+              variant: 'destructive',
+            });
+            setShowImageSelectionModal(false);
+            return;
+          }
+
+          // Store selection in localStorage
+          localStorage.setItem(`report-images-${jobId}`, JSON.stringify(selection));
+          setShowImageSelectionModal(false);
+          // Navigate to report builder
+          navigate(`/seller-report-builder/${jobId}`);
+        }}
+        images={marketingPhotos.map(photo => {
+          // Get the first available URL, or use empty string for display fallback
+          const url = photo.originalUrl || photo.url || photo.thumbnailUrl || '';
+          return {
+            id: photo.id,
+            url,
+            originalUrl: photo.originalUrl,
+            thumbnailUrl: photo.thumbnailUrl,
+          };
+        })}
+      />
     </div>
   );
 }

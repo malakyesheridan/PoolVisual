@@ -115,6 +115,7 @@
     "framer-motion": "^11.18.2",
     "get-port": "^7.1.0",
     "got": "^14.4.7",
+    "html2pdf.js": "^0.10.2",
     "input-otp": "^1.4.2",
     "ioredis": "^5.3.2",
     "iron-session": "^8.0.4",
