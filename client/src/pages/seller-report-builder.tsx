@@ -7,13 +7,12 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Download, Mail, Loader2 } from 'lucide-react';
 import { ReportLayout } from '@/components/reports/ReportLayout';
 import { ReportHeroImage } from '@/components/reports/ReportHeroImage';
-import { ReportSection } from '@/components/reports/ReportSection';
-import { ReportStatCard } from '@/components/reports/ReportStatCard';
+import { ReportCampaignOverview } from '@/components/reports/ReportCampaignOverview';
+import { ReportPropertyOverview } from '@/components/reports/ReportPropertyOverview';
 import { ReportBuyerMatchSection } from '@/components/reports/ReportBuyerMatchSection';
 import { ReportMarketOverview } from '@/components/reports/ReportMarketOverview';
 import { ReportImageGallery } from '@/components/reports/ReportImageGallery';
 import { ReportAgentCommentaryEditor } from '@/components/reports/ReportAgentCommentaryEditor';
-import { ReportGraph } from '@/components/reports/ReportGraph';
 import { exportToPdf, exportToPdfBase64 } from '@/lib/pdf/clientPdfExporter';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +27,11 @@ export default function SellerReportBuilder() {
   
   const [agentCommentary, setAgentCommentary] = useState('');
   const [marketInsights, setMarketInsights] = useState('');
+  const [heroSummary, setHeroSummary] = useState('');
+  const [propertySummary, setPropertySummary] = useState('');
+  const [medianSuburbPrice, setMedianSuburbPrice] = useState('');
+  const [daysOnMarket, setDaysOnMarket] = useState('');
+  const [recentComparableSales, setRecentComparableSales] = useState('');
   const [selectedImages, setSelectedImages] = useState<{
     heroImageId?: string | null;
     additionalImageIds?: string[];
@@ -237,13 +241,6 @@ export default function SellerReportBuilder() {
   // Prepare buyer match data
   const buyerMatches = matchedBuyers?.matches || [];
 
-  // Prepare graph data for buyer interest levels
-  const interestLevelData = [
-    { label: 'Strong Match', value: buyerMatches.filter(m => m.matchTier === 'strong').length, color: '#10b981' },
-    { label: 'Medium Match', value: buyerMatches.filter(m => m.matchTier === 'medium').length, color: '#f59e0b' },
-    { label: 'Weak Match', value: buyerMatches.filter(m => m.matchTier === 'weak').length, color: '#6b7280' },
-  ].filter(d => d.value > 0);
-
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Toolbar */}
@@ -282,67 +279,59 @@ export default function SellerReportBuilder() {
 
       {/* Report Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div ref={reportRef} className="bg-white rounded-lg shadow-sm p-8">
+        <div ref={reportRef} className="bg-white tracking-tight">
           <ReportLayout>
-            {/* Hero Image */}
+            {/* Hero Image with Address and Summary */}
             <ReportHeroImage
               imageUrl={heroImageUrl}
               address={property.address || property.clientName}
+              summary={heroSummary}
+              onSummaryChange={setHeroSummary}
+            />
+
+            {/* Campaign Overview */}
+            <ReportCampaignOverview
+              daysOnMarket={(() => {
+                if (!property.listingDate) return undefined;
+                try {
+                  const listingDate = new Date(property.listingDate);
+                  const listingTime = listingDate.getTime();
+                  // Check if date is valid (getTime returns NaN for invalid dates)
+                  if (isNaN(listingTime)) return undefined;
+                  const days = Math.floor((Date.now() - listingTime) / (1000 * 60 * 60 * 24));
+                  // Ensure result is a valid number
+                  return isNaN(days) ? undefined : days;
+                } catch {
+                  return undefined;
+                }
+              })()}
+              advertisedPrice={property.estimatedPrice ? Number(property.estimatedPrice) : undefined}
+              enquiries={buyerMatches.length}
             />
 
             {/* Property Overview */}
-            <ReportSection title="Property Overview">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {property.bedrooms && (
-                  <ReportStatCard
-                    label="Bedrooms"
-                    value={property.bedrooms}
-                  />
-                )}
-                {property.bathrooms && (
-                  <ReportStatCard
-                    label="Bathrooms"
-                    value={property.bathrooms}
-                  />
-                )}
-                {property.landSize && (
-                  <ReportStatCard
-                    label="Land Size"
-                    value={`${property.landSize} m²`}
-                  />
-                )}
-                {property.propertyType && (
-                  <ReportStatCard
-                    label="Property Type"
-                    value={property.propertyType}
-                  />
-                )}
-              </div>
-            </ReportSection>
+            <ReportPropertyOverview
+              bedrooms={property.bedrooms}
+              bathrooms={property.bathrooms}
+              carSpaces={property.garageSpaces}
+              landSize={property.landSizeM2 || property.landSize}
+              summary={propertySummary}
+              onSummaryChange={setPropertySummary}
+            />
 
             {/* Market Overview */}
             <ReportMarketOverview
-              listingDate={property.listingDate}
-              estimatedPrice={property.estimatedPrice ? Number(property.estimatedPrice) : null}
-              suburb={property.suburb}
+              medianSuburbPrice={medianSuburbPrice}
+              daysOnMarket={daysOnMarket}
+              recentComparableSales={recentComparableSales}
+              onMedianPriceChange={setMedianSuburbPrice}
+              onDaysOnMarketChange={setDaysOnMarket}
+              onComparableSalesChange={setRecentComparableSales}
             />
 
-            {/* Buyer Matches */}
+            {/* Buyer Match Analysis */}
             {buyerMatches.length > 0 && (
-              <>
-                <ReportBuyerMatchSection matches={buyerMatches} />
-                
-                {/* Interest Level Graph */}
-                {interestLevelData.length > 0 && (
-                  <div className="mb-8">
-                    <ReportGraph
-                      data={interestLevelData}
-                      title="Buyer Interest Levels"
-                      type="donut"
-                    />
-                  </div>
-                )}
-              </>
+              <ReportBuyerMatchSection matches={buyerMatches} />
             )}
 
             {/* Image Gallery */}

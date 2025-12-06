@@ -10,11 +10,11 @@ export function ReportImageGallery({ images, title = 'Property Images' }: Report
 
   return (
     <ReportSection title={title}>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         {images.map((url, index) => (
           <div
             key={index}
-            className="aspect-video rounded-lg overflow-hidden border border-gray-200"
+            className="h-[150px] overflow-hidden shadow-sm"
           >
             <img
               src={url}
