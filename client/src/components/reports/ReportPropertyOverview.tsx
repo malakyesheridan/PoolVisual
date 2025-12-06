@@ -27,17 +27,17 @@ export function ReportPropertyOverview({
             value={summary || ''}
             onChange={(e) => onSummaryChange(e.target.value)}
             placeholder="Enter a summary of the property..."
-            className="text-sm leading-relaxed text-gray-700 min-h-[100px] resize-none border-gray-300 focus:border-gray-400"
+            className="text-base leading-relaxed text-gray-700 min-h-[100px] resize-none border-gray-300 focus:border-gray-400"
           />
         ) : (
-          <p className="text-sm leading-relaxed text-gray-700">
+          <p className="text-base leading-relaxed text-gray-700">
             {summary || 'No summary provided.'}
           </p>
         )}
       </div>
 
       {/* 2-column layout for property stats */}
-      <div className="grid grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Beds</div>
           <div className="text-lg font-semibold text-gray-900 tracking-tight">

@@ -10,17 +10,17 @@ export function ReportImageGallery({ images, title = 'Property Images' }: Report
 
   return (
     <ReportSection title={title}>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 gap-4">
         {images.map((url, index) => (
-          <div
-            key={index}
-            className="h-[150px] overflow-hidden shadow-sm"
-          >
-            <img
-              src={url}
-              alt={`Property image ${index + 1}`}
-              className="w-full h-full object-cover"
-            />
+          <div key={index}>
+            <div className="rounded-lg overflow-hidden h-[200px]">
+              <img
+                src={url}
+                alt={`Property image ${index + 1}`}
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="text-sm text-gray-500 mt-1">Caption</div>
           </div>
         ))}
       </div>

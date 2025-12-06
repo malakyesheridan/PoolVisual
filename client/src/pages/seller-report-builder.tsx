@@ -46,6 +46,12 @@ export default function SellerReportBuilder() {
   });
   const [showEmailDialog, setShowEmailDialog] = useState(false);
   const [emailAddress, setEmailAddress] = useState('');
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [headshotUrl, setHeadshotUrl] = useState<string | null>(null);
+  const [agentName, setAgentName] = useState('');
+  const [agentTitle, setAgentTitle] = useState('');
+  const [agentPhone, setAgentPhone] = useState('');
+  const [agentEmail, setAgentEmail] = useState('');
 
   // Load property data
   const { data: property, isLoading: propertyLoading } = useQuery({
@@ -279,15 +285,158 @@ export default function SellerReportBuilder() {
 
       {/* Report Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div ref={reportRef} className="bg-white tracking-tight">
-          <ReportLayout>
-            {/* Hero Image with Address and Summary */}
-            <ReportHeroImage
-              imageUrl={heroImageUrl}
-              address={property.address || property.clientName}
-              summary={heroSummary}
-              onSummaryChange={setHeroSummary}
-            />
+        <div className="flex gap-8">
+          {/* Sidebar for Branding */}
+          <div className="w-64 flex-shrink-0">
+            <div className="bg-white rounded-lg border border-gray-200 p-4 sticky top-24">
+              <h3 className="text-lg font-medium mb-4">Branding</h3>
+              
+              {/* Logo Upload */}
+              <div className="mb-4">
+                <Label htmlFor="logo-upload" className="text-sm text-gray-500 mb-2 block">
+                  Logo
+                </Label>
+                <Input
+                  id="logo-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setLogoUrl(event.target?.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="text-sm"
+                />
+                {logoUrl && (
+                  <div className="mt-2">
+                    <img src={logoUrl} alt="Logo preview" className="max-w-[120px] h-auto object-contain" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setLogoUrl(null)}
+                      className="mt-1 text-xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Headshot Upload */}
+              <div className="mb-4">
+                <Label htmlFor="headshot-upload" className="text-sm text-gray-500 mb-2 block">
+                  Agent Headshot
+                </Label>
+                <Input
+                  id="headshot-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setHeadshotUrl(event.target?.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="text-sm"
+                />
+                {headshotUrl && (
+                  <div className="mt-2">
+                    <img src={headshotUrl} alt="Headshot preview" className="w-16 h-16 rounded-full object-cover" />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setHeadshotUrl(null)}
+                      className="mt-1 text-xs"
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Agent Details */}
+              <div className="space-y-3">
+                <div>
+                  <Label htmlFor="agent-name" className="text-sm text-gray-500 mb-1 block">
+                    Agent Name
+                  </Label>
+                  <Input
+                    id="agent-name"
+                    type="text"
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder="John Smith"
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="agent-title" className="text-sm text-gray-500 mb-1 block">
+                    Title
+                  </Label>
+                  <Input
+                    id="agent-title"
+                    type="text"
+                    value={agentTitle}
+                    onChange={(e) => setAgentTitle(e.target.value)}
+                    placeholder="Senior Sales Agent"
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="agent-phone" className="text-sm text-gray-500 mb-1 block">
+                    Phone
+                  </Label>
+                  <Input
+                    id="agent-phone"
+                    type="text"
+                    value={agentPhone}
+                    onChange={(e) => setAgentPhone(e.target.value)}
+                    placeholder="+61 400 000 000"
+                    className="text-sm"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="agent-email" className="text-sm text-gray-500 mb-1 block">
+                    Email
+                  </Label>
+                  <Input
+                    id="agent-email"
+                    type="email"
+                    value={agentEmail}
+                    onChange={(e) => setAgentEmail(e.target.value)}
+                    placeholder="agent@example.com"
+                    className="text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Report Content */}
+          <div ref={reportRef} className="bg-white tracking-tight flex-1">
+            <ReportLayout>
+              {/* Hero Image with Address and Summary */}
+              <ReportHeroImage
+                imageUrl={heroImageUrl}
+                address={property.address || property.clientName}
+                summary={heroSummary}
+                onSummaryChange={setHeroSummary}
+                logoUrl={logoUrl}
+                headshotUrl={headshotUrl}
+                agentName={agentName}
+                agentTitle={agentTitle}
+                agentPhone={agentPhone}
+                agentEmail={agentEmail}
+              />
 
             {/* Campaign Overview */}
             <ReportCampaignOverview
@@ -356,6 +505,7 @@ export default function SellerReportBuilder() {
               label="Market Insights"
             />
           </ReportLayout>
+          </div>
         </div>
       </div>
 

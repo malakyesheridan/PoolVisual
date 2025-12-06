@@ -24,7 +24,7 @@ export function ReportCampaignOverview({
 
   return (
     <ReportSection title="Campaign Overview">
-      <div className="flex flex-row justify-between items-start gap-6">
+      <div className="flex flex-row justify-between items-start gap-4">
         {/* Days on Market */}
         <div className="flex-1 flex flex-col">
           <div className="flex items-center gap-2 mb-2">

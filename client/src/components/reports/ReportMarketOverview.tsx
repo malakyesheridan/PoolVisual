@@ -39,7 +39,8 @@ export function ReportMarketOverview({
 
   return (
     <ReportSection title="Market Overview">
-      <div className="space-y-4">
+      <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+        <div className="space-y-4">
         <div>
           <Label htmlFor="median-price" className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">
             Median Suburb Price
@@ -54,7 +55,7 @@ export function ReportMarketOverview({
               className="text-sm"
             />
           ) : (
-            <div className="text-sm leading-relaxed text-gray-700">
+            <div className="text-base leading-relaxed text-gray-700">
               {!isEmpty(medianSuburbPrice) ? formatCurrency(medianSuburbPrice) : 'Not provided'}
             </div>
           )}
@@ -74,7 +75,7 @@ export function ReportMarketOverview({
               className="text-sm"
             />
           ) : (
-            <div className="text-sm leading-relaxed text-gray-700">
+            <div className="text-base leading-relaxed text-gray-700">
               {!isEmpty(daysOnMarket) ? daysOnMarket : 'Not provided'}
             </div>
           )}
@@ -95,6 +96,7 @@ export function ReportMarketOverview({
             />
           </div>
         )}
+        </div>
       </div>
     </ReportSection>
   );

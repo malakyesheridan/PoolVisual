@@ -27,7 +27,7 @@ export function ReportBuyerMatchSection({ matches }: ReportBuyerMatchSectionProp
   if (matches.length === 0) {
     return (
       <ReportSection title="Buyer Match Analysis">
-        <p className="text-sm leading-relaxed text-gray-600">No buyer matches found for this property.</p>
+        <p className="text-base leading-relaxed text-gray-600">No buyer matches found for this property.</p>
       </ReportSection>
     );
   }
@@ -54,8 +54,9 @@ export function ReportBuyerMatchSection({ matches }: ReportBuyerMatchSectionProp
 
   return (
     <ReportSection title="Buyer Match Analysis">
-      {/* SVG Donut Chart */}
-      <div className="mb-6">
+      <div className="bg-gray-50 rounded-lg p-5 border border-gray-200">
+        {/* SVG Donut Chart */}
+        <div className="mb-6">
         {donutData.length > 0 ? (
           <ReportGraph
             data={donutData}
@@ -82,8 +83,8 @@ export function ReportBuyerMatchSection({ matches }: ReportBuyerMatchSectionProp
       </div>
 
       {/* Plain-English Explanation */}
-      <div className="bg-gray-50 rounded-lg p-4">
-        <p className="text-sm leading-relaxed text-gray-700">
+      <div className="bg-white rounded-lg p-4 border border-gray-200">
+        <p className="text-base leading-relaxed text-gray-700">
           {totalMatches > 0 ? (
             <>
               This property has <strong>{totalMatches} active buyer match{totalMatches !== 1 ? 'es' : ''}</strong> in the system.
@@ -100,6 +101,7 @@ export function ReportBuyerMatchSection({ matches }: ReportBuyerMatchSectionProp
             'No buyer matches are currently available for this property.'
           )}
         </p>
+      </div>
       </div>
     </ReportSection>
   );
