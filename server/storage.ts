@@ -808,25 +808,67 @@ export class PostgresStorage implements IStorage {
       if (!job) throw new Error("Failed to update job");
       return job;
     } catch (error: any) {
-      // If update fails due to missing columns, try with only base fields
+      // If update fails due to missing columns, filter out new columns and retry
       if (error?.message?.includes('does not exist') || error?.code === '42703') {
-        console.warn('[updateJob] Some columns may not exist, trying with base fields only');
-        const baseUpdates: any = {};
-        const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
-        for (const field of baseFields) {
-          if (field in updates) {
-            baseUpdates[field] = (updates as any)[field];
+        console.warn('[updateJob] Some columns may not exist, filtering out new columns');
+        
+        // List of new columns that might not exist yet (from recent migrations)
+        const newColumns = [
+          'initialReportGeneratedAt',
+          'initial_report_generated_at',
+          'sellerLaunchInsights',
+          'seller_launch_insights',
+        ];
+        
+        // Filter out new columns that might not exist
+        const safeUpdates: any = {};
+        for (const [key, value] of Object.entries(updates)) {
+          if (!newColumns.includes(key)) {
+            safeUpdates[key] = value;
           }
         }
+        
+        // If we filtered out all updates, just return the existing job
+        if (Object.keys(safeUpdates).length === 0) {
+          const existingJob = await this.getJob(id);
+          if (existingJob) {
+            return existingJob;
+          }
+          throw new Error("Failed to update job - no valid fields to update");
+        }
+        
         try {
           const [job] = await ensureDb()
             .update(jobs)
-            .set(baseUpdates)
+            .set(safeUpdates)
             .where(eq(jobs.id, id))
             .returning();
           if (!job) throw new Error("Failed to update job");
           return job;
-        } catch (fallbackError) {
+        } catch (fallbackError: any) {
+          // If still failing, try with only base fields
+          console.warn('[updateJob] Still failing, trying with base fields only');
+          const baseUpdates: any = {};
+          const baseFields = ['clientName', 'clientPhone', 'clientEmail', 'address', 'status'];
+          for (const field of baseFields) {
+            if (field in updates) {
+              baseUpdates[field] = (updates as any)[field];
+            }
+          }
+          if (Object.keys(baseUpdates).length > 0) {
+            try {
+              const [job] = await ensureDb()
+                .update(jobs)
+                .set(baseUpdates)
+                .where(eq(jobs.id, id))
+                .returning();
+              if (!job) throw new Error("Failed to update job");
+              return job;
+            } catch (finalError) {
+              // If even base fields fail, rethrow original error
+              throw error;
+            }
+          }
           // If even base fields fail, rethrow original error
           throw error;
         }
@@ -1223,23 +1265,67 @@ export class PostgresStorage implements IStorage {
   }
 
   async getQuotes(userId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]> {
-    let conditions = [eq(jobs.userId, userId)];
-    
-    if (filters?.status) {
-      conditions.push(eq(quotes.status, filters.status as any));
+    try {
+      let conditions = [eq(jobs.userId, userId)];
+      
+      if (filters?.status) {
+        conditions.push(eq(quotes.status, filters.status as any));
+      }
+      
+      if (filters?.jobId) {
+        conditions.push(eq(quotes.jobId, filters.jobId));
+      }
+      
+      // Explicitly select only quotes columns to avoid issues with missing job columns
+      const results = await ensureDb()
+        .select({
+          quotes: quotes,
+        })
+        .from(quotes)
+        .innerJoin(jobs, eq(quotes.jobId, jobs.id))
+        .where(and(...conditions));
+      
+      return results.map(r => r.quotes);
+    } catch (error: any) {
+      // If error is due to missing columns in jobs table, try selecting only quotes columns
+      if (error?.message?.includes('does not exist') || error?.code === '42703') {
+        console.warn('[getQuotes] Some columns may not exist, trying with quotes only');
+        try {
+          // Select only from quotes table and filter by jobId manually
+          let quoteConditions = [];
+          if (filters?.status) {
+            quoteConditions.push(eq(quotes.status, filters.status as any));
+          }
+          if (filters?.jobId) {
+            quoteConditions.push(eq(quotes.jobId, filters.jobId));
+          }
+          
+          const allQuotes = await ensureDb()
+            .select()
+            .from(quotes)
+            .where(quoteConditions.length > 0 ? and(...quoteConditions) : undefined);
+          
+          // Filter by userId by checking job ownership
+          const filteredQuotes: Quote[] = [];
+          for (const quote of allQuotes) {
+            try {
+              const job = await this.getJob(quote.jobId);
+              if (job && job.userId === userId) {
+                filteredQuotes.push(quote);
+              }
+            } catch {
+              // Skip if job lookup fails
+            }
+          }
+          return filteredQuotes;
+        } catch (fallbackError) {
+          // If fallback also fails, return empty array to prevent app crash
+          console.error('[getQuotes] Fallback query also failed:', fallbackError);
+          return [];
+        }
+      }
+      throw error;
     }
-    
-    if (filters?.jobId) {
-      conditions.push(eq(quotes.jobId, filters.jobId));
-    }
-    
-    const results = await ensureDb()
-      .select()
-      .from(quotes)
-      .innerJoin(jobs, eq(quotes.jobId, jobs.id))
-      .where(and(...conditions));
-    
-    return results.map(r => r.quotes);
   }
 
   async addQuoteItem(insertItem: InsertQuoteItem): Promise<QuoteItem> {

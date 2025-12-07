@@ -167,12 +167,17 @@ export async function runListingColdStart(propertyId: string): Promise<void> {
     
     // Store report reference (we'll use a simple approach: store URL in a note or metadata)
     // For now, we'll just set the timestamp to indicate report should be generated
-    await storage.updateJob(propertyId, {
-      initialReportGeneratedAt: new Date(),
-    } as any);
-
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`[ColdStart] Marked report for generation: ${reportUrl}`);
+    // Wrap in try-catch in case columns don't exist yet (migration not run)
+    try {
+      await storage.updateJob(propertyId, {
+        initialReportGeneratedAt: new Date(),
+      } as any);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[ColdStart] Marked report for generation: ${reportUrl}`);
+      }
+    } catch (error: any) {
+      // If columns don't exist yet, log warning but don't fail
+      console.warn('[ColdStart] Failed to set initialReportGeneratedAt (migration may not be run):', error?.message);
     }
 
     // STEP 6: Store seller launch insights
@@ -182,9 +187,17 @@ export async function runListingColdStart(propertyId: string): Promise<void> {
       topMatchedBuyers,
     };
 
-    await storage.updateJob(propertyId, {
-      sellerLaunchInsights: insights as any,
-    } as any);
+    try {
+      await storage.updateJob(propertyId, {
+        sellerLaunchInsights: insights as any,
+      } as any);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[ColdStart] Stored launch insights for property ${propertyId}`);
+      }
+    } catch (error: any) {
+      // If columns don't exist yet, log warning but don't fail
+      console.warn('[ColdStart] Failed to store sellerLaunchInsights (migration may not be run):', error?.message);
+    }
 
     if (process.env.NODE_ENV === 'development') {
       console.log(`[ColdStart] Stored launch insights for property ${propertyId}`);
