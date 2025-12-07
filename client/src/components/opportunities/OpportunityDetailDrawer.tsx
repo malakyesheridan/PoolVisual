@@ -368,28 +368,50 @@ export function OpportunityDetailDrawer({
 
   // REBUILT: Save to backend FIRST, then notify parent to refetch
   const updateOpportunityMutation = useMutation({
-    mutationFn: (updates: Partial<Opportunity>) => 
-      apiClient.updateOpportunity(opportunity!.id, updates),
+    mutationFn: (updates: Partial<Opportunity>) => {
+      console.log('[OpportunityDetailDrawer] mutationFn called with updates:', {
+        hasAppraisalDate: 'appraisalDate' in updates,
+        appraisalDate: updates.appraisalDate,
+      });
+      return apiClient.updateOpportunity(opportunity!.id, updates);
+    },
     onSuccess: async (updatedOpportunity) => {
+      console.log('[OpportunityDetailDrawer] onSuccess received updatedOpportunity:', {
+        hasAppraisalDate: 'appraisalDate' in updatedOpportunity,
+        appraisalDate: updatedOpportunity.appraisalDate,
+        appraisalDateType: typeof updatedOpportunity.appraisalDate,
+        appraisalDateString: updatedOpportunity.appraisalDate?.toString(),
+      });
+      
       toast({ title: 'Opportunity updated', description: 'Changes saved successfully.' });
       setIsEditing(false);
       
-      // CRITICAL: Update local state immediately with server response
-      // This ensures the drawer shows the updated data without waiting for refetch
-      if (updatedOpportunity && opportunity) {
-        // Update the opportunity prop by notifying parent with the updated data
-        // The parent should update selectedOpportunity with this data
-        await onOpportunityUpdated();
-        
-        // Also update local edited state to match server response
+      // CRITICAL: Update local state FIRST from server response
+      // This ensures the drawer shows the updated data immediately
+      if (updatedOpportunity) {
+        // Parse appraisalDate from response (could be Date object or ISO string after JSON serialization)
+        let parsedAppraisalDate: string = '';
         if (updatedOpportunity.appraisalDate) {
-          const dateStr = updatedOpportunity.appraisalDate.toString();
-          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            setEditedAppraisalDate(dateStr);
-          } else if (dateStr.includes('T') || dateStr.includes('Z')) {
+          // Handle both Date objects and ISO strings (JSON serialization converts Date to string)
+          const dateValue = updatedOpportunity.appraisalDate;
+          let dateStr: string;
+          
+          if (dateValue instanceof Date) {
+            dateStr = dateValue.toISOString();
+          } else if (typeof dateValue === 'string') {
+            dateStr = dateValue;
+          } else {
+            dateStr = String(dateValue);
+          }
+          
+          console.log('[OpportunityDetailDrawer] Processing appraisalDate from response:', dateStr);
+          
+          // Extract YYYY-MM-DD from ISO string
+          if (dateStr.includes('T') || dateStr.includes('Z')) {
             const datePart = dateStr.split('T')[0];
             if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
-              setEditedAppraisalDate(datePart);
+              parsedAppraisalDate = datePart;
+              console.log('[OpportunityDetailDrawer] Extracted date part:', parsedAppraisalDate);
             } else {
               try {
                 const dateObj = new Date(dateStr);
@@ -397,18 +419,28 @@ export function OpportunityDetailDrawer({
                   const year = dateObj.getUTCFullYear();
                   const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
                   const day = String(dateObj.getUTCDate()).padStart(2, '0');
-                  setEditedAppraisalDate(`${year}-${month}-${day}`);
+                  parsedAppraisalDate = `${year}-${month}-${day}`;
+                  console.log('[OpportunityDetailDrawer] Parsed date to:', parsedAppraisalDate);
                 }
-              } catch {
-                // Keep existing value
+              } catch (e) {
+                console.error('[OpportunityDetailDrawer] Error parsing date:', e);
               }
             }
+          } else if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            parsedAppraisalDate = dateStr;
+            console.log('[OpportunityDetailDrawer] Date already in YYYY-MM-DD format:', parsedAppraisalDate);
           }
-        } else {
-          setEditedAppraisalDate('');
-          setAppraisalCompleted(null);
         }
+        
+        // Update local state IMMEDIATELY
+        setEditedAppraisalDate(parsedAppraisalDate);
+        setAppraisalCompleted(parsedAppraisalDate ? true : false);
+        console.log('[OpportunityDetailDrawer] Updated local state - editedAppraisalDate:', parsedAppraisalDate);
+        
+        // THEN notify parent to refetch (this will update the opportunity prop)
+        await onOpportunityUpdated();
       } else {
+        console.warn('[OpportunityDetailDrawer] No updatedOpportunity in response');
         // Fallback: notify parent to refetch from backend
         await onOpportunityUpdated();
       }
