@@ -3873,10 +3873,29 @@ export async function registerRoutes(app: Express): Promise<void> {
         'closed_lost': 'lost',
       };
       
+      // DEBUG: Log appraisalDate before mapping
+      console.log(`[GET /api/opportunities/:id] Opportunity appraisalDate:`, {
+        raw: opportunity.appraisalDate,
+        type: typeof opportunity.appraisalDate,
+        isDate: opportunity.appraisalDate instanceof Date,
+        isValid: opportunity.appraisalDate instanceof Date ? !isNaN(opportunity.appraisalDate.getTime()) : null,
+        iso: opportunity.appraisalDate instanceof Date ? opportunity.appraisalDate.toISOString() : String(opportunity.appraisalDate),
+      });
+      
       const mappedOpportunity = {
         ...opportunity,
         status: reverseStatusMap[opportunity.status] || opportunity.status,
+        // Ensure appraisalDate is properly serialized as ISO string if it's a Date
+        appraisalDate: opportunity.appraisalDate instanceof Date 
+          ? opportunity.appraisalDate.toISOString() 
+          : opportunity.appraisalDate,
       };
+      
+      // DEBUG: Log after mapping
+      console.log(`[GET /api/opportunities/:id] Mapped opportunity appraisalDate:`, {
+        raw: mappedOpportunity.appraisalDate,
+        type: typeof mappedOpportunity.appraisalDate,
+      });
       
       res.json(mappedOpportunity);
     } catch (error) {
