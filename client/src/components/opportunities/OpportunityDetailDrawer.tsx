@@ -41,7 +41,7 @@ import {
   Save
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
-import { format } from 'date-fns';
+import { format, parse } from 'date-fns';
 
 interface Opportunity {
   id: string;
@@ -61,6 +61,7 @@ interface Opportunity {
   notes?: string;
   propertyJobId?: string;
   propertyName?: string;
+  appraisalDate?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -133,6 +134,8 @@ export function OpportunityDetailDrawer({
   const [editedContactEmail, setEditedContactEmail] = useState('');
   const [editedContactAddress, setEditedContactAddress] = useState('');
   const [currentContactId, setCurrentContactId] = useState<string | null>(null);
+  const [editedAppraisalDate, setEditedAppraisalDate] = useState<string>('');
+  const [appraisalCompleted, setAppraisalCompleted] = useState<boolean | null>(null);
 
   const isNewOpportunity = !opportunity?.id;
 
@@ -196,6 +199,16 @@ export function OpportunityDetailDrawer({
       setEditedContactAddress(''); // Will be loaded from contact if contactId exists
       setCurrentContactId(opportunity.contactId || null);
       
+      // Initialize appraisal date
+      if (opportunity.appraisalDate) {
+        const date = new Date(opportunity.appraisalDate);
+        setEditedAppraisalDate(date.toISOString().split('T')[0]);
+        setAppraisalCompleted(true);
+      } else {
+        setEditedAppraisalDate('');
+        setAppraisalCompleted(null);
+      }
+      
       setIsEditing(isNewOpportunity);
     } else {
       setEditedTitle('');
@@ -210,6 +223,8 @@ export function OpportunityDetailDrawer({
       setEditedContactEmail('');
       setEditedContactAddress('');
       setCurrentContactId(null);
+      setEditedAppraisalDate('');
+      setAppraisalCompleted(null);
       setIsEditing(false);
     }
   }, [opportunity?.id, isNewOpportunity]);
@@ -438,6 +453,7 @@ export function OpportunityDetailDrawer({
         pipelineStage: defaultStage?.name || 'new',
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
+        appraisalDate: editedAppraisalDate || null,
       });
     } else {
       updateOpportunityMutation.mutate({
@@ -449,6 +465,7 @@ export function OpportunityDetailDrawer({
         status: editedStatus,
         opportunityType: editedOpportunityType,
         contactId: contactIdToUse,
+        appraisalDate: editedAppraisalDate || null,
         stageId: editedStageId,
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
@@ -1713,6 +1730,79 @@ export function OpportunityDetailDrawer({
               </div>
             </CardContent>
           </Card>
+
+          {/* Appraisal Information Card */}
+          {isRealEstate && (editedOpportunityType === 'seller' || editedOpportunityType === 'both') && (
+            <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  Appraisal Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Quick selector */}
+                {isEditing && appraisalCompleted === null && (
+                  <div>
+                    <Label className="text-sm font-medium text-slate-700 mb-2 block">
+                      Did you complete an appraisal?
+                    </Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant={appraisalCompleted === true ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setAppraisalCompleted(true);
+                          // Use local timezone date, not UTC
+                          const today = format(new Date(), 'yyyy-MM-dd');
+                          setEditedAppraisalDate(today);
+                        }}
+                      >
+                        Yes
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={appraisalCompleted === false ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          setAppraisalCompleted(false);
+                          setEditedAppraisalDate('');
+                        }}
+                      >
+                        No
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Date picker */}
+                <div>
+                  <Label className="text-sm font-medium text-slate-700">Appraisal Date</Label>
+                  {isEditing ? (
+                    <Input
+                      type="date"
+                      value={editedAppraisalDate}
+                      onChange={(e) => {
+                        setEditedAppraisalDate(e.target.value);
+                        setAppraisalCompleted(e.target.value ? true : false);
+                      }}
+                      onBlur={() => {
+                        // Auto-save on blur is handled by existing save handler
+                      }}
+                      className="mt-1 border-2 border-slate-300 focus:border-primary focus:ring-2 focus:ring-primary/20 bg-white"
+                    />
+                  ) : (
+                    <div className="mt-1 font-semibold text-slate-900">
+                      {editedAppraisalDate 
+                        ? format(parse(editedAppraisalDate, 'yyyy-MM-dd', new Date()), 'PPP')
+                        : 'Not set'}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Relationship Information Card */}
           <Card>

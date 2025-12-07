@@ -1019,6 +1019,23 @@ export async function registerRoutes(app: Express): Promise<void> {
       };
 
       const job = await storage.createJob(jobData, req.user.id);
+      
+      // Check for missing property fields and create action if needed
+      try {
+        const { checkMissingPropertyFields } = await import('./lib/actionHelper.js');
+        const userOrgs = await storage.getUserOrgs(req.user.id);
+        const orgId = userOrgs.length > 0 ? userOrgs[0].id : null;
+        if (orgId) {
+          // Fetch the full job to check all fields
+          const fullJob = await storage.getJob(job.id);
+          if (fullJob) {
+            await checkMissingPropertyFields(job.id, fullJob, orgId, req.user.id);
+          }
+        }
+      } catch (actionError: any) {
+        console.warn('[POST /api/jobs] Failed to check for missing property fields:', actionError?.message);
+      }
+      
       res.json(job);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1498,6 +1515,22 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // Update job with provided fields
       const updatedJob = await storage.updateJob(jobId, updates);
+      
+      // Check for missing property fields and create action if needed
+      try {
+        const { checkMissingPropertyFields } = await import('./lib/actionHelper.js');
+        const userOrgs = await storage.getUserOrgs(req.user.id);
+        const orgId = updatedJob.orgId || (userOrgs.length > 0 ? userOrgs[0].id : null);
+        if (orgId) {
+          // Fetch the full updated job to check all fields
+          const fullJob = await storage.getJob(jobId);
+          if (fullJob) {
+            await checkMissingPropertyFields(jobId, fullJob, orgId, req.user.id);
+          }
+        }
+      } catch (actionError: any) {
+        console.warn('[PATCH /api/jobs/:id] Failed to check for missing property fields:', actionError?.message);
+      }
       
       // Generate match suggestions after property update (async, don't block response)
       // Only if price, suburb, beds, baths, or property type changed
@@ -3572,6 +3605,74 @@ export async function registerRoutes(app: Express): Promise<void> {
         console.warn('[GET /api/opportunities] Failed to check for stalled opportunities:', actionError?.message);
       }
       
+      // Trigger: Appraisal Follow-Ups - Check for opportunities with appraisals that need follow-up
+      try {
+        const { createActionIfNotExists } = await import('./lib/actionHelper.js');
+        const userOrgs = await storage.getUserOrgs(String(requestingUserId));
+        const defaultOrgId = userOrgs.length > 0 ? userOrgs[0].id : null;
+        
+        if (defaultOrgId) {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          
+          for (const opp of opportunities) {
+            // Only check opportunities that are not closed
+            const isClosed = opp.status === 'closed_won' || opp.status === 'closed_lost' || opp.status === 'abandoned';
+            if (isClosed) continue;
+            
+            // Check if opportunity has an appraisal date
+            if (!opp.appraisalDate) continue;
+            
+            // Use opportunity's orgId if available, otherwise fall back to user's first org
+            const oppOrgId = opp.orgId || defaultOrgId;
+            
+            const appraisalDate = new Date(opp.appraisalDate);
+            appraisalDate.setHours(0, 0, 0, 0);
+            
+            // Calculate days since appraisal
+            const daysSinceAppraisal = Math.floor((today.getTime() - appraisalDate.getTime()) / (1000 * 60 * 60 * 24));
+            
+            // Check for 7-day follow-up
+            if (daysSinceAppraisal === 7) {
+              await createActionIfNotExists({
+                orgId: oppOrgId,
+                agentId: String(requestingUserId),
+                opportunityId: opp.id,
+                type: 'appraisal_follow_up',
+                description: 'This appraisal was completed 7 days ago. Follow up with the seller.',
+                priority: 'high',
+              });
+            }
+            
+            // Check for 30-day follow-up
+            if (daysSinceAppraisal === 30) {
+              await createActionIfNotExists({
+                orgId: oppOrgId,
+                agentId: String(requestingUserId),
+                opportunityId: opp.id,
+                type: 'appraisal_follow_up',
+                description: 'This appraisal was completed 30 days ago. Follow up with the seller.',
+                priority: 'high',
+              });
+            }
+            
+            // Check for 90-day follow-up
+            if (daysSinceAppraisal === 90) {
+              await createActionIfNotExists({
+                orgId: oppOrgId,
+                agentId: String(requestingUserId),
+                opportunityId: opp.id,
+                type: 'appraisal_follow_up',
+                description: 'This appraisal was completed 90 days ago. Follow up with the seller.',
+                priority: 'high',
+              });
+            }
+          }
+        }
+      } catch (actionError: any) {
+        console.warn('[GET /api/opportunities] Failed to check for appraisal follow-ups:', actionError?.message);
+      }
+      
       res.json(mappedOpportunities);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -3621,7 +3722,9 @@ export async function registerRoutes(app: Express): Promise<void> {
         title, value, stageId, pipelineId, contactId, ownerId, tags, opportunityType,
         // Legacy fields (backward compatibility)
         clientName, clientPhone, clientEmail, propertyAddress, propertyJobId, 
-        status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes 
+        status, pipelineStage, estimatedValue, probabilityPct, expectedCloseDate, source, notes,
+        // Appraisal workflow
+        appraisalDate
       } = req.body;
 
       // Support both new (title) and old (clientName) formats
@@ -3674,6 +3777,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         expectedCloseDate: expectedCloseDate || null,
         source: source || null,
         notes: notes || null,
+        appraisalDate: appraisalDate || null,
       };
 
       // Add new Kanban fields if provided
@@ -4249,8 +4353,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Actions endpoints
   app.get("/api/actions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
-      const { priority, type } = req.query;
+      const { priority, type, grouped } = req.query;
       let actions = await storage.getActionsByUser(req.user.id);
+      
+      // Filter out completed actions for main view
+      actions = actions.filter(a => !a.completedAt);
       
       // Apply filters
       if (priority && typeof priority === 'string') {
@@ -4260,7 +4367,130 @@ export async function registerRoutes(app: Express): Promise<void> {
         actions = actions.filter(a => a.actionType === type);
       }
       
+      // If grouped=true, return grouped structure
+      if (grouped === 'true') {
+        const groupedActions: {
+          property: Array<{ entityId: string; entityName: string; actions: any[] }>;
+          opportunity: Array<{ entityId: string; entityName: string; actions: any[] }>;
+          contact: Array<{ entityId: string; entityName: string; actions: any[] }>;
+        } = {
+          property: [],
+          opportunity: [],
+          contact: [],
+        };
+        
+        // Group actions by entity
+        const propertyMap = new Map<string, any[]>();
+        const opportunityMap = new Map<string, any[]>();
+        const contactMap = new Map<string, any[]>();
+        
+        for (const action of actions) {
+          if (action.propertyId) {
+            if (!propertyMap.has(action.propertyId)) {
+              propertyMap.set(action.propertyId, []);
+            }
+            propertyMap.get(action.propertyId)!.push(action);
+          } else if (action.opportunityId) {
+            if (!opportunityMap.has(action.opportunityId)) {
+              opportunityMap.set(action.opportunityId, []);
+            }
+            opportunityMap.get(action.opportunityId)!.push(action);
+          } else if (action.contactId) {
+            if (!contactMap.has(action.contactId)) {
+              contactMap.set(action.contactId, []);
+            }
+            contactMap.get(action.contactId)!.push(action);
+          }
+        }
+        
+        // Build property groups
+        for (const [propertyId, entityActions] of propertyMap.entries()) {
+          try {
+            const property = await storage.getJob(propertyId);
+            groupedActions.property.push({
+              entityId: propertyId,
+              entityName: property?.address || property?.clientName || `Property ${propertyId.substring(0, 8)}`,
+              actions: entityActions,
+            });
+          } catch (e) {
+            // Property not found, use ID
+            groupedActions.property.push({
+              entityId: propertyId,
+              entityName: `Property ${propertyId.substring(0, 8)}`,
+              actions: entityActions,
+            });
+          }
+        }
+        
+        // Build opportunity groups
+        for (const [opportunityId, entityActions] of opportunityMap.entries()) {
+          try {
+            const opportunity = await storage.getOpportunity(opportunityId);
+            groupedActions.opportunity.push({
+              entityId: opportunityId,
+              entityName: opportunity?.title || `Opportunity ${opportunityId.substring(0, 8)}`,
+              actions: entityActions,
+            });
+          } catch (e) {
+            groupedActions.opportunity.push({
+              entityId: opportunityId,
+              entityName: `Opportunity ${opportunityId.substring(0, 8)}`,
+              actions: entityActions,
+            });
+          }
+        }
+        
+        // Build contact groups
+        for (const [contactId, entityActions] of contactMap.entries()) {
+          try {
+            const contact = await storage.getContact(contactId);
+            const contactName = contact 
+              ? `${contact.firstName || ''} ${contact.lastName || ''}`.trim() || contact.email || `Contact ${contactId.substring(0, 8)}`
+              : `Contact ${contactId.substring(0, 8)}`;
+            groupedActions.contact.push({
+              entityId: contactId,
+              entityName: contactName,
+              actions: entityActions,
+            });
+          } catch (e) {
+            groupedActions.contact.push({
+              entityId: contactId,
+              entityName: `Contact ${contactId.substring(0, 8)}`,
+              actions: entityActions,
+            });
+          }
+        }
+        
+        return res.json(groupedActions);
+      }
+      
+      // Return flat list if not grouped
       res.json(actions);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+  
+  app.get("/api/actions/entity/:entityId", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { entityId } = req.params;
+      
+      // Get all actions for this entity (including completed)
+      const allActions = await storage.getAllActionsByUser(req.user.id);
+      const entityActions = allActions.filter(a => 
+        a.propertyId === entityId || 
+        a.opportunityId === entityId || 
+        a.contactId === entityId
+      );
+      
+      // Sort: incomplete first, then by created date
+      entityActions.sort((a, b) => {
+        if (a.completedAt && !b.completedAt) return 1;
+        if (!a.completedAt && b.completedAt) return -1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
+      
+      res.json(entityActions);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

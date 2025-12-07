@@ -1176,12 +1176,17 @@ class ApiClient {
 
   // Contacts
   // Actions
-  async getActions(filters?: { priority?: string; type?: string }) {
+  async getActions(filters?: { priority?: string; type?: string; grouped?: boolean }) {
     const params = new URLSearchParams();
     if (filters?.priority) params.append('priority', filters.priority);
     if (filters?.type) params.append('type', filters.type);
+    if (filters?.grouped) params.append('grouped', 'true');
     const query = params.toString();
-    return this.request<any[]>(`/actions${query ? `?${query}` : ''}`);
+    return this.request<any>(`/actions${query ? `?${query}` : ''}`);
+  }
+  
+  async getActionsForEntity(entityId: string) {
+    return this.request<any[]>(`/actions/entity/${entityId}`);
   }
 
   async createAction(actionData: {

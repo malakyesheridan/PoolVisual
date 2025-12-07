@@ -115,3 +115,89 @@ export async function createActionIfNotExists(params: CreateActionParams): Promi
   }
 }
 
+/**
+ * Check for missing property fields and create action if needed
+ * 
+ * Required fields: photos, description, price, bedrooms, bathrooms
+ * Prevents duplicates for the same missing set within 7 days
+ */
+export async function checkMissingPropertyFields(
+  propertyId: string,
+  property: any,
+  orgId: string | null,
+  agentId: string | null
+): Promise<void> {
+  try {
+    if (!orgId || !agentId) {
+      return; // Skip if no org or agent
+    }
+
+    // Check for missing required fields
+    const missing: string[] = [];
+    
+    // Check photos (need to fetch from photos table)
+    const photos = await storage.getJobPhotos(propertyId);
+    if (!photos || photos.length === 0) {
+      missing.push('Photos');
+    }
+    
+    // Check description
+    if (!property.propertyDescription || property.propertyDescription.trim() === '') {
+      missing.push('Description');
+    }
+    
+    // Check price
+    if (!property.estimatedPrice || property.estimatedPrice.trim() === '') {
+      missing.push('Price');
+    }
+    
+    // Check bedrooms
+    if (!property.bedrooms || property.bedrooms === 0) {
+      missing.push('Bedrooms');
+    }
+    
+    // Check bathrooms
+    if (!property.bathrooms || property.bathrooms === 0) {
+      missing.push('Bathrooms');
+    }
+    
+    // If no missing fields, no action needed
+    if (missing.length === 0) {
+      return;
+    }
+    
+    // Create action with description of missing fields
+    // Use a special type that includes the missing fields hash to prevent duplicates
+    const missingFieldsKey = missing.sort().join(',');
+    const actionType = `missing_property_fields_${missingFieldsKey.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    // Check for existing action within 7 days for the same missing set
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    
+    const existingActions = await storage.getActionsByOrg(orgId);
+    const matchingAction = existingActions.find(action => {
+      // Check for exact actionType match (includes the hash of missing fields)
+      if (action.actionType !== actionType) return false;
+      if (action.propertyId !== propertyId) return false;
+      const actionDate = new Date(action.createdAt);
+      if (actionDate < sevenDaysAgo) return false;
+      return true;
+    });
+    
+    if (!matchingAction) {
+      await storage.createAction({
+        orgId,
+        agentId,
+        propertyId,
+        actionType: actionType, // Use the calculated actionType with hash
+        description: `This property is missing: ${missing.join(', ')}`,
+        priority: 'medium',
+      });
+    }
+  } catch (error) {
+    // Log error but don't crash - actions are non-critical
+    console.error('[checkMissingPropertyFields] Failed to check property fields:', error);
+  }
+}
+

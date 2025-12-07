@@ -492,6 +492,7 @@ export const opportunities = pgTable("opportunities", {
   actualCloseDate: timestamp("actual_close_date"),
   source: text("source"),
   notes: text("notes"),
+  appraisalDate: timestamp("appraisal_date"), // Date when property appraisal was completed
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   createdBy: uuid("created_by").references(() => users.id).notNull(),

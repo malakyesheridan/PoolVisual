@@ -222,6 +222,7 @@ export interface IStorage {
   createAction(actionData: any): Promise<any>;
   getActionsByOrg(orgId: string): Promise<any[]>;
   getActionsByUser(userId: string): Promise<any[]>; // Get actions for user's org
+  getAllActionsByUser(userId: string): Promise<any[]>; // Get all actions for user's org (including completed)
   completeAction(actionId: string): Promise<any>;
   getActionsForProperty(propertyId: string): Promise<any[]>;
   getActionsForContact(contactId: string): Promise<any[]>;
@@ -1872,6 +1873,12 @@ export class PostgresStorage implements IStorage {
       if (opportunity.actualCloseDate) opportunityData.actualCloseDate = opportunity.actualCloseDate;
       if (opportunity.source) opportunityData.source = opportunity.source;
       if (opportunity.notes) opportunityData.notes = opportunity.notes;
+      if (opportunity.appraisalDate !== undefined) {
+        // Handle both string dates and Date objects
+        opportunityData.appraisalDate = opportunity.appraisalDate 
+          ? (typeof opportunity.appraisalDate === 'string' ? new Date(opportunity.appraisalDate) : opportunity.appraisalDate)
+          : null;
+      }
       
       const [opp] = await ensureDb()
         .insert(opportunities)
@@ -2026,9 +2033,17 @@ export class PostgresStorage implements IStorage {
 
   async updateOpportunity(id: string, updates: Partial<Opportunity>): Promise<Opportunity> {
     try {
+      // Handle appraisal_date conversion if provided
+      const updateData: any = { ...updates };
+      if (updates.appraisalDate !== undefined) {
+        updateData.appraisalDate = updates.appraisalDate 
+          ? (typeof updates.appraisalDate === 'string' ? new Date(updates.appraisalDate) : updates.appraisalDate)
+          : null;
+      }
+      
       const [opp] = await ensureDb()
         .update(opportunities)
-        .set({ ...updates, updatedAt: new Date() })
+        .set({ ...updateData, updatedAt: new Date() })
         .where(eq(opportunities.id, id))
         .returning();
       if (!opp) throw new Error("Failed to update opportunity");
@@ -2457,6 +2472,28 @@ export class PostgresStorage implements IStorage {
     } catch (error: any) {
       if (error?.message?.includes('actions') || error?.code === '42P01') {
         console.warn('[getActionsByUser] actions table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getAllActionsByUser(userId: string): Promise<Action[]> {
+    try {
+      // Get user's orgs and fetch all actions for all of them (including completed)
+      const userOrgs = await this.getUserOrgs(userId);
+      if (userOrgs.length === 0) {
+        return [];
+      }
+      const orgIds = userOrgs.map(org => org.id);
+      return await ensureDb()
+        .select()
+        .from(actions)
+        .where(inArray(actions.orgId, orgIds))
+        .orderBy(desc(actions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        console.warn('[getAllActionsByUser] actions table not found, returning empty array');
         return [];
       }
       throw error;
