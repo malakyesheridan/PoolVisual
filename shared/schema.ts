@@ -282,6 +282,9 @@ export const jobs = pgTable("jobs", {
   hoaFees: numeric("hoa_fees", { precision: 10, scale: 2 }),
   propertyTaxes: numeric("property_taxes", { precision: 10, scale: 2 }),
   suburb: text("suburb"),
+  // Cold-start fields
+  initialReportGeneratedAt: timestamp("initial_report_generated_at"),
+  sellerLaunchInsights: jsonb("seller_launch_insights"),
 });
 
 // Photos
@@ -493,6 +496,8 @@ export const opportunities = pgTable("opportunities", {
   source: text("source"),
   notes: text("notes"),
   appraisalDate: timestamp("appraisal_date"), // Date when property appraisal was completed
+  lastSellerUpdate: timestamp("last_seller_update"), // Timestamp when agent last sent update to seller
+  lastAgentActivity: timestamp("last_agent_activity"), // Timestamp when agent last performed activity
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   createdBy: uuid("created_by").references(() => users.id).notNull(),
@@ -992,6 +997,22 @@ export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
 export type Action = typeof actions.$inferSelect;
 export type InsertAction = z.infer<typeof insertActionSchema>;
+
+// Demand spike records (for tracking buyer match counts on past appraisals)
+export const demandSpikeRecords = pgTable("demand_spike_records", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id).notNull(),
+  lastMatchCount: integer("last_match_count").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertDemandSpikeRecordSchema = createInsertSchema(demandSpikeRecords).omit({
+  id: true,
+  updatedAt: true,
+});
+
+export type DemandSpikeRecord = typeof demandSpikeRecords.$inferSelect;
+export type InsertDemandSpikeRecord = z.infer<typeof insertDemandSpikeRecordSchema>;
 
 // Buyer Form Links (for shareable buyer inquiry forms)
 export const buyerFormLinks = pgTable("buyer_form_links", {

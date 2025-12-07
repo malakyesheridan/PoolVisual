@@ -525,6 +525,48 @@ async function initializeServer() {
         console.error('[Trial Expiration] Loop error:', e);
       });
     }, 86400000);
+    
+    // Start demand spike detection job (runs every 72 hours)
+    console.log('[Server] Starting demand spike detection job (runs every 72 hours)');
+    const { runDemandSpikeDetection } = await import('./jobs/demandSpike.js');
+    // Run immediately on startup (optional - can remove if you want to wait 72 hours)
+    // runDemandSpikeDetection().catch((e) => {
+    //   console.error('[Demand Spike] Startup error:', e);
+    // });
+    // Then run every 72 hours (259200000 ms = 72 * 60 * 60 * 1000)
+    setInterval(() => {
+      runDemandSpikeDetection().catch((e) => {
+        console.error('[Demand Spike] Loop error:', e);
+      });
+    }, 259200000);
+    
+    // Start performance nudges job (runs every 24 hours)
+    console.log('[Server] Starting performance nudges job (runs every 24 hours)');
+    const { runPerformanceNudges } = await import('./jobs/performanceNudges.js');
+    // Run immediately on startup (optional)
+    // runPerformanceNudges().catch((e) => {
+    //   console.error('[Performance Nudges] Startup error:', e);
+    // });
+    // Then run every 24 hours (86400000 ms)
+    setInterval(() => {
+      runPerformanceNudges().catch((e) => {
+        console.error('[Performance Nudges] Loop error:', e);
+      });
+    }, 86400000);
+    
+    // Start next-best-step intelligence job (runs every 24 hours)
+    console.log('[Server] Starting next-best-step intelligence job (runs every 24 hours)');
+    const { runNextBestStep } = await import('./jobs/nextBestStep.js');
+    // Run immediately on startup (optional)
+    // runNextBestStep().catch((e) => {
+    //   console.error('[Next Best Step] Startup error:', e);
+    // });
+    // Then run every 24 hours (86400000 ms)
+    setInterval(() => {
+      runNextBestStep().catch((e) => {
+        console.error('[Next Best Step] Loop error:', e);
+      });
+    }, 86400000);
   } else {
     console.log('[Server] Outbox processor not started (N8N_WEBHOOK_URL not set and SAFE_MODE enabled)');
   }

@@ -88,6 +88,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
 
+    // Mark seller update for associated opportunity
+    try {
+      const { storage } = await import('../server/storage.js');
+      // Find opportunity linked to this property
+      const job = await storage.getJob(propertyId);
+      if (job?.userId) {
+        const opportunities = await storage.getOpportunities(String(job.userId), {
+          propertyJobId: propertyId,
+        });
+        const sellerOpportunity = opportunities.find(
+          (opp: any) => opp.opportunityType === 'seller' || opp.opportunityType === 'both'
+        );
+        if (sellerOpportunity) {
+          await storage.markSellerUpdate(sellerOpportunity.id);
+        }
+      }
+    } catch (error: any) {
+      // Log but don't fail - activity tracking is non-critical
+      console.warn('[Send Report Email] Failed to mark seller update:', error?.message);
+    }
+
     return res.status(200).json({ 
       success: true,
       message: 'Email sent successfully' 

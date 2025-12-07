@@ -227,6 +227,10 @@ export interface IStorage {
   getActionsForProperty(propertyId: string): Promise<any[]>;
   getActionsForContact(contactId: string): Promise<any[]>;
   
+  // Demand spike records
+  getDemandSpikeRecord(opportunityId: string): Promise<any | null>;
+  upsertDemandSpikeRecord(opportunityId: string, matchCount: number): Promise<any>;
+  
   // Pipelines
   getPipelines(userId: string): Promise<any[]>;
   getPipeline(id: string): Promise<any | undefined>;
@@ -2087,6 +2091,45 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  /**
+   * Mark agent activity on an opportunity
+   * Updates last_agent_activity timestamp to NOW()
+   */
+  async markAgentActivity(opportunityId: string): Promise<void> {
+    try {
+      await ensureDb()
+        .update(opportunities)
+        .set({ 
+          lastAgentActivity: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(opportunities.id, opportunityId));
+    } catch (error: any) {
+      // Log but don't throw - activity tracking is non-critical
+      console.warn('[markAgentActivity] Failed to update activity timestamp:', error?.message);
+    }
+  }
+
+  /**
+   * Mark seller update on an opportunity
+   * Updates both last_seller_update and last_agent_activity timestamps to NOW()
+   */
+  async markSellerUpdate(opportunityId: string): Promise<void> {
+    try {
+      await ensureDb()
+        .update(opportunities)
+        .set({ 
+          lastSellerUpdate: new Date(),
+          lastAgentActivity: new Date(),
+          updatedAt: new Date()
+        })
+        .where(eq(opportunities.id, opportunityId));
+    } catch (error: any) {
+      // Log but don't throw - activity tracking is non-critical
+      console.warn('[markSellerUpdate] Failed to update seller update timestamp:', error?.message);
+    }
+  }
+
   async deleteOpportunity(id: string): Promise<void> {
     try {
       await ensureDb()
@@ -2581,6 +2624,58 @@ export class PostgresStorage implements IStorage {
       if (error?.message?.includes('actions') || error?.code === '42P01') {
         console.warn('[getActionsForContact] actions table not found, returning empty array');
         return [];
+      }
+      throw error;
+    }
+  }
+
+  async getDemandSpikeRecord(opportunityId: string): Promise<any | null> {
+    try {
+      const { demandSpikeRecords } = await import('../shared/schema.js');
+      const [record] = await ensureDb()
+        .select()
+        .from(demandSpikeRecords)
+        .where(eq(demandSpikeRecords.opportunityId, opportunityId))
+        .limit(1);
+      return record || null;
+    } catch (error: any) {
+      if (error?.message?.includes('demand_spike_records') || error?.code === '42P01') {
+        console.warn('[getDemandSpikeRecord] demand_spike_records table not found, returning null');
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async upsertDemandSpikeRecord(opportunityId: string, matchCount: number): Promise<any> {
+    try {
+      const { demandSpikeRecords } = await import('../shared/schema.js');
+      const existing = await this.getDemandSpikeRecord(opportunityId);
+      
+      if (existing) {
+        const [updated] = await ensureDb()
+          .update(demandSpikeRecords)
+          .set({
+            lastMatchCount: matchCount,
+            updatedAt: new Date(),
+          })
+          .where(eq(demandSpikeRecords.id, existing.id))
+          .returning();
+        return updated;
+      } else {
+        const [created] = await ensureDb()
+          .insert(demandSpikeRecords)
+          .values({
+            opportunityId,
+            lastMatchCount: matchCount,
+          })
+          .returning();
+        return created;
+      }
+    } catch (error: any) {
+      if (error?.message?.includes('demand_spike_records') || error?.code === '42P01') {
+        console.warn('[upsertDemandSpikeRecord] demand_spike_records table not found');
+        throw new Error('demand_spike_records table does not exist - run migration 054');
       }
       throw error;
     }

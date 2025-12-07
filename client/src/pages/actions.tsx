@@ -19,8 +19,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { CheckCircle2, Calendar, Filter, Home, User, ClipboardList, X } from 'lucide-react';
+import { CheckCircle2, Calendar, Filter, Home, User, ClipboardList, X, FileText, Sparkles, Lightbulb } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
+import { useLocation } from 'wouter';
 
 interface Action {
   id: string;
@@ -45,8 +46,18 @@ export default function Actions() {
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [selectedEntity, setSelectedEntity] = useState<{ type: 'property' | 'opportunity' | 'contact'; id: string; name: string } | null>(null);
   const [entityActions, setEntityActions] = useState<Action[]>([]);
+  const [coldStartAction, setColdStartAction] = useState<Action | null>(null);
+  const [coldStartProperty, setColdStartProperty] = useState<any>(null);
+  const [checklistItems, setChecklistItems] = useState<Array<{ id: string; label: string; completed: boolean }>>([
+    { id: '1', label: 'Review matched buyers', completed: false },
+    { id: '2', label: 'Contact top 3 buyers marked "high intent"', completed: false },
+    { id: '3', label: 'Upload enhanced versions of key photos', completed: false },
+    { id: '4', label: 'Generate the first seller report draft', completed: false },
+    { id: '5', label: 'Send seller the Listing Launch Summary', completed: false },
+  ]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, navigate] = useLocation();
 
   const filters: { priority?: string; type?: string; grouped?: boolean } = { grouped: true };
   if (priorityFilter !== 'all') filters.priority = priorityFilter;
@@ -113,50 +124,169 @@ export default function Actions() {
     completeMutation.mutate(actionId);
   };
 
+  const handleViewColdStart = async (action: Action) => {
+    setColdStartAction(action);
+    // Reset checklist when opening
+    setChecklistItems([
+      { id: '1', label: 'Review matched buyers', completed: false },
+      { id: '2', label: 'Contact top 3 buyers marked "high intent"', completed: false },
+      { id: '3', label: 'Upload enhanced versions of key photos', completed: false },
+      { id: '4', label: 'Generate the first seller report draft', completed: false },
+      { id: '5', label: 'Send seller the Listing Launch Summary', completed: false },
+    ]);
+    if (action.propertyId) {
+      try {
+        const property = await apiClient.getJob(action.propertyId);
+        setColdStartProperty(property);
+      } catch (error) {
+        console.error('Failed to load property:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load property details',
+          variant: 'destructive',
+        });
+      }
+    }
+  };
+
+  const handleToggleChecklistItem = (itemId: string) => {
+    setChecklistItems(items =>
+      items.map(item =>
+        item.id === itemId ? { ...item, completed: !item.completed } : item
+      )
+    );
+  };
+
+  const handleViewReportDraft = (propertyId: string) => {
+    navigate(`/seller-report-builder/${propertyId}`);
+    setColdStartAction(null);
+  };
+
   const renderEntityCard = (
     type: 'property' | 'opportunity' | 'contact',
     entity: { entityId: string; entityName: string; actions: Action[] }
   ) => {
     const Icon = getEntityIcon(type);
     const firstAction = entity.actions[0];
+    const isColdStart = firstAction?.actionType === 'LISTING_COLD_START';
+    const isNudge = firstAction?.actionType?.startsWith('NUDGE_');
+    const isSuggestion = firstAction?.actionType?.startsWith('INTEL_');
     
     return (
       <Card key={`${type}-${entity.entityId}`} className="hover:shadow-md transition-shadow">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Icon className="w-5 h-5 text-gray-600" />
+              {isColdStart ? (
+                <Sparkles className="w-5 h-5 text-purple-600" />
+              ) : isSuggestion ? (
+                <Lightbulb className="w-5 h-5 text-blue-500" />
+              ) : (
+                <Icon className="w-5 h-5 text-gray-600" />
+              )}
               <CardTitle className="text-base font-semibold">{entity.entityName}</CardTitle>
             </div>
-            {firstAction && (
-              <Badge className={getPriorityColor(firstAction.priority)}>
-                {firstAction.priority}
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {isSuggestion && (
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200">
+                  Suggestion
+                </Badge>
+              )}
+              {firstAction && (
+                <Badge className={getPriorityColor(firstAction.priority)}>
+                  {firstAction.priority}
+                </Badge>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {firstAction ? (
             <div className="space-y-2">
-              <p className="text-sm text-gray-700">{firstAction.description || firstAction.actionType.replace(/_/g, ' ')}</p>
-              <div className="flex items-center gap-2 text-xs text-gray-500">
-                <Calendar className="w-3 h-3" />
-                {formatDistanceToNow(new Date(firstAction.createdAt), { addSuffix: true })}
-              </div>
+              {isColdStart ? (
+                <>
+                  <p className="text-sm text-gray-700 font-medium">{firstAction.description || 'Listing Cold Start'}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Calendar className="w-3 h-3" />
+                    {formatDistanceToNow(new Date(firstAction.createdAt), { addSuffix: true })}
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-xs text-gray-600 font-medium">Checklist Preview:</p>
+                    <ul className="text-xs text-gray-500 space-y-0.5">
+                      <li>• Review matched buyers</li>
+                      <li>• Contact top 3 buyers marked "high intent"</li>
+                    </ul>
+                  </div>
+                </>
+              ) : isNudge || isSuggestion ? (
+                <>
+                  <p className="text-sm text-gray-700 font-medium">{firstAction.description || firstAction.actionType.replace(/_/g, ' ')}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Calendar className="w-3 h-3" />
+                    {formatDistanceToNow(new Date(firstAction.createdAt), { addSuffix: true })}
+                  </div>
+                  {firstAction.opportunityId && (
+                    <Button
+                      variant={isSuggestion ? "default" : "outline"}
+                      size="sm"
+                      className={`mt-2 w-full ${isSuggestion ? 'bg-blue-600 hover:bg-blue-700' : ''}`}
+                      onClick={() => {
+                        navigate(`/opportunities`);
+                        toast({
+                          title: 'Opening Opportunities',
+                          description: 'Please find and open the opportunity from the list.',
+                        });
+                      }}
+                    >
+                      View Opportunity
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-700">{firstAction.description || firstAction.actionType.replace(/_/g, ' ')}</p>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <Calendar className="w-3 h-3" />
+                    {formatDistanceToNow(new Date(firstAction.createdAt), { addSuffix: true })}
+                  </div>
+                </>
+              )}
             </div>
           ) : (
             <p className="text-sm text-gray-500">No pending actions</p>
           )}
         </CardContent>
-        <CardFooter className="pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            onClick={() => handleViewAllActions(type, entity.entityId, entity.entityName)}
-          >
-            View all actions ({entity.actions.length})
-          </Button>
+        <CardFooter className="pt-3 flex flex-col gap-2">
+          {isColdStart && firstAction ? (
+            <>
+              <Button
+                variant="default"
+                size="sm"
+                className="w-full"
+                onClick={() => handleViewColdStart(firstAction)}
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                View Cold Start Details
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full"
+                onClick={() => handleViewAllActions(type, entity.entityId, entity.entityName)}
+              >
+                View all actions ({entity.actions.length})
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => handleViewAllActions(type, entity.entityId, entity.entityName)}
+            >
+              View all actions ({entity.actions.length})
+            </Button>
+          )}
         </CardFooter>
       </Card>
     );
@@ -206,8 +336,19 @@ export default function Actions() {
                   <SelectItem value="opportunity_stalled">Opportunity Stalled</SelectItem>
                   <SelectItem value="new_buyer_match">New Buyer Match</SelectItem>
                   <SelectItem value="seller_interest_reengaged">Seller Interest Re-engaged</SelectItem>
-                  <SelectItem value="appraisal_follow_up">Appraisal Follow-Up</SelectItem>
-                  <SelectItem value="missing_property_fields">Missing Property Fields</SelectItem>
+                          <SelectItem value="appraisal_follow_up">Appraisal Follow-Up</SelectItem>
+                          <SelectItem value="missing_property_fields">Missing Property Fields</SelectItem>
+                          <SelectItem value="past_appraisal_demand_spike">Past Appraisal Demand Spike</SelectItem>
+                          <SelectItem value="LISTING_COLD_START">Listing Cold Start</SelectItem>
+                          <SelectItem value="NUDGE_SELLER_UPDATE">Nudge: Seller Update</SelectItem>
+                          <SelectItem value="NUDGE_APPRAISAL_FOLLOWUP">Nudge: Appraisal Follow-Up</SelectItem>
+                          <SelectItem value="NUDGE_OPPORTUNITY_INACTIVE">Nudge: Opportunity Inactive</SelectItem>
+                          <SelectItem value="INTEL_NO_PRICE_GUIDE">Suggestion: No Price Guide</SelectItem>
+                          <SelectItem value="INTEL_LOW_BUYER_MATCH_COUNT">Suggestion: Low Buyer Matches</SelectItem>
+                          <SelectItem value="INTEL_STALE_OPPORTUNITY">Suggestion: Stale Opportunity</SelectItem>
+                          <SelectItem value="INTEL_LOW_RECENT_SELLER_ENGAGEMENT">Suggestion: Low Seller Engagement</SelectItem>
+                          <SelectItem value="INTEL_NEEDS_APPRAISAL_FOLLOWUP">Suggestion: Appraisal Follow-Up</SelectItem>
+                          <SelectItem value="INTEL_PHOTO_QUALITY_IMPROVEMENT">Suggestion: Photo Quality</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -277,6 +418,125 @@ export default function Actions() {
                 ))
               )}
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cold Start Modal */}
+        <Dialog open={!!coldStartAction} onOpenChange={(open) => {
+          if (!open) {
+            setColdStartAction(null);
+            setColdStartProperty(null);
+            // Reset checklist when closing
+            setChecklistItems([
+              { id: '1', label: 'Review matched buyers', completed: false },
+              { id: '2', label: 'Contact top 3 buyers marked "high intent"', completed: false },
+              { id: '3', label: 'Upload enhanced versions of key photos', completed: false },
+              { id: '4', label: 'Generate the first seller report draft', completed: false },
+              { id: '5', label: 'Send seller the Listing Launch Summary', completed: false },
+            ]);
+          }
+        }}>
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-purple-600" />
+                Listing Cold Start - {coldStartProperty?.address || 'Property'}
+              </DialogTitle>
+            </DialogHeader>
+            
+            {coldStartAction && (
+              <div className="mt-4 space-y-6">
+                {/* Buyer Match Summary */}
+                {coldStartProperty?.sellerLaunchInsights && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Buyer Match Summary</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-2xl font-bold text-purple-600">
+                            {coldStartProperty.sellerLaunchInsights.buyerMatchCount}
+                          </p>
+                          <p className="text-sm text-gray-600">Matched Buyers</p>
+                        </div>
+                        {coldStartProperty.sellerLaunchInsights.topMatchedBuyers?.length > 0 && (
+                          <div>
+                            <p className="text-sm font-medium text-gray-700 mb-2">Top Matched Buyers:</p>
+                            <div className="space-y-2">
+                              {coldStartProperty.sellerLaunchInsights.topMatchedBuyers.map((buyer: any, idx: number) => (
+                                <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                                  <span className="text-sm font-medium">{buyer.name}</span>
+                                  <span className="text-sm text-gray-600">{buyer.budget}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Checklist */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Initial Listing Checklist</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {checklistItems.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-start gap-3 p-2 hover:bg-gray-50 rounded cursor-pointer"
+                          onClick={() => handleToggleChecklistItem(item.id)}
+                        >
+                          <Checkbox
+                            checked={item.completed}
+                            onCheckedChange={() => handleToggleChecklistItem(item.id)}
+                            className="mt-1"
+                          />
+                          <label className="flex-1 text-sm text-gray-700 cursor-pointer">
+                            <span className={item.completed ? 'line-through text-gray-500' : ''}>
+                              {item.label}
+                            </span>
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  {coldStartAction.propertyId && (
+                    <Button
+                      variant="default"
+                      className="flex-1"
+                      onClick={() => handleViewReportDraft(coldStartAction.propertyId!)}
+                    >
+                      <FileText className="w-4 h-4 mr-2" />
+                      View Report Draft
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      if (coldStartAction && !coldStartAction.completedAt) {
+                        handleComplete(coldStartAction.id);
+                        setColdStartAction(null);
+                        setColdStartProperty(null);
+                      }
+                    }}
+                    disabled={!!coldStartAction.completedAt}
+                  >
+                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                    {coldStartAction.completedAt ? 'Completed' : 'Mark Cold Start Completed'}
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

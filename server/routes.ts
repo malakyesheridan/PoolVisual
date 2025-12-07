@@ -1035,6 +1035,15 @@ export async function registerRoutes(app: Express): Promise<void> {
       } catch (actionError: any) {
         console.warn('[POST /api/jobs] Failed to check for missing property fields:', actionError?.message);
       }
+
+      // Trigger cold-start boost for new properties
+      try {
+        const { runListingColdStart } = await import('./listingColdStart/runColdStart.js');
+        await runListingColdStart(job.id);
+      } catch (coldStartError: any) {
+        console.warn('[POST /api/jobs] Failed to run cold-start:', coldStartError?.message);
+        // Don't fail the request if cold-start fails
+      }
       
       res.json(job);
     } catch (error) {
@@ -1747,6 +1756,30 @@ export async function registerRoutes(app: Express): Promise<void> {
       console.log('Creating photo with data:', photoData);
       const photo = await storage.createPhoto(photoData);
       console.log('Photo created successfully:', photo.id);
+
+      // Trigger cold-start if this is the first photo for a seller opportunity
+      try {
+        // Check if this property has a seller opportunity
+        const allOpportunities = await storage.getOpportunities(String(job.userId), {
+          propertyJobId: jobId,
+        });
+        const sellerOpportunity = allOpportunities.find(
+          (opp: any) => (opp.opportunityType === 'seller' || opp.opportunityType === 'both') && opp.propertyJobId === jobId
+        );
+
+        if (sellerOpportunity) {
+          // Check if this is the first marketing photo
+          const existingPhotos = await storage.getJobPhotos(jobId, 'marketing');
+          if (existingPhotos.length === 1 && photoCategory === 'marketing') {
+            // First photo uploaded - trigger cold-start
+            const { runListingColdStart } = await import('./listingColdStart/runColdStart.js');
+            await runListingColdStart(jobId);
+          }
+        }
+      } catch (coldStartError: any) {
+        console.warn('[POST /api/photos] Failed to run cold-start:', coldStartError?.message);
+        // Don't fail the request if cold-start fails
+      }
       
       res.json(photo);
     } catch (error) {
@@ -3877,7 +3910,32 @@ export async function registerRoutes(app: Express): Promise<void> {
         updates.status = statusMap[updates.status] || updates.status;
       }
       
+      // Check if opportunity is transitioning to seller type with propertyId
+      const wasNotSeller = opportunity.opportunityType !== 'seller' && opportunity.opportunityType !== 'both';
+      const isNowSeller = (updates.opportunityType === 'seller' || updates.opportunityType === 'both');
+      const hasPropertyId = updates.propertyJobId || opportunity.propertyJobId;
+      const shouldTriggerColdStart = wasNotSeller && isNowSeller && hasPropertyId;
+      
       const updated = await storage.updateOpportunity(opportunityId, updates);
+      
+      // Mark agent activity when opportunity is updated
+      await storage.markAgentActivity(opportunityId).catch(err => {
+        console.warn('[PUT /api/opportunities/:id] Failed to mark activity:', err);
+      });
+      
+      // Trigger cold-start if transitioning to seller with property
+      if (shouldTriggerColdStart) {
+        try {
+          const propertyId = updates.propertyJobId || opportunity.propertyJobId;
+          if (propertyId) {
+            const { runListingColdStart } = await import('./listingColdStart/runColdStart.js');
+            await runListingColdStart(propertyId);
+          }
+        } catch (coldStartError: any) {
+          console.warn('[PUT /api/opportunities/:id] Failed to run cold-start:', coldStartError?.message);
+          // Don't fail the request if cold-start fails
+        }
+      }
       
       // Map database status values back to frontend values
       const reverseStatusMap: Record<string, string> = {
@@ -4039,6 +4097,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         noteText: noteText.trim(),
         noteType: noteType || 'general',
       });
+      
+      // Mark agent activity
+      await storage.markAgentActivity(opportunityId).catch(err => {
+        console.warn('[POST /api/opportunities/:id/notes] Failed to mark activity:', err);
+      });
+      
       res.json(note);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
