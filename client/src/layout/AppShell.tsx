@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { useIndustryTerm } from '@/hooks/useIndustryTerm';
 import { useJobsRoute } from '@/lib/route-utils';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
 import { 
   Home, 
   Briefcase, 
@@ -19,7 +20,8 @@ import {
   Shield,
   Menu,
   X,
-  CreditCard
+  CreditCard,
+  ClipboardList
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -166,6 +168,7 @@ export function AppShell({ children }: PropsWithChildren) {
   const { user, logout } = useAuthStore();
   const { jobs, quotes } = useIndustryTerm();
   const jobsRoute = useJobsRoute();
+  const isRealEstate = useIsRealEstate();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
   
   // Trial state
@@ -233,6 +236,7 @@ export function AppShell({ children }: PropsWithChildren) {
     { to: '/new-editor', label: 'Canvas Editor', icon: Palette },
     { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: quotes, icon: FileText },
+    ...(isRealEstate ? [{ to: '/actions', label: 'Actions', icon: ClipboardList }] : []),
     { to: '/billing', label: 'Billing', icon: CreditCard },
     ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ];

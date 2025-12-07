@@ -8,7 +8,8 @@ import {
   FileText, 
   Settings,
   Edit3,
-  BarChart3
+  BarChart3,
+  ClipboardList
 } from "lucide-react";
 import { useIndustryTerm } from "@/hooks/useIndustryTerm";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
@@ -50,6 +51,11 @@ export function SidebarNav({ className }: SidebarNavProps) {
       href: isRealEstate ? '/opportunities' : '/quotes',
       icon: FileText,
     },
+    ...(isRealEstate ? [{
+      name: 'Actions',
+      href: '/actions',
+      icon: ClipboardList,
+    }] : []),
     {
       name: 'Analytics',
       href: '/analytics',
