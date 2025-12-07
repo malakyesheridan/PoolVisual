@@ -184,23 +184,27 @@ export function OpportunityDetailDrawer({
 
   useEffect(() => {
     if (opportunity) {
-      setEditedTitle(opportunity.title || '');
-      setEditedValue(opportunity.value?.toString() || '');
-      setEditedStatus(opportunity.status || 'open');
-      setEditedOpportunityType(opportunity.opportunityType || 'buyer');
-      setEditedStageId(opportunity.stageId || '');
-      setEditedPropertyJobId(opportunity.propertyJobId || '');
-      setEditedTags(opportunity.tags || []);
+      // Only update fields if they exist in the opportunity prop
+      // This prevents clearing fields when refetched opportunity is missing data
+      if (opportunity.title !== undefined) setEditedTitle(opportunity.title || '');
+      if (opportunity.value !== undefined) setEditedValue(opportunity.value?.toString() || '');
+      if (opportunity.status !== undefined) setEditedStatus(opportunity.status || 'open');
+      if (opportunity.opportunityType !== undefined) setEditedOpportunityType(opportunity.opportunityType || 'buyer');
+      if (opportunity.stageId !== undefined) setEditedStageId(opportunity.stageId || '');
+      if (opportunity.propertyJobId !== undefined) setEditedPropertyJobId(opportunity.propertyJobId || '');
+      if (opportunity.tags !== undefined) setEditedTags(opportunity.tags || []);
       
       // Set contact fields - use contactName/contactPhone/contactEmail if contactId not set
-      setEditedContactName(opportunity.contactName || '');
-      setEditedContactPhone(opportunity.contactPhone || '');
-      setEditedContactEmail(opportunity.contactEmail || '');
+      if (opportunity.contactName !== undefined) setEditedContactName(opportunity.contactName || '');
+      if (opportunity.contactPhone !== undefined) setEditedContactPhone(opportunity.contactPhone || '');
+      if (opportunity.contactEmail !== undefined) setEditedContactEmail(opportunity.contactEmail || '');
       setEditedContactAddress(''); // Will be loaded from contact if contactId exists
-      setCurrentContactId(opportunity.contactId || null);
+      if (opportunity.contactId !== undefined) setCurrentContactId(opportunity.contactId || null);
       
-      // Initialize appraisal date - CRITICAL: Always reinitialize when opportunity changes
-      if (opportunity.appraisalDate) {
+      // Initialize appraisal date - CRITICAL: Only update if appraisalDate is explicitly provided
+      // This prevents clearing the date when refetched opportunity has null/undefined
+      if (opportunity.appraisalDate !== undefined) {
+        if (opportunity.appraisalDate) {
         if (process.env.NODE_ENV === 'development') {
           console.log('[OpportunityDetailDrawer] Initializing appraisalDate from opportunity:', {
             raw: opportunity.appraisalDate,
@@ -579,7 +583,7 @@ export function OpportunityDetailDrawer({
         appraisalDate: editedAppraisalDate || null,
       });
     } else {
-      const updatePayload = {
+      const updatePayload: any = {
         title: editedTitle,
         clientName: editedContactName.trim() || editedTitle,
         clientPhone: editedContactPhone.trim() || null,
@@ -589,16 +593,26 @@ export function OpportunityDetailDrawer({
         opportunityType: editedOpportunityType,
         contactId: contactIdToUse,
         appraisalDate: editedAppraisalDate || null,
-        stageId: editedStageId,
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
       };
       
+      // CRITICAL: Always include stageId if it exists, even if empty
+      // This prevents the stage from being cleared
+      if (editedStageId) {
+        updatePayload.stageId = editedStageId;
+      } else if (opportunity?.stageId) {
+        // Preserve existing stageId if editedStageId is empty
+        updatePayload.stageId = opportunity.stageId;
+      }
+      
       // DEBUG: Log what we're sending
-      console.log('[OpportunityDetailDrawer] Sending update with appraisalDate:', {
+      console.log('[OpportunityDetailDrawer] Sending update with appraisalDate and stageId:', {
         editedAppraisalDate,
         appraisalDate: updatePayload.appraisalDate,
         type: typeof updatePayload.appraisalDate,
+        editedStageId,
+        stageId: updatePayload.stageId,
       });
       
       updateOpportunityMutation.mutate(updatePayload);
