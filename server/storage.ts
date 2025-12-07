@@ -2027,6 +2027,33 @@ export class PostgresStorage implements IStorage {
         .select()
         .from(opportunities)
         .where(eq(opportunities.id, id));
+      
+      // FIX: Handle Invalid Date from Drizzle timestamp parsing
+      if (opp && opp.appraisalDate && (opp.appraisalDate instanceof Date) && isNaN(opp.appraisalDate.getTime())) {
+        try {
+          const { sql } = await import('drizzle-orm');
+          const db = ensureDb();
+          const rawResult = await db.execute(sql`
+            SELECT appraisal_date 
+            FROM opportunities 
+            WHERE id = ${id}::UUID
+          `);
+          const rawDate = (rawResult as any).rows?.[0]?.appraisal_date || (rawResult as any)?.[0]?.appraisal_date;
+          if (rawDate) {
+            const parsedDate = new Date(rawDate);
+            if (!isNaN(parsedDate.getTime())) {
+              opp.appraisalDate = parsedDate;
+            } else {
+              opp.appraisalDate = null;
+            }
+          } else {
+            opp.appraisalDate = null;
+          }
+        } catch (fixError) {
+          opp.appraisalDate = null;
+        }
+      }
+      
       return opp;
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
@@ -2068,7 +2095,16 @@ export class PostgresStorage implements IStorage {
         .where(and(...conditions))
         .orderBy(desc(opportunities.createdAt));
       
-      return results;
+      // FIX: Handle Invalid Date from Drizzle timestamp parsing for all opportunities
+      const fixedResults = results.map(opp => {
+        if (opp.appraisalDate && (opp.appraisalDate instanceof Date) && isNaN(opp.appraisalDate.getTime())) {
+          // Set to null to prevent errors - individual queries will fix it if needed
+          opp.appraisalDate = null;
+        }
+        return opp;
+      });
+      
+      return fixedResults;
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
         return [];
