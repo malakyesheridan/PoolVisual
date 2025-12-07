@@ -41,7 +41,7 @@ import {
   Save
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/measurement-utils';
-import { format, parse } from 'date-fns';
+import { format, parse, parseISO, isValid } from 'date-fns';
 
 interface Opportunity {
   id: string;
@@ -201,8 +201,55 @@ export function OpportunityDetailDrawer({
       
       // Initialize appraisal date
       if (opportunity.appraisalDate) {
-        const date = new Date(opportunity.appraisalDate);
-        setEditedAppraisalDate(date.toISOString().split('T')[0]);
+        const dateStr = opportunity.appraisalDate.toString();
+        
+        // If it's already a YYYY-MM-DD string, use it directly
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+          setEditedAppraisalDate(dateStr);
+        } else if (dateStr.includes('T') || dateStr.includes('Z')) {
+          // ISO string format - extract date part before 'T' to avoid timezone issues
+          // For example: "2023-01-15T00:00:00.000Z" -> "2023-01-15"
+          // This preserves the UTC date without timezone conversion
+          const datePart = dateStr.split('T')[0];
+          if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+            setEditedAppraisalDate(datePart);
+          } else {
+            // If date part extraction failed, try to extract from ISO string using UTC methods
+            // to avoid local timezone conversion issues
+            try {
+              const dateObj = new Date(dateStr);
+              if (!isNaN(dateObj.getTime())) {
+                // Use UTC methods to extract the date part, preserving the original date
+                const year = dateObj.getUTCFullYear();
+                const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                setEditedAppraisalDate(`${year}-${month}-${day}`);
+              } else {
+                setEditedAppraisalDate('');
+              }
+            } catch {
+              setEditedAppraisalDate('');
+            }
+          }
+        } else {
+          // Try parsing as YYYY-MM-DD format first
+          const parsedDate = parse(dateStr, 'yyyy-MM-dd', new Date());
+          if (isValid(parsedDate)) {
+            setEditedAppraisalDate(format(parsedDate, 'yyyy-MM-dd'));
+          } else {
+            // Last resort: try parseISO for other ISO-like formats
+            try {
+              const isoDate = parseISO(dateStr);
+              if (isValid(isoDate)) {
+                setEditedAppraisalDate(format(isoDate, 'yyyy-MM-dd'));
+              } else {
+                setEditedAppraisalDate('');
+              }
+            } catch {
+              setEditedAppraisalDate('');
+            }
+          }
+        }
         setAppraisalCompleted(true);
       } else {
         setEditedAppraisalDate('');

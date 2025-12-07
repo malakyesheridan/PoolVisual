@@ -3575,6 +3575,12 @@ export async function registerRoutes(app: Express): Promise<void> {
           fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
           
           for (const opp of opportunities) {
+            // Only check opportunities that are not closed
+            // Use database status values: 'closed_won', 'closed_lost'
+            // Note: 'abandoned' is mapped to 'closed_lost' before storage, so it never exists in DB
+            const isClosed = opp.status === 'closed_won' || opp.status === 'closed_lost';
+            if (isClosed) continue;
+            
             // Use opportunity's orgId if available, otherwise fall back to user's first org
             const oppOrgId = opp.orgId || defaultOrgId;
             
@@ -3612,12 +3618,16 @@ export async function registerRoutes(app: Express): Promise<void> {
         const defaultOrgId = userOrgs.length > 0 ? userOrgs[0].id : null;
         
         if (defaultOrgId) {
+          // Use UTC methods to match how appraisal dates are stored (UTC midnight)
           const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          today.setUTCHours(0, 0, 0, 0);
           
           for (const opp of opportunities) {
             // Only check opportunities that are not closed
-            const isClosed = opp.status === 'closed_won' || opp.status === 'closed_lost' || opp.status === 'abandoned';
+            // Use database status values since we're iterating over raw database records
+            // Database values: 'closed_won', 'closed_lost'
+            // Note: 'abandoned' is mapped to 'closed_lost' before storage, so it never exists in DB
+            const isClosed = opp.status === 'closed_won' || opp.status === 'closed_lost';
             if (isClosed) continue;
             
             // Check if opportunity has an appraisal date
@@ -3626,8 +3636,9 @@ export async function registerRoutes(app: Express): Promise<void> {
             // Use opportunity's orgId if available, otherwise fall back to user's first org
             const oppOrgId = opp.orgId || defaultOrgId;
             
+            // Use UTC methods to match how appraisal dates are stored (UTC midnight)
             const appraisalDate = new Date(opp.appraisalDate);
-            appraisalDate.setHours(0, 0, 0, 0);
+            appraisalDate.setUTCHours(0, 0, 0, 0);
             
             // Calculate days since appraisal
             const daysSinceAppraisal = Math.floor((today.getTime() - appraisalDate.getTime()) / (1000 * 60 * 60 * 24));
@@ -3777,7 +3788,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         expectedCloseDate: expectedCloseDate || null,
         source: source || null,
         notes: notes || null,
-        appraisalDate: appraisalDate || null,
+        appraisalDate: (appraisalDate && typeof appraisalDate === 'string' && appraisalDate.trim() !== '') ? appraisalDate.trim() : null,
       };
 
       // Add new Kanban fields if provided
@@ -4364,7 +4375,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         actions = actions.filter(a => a.priority === priority);
       }
       if (type && typeof type === 'string') {
-        actions = actions.filter(a => a.actionType === type);
+        // For missing_property_fields, use startsWith since action types have dynamic suffixes
+        if (type === 'missing_property_fields') {
+          actions = actions.filter(a => a.actionType && a.actionType.startsWith('missing_property_fields_'));
+        } else {
+          actions = actions.filter(a => a.actionType === type);
+        }
       }
       
       // If grouped=true, return grouped structure

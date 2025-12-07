@@ -1875,9 +1875,24 @@ export class PostgresStorage implements IStorage {
       if (opportunity.notes) opportunityData.notes = opportunity.notes;
       if (opportunity.appraisalDate !== undefined) {
         // Handle both string dates and Date objects
-        opportunityData.appraisalDate = opportunity.appraisalDate 
-          ? (typeof opportunity.appraisalDate === 'string' ? new Date(opportunity.appraisalDate) : opportunity.appraisalDate)
-          : null;
+        // Empty strings should be converted to null
+        if (!opportunity.appraisalDate || (typeof opportunity.appraisalDate === 'string' && opportunity.appraisalDate.trim() === '')) {
+          opportunityData.appraisalDate = null;
+        } else if (typeof opportunity.appraisalDate === 'string') {
+          // For YYYY-MM-DD strings, create Date object at UTC midnight to ensure timezone consistency
+          // This matches the client's use of UTC methods for date extraction
+          const dateStr = opportunity.appraisalDate.trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            // Parse as UTC date (YYYY-MM-DD format) to match client's UTC handling
+            const [year, month, day] = dateStr.split('-').map(Number);
+            opportunityData.appraisalDate = new Date(Date.UTC(year, month - 1, day));
+          } else {
+            // Try parsing as ISO string or other format
+            opportunityData.appraisalDate = new Date(opportunity.appraisalDate);
+          }
+        } else {
+          opportunityData.appraisalDate = opportunity.appraisalDate;
+        }
       }
       
       const [opp] = await ensureDb()
@@ -2036,9 +2051,25 @@ export class PostgresStorage implements IStorage {
       // Handle appraisal_date conversion if provided
       const updateData: any = { ...updates };
       if (updates.appraisalDate !== undefined) {
-        updateData.appraisalDate = updates.appraisalDate 
-          ? (typeof updates.appraisalDate === 'string' ? new Date(updates.appraisalDate) : updates.appraisalDate)
-          : null;
+        // Handle both string dates and Date objects
+        // Empty strings should be converted to null
+        if (!updates.appraisalDate || (typeof updates.appraisalDate === 'string' && updates.appraisalDate.trim() === '')) {
+          updateData.appraisalDate = null;
+        } else if (typeof updates.appraisalDate === 'string') {
+          // For YYYY-MM-DD strings, create Date object at UTC midnight to ensure timezone consistency
+          // This matches the client's use of UTC methods for date extraction
+          const dateStr = updates.appraisalDate.trim();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            // Parse as UTC date (YYYY-MM-DD format) to match client's UTC handling
+            const [year, month, day] = dateStr.split('-').map(Number);
+            updateData.appraisalDate = new Date(Date.UTC(year, month - 1, day));
+          } else {
+            // Try parsing as ISO string or other format
+            updateData.appraisalDate = new Date(updates.appraisalDate);
+          }
+        } else {
+          updateData.appraisalDate = updates.appraisalDate;
+        }
       }
       
       const [opp] = await ensureDb()
