@@ -547,7 +547,7 @@ export function OpportunityDetailDrawer({
         appraisalDate: editedAppraisalDate || null,
       });
     } else {
-      updateOpportunityMutation.mutate({
+      const updatePayload = {
         title: editedTitle,
         clientName: editedContactName.trim() || editedTitle,
         clientPhone: editedContactPhone.trim() || null,
@@ -560,7 +560,16 @@ export function OpportunityDetailDrawer({
         stageId: editedStageId,
         propertyJobId: editedPropertyJobId || null,
         tags: editedTags,
+      };
+      
+      // DEBUG: Log what we're sending
+      console.log('[OpportunityDetailDrawer] Sending update with appraisalDate:', {
+        editedAppraisalDate,
+        appraisalDate: updatePayload.appraisalDate,
+        type: typeof updatePayload.appraisalDate,
       });
+      
+      updateOpportunityMutation.mutate(updatePayload);
     }
   };
 

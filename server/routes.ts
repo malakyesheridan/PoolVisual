@@ -3900,6 +3900,17 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       // Map frontend status values to database values before updating
       const updates: any = { ...req.body };
+      
+      // DEBUG: Log appraisalDate in request
+      if (updates.appraisalDate !== undefined) {
+        console.log(`[PUT /api/opportunities/:id] Received appraisalDate:`, {
+          raw: updates.appraisalDate,
+          type: typeof updates.appraisalDate,
+          isNull: updates.appraisalDate === null,
+          isEmpty: updates.appraisalDate === '',
+        });
+      }
+      
       if (updates.status) {
         const statusMap: Record<string, string> = {
           'open': 'new',
@@ -3917,6 +3928,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       const shouldTriggerColdStart = wasNotSeller && isNowSeller && hasPropertyId;
       
       const updated = await storage.updateOpportunity(opportunityId, updates);
+      
+      // DEBUG: Log appraisalDate in response
+      console.log(`[PUT /api/opportunities/:id] Updated opportunity appraisalDate:`, {
+        raw: updated.appraisalDate,
+        type: typeof updated.appraisalDate,
+        isNull: updated.appraisalDate === null,
+        string: updated.appraisalDate?.toString(),
+      });
       
       // Mark agent activity when opportunity is updated
       await storage.markAgentActivity(opportunityId).catch(err => {

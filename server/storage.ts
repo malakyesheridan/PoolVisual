@@ -2141,10 +2141,19 @@ export class PostgresStorage implements IStorage {
       // Handle appraisal_date conversion if provided
       const updateData: any = { ...updates };
       if (updates.appraisalDate !== undefined) {
+        // DEBUG: Log what we received
+        console.log(`[updateOpportunity] Processing appraisalDate:`, {
+          raw: updates.appraisalDate,
+          type: typeof updates.appraisalDate,
+          isNull: updates.appraisalDate === null,
+          isEmpty: updates.appraisalDate === '',
+        });
+        
         // Handle both string dates and Date objects
         // Empty strings should be converted to null
         if (!updates.appraisalDate || (typeof updates.appraisalDate === 'string' && updates.appraisalDate.trim() === '')) {
           updateData.appraisalDate = null;
+          console.log(`[updateOpportunity] Converted empty string/null to null`);
         } else if (typeof updates.appraisalDate === 'string') {
           // For YYYY-MM-DD strings, create Date object at UTC midnight to ensure timezone consistency
           // This matches the client's use of UTC methods for date extraction
@@ -2153,14 +2162,24 @@ export class PostgresStorage implements IStorage {
             // Parse as UTC date (YYYY-MM-DD format) to match client's UTC handling
             const [year, month, day] = dateStr.split('-').map(Number);
             updateData.appraisalDate = new Date(Date.UTC(year, month - 1, day));
+            console.log(`[updateOpportunity] Parsed YYYY-MM-DD string to Date:`, updateData.appraisalDate.toISOString());
           } else {
             // Try parsing as ISO string or other format
             updateData.appraisalDate = new Date(updates.appraisalDate);
+            console.log(`[updateOpportunity] Parsed as ISO string to Date:`, updateData.appraisalDate.toISOString());
           }
         } else {
           updateData.appraisalDate = updates.appraisalDate;
+          console.log(`[updateOpportunity] Using Date object as-is:`, updateData.appraisalDate?.toISOString());
         }
       }
+      
+      // DEBUG: Log what we're about to save
+      console.log(`[updateOpportunity] About to save updateData:`, {
+        hasAppraisalDate: 'appraisalDate' in updateData,
+        appraisalDate: updateData.appraisalDate,
+        appraisalDateType: typeof updateData.appraisalDate,
+      });
       
       const [opp] = await ensureDb()
         .update(opportunities)
@@ -2168,6 +2187,15 @@ export class PostgresStorage implements IStorage {
         .where(eq(opportunities.id, id))
         .returning();
       if (!opp) throw new Error("Failed to update opportunity");
+      
+      // DEBUG: Log what was returned from database
+      console.log(`[updateOpportunity] Database returned:`, {
+        hasAppraisalDate: 'appraisalDate' in opp,
+        appraisalDate: opp.appraisalDate,
+        appraisalDateType: typeof opp.appraisalDate,
+        appraisalDateString: opp.appraisalDate?.toString(),
+      });
+      
       return opp;
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
