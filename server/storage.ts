@@ -2028,8 +2028,12 @@ export class PostgresStorage implements IStorage {
         .from(opportunities)
         .where(eq(opportunities.id, id));
       
+      if (!opp) return undefined;
+      
       // FIX: Handle Invalid Date from Drizzle timestamp parsing
-      if (opp && opp.appraisalDate && (opp.appraisalDate instanceof Date) && isNaN(opp.appraisalDate.getTime())) {
+      // Always check and fix Invalid Date, even if it exists
+      if (opp.appraisalDate && (opp.appraisalDate instanceof Date) && isNaN(opp.appraisalDate.getTime())) {
+        console.log(`[getOpportunity] Detected Invalid Date for opportunity ${id}, attempting to fix...`);
         try {
           const { sql } = await import('drizzle-orm');
           const db = ensureDb();
@@ -2038,20 +2042,41 @@ export class PostgresStorage implements IStorage {
             FROM opportunities 
             WHERE id = ${id}::UUID
           `);
-          const rawDate = (rawResult as any).rows?.[0]?.appraisal_date || (rawResult as any)?.[0]?.appraisal_date;
+          
+          // Handle different result formats (Neon vs standard PostgreSQL)
+          const rawDate = (rawResult as any).rows?.[0]?.appraisal_date || 
+                         (rawResult as any)?.[0]?.appraisal_date ||
+                         (Array.isArray(rawResult) && rawResult[0]?.appraisal_date);
+          
+          console.log(`[getOpportunity] Raw date from database:`, {
+            rawDate,
+            type: typeof rawDate,
+            isNull: rawDate === null,
+          });
+          
           if (rawDate) {
             const parsedDate = new Date(rawDate);
             if (!isNaN(parsedDate.getTime())) {
               opp.appraisalDate = parsedDate;
+              console.log(`[getOpportunity] Fixed Invalid Date to:`, parsedDate.toISOString());
             } else {
+              console.log(`[getOpportunity] Failed to parse raw date, setting to null`);
               opp.appraisalDate = null;
             }
           } else {
+            console.log(`[getOpportunity] No raw date found, setting to null`);
             opp.appraisalDate = null;
           }
-        } catch (fixError) {
+        } catch (fixError: any) {
+          console.error(`[getOpportunity] Error fixing Invalid Date:`, fixError?.message);
           opp.appraisalDate = null;
         }
+      } else if (opp.appraisalDate) {
+        // Log valid dates for debugging
+        console.log(`[getOpportunity] Valid appraisalDate:`, {
+          date: opp.appraisalDate,
+          iso: opp.appraisalDate instanceof Date ? opp.appraisalDate.toISOString() : String(opp.appraisalDate),
+        });
       }
       
       return opp;
