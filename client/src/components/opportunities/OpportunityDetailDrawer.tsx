@@ -288,7 +288,7 @@ export function OpportunityDetailDrawer({
       setAppraisalCompleted(null);
       setIsEditing(false);
     }
-  }, [opportunity?.id, isNewOpportunity]);
+  }, [opportunity?.id, opportunity?.appraisalDate, opportunity?.stageId, isNewOpportunity]); // Depend on key fields to trigger updates when they change
 
   // Reset tab to details when opportunity type changes or it's a new opportunity
   useEffect(() => {
