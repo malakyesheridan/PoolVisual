@@ -442,6 +442,26 @@ export default function Opportunities() {
   // NEW: Manual update handler - reload from backend
   const handleOpportunityUpdated = async () => {
     await loadOpportunities(true);
+    
+    // Update selectedOpportunity if it exists to reflect the latest data
+    if (selectedOpportunity?.id) {
+      try {
+        const updated = await apiClient.getOpportunity(selectedOpportunity.id);
+        if (updated) {
+          setSelectedOpportunity(updated);
+        }
+      } catch (error) {
+        console.error('Failed to refetch selected opportunity:', error);
+        // If refetch fails, try to find it in the local opportunities
+        setLocalOpportunities(prev => {
+          const found = prev.find(o => o.id === selectedOpportunity.id);
+          if (found) {
+            setSelectedOpportunity(found);
+          }
+          return prev;
+        });
+      }
+    }
   };
 
   // NEW: After creation, add to local state immediately, then verify with backend
