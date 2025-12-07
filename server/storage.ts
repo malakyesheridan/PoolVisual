@@ -2196,6 +2196,33 @@ export class PostgresStorage implements IStorage {
         appraisalDateString: opp.appraisalDate?.toString(),
       });
       
+      // FIX: Handle Invalid Date from Drizzle timestamp parsing
+      // Drizzle sometimes returns dates as Invalid Date objects, so we need to re-parse them
+      if (opp.appraisalDate && (opp.appraisalDate instanceof Date) && isNaN(opp.appraisalDate.getTime())) {
+        console.log(`[updateOpportunity] Detected Invalid Date, attempting to fix...`);
+        // Try to get the raw value from the database using a direct query
+        try {
+          const { sql } = await import('drizzle-orm');
+          const db = ensureDb();
+          const rawResult = await db.execute(sql`
+            SELECT appraisal_date 
+            FROM opportunities 
+            WHERE id = ${id}::UUID
+          `);
+          const rawDate = (rawResult as any).rows?.[0]?.appraisal_date || (rawResult as any)?.[0]?.appraisal_date;
+          if (rawDate) {
+            // Parse the raw date string from database
+            const parsedDate = new Date(rawDate);
+            if (!isNaN(parsedDate.getTime())) {
+              opp.appraisalDate = parsedDate;
+              console.log(`[updateOpportunity] Fixed Invalid Date to:`, parsedDate.toISOString());
+            }
+          }
+        } catch (fixError) {
+          console.error(`[updateOpportunity] Failed to fix Invalid Date:`, fixError);
+        }
+      }
+      
       return opp;
     } catch (error: any) {
       if (error?.message?.includes('opportunities') || error?.code === '42P01') {
