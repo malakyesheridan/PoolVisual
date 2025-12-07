@@ -199,8 +199,15 @@ export function OpportunityDetailDrawer({
       setEditedContactAddress(''); // Will be loaded from contact if contactId exists
       setCurrentContactId(opportunity.contactId || null);
       
-      // Initialize appraisal date
+      // Initialize appraisal date - CRITICAL: Always reinitialize when opportunity changes
       if (opportunity.appraisalDate) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[OpportunityDetailDrawer] Initializing appraisalDate from opportunity:', {
+            raw: opportunity.appraisalDate,
+            type: typeof opportunity.appraisalDate,
+            string: opportunity.appraisalDate.toString(),
+          });
+        }
         const dateStr = opportunity.appraisalDate.toString();
         
         // If it's already a YYYY-MM-DD string, use it directly
@@ -363,11 +370,48 @@ export function OpportunityDetailDrawer({
   const updateOpportunityMutation = useMutation({
     mutationFn: (updates: Partial<Opportunity>) => 
       apiClient.updateOpportunity(opportunity!.id, updates),
-    onSuccess: async () => {
+    onSuccess: async (updatedOpportunity) => {
       toast({ title: 'Opportunity updated', description: 'Changes saved successfully.' });
       setIsEditing(false);
-      // Notify parent to refetch from backend
-      await onOpportunityUpdated();
+      
+      // CRITICAL: Update local state immediately with server response
+      // This ensures the drawer shows the updated data without waiting for refetch
+      if (updatedOpportunity && opportunity) {
+        // Update the opportunity prop by notifying parent with the updated data
+        // The parent should update selectedOpportunity with this data
+        await onOpportunityUpdated();
+        
+        // Also update local edited state to match server response
+        if (updatedOpportunity.appraisalDate) {
+          const dateStr = updatedOpportunity.appraisalDate.toString();
+          if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            setEditedAppraisalDate(dateStr);
+          } else if (dateStr.includes('T') || dateStr.includes('Z')) {
+            const datePart = dateStr.split('T')[0];
+            if (/^\d{4}-\d{2}-\d{2}$/.test(datePart)) {
+              setEditedAppraisalDate(datePart);
+            } else {
+              try {
+                const dateObj = new Date(dateStr);
+                if (!isNaN(dateObj.getTime())) {
+                  const year = dateObj.getUTCFullYear();
+                  const month = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+                  const day = String(dateObj.getUTCDate()).padStart(2, '0');
+                  setEditedAppraisalDate(`${year}-${month}-${day}`);
+                }
+              } catch {
+                // Keep existing value
+              }
+            }
+          }
+        } else {
+          setEditedAppraisalDate('');
+          setAppraisalCompleted(null);
+        }
+      } else {
+        // Fallback: notify parent to refetch from backend
+        await onOpportunityUpdated();
+      }
     },
     onError: (error: any) => {
       toast({

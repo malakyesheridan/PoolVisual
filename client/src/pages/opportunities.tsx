@@ -441,26 +441,45 @@ export default function Opportunities() {
 
   // NEW: Manual update handler - reload from backend
   const handleOpportunityUpdated = async () => {
-    await loadOpportunities(true);
-    
-    // Update selectedOpportunity if it exists to reflect the latest data
+    // First, refetch the selected opportunity immediately to get latest data
     if (selectedOpportunity?.id) {
       try {
         const updated = await apiClient.getOpportunity(selectedOpportunity.id);
         if (updated) {
+          // Update selectedOpportunity immediately with fresh data from server
           setSelectedOpportunity(updated);
+          console.log('[Opportunities] Updated selectedOpportunity with fresh data:', {
+            id: updated.id,
+            appraisalDate: updated.appraisalDate,
+          });
         }
       } catch (error) {
         console.error('Failed to refetch selected opportunity:', error);
-        // If refetch fails, try to find it in the local opportunities
-        setLocalOpportunities(prev => {
-          const found = prev.find(o => o.id === selectedOpportunity.id);
-          if (found) {
-            setSelectedOpportunity(found);
-          }
-          return prev;
-        });
       }
+    }
+    
+    // Then refetch all opportunities to update the list
+    await loadOpportunities(true);
+    
+    // After refetch, ensure selectedOpportunity is still in sync
+    if (selectedOpportunity?.id) {
+      setLocalOpportunities(prev => {
+        const found = prev.find(o => o.id === selectedOpportunity.id);
+        if (found) {
+          // Only update if we found a newer version
+          setSelectedOpportunity(prevOpp => {
+            if (prevOpp && found.updatedAt && prevOpp.updatedAt) {
+              const foundTime = new Date(found.updatedAt).getTime();
+              const prevTime = new Date(prevOpp.updatedAt).getTime();
+              if (foundTime > prevTime) {
+                return found;
+              }
+            }
+            return prevOpp;
+          });
+        }
+        return prev;
+      });
     }
   };
 
