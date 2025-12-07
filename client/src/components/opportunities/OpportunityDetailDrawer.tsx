@@ -205,14 +205,14 @@ export function OpportunityDetailDrawer({
       // This prevents clearing the date when refetched opportunity has null/undefined
       if (opportunity.appraisalDate !== undefined) {
         if (opportunity.appraisalDate) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[OpportunityDetailDrawer] Initializing appraisalDate from opportunity:', {
-            raw: opportunity.appraisalDate,
-            type: typeof opportunity.appraisalDate,
-            string: opportunity.appraisalDate.toString(),
-          });
-        }
-        const dateStr = opportunity.appraisalDate.toString();
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[OpportunityDetailDrawer] Initializing appraisalDate from opportunity:', {
+              raw: opportunity.appraisalDate,
+              type: typeof opportunity.appraisalDate,
+              string: opportunity.appraisalDate.toString(),
+            });
+          }
+          const dateStr = opportunity.appraisalDate.toString();
         
         // If it's already a YYYY-MM-DD string, use it directly
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
