@@ -97,6 +97,27 @@ export default function SellerReportBuilder() {
     enabled: !!propertyId,
   });
 
+  // Trigger 1: Seller Report Viewed - Track when seller opens report
+  useEffect(() => {
+    if (propertyId) {
+      // Track report view (fire and forget - don't block)
+      // Only depends on propertyId to avoid duplicate tracking when property data changes
+      fetch('/api/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          actionType: 'seller_report_opened',
+          description: 'Seller viewed their property report. Follow up today.',
+          priority: 'high',
+          propertyId,
+        }),
+      }).catch(err => {
+        console.warn('Failed to track report view:', err);
+      });
+    }
+  }, [propertyId]); // Only depend on propertyId, not property object
+
   // Load saved report state from localStorage
   useEffect(() => {
     if (propertyId) {

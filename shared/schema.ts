@@ -622,6 +622,26 @@ export const insertContactSchema = createInsertSchema(contacts).omit({
   updatedAt: true,
 });
 
+// Actions (for action tracking and follow-ups)
+export const actions = pgTable("actions", {
+  id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+  orgId: uuid("org_id").references(() => orgs.id),
+  agentId: uuid("agent_id").references(() => users.id), // User who created or owns the action
+  contactId: uuid("contact_id").references(() => contacts.id),
+  opportunityId: uuid("opportunity_id").references(() => opportunities.id),
+  propertyId: uuid("property_id").references(() => jobs.id), // Property/job reference
+  actionType: text("action_type").notNull(),
+  description: text("description"),
+  priority: text("priority").notNull().default("medium"), // 'low' | 'medium' | 'high'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertActionSchema = createInsertSchema(actions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertPipelineSchema = createInsertSchema(pipelines).omit({
   id: true,
   createdAt: true,
@@ -969,6 +989,8 @@ export type OpportunityTask = typeof opportunityTasks.$inferSelect;
 export type InsertOpportunityTask = typeof opportunityTasks.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
+export type Action = typeof actions.$inferSelect;
+export type InsertAction = z.infer<typeof insertActionSchema>;
 
 // Buyer Form Links (for shareable buyer inquiry forms)
 export const buyerFormLinks = pgTable("buyer_form_links", {

@@ -44,6 +44,8 @@ import {
   InsertOpportunityDocument,
   Contact,
   InsertContact,
+  Action,
+  InsertAction,
   Pipeline,
   InsertPipeline,
   PipelineStage,
@@ -89,6 +91,7 @@ import {
   buyerFormLinks,
   buyerFormSubmissions,
   matchSuggestions,
+  actions,
   loginAttempts,
   securityEvents,
   verificationTokens,
@@ -214,6 +217,14 @@ export interface IStorage {
   createContact(data: any): Promise<any>;
   updateContact(id: string, updates: any): Promise<any>;
   deleteContact(id: string): Promise<void>;
+  
+  // Actions
+  createAction(actionData: any): Promise<any>;
+  getActionsByOrg(orgId: string): Promise<any[]>;
+  getActionsByUser(userId: string): Promise<any[]>; // Get actions for user's org
+  completeAction(actionId: string): Promise<any>;
+  getActionsForProperty(propertyId: string): Promise<any[]>;
+  getActionsForContact(contactId: string): Promise<any[]>;
   
   // Pipelines
   getPipelines(userId: string): Promise<any[]>;
@@ -2377,6 +2388,131 @@ export class PostgresStorage implements IStorage {
     } catch (error: any) {
       if (error?.message?.includes('contacts') || error?.code === '42P01') {
         throw new Error("Contacts feature requires database migration. Please run migration 036_add_contacts_pipelines_kanban.sql");
+      }
+      throw error;
+    }
+  }
+
+  // Actions methods
+  async createAction(actionData: any): Promise<Action> {
+    try {
+      const [action] = await ensureDb()
+        .insert(actions)
+        .values({
+          orgId: actionData.orgId,
+          agentId: actionData.agentId,
+          contactId: actionData.contactId,
+          opportunityId: actionData.opportunityId,
+          propertyId: actionData.propertyId,
+          actionType: actionData.actionType,
+          description: actionData.description,
+          priority: actionData.priority || 'medium',
+        })
+        .returning();
+      if (!action) throw new Error("Failed to create action");
+      return action;
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        throw new Error("Actions feature requires database migration. Please run migration 052_create_actions_table.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getActionsByOrg(orgId: string): Promise<Action[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(actions)
+        .where(and(
+          eq(actions.orgId, orgId),
+          sql`${actions.completedAt} IS NULL`
+        ))
+        .orderBy(desc(actions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        console.warn('[getActionsByOrg] actions table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getActionsByUser(userId: string): Promise<Action[]> {
+    try {
+      // Get user's orgs and fetch actions for all of them
+      const userOrgs = await this.getUserOrgs(userId);
+      if (userOrgs.length === 0) {
+        return [];
+      }
+      const orgIds = userOrgs.map(org => org.id);
+      return await ensureDb()
+        .select()
+        .from(actions)
+        .where(and(
+          inArray(actions.orgId, orgIds),
+          sql`${actions.completedAt} IS NULL`
+        ))
+        .orderBy(desc(actions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        console.warn('[getActionsByUser] actions table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async completeAction(actionId: string): Promise<Action> {
+    try {
+      const [updated] = await ensureDb()
+        .update(actions)
+        .set({ completedAt: new Date() })
+        .where(eq(actions.id, actionId))
+        .returning();
+      if (!updated) throw new Error("Action not found");
+      return updated;
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        throw new Error("Actions feature requires database migration. Please run migration 052_create_actions_table.sql");
+      }
+      throw error;
+    }
+  }
+
+  async getActionsForProperty(propertyId: string): Promise<Action[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(actions)
+        .where(and(
+          eq(actions.propertyId, propertyId),
+          sql`${actions.completedAt} IS NULL`
+        ))
+        .orderBy(desc(actions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        console.warn('[getActionsForProperty] actions table not found, returning empty array');
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async getActionsForContact(contactId: string): Promise<Action[]> {
+    try {
+      return await ensureDb()
+        .select()
+        .from(actions)
+        .where(and(
+          eq(actions.contactId, contactId),
+          sql`${actions.completedAt} IS NULL`
+        ))
+        .orderBy(desc(actions.createdAt));
+    } catch (error: any) {
+      if (error?.message?.includes('actions') || error?.code === '42P01') {
+        console.warn('[getActionsForContact] actions table not found, returning empty array');
+        return [];
       }
       throw error;
     }

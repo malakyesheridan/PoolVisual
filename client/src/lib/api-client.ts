@@ -1175,6 +1175,35 @@ class ApiClient {
   }
 
   // Contacts
+  // Actions
+  async getActions(filters?: { priority?: string; type?: string }) {
+    const params = new URLSearchParams();
+    if (filters?.priority) params.append('priority', filters.priority);
+    if (filters?.type) params.append('type', filters.type);
+    const query = params.toString();
+    return this.request<any[]>(`/actions${query ? `?${query}` : ''}`);
+  }
+
+  async createAction(actionData: {
+    actionType: string;
+    description?: string;
+    priority?: 'low' | 'medium' | 'high';
+    contactId?: string;
+    opportunityId?: string;
+    propertyId?: string;
+  }) {
+    return this.request<any>('/actions', {
+      method: 'POST',
+      body: JSON.stringify(actionData),
+    });
+  }
+
+  async completeAction(actionId: string) {
+    return this.request<any>(`/actions/${actionId}/complete`, {
+      method: 'PUT',
+    });
+  }
+
   async getContacts() {
     return this.request<any[]>('/contacts');
   }

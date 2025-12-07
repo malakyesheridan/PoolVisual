@@ -171,6 +171,39 @@ export async function registerRoutes(app: Express): Promise<void> {
         });
       }
 
+      // Trigger 4: Past Appraisal Re-engaged - Check if contact was previously dormant
+      try {
+        const { createActionIfNotExists } = await import('./lib/actionHelper.js');
+        // Check if there's a contact associated with this form submission
+        // If form link has been accessed before and contact exists, create action
+        const submissions = await storage.getBuyerFormSubmissions(formLink.id);
+        if (submissions.length > 0) {
+          // Check if there's a contact created from previous submission
+          const previousSubmission = submissions[submissions.length - 1];
+          if (previousSubmission.createdContactId) {
+            const contact = await storage.getContact(previousSubmission.createdContactId);
+            if (contact) {
+              // Check if contact was created more than 7 days ago (dormant)
+              const contactAge = new Date().getTime() - new Date(contact.createdAt).getTime();
+              const sevenDaysInMs = 7 * 24 * 60 * 60 * 1000;
+              if (contactAge > sevenDaysInMs) {
+                await createActionIfNotExists({
+                  orgId: formLink.orgId,
+                  agentId: formLink.createdByUserId,
+                  contactId: contact.id,
+                  propertyId: formLink.propertyId || null,
+                  type: 'seller_interest_reengaged',
+                  description: 'Past appraisal contact has become active again.',
+                  priority: 'high',
+                });
+              }
+            }
+          }
+        }
+      } catch (actionError: any) {
+        console.warn('[Buyer Form Link] Failed to check for re-engagement:', actionError?.message);
+      }
+
       // Get property info if linked
       let propertyInfo: any = null;
       if (formLink.propertyId) {
@@ -1212,6 +1245,7 @@ export async function registerRoutes(app: Express): Promise<void> {
           createdByUserId: req.user.id,
         });
         console.log(`[Matched Buyers] Generated ${suggestions.length} match suggestions`);
+        // Note: Action creation for new buyer matches is handled inside generateMatchSuggestions
       } catch (suggestionError: any) {
         // Log but don't fail the request if suggestion generation fails
         const errorMsg = suggestionError?.message || String(suggestionError);
@@ -3496,6 +3530,48 @@ export async function registerRoutes(app: Express): Promise<void> {
       }));
       
       console.log('[GET /api/opportunities] Returning', mappedOpportunities.length, 'mapped opportunities');
+      
+      // Trigger 2: Opportunity Stalled - Check for opportunities with no activity in 14 days
+      try {
+        const { createActionIfNotExists } = await import('./lib/actionHelper.js');
+        const userOrgs = await storage.getUserOrgs(String(requestingUserId));
+        const defaultOrgId = userOrgs.length > 0 ? userOrgs[0].id : null;
+        
+        if (defaultOrgId) {
+          const fourteenDaysAgo = new Date();
+          fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+          
+          for (const opp of opportunities) {
+            // Use opportunity's orgId if available, otherwise fall back to user's first org
+            const oppOrgId = opp.orgId || defaultOrgId;
+            
+            // Check if opportunity is stalled (no notes or activity in 14 days)
+            const notes = await storage.getOpportunityNotes(opp.id);
+            const latestNote = notes.length > 0 
+              ? notes.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0]
+              : null;
+            
+            const lastActivityDate = latestNote 
+              ? new Date(latestNote.createdAt)
+              : new Date(opp.updatedAt || opp.createdAt);
+            
+            if (lastActivityDate < fourteenDaysAgo) {
+              // Opportunity is stalled - use opportunity's orgId for proper org scoping
+              await createActionIfNotExists({
+                orgId: oppOrgId,
+                agentId: String(requestingUserId),
+                opportunityId: opp.id,
+                type: 'opportunity_stalled',
+                description: 'This opportunity has had no activity for 14 days.',
+                priority: 'medium',
+              });
+            }
+          }
+        }
+      } catch (actionError: any) {
+        console.warn('[GET /api/opportunities] Failed to check for stalled opportunities:', actionError?.message);
+      }
+      
       res.json(mappedOpportunities);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
@@ -4165,6 +4241,72 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       const updated = await storage.updateContact(contactId, req.body);
       res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  // Actions endpoints
+  app.get("/api/actions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { priority, type } = req.query;
+      let actions = await storage.getActionsByUser(req.user.id);
+      
+      // Apply filters
+      if (priority && typeof priority === 'string') {
+        actions = actions.filter(a => a.priority === priority);
+      }
+      if (type && typeof type === 'string') {
+        actions = actions.filter(a => a.actionType === type);
+      }
+      
+      res.json(actions);
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.post("/api/actions", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const { actionType, description, priority, contactId, opportunityId, propertyId } = req.body;
+
+      if (!actionType) {
+        return res.status(400).json({ message: "action_type is required" });
+      }
+
+      // Get user's org - actions require an organization
+      const userOrgs = await storage.getUserOrgs(req.user.id);
+      const orgId = userOrgs.length > 0 ? userOrgs[0].id : null;
+
+      if (!orgId) {
+        return res.status(400).json({ message: "User must belong to an organization to create actions" });
+      }
+
+      // Use createActionIfNotExists for deduplication (prevents duplicate actions within 24 hours)
+      const { createActionIfNotExists } = await import('./lib/actionHelper.js');
+      await createActionIfNotExists({
+        orgId,
+        agentId: req.user.id,
+        contactId: contactId || null,
+        opportunityId: opportunityId || null,
+        propertyId: propertyId || null,
+        type: actionType,
+        description: description || null,
+        priority: priority || 'medium',
+      });
+
+      // Return success - the helper handles creation and deduplication
+      res.json({ success: true, message: "Action created or already exists" });
+    } catch (error) {
+      res.status(500).json({ message: (error as Error).message });
+    }
+  });
+
+  app.put("/api/actions/:id/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const actionId = req.params.id;
+      const action = await storage.completeAction(actionId);
+      res.json(action);
     } catch (error) {
       res.status(500).json({ message: (error as Error).message });
     }

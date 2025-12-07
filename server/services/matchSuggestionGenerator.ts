@@ -131,6 +131,23 @@ export async function generateMatchSuggestions(
 
           console.log(`[MatchSuggestionGenerator] ✅ Created new suggestion ${newSuggestion.id} for property ${propertyId}, opportunity ${match.opportunityId} (score: ${match.matchScore}, tier: ${match.matchTier})`);
 
+          // Trigger 3: New Buyer Match - Create action for new matches
+          try {
+            const { createActionIfNotExists } = await import('../lib/actionHelper.js');
+            await createActionIfNotExists({
+              orgId,
+              agentId: createdByUserId || null,
+              propertyId,
+              contactId: match.contactId || null,
+              opportunityId: match.opportunityId,
+              type: 'new_buyer_match',
+              description: 'A new buyer was matched to this property.',
+              priority: 'high',
+            });
+          } catch (actionError: any) {
+            console.warn('[MatchSuggestionGenerator] Failed to create action for new match:', actionError?.message);
+          }
+
           // Enqueue outbox event for new match suggestion (best effort only)
           try {
             const { ensureDb } = await import('../storage.js');

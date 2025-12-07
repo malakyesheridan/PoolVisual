@@ -34,6 +34,7 @@ const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page")
 const NewEditor = React.lazy(() => import("@/new_editor/NewEditor").then(m => ({ default: m.NewEditor })));
 const JobsNew = React.lazy(() => import("@/pages/jobs-new"));
 const Quotes = React.lazy(() => import("@/pages/quotes"));
+const Actions = React.lazy(() => import("@/pages/actions"));
 const Opportunities = React.lazy(() => 
   import("@/pages/opportunities").catch((error) => {
     console.error('[App] Failed to load Opportunities module:', error);
@@ -292,6 +293,14 @@ function ProtectedRouter() {
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
                     <Opportunities />
+                  </Suspense>
+                </ProtectedRoute>
+              </Route>
+              
+              <Route path="/actions">
+                <ProtectedRoute>
+                  <Suspense fallback={<PageLoader />}>
+                    <Actions />
                   </Suspense>
                 </ProtectedRoute>
               </Route>
