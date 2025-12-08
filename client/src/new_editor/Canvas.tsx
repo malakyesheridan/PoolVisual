@@ -106,6 +106,18 @@ export function Canvas({ width, height }: CanvasProps) {
         dispatch({ type: 'SET_STATE', payload: 'ready' });
         dispatch({ type: 'SET_LOADING_VARIANT', payload: null }); // Clear loading state
         
+        // Update variant loading state to 'loaded' when image successfully loads
+        if (activeVariantId && activeVariantId !== 'original') {
+          dispatch({
+            type: 'UPDATE_VARIANT_LOADING_STATE',
+            payload: {
+              variantId: activeVariantId,
+              loadingState: 'loaded',
+              loadedAt: Date.now()
+            }
+          });
+        }
+        
         // Get actual container size from ref (more reliable than props)
         const container = containerRef.current;
         if (!container) {

@@ -147,9 +147,15 @@ export function VariantsPanel() {
       return;
     }
     
-    // Only prevent deletion if it's actively being loaded in the canvas (not just in the panel)
+    // Only prevent deletion if it's actively being loaded in the canvas right now
+    // Check both loadingState and if it's the currently loading variant
     const storeVariant = storeVariants.find(v => v.id === variantId);
-    if (storeVariant?.loadingState === 'loading') {
+    const currentState = useEditorStore.getState();
+    const isCurrentlyLoading = currentState.loadingVariantId === variantId;
+    const hasLoadingState = storeVariant?.loadingState === 'loading';
+    
+    // Only block if it's actively loading right now (not just has a stale loading state)
+    if (isCurrentlyLoading || (hasLoadingState && !storeVariant?.loadedAt)) {
       toast.warning('Cannot delete loading variant', {
         description: 'Please wait for the variant to finish loading on the canvas before deleting it.'
       });
