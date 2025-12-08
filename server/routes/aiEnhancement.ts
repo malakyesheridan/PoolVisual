@@ -350,6 +350,40 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     const hasMask = masks && masks.length > 0;
     const enhancementType = mode || options?.mode || 'basic';
 
+    // Map mode value to match n8n workflow expectations (do this before transaction)
+    const modeMapping: Record<string, string> = {
+      // Trades modes
+      'blend_materials': 'blend_material', // Plural to singular
+      'blend_material': 'blend_material',
+      'add_decoration': 'add_decoration',
+      'add_pool': 'add_pool',
+      'clutter_removal': 'clutter_removal',
+      'before_after': 'before_after',
+      // Real estate modes (pass through as-is)
+      'image_enhancement': 'image_enhancement',
+      'day_to_dusk': 'day_to_dusk',
+      'stage_room': 'stage_room',
+      'item_removal': 'item_removal',
+      'renovation': 'renovation',
+    };
+    
+    // Get mode from top-level or options, but never default to 'add_decoration'
+    let finalMode = mode || options?.mode;
+    
+    if (!finalMode) {
+      console.error('[Create Enhancement] ⚠️ Mode not found in payload:', { mode, optionsMode: options?.mode });
+      finalMode = 'image_enhancement'; // Safe default instead of add_decoration
+    }
+    
+    // Apply mapping if available, otherwise use original mode
+    finalMode = modeMapping[finalMode] || finalMode;
+    
+    console.log('[Create Enhancement] Mode mapping:', {
+      original: mode || options?.mode,
+      mapped: finalMode,
+      inMapping: modeMapping[mode || options?.mode || ''] !== undefined
+    });
+
     // Create job + outbox atomically
     // No enhancement deduction - unlimited enhancements
     let result;
@@ -390,53 +424,16 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
           process.env.SAFE_MODE === '1' ? 'test-model' : 'sdxl',
           cacheKey,
           null, // provider_idempotency_key (will be set when provider acks)
-          requiredEnhancements * 1000 // Convert to microdollars for compatibility (legacy field)
+          0 // reserved_cost_micros: No cost tracking - unlimited enhancements
         ]
       );
 
-      const jobId = insert[0].id;
+      const insertedJobId = insert[0].id;
 
       // Construct callback URL for n8n webhook
       const appUrl = (process.env.APP_URL || process.env.APP_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-      const callbackUrl = `${appUrl}/api/ai/enhancement/${jobId}/callback`;
+      const callbackUrl = `${appUrl}/api/ai/enhancement/${insertedJobId}/callback`;
       const callbackSecret = process.env.N8N_WEBHOOK_SECRET || 'secret';
-
-      // Map mode value to match n8n workflow expectations
-      // Complete mapping for all enhancement types
-      // Trades modes: 'blend_material' (singular), 'add_decoration', 'clutter_removal', 'before_after', 'image_enhancement'
-      // Real estate modes: 'image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal', 'renovation'
-      const modeMapping: Record<string, string> = {
-        // Trades modes
-        'blend_materials': 'blend_material', // Plural to singular
-        'blend_material': 'blend_material',
-        'add_decoration': 'add_decoration',
-        'add_pool': 'add_pool',
-        'clutter_removal': 'clutter_removal',
-        'before_after': 'before_after',
-        // Real estate modes (pass through as-is)
-        'image_enhancement': 'image_enhancement',
-        'day_to_dusk': 'day_to_dusk',
-        'stage_room': 'stage_room',
-        'item_removal': 'item_removal',
-        'renovation': 'renovation',
-      };
-      
-      // Get mode from top-level or options, but never default to 'add_decoration'
-      let finalMode = mode || options?.mode;
-      
-      if (!finalMode) {
-        console.error('[Create Enhancement] ⚠️ Mode not found in payload:', { mode, optionsMode: options?.mode });
-        finalMode = 'image_enhancement'; // Safe default instead of add_decoration
-      }
-      
-      // Apply mapping if available, otherwise use original mode
-      finalMode = modeMapping[finalMode] || finalMode;
-      
-      console.log('[Create Enhancement] Mode mapping:', {
-        original: mode || options?.mode,
-        mapped: finalMode,
-        inMapping: modeMapping[mode || options?.mode || ''] !== undefined
-      });
 
       // CRITICAL FIX: Fetch photo from database to get correct dimensions
       // Client-provided dimensions may not match database
@@ -466,7 +463,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       }
 
       const outboxPayload = {
-        jobId,
+        jobId: insertedJobId,
         tenantId,
         userId: user.id,
         photoId,
@@ -493,7 +490,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       // Ensure mode is not in options
       delete (outboxPayload.options as any).mode;
 
-      console.log('[Create Enhancement] Creating outbox event for job:', jobId);
+      console.log('[Create Enhancement] Creating outbox event for job:', insertedJobId);
       console.log('[Create Enhancement] Masks received from client:', {
         masksCount: masks.length,
         masks: masks.map((m: any) => ({
@@ -518,14 +515,14 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       await tx.execute(
         `INSERT INTO outbox (job_id, event_type, payload, status) VALUES ($1, 'enqueue_enhancement', $2, 'pending')`,
         [
-          jobId,
+          insertedJobId,
           JSON.stringify(outboxPayload)
         ]
       );
 
       console.log('[Create Enhancement] ✅ Outbox event created successfully');
 
-      return { id: jobId };
+      return { id: insertedJobId };
       });
     } catch (txErr: any) {
       console.error('[Create Enhancement] Transaction failed:', txErr.message);
@@ -540,13 +537,12 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     }
 
     // No enhancement deduction - unlimited enhancements
-    // Update the deduction record with the actual job ID (if needed for tracking)
     logger.info({
-      msg: 'Enhancements deducted and job created successfully',
+      msg: 'Enhancement job created successfully',
       userId: user.id,
       jobId,
-      enhancementsDeducted: deductionResult.enhancementsDeducted,
-      newBalance: deductionResult.newBalance,
+      mode: mode || options?.mode || 'unknown',
+      enhancementType
     });
 
     // CRITICAL FIX: Trigger outbox processor AFTER transaction completes
