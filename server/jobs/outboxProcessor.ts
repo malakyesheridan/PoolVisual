@@ -209,25 +209,53 @@ export async function processOutboxEvents() {
           try {
             // Construct n8n webhook payload
             // Note: n8n workflow expects 'mode' at root level (not nested in options)
-            // Priority: payload.mode (top-level) > payload.options.mode (legacy) > default
-            let mode = payload.mode || payload.options?.mode || 'add_decoration';
+            // Priority: payload.mode (top-level) > payload.options.mode (legacy)
+            // CRITICAL: Never default to 'add_decoration' - use original mode or safe default
+            let mode = payload.mode || payload.options?.mode;
+            
+            // Log original mode extraction for debugging
+            if (!mode) {
+              console.error('[OutboxProcessor] ⚠️ Mode not found in payload:', {
+                hasPayloadMode: !!payload.mode,
+                hasOptionsMode: !!payload.options?.mode,
+                payloadKeys: Object.keys(payload),
+                optionsKeys: payload.options ? Object.keys(payload.options) : []
+              });
+            }
             
             // Map mode value to match n8n workflow expectations
-            // Trades modes: 'blend_material' (singular), 'add_decoration', 'add_pool'
-            // Real estate modes: 'image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal'
+            // Complete mapping for all enhancement types
+            // Trades modes: 'blend_material' (singular), 'add_decoration', 'clutter_removal', 'before_after', 'image_enhancement'
+            // Real estate modes: 'image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal', 'renovation'
             const modeMapping: Record<string, string> = {
               // Trades modes
-              'blend_materials': 'blend_material',
+              'blend_materials': 'blend_material', // Plural to singular
               'blend_material': 'blend_material',
               'add_decoration': 'add_decoration',
               'add_pool': 'add_pool',
+              'clutter_removal': 'clutter_removal',
+              'before_after': 'before_after',
               // Real estate modes (pass through as-is)
               'image_enhancement': 'image_enhancement',
               'day_to_dusk': 'day_to_dusk',
               'stage_room': 'stage_room',
               'item_removal': 'item_removal',
+              'renovation': 'renovation',
             };
-            mode = modeMapping[mode] || mode || 'add_decoration';
+            // Use mapping if available, otherwise use original mode, never fallback to add_decoration
+            mode = modeMapping[mode] || mode;
+            
+            // Log mode mapping for debugging
+            if (!mode) {
+              console.error('[OutboxProcessor] ⚠️ Mode is undefined or empty after mapping. Original:', payload.mode || payload.options?.mode);
+              mode = 'image_enhancement'; // Safe default instead of add_decoration
+            }
+            
+            console.log('[OutboxProcessor] Mode mapping:', {
+              original: payload.mode || payload.options?.mode,
+              mapped: mode,
+              inMapping: modeMapping[payload.mode || payload.options?.mode || ''] !== undefined
+            });
             
             // Check if mode requires masks (trades modes do, real estate don't)
             const masksRequired = ['blend_material', 'add_decoration', 'add_pool'].includes(mode);

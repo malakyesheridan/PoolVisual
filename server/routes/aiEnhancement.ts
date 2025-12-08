@@ -204,6 +204,22 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       }
     }
 
+    // CRITICAL FIX: If industry is still not set, infer from mode
+    // Real estate modes: stage_room, item_removal, renovation, day_to_dusk
+    // Trades modes: add_decoration, blend_materials, clutter_removal, before_after
+    if (!industry && mode) {
+      const realEstateModes = ['stage_room', 'item_removal', 'renovation', 'day_to_dusk'];
+      const tradesModes = ['add_decoration', 'blend_materials', 'clutter_removal', 'before_after'];
+      
+      if (realEstateModes.includes(mode)) {
+        industry = 'real_estate';
+        console.log('[Create Enhancement] ⚠️ Industry not set, inferring "real_estate" from mode:', mode);
+      } else if (tradesModes.includes(mode)) {
+        industry = 'pool'; // Default trades industry
+        console.log('[Create Enhancement] ⚠️ Industry not set, inferring "pool" from mode:', mode);
+      }
+    }
+
     // Log industry detection for debugging
     console.log('[Create Enhancement] Industry detection:', {
       userId: user.id,
@@ -211,7 +227,8 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       orgIndustry: industry,
       tenantId,
       mode,
-      validModes: getValidEnhancementModes(industry)
+      validModes: getValidEnhancementModes(industry),
+      inferred: !userRecord.industryType && industry ? 'yes' : 'no'
     });
 
     // Validate mode based on industry
@@ -222,7 +239,10 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
         validModes,
         providedMode: mode,
         userIndustryType: userRecord.industryType,
-        detectedIndustry: industry
+        detectedIndustry: industry,
+        suggestion: userRecord.industryType ? 
+          `User's industryType is "${userRecord.industryType}" but detected industry is "${industry}". Please update user's industryType in database.` :
+          `User's industryType is not set. Please set it to "real_estate" for real estate users.`
       });
     }
 
@@ -399,23 +419,41 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       const callbackSecret = process.env.N8N_WEBHOOK_SECRET || 'secret';
 
       // Map mode value to match n8n workflow expectations
-      // n8n expects: 'blend_material' (singular), 'add_decoration', 'add_pool'
-      // Client may send: 'blend_materials' (plural), 'add_decoration', 'add_pool'
+      // Complete mapping for all enhancement types
+      // Trades modes: 'blend_material' (singular), 'add_decoration', 'clutter_removal', 'before_after', 'image_enhancement'
+      // Real estate modes: 'image_enhancement', 'day_to_dusk', 'stage_room', 'item_removal', 'renovation'
       const modeMapping: Record<string, string> = {
-        'blend_materials': 'blend_material',
+        // Trades modes
+        'blend_materials': 'blend_material', // Plural to singular
         'blend_material': 'blend_material',
         'add_decoration': 'add_decoration',
-        'add_pool': 'add_pool'
+        'add_pool': 'add_pool',
+        'clutter_removal': 'clutter_removal',
+        'before_after': 'before_after',
+        // Real estate modes (pass through as-is)
+        'image_enhancement': 'image_enhancement',
+        'day_to_dusk': 'day_to_dusk',
+        'stage_room': 'stage_room',
+        'item_removal': 'item_removal',
+        'renovation': 'renovation',
       };
-      let finalMode = mode || options?.mode || 'add_decoration';
-      finalMode = modeMapping[finalMode] || 'add_decoration';
       
-      // Validate mode is one of the three valid values
-      const validModes = ['blend_material', 'add_decoration', 'add_pool'];
-      if (!validModes.includes(finalMode)) {
-        console.warn(`[Create Enhancement] Invalid mode '${finalMode}', defaulting to 'add_decoration'`);
-        finalMode = 'add_decoration';
+      // Get mode from top-level or options, but never default to 'add_decoration'
+      let finalMode = mode || options?.mode;
+      
+      if (!finalMode) {
+        console.error('[Create Enhancement] ⚠️ Mode not found in payload:', { mode, optionsMode: options?.mode });
+        finalMode = 'image_enhancement'; // Safe default instead of add_decoration
       }
+      
+      // Apply mapping if available, otherwise use original mode
+      finalMode = modeMapping[finalMode] || finalMode;
+      
+      console.log('[Create Enhancement] Mode mapping:', {
+        original: mode || options?.mode,
+        mapped: finalMode,
+        inMapping: modeMapping[mode || options?.mode || ''] !== undefined
+      });
 
       // CRITICAL FIX: Fetch photo from database to get correct dimensions
       // Client-provided dimensions may not match database
