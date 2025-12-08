@@ -53,12 +53,19 @@ export function VariantsPanel() {
     return {};
   });
   
+  // Track if we've already loaded variants for this photo to prevent resetting active variant
+  const loadedPhotoIdRef = React.useRef<string | null>(null);
+  
   // Load variants for the current photo
   useEffect(() => {
     if (!effectivePhotoId) {
       setLoading(false);
       return;
     }
+    
+    // CRITICAL FIX: Only auto-set most recent variant on FIRST load for this photo
+    // If we've already loaded variants for this photo, don't change the active variant
+    const isFirstLoad = loadedPhotoIdRef.current !== effectivePhotoId;
     
     const loadVariants = async () => {
       try {
@@ -116,8 +123,9 @@ export function VariantsPanel() {
           }
         }
         
-        // Set the most recent variant as active (last in sorted array)
-        if (sortedVariants.length > 0) {
+        // CRITICAL FIX: Only set the most recent variant as active on FIRST load
+        // This prevents resetting the active variant when sidebar opens/closes
+        if (isFirstLoad && sortedVariants.length > 0) {
           const mostRecentVariant = sortedVariants[sortedVariants.length - 1];
           const currentActiveId = useEditorStore.getState().activeVariantId;
           // Only change active variant if it's not already set or if it's the original
@@ -125,6 +133,9 @@ export function VariantsPanel() {
             dispatch({ type: 'SET_ACTIVE_VARIANT', payload: mostRecentVariant.id });
           }
         }
+        
+        // Mark this photo as loaded
+        loadedPhotoIdRef.current = effectivePhotoId;
       } catch (error: any) {
         console.error('[VariantsPanel] Failed to load variants:', error);
         toast.error('Failed to load variants', { description: error.message });

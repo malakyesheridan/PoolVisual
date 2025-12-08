@@ -131,11 +131,19 @@ export default function Login() {
         setError(response.error || 'Registration failed');
       }
     } catch (err: any) {
-      const errorMessage = 
-        err?.response?.data?.error || 
+      // Extract error message with better handling for password validation
+      let errorMessage = err?.response?.data?.error || 
         err?.response?.data?.message || 
         err?.message || 
         'Registration failed. Please try again.';
+      
+      // If password validation failed, show the detailed errors
+      if (err?.response?.data?.details && Array.isArray(err.response.data.details)) {
+        errorMessage = err.response.data.details.join('. ');
+      } else if (err?.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      }
+      
       setError(errorMessage);
       console.error('[Login] Registration error:', err);
     } finally {

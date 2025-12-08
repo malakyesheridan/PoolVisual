@@ -372,6 +372,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({
           ok: false,
           error: "Password validation failed",
+          message: passwordValidation.errors.join('. '), // More user-friendly message
           details: passwordValidation.errors,
           strength: passwordValidation.strength
         });
@@ -490,6 +491,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       // CRITICAL FIX: Automatically log the user in after registration by setting session
       // This ensures the user is authenticated on the server for subsequent API calls
       const fullUser = await storage.getUser(user.id);
+      
+      // Set session user data
       req.session.user = {
         id: user.id,
         email: user.email,
@@ -497,9 +500,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         isAdmin: fullUser?.isAdmin || false,
         adminPermissions: (fullUser?.adminPermissions as string[]) || [],
       };
+      
+      // CRITICAL: Save session BEFORE tracking to ensure cookie is set
       await req.session.save();
+      console.log('[Auth/Register] Session saved for user:', user.id);
 
-      // Track session for security management
+      // Track session for security management (non-blocking)
       try {
         const { parseUserAgent } = await import('./lib/deviceParser.js');
         const deviceInfo = parseUserAgent(req.headers['user-agent'] || '');
@@ -516,13 +522,16 @@ export async function registerRoutes(app: Express): Promise<void> {
         
         // Store session ID in session for later reference
         (req.session as any).sessionId = sessionId;
+        // Save again after adding sessionId (optional, but ensures consistency)
         await req.session.save();
       } catch (sessionError) {
         // Don't fail registration if session tracking fails
-        console.warn('[Auth/Register] Failed to track session:', sessionError);
+        console.warn('[Auth/Register] Failed to track session (non-critical):', sessionError);
       }
 
-      res.json({ 
+      // CRITICAL: Ensure response includes Set-Cookie header by explicitly setting it
+      // Return response with user data
+      return res.json({ 
         ok: true,
         user: { 
           id: user.id, 
