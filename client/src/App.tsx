@@ -26,8 +26,66 @@ function PageLoader() {
 }
 const Jobs = React.lazy(() => import("@/pages/jobs"));
 const Properties = React.lazy(() => import("@/pages/properties"));
-const JobDetail = React.lazy(() => import("@/pages/job-detail"));
-const PropertyDetail = React.lazy(() => import("@/pages/property-detail"));
+const JobDetail = React.lazy(() => 
+  import("@/pages/job-detail").catch((error) => {
+    console.error('[App] Failed to load JobDetail module:', error);
+    // Retry once after a short delay
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        import("@/pages/job-detail").then(resolve).catch((retryError) => {
+          console.error('[App] Retry also failed:', retryError);
+          // Return a fallback component that shows an error
+          resolve({
+            default: () => (
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold mb-2">Failed to load page</h2>
+                  <p className="text-slate-600 mb-4">Please refresh the page to try again.</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              </div>
+            ),
+          });
+        });
+      }, 1000);
+    });
+  })
+);
+const PropertyDetail = React.lazy(() => 
+  import("@/pages/property-detail").catch((error) => {
+    console.error('[App] Failed to load PropertyDetail module:', error);
+    // Retry once after a short delay
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        import("@/pages/property-detail").then(resolve).catch((retryError) => {
+          console.error('[App] Retry also failed:', retryError);
+          // Return a fallback component that shows an error
+          resolve({
+            default: () => (
+              <div className="flex items-center justify-center min-h-screen">
+                <div className="text-center">
+                  <h2 className="text-xl font-semibold mb-2">Failed to load page</h2>
+                  <p className="text-slate-600 mb-4">Please refresh the page to try again.</p>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90"
+                  >
+                    Refresh Page
+                  </button>
+                </div>
+              </div>
+            ),
+          });
+        });
+      }, 1000);
+    });
+  })
+);
 const SellerReportBuilder = React.lazy(() => import("@/pages/seller-report-builder"));
 const CanvasEditorPage = React.lazy(() => import("@/pages/CanvasEditorPage"));
 const CanvasEditorV2Page = React.lazy(() => import("@/pages/CanvasEditorV2Page"));
