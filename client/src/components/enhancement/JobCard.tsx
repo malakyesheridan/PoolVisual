@@ -8,10 +8,14 @@ import {
   Eye, 
   ExternalLink,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  X,
+  Trash2
 } from 'lucide-react';
-import { Job } from '../../services/aiEnhancement';
+import { Job, cancelJob } from '../../services/aiEnhancement';
 import { useEditorStore } from '../../new_editor/store';
+import { useEnhancementStore } from '../../state/useEnhancementStore';
+import { toast } from '../../lib/toast';
 
 interface JobCardProps {
   job: Job;
@@ -20,6 +24,8 @@ interface JobCardProps {
   onViewInVariants?: (variantId: string) => void;
   onRerun?: (job: Job) => void;
   onRetry?: (job: Job) => void;
+  onCancel?: (job: Job) => void;
+  onDelete?: (job: Job) => void;
   getEnhancementTypeIcon: (mode?: string) => React.ComponentType<any>;
   getEnhancementTypeLabel: (mode?: string) => string;
   formatRelativeTime: (dateString?: string) => string;
@@ -32,20 +38,71 @@ export function JobCard({
   onViewInVariants,
   onRerun,
   onRetry,
+  onCancel,
+  onDelete,
   getEnhancementTypeIcon,
   getEnhancementTypeLabel,
   formatRelativeTime
 }: JobCardProps) {
   const { activeVariantId, variants: storeVariants } = useEditorStore();
+  const deleteJob = useEnhancementStore(s => s.deleteJob);
   const [showHoverPreview, setShowHoverPreview] = useState(false);
   const [thumbnailLoading, setThumbnailLoading] = useState(true);
   const [thumbnailError, setThumbnailError] = useState(false);
   const [isNew, setIsNew] = useState(true);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const TypeIcon = getEnhancementTypeIcon(job.mode);
   const isProcessing = ['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(job.status);
   const isCompleted = job.status === 'completed';
   const isFailed = job.status === 'failed';
+  const isCanceled = job.status === 'canceled';
+  
+  const handleCancel = async () => {
+    if (!confirm('Are you sure you want to cancel this enhancement job?')) return;
+    setIsCanceling(true);
+    try {
+      await cancelJob(job.id);
+      // Clear enhancement lock if this was the active job
+      const currentState = useEditorStore.getState();
+      if (currentState.isEnhancing && isActive) {
+        useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+      }
+      if (onCancel) {
+        onCancel(job);
+      }
+      toast.success('Job canceled', { description: `Job ${job.id.slice(0, 8)}... has been canceled` });
+    } catch (error: any) {
+      toast.error('Failed to cancel job', { description: error.message });
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+  
+  const handleDelete = async () => {
+    if (!confirm('Are you sure you want to delete this enhancement job? This action cannot be undone.')) return;
+    setIsDeleting(true);
+    try {
+      // Use bulk delete endpoint for single job
+      const { bulkDeleteJobs } = await import('../../services/aiEnhancement');
+      await bulkDeleteJobs([job.id]);
+      // Clear enhancement lock if this was the active job
+      const currentState = useEditorStore.getState();
+      if (currentState.isEnhancing && isActive) {
+        useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+      }
+      deleteJob(job.id);
+      if (onDelete) {
+        onDelete(job);
+      }
+      toast.success('Job deleted', { description: `Job ${job.id.slice(0, 8)}... has been deleted` });
+    } catch (error: any) {
+      toast.error('Failed to delete job', { description: error.message });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
   
   // Check if any variant from this job is active on canvas
   const jobVariants = job.variants || [];
@@ -109,6 +166,35 @@ export function JobCard({
             {isProcessing && <Loader2 className="w-3 h-3 animate-spin" />}
             {!isProcessing && <StatusIcon className="w-3 h-3" />}
             <span>{statusLabel}</span>
+          </div>
+          {/* Cancel/Delete buttons */}
+          <div className="flex items-center gap-1">
+            {isProcessing && (
+              <button
+                onClick={handleCancel}
+                disabled={isCanceling}
+                className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                title="Cancel job"
+              >
+                {isCanceling ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <X className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+              title="Delete job"
+            >
+              {isDeleting ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="w-3.5 h-3.5" />
+              )}
+            </button>
           </div>
         </div>
       </div>

@@ -395,10 +395,25 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     
     // CRITICAL FIX: Check global enhancement lock
     if (currentState.isEnhancing) {
-      toast.warning('Enhancement in progress', { 
-        description: 'Please wait for the current enhancement to complete before starting a new one.' 
-      });
-      return;
+      // Check if there's actually an active enhancement or if it's stuck
+      const hasActiveEnhancement = activeEnhancement && 
+        ['queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading'].includes(activeEnhancement.status);
+      
+      if (!hasActiveEnhancement) {
+        // Lock is stuck, clear it automatically
+        console.warn('[JobsDrawer] Enhancement lock is stuck, clearing automatically');
+        useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+      } else {
+        toast.warning('Enhancement in progress', { 
+          description: 'Please wait for the current enhancement to complete before starting a new one. You can cancel it if needed.',
+          action: {
+            label: 'Clear Lock',
+            onClick: handleClearEnhancementLock
+          },
+          duration: 10000
+        });
+        return;
+      }
     }
     
     if (!currentImageUrl) {
@@ -1237,6 +1252,32 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     await handleCreateEnhancement(job.mode);
   };
   
+  // Handle Cancel job
+  const handleCancelJob = async (job: Job) => {
+    // Job is already canceled by JobCard, just update local state
+    upsertJob({ ...job, status: 'canceled' });
+    // Clear enhancement lock if this was blocking
+    const currentState = useEditorStore.getState();
+    if (currentState.isEnhancing && activeEnhancement?.id === job.id) {
+      useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+    }
+  };
+  
+  // Handle Delete job
+  const handleDeleteJob = async (job: Job) => {
+    // Job is already deleted by JobCard, just clear lock if needed
+    const currentState = useEditorStore.getState();
+    if (currentState.isEnhancing && activeEnhancement?.id === job.id) {
+      useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+    }
+  };
+  
+  // Handle Clear stuck enhancement lock
+  const handleClearEnhancementLock = () => {
+    useEditorStore.getState().dispatch({ type: 'SET_ENHANCING', payload: false });
+    toast.success('Enhancement lock cleared', { description: 'You can now create new enhancements' });
+  };
+  
   // Phase 3: Handler to navigate to variants tab and highlight specific variant
   const handleViewInVariants = (variantId: string) => {
     // Emit a custom event that NewEditor can listen to
@@ -1568,6 +1609,8 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
             onViewInVariants={handleViewInVariants}
             onRerun={handleRerunEnhancement}
             onRetry={handleRetryFailed}
+            onCancel={handleCancelJob}
+            onDelete={handleDeleteJob}
             getEnhancementTypeIcon={getEnhancementTypeIcon}
             getEnhancementTypeLabel={getEnhancementTypeLabel}
             formatRelativeTime={formatRelativeTime}
@@ -1592,6 +1635,8 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                 onApply={onApplyEnhancedImage ? () => handleApplyToCanvas(job) : undefined}
                 onViewInVariants={handleViewInVariants}
                 onRerun={handleRerunEnhancement}
+                onCancel={handleCancelJob}
+                onDelete={handleDeleteJob}
                 getEnhancementTypeIcon={getEnhancementTypeIcon}
                 getEnhancementTypeLabel={getEnhancementTypeLabel}
                 formatRelativeTime={formatRelativeTime}
@@ -1626,6 +1671,8 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
                   onApply={onApplyEnhancedImage ? () => handleApplyToCanvas(job) : undefined}
                   onViewInVariants={handleViewInVariants}
                   onRerun={handleRerunEnhancement}
+                  onCancel={handleCancelJob}
+                  onDelete={handleDeleteJob}
                   getEnhancementTypeIcon={getEnhancementTypeIcon}
                   getEnhancementTypeLabel={getEnhancementTypeLabel}
                   formatRelativeTime={formatRelativeTime}
