@@ -674,7 +674,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // Real estate modes don't require masks
       // Trades: add_decoration and blend_materials require masks, others don't
       const masksRequired = effectiveIndustry !== 'real_estate' && 
-        (previewData.mode === 'add_decoration' || previewData.mode === 'blend_materials');
+        (mode === 'add_decoration' || mode === 'blend_materials');
       
       if (masksRequired && masks.length === 0) {
         toast.error('Masks required', {
@@ -685,7 +685,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       }
       
       // Check if prompt is required for before_after
-      if (previewData.mode === 'before_after' && (!userPrompt || userPrompt.trim().length === 0)) {
+      if (mode === 'before_after' && (!userPrompt || userPrompt.trim().length === 0)) {
         toast.error('Description required', {
           description: 'Before & After (AI Rework) requires a description of the intended outcome.',
         });
