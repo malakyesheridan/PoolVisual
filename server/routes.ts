@@ -1091,6 +1091,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       // Parse jobIds if provided (comma-separated)
       const jobIdArray = jobIds ? (jobIds as string).split(',').filter(Boolean) : null;
 
+      // If no jobIds provided, return empty array
+      if (!jobIdArray || jobIdArray.length === 0) {
+        return res.json([]);
+      }
+
       // Use Drizzle to build the query efficiently
       const { getDatabase } = await import('./db.js');
       const db = getDatabase();
@@ -1121,10 +1126,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       const canvasStatus = results.map((row: any) => ({
         jobId: row.job_id,
         canvasWorkProgress: {
-          totalPhotos: parseInt(row.total_photos) || 0,
-          photosWithCanvasWork: parseInt(row.photos_with_canvas_work) || 0,
+          totalPhotos: parseInt(String(row.total_photos)) || 0,
+          photosWithCanvasWork: parseInt(String(row.photos_with_canvas_work)) || 0,
           completionPercentage: row.total_photos > 0 
-            ? Math.round((parseInt(row.photos_with_canvas_work) / parseInt(row.total_photos)) * 100)
+            ? Math.round((parseInt(String(row.photos_with_canvas_work)) / parseInt(String(row.total_photos))) * 100)
             : 0,
           lastCanvasWork: row.last_canvas_work ? new Date(row.last_canvas_work).getTime() : null
         }
@@ -1133,7 +1138,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(canvasStatus);
     } catch (error) {
       console.error('[Canvas Status Batch] Error:', error);
-      res.status(500).json({ message: (error as Error).message });
+      console.error('[Canvas Status Batch] Error stack:', (error as Error)?.stack);
+      res.status(500).json({ 
+        message: (error as Error).message || 'Failed to fetch canvas status',
+        error: process.env.NODE_ENV === 'development' ? (error as Error)?.stack : undefined
+      });
     }
   });
 

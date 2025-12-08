@@ -297,8 +297,26 @@ export function VariantsPanel() {
     try {
       setAddingToMarketing(variant.id);
       
-      // Fetch the variant image
-      const response = await fetch(variant.url);
+      // Check if URL is external and use proxy to avoid CORS issues
+      const isExternalUrl = (url: string): boolean => {
+        try {
+          const urlObj = new URL(url);
+          const currentOrigin = window.location.origin;
+          return urlObj.origin !== currentOrigin;
+        } catch {
+          return false;
+        }
+      };
+      
+      // Use proxy for external URLs to avoid CORS errors
+      const urlToFetch = isExternalUrl(variant.url)
+        ? `/api/texture?url=${encodeURIComponent(variant.url)}`
+        : variant.url;
+      
+      // Fetch the variant image (via proxy if external)
+      const response = await fetch(urlToFetch, {
+        credentials: 'include'
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch variant image');
       }
