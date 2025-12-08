@@ -440,6 +440,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
     }
 
     // Check enhancements before proceeding
+    // HIDDEN: Purchase requirement check is disabled for now
+    // Logic kept but check is bypassed to allow enhancements without purchase
+    /*
     if (enhancementBalance !== null) {
       try {
         const enhancementResponse = await apiClient.calculateEnhancements(mode, hasMask);
@@ -456,6 +459,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         // Continue anyway - server will check
       }
     }
+    */
     
     setIsCreating(true);
     
@@ -1076,17 +1080,12 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       }
       
       // Handle insufficient enhancements (402)
+      // HIDDEN: Purchase requirement is disabled, so we just show a generic error
       if (error.status === 402 || error.statusCode === 402 || error.error === 'INSUFFICIENT_ENHANCEMENTS' || error.error === 'INSUFFICIENT_CREDITS') {
         const required = error.required || 0;
         const balance = error.balance || 0;
         toast.error('Insufficient Enhancements', {
-          description: `You need ${required} enhancement${required !== 1 ? 's' : ''} but only have ${balance}. Please purchase more enhancements.`,
-          action: {
-            label: 'Purchase Enhancements',
-            onClick: () => {
-              setLocation('/billing');
-            }
-          },
+          description: `You need ${required} enhancement${required !== 1 ? 's' : ''} but only have ${balance}. Please contact support.`,
           duration: 10000
         });
       } 
@@ -1094,14 +1093,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       else if (error.code === 'USAGE_LIMIT_EXCEEDED' || error.details) {
         const details = error.details || {};
         toast.error('Usage Limit Exceeded', {
-          description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining.`,
-          action: details.upgradeRequired ? {
-            label: 'Upgrade Plan',
-            onClick: () => {
-              // TODO: Navigate to billing/upgrade page
-              window.location.href = '/settings/billing';
-            }
-          } : undefined,
+          description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining. Please contact support.`,
           duration: 10000
         });
       } else {

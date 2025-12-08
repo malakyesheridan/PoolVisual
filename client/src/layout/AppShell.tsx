@@ -237,7 +237,8 @@ export function AppShell({ children }: PropsWithChildren) {
     { to: '/library', label: 'Library', icon: Package },
     { to: '/quotes', label: quotes, icon: FileText },
     ...(isRealEstate ? [{ to: '/actions', label: 'Actions', icon: ClipboardList }] : []),
-    { to: '/billing', label: 'Billing', icon: CreditCard },
+    // HIDDEN: Billing link is disabled for now
+    // { to: '/billing', label: 'Billing', icon: CreditCard },
     ...(user?.isAdmin ? [{ to: '/admin', label: 'Admin', icon: Shield }] : []),
   ];
 
@@ -376,12 +377,15 @@ export function AppShell({ children }: PropsWithChildren) {
                         </p>
                       </div>
                     </div>
+                    {/* HIDDEN: Billing link is disabled for now */}
+                    {/*
                     <DropdownMenuItem asChild>
                       <Link href="/billing" className="flex items-center gap-2">
                         <CreditCard className="h-4 w-4" />
                         Billing & Enhancements
                       </Link>
                     </DropdownMenuItem>
+                    */}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link href="/settings" className="flex items-center gap-2">

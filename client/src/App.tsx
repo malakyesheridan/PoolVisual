@@ -329,6 +329,8 @@ function ProtectedRouter() {
                 </ProtectedRoute>
               </Route>
               
+              {/* HIDDEN: Billing page route is disabled for now */}
+              {/*
               <Route path="/billing">
                 <ProtectedRoute>
                   <Suspense fallback={<PageLoader />}>
@@ -336,6 +338,7 @@ function ProtectedRouter() {
                   </Suspense>
                 </ProtectedRoute>
               </Route>
+              */}
               
               <Route path="/onboarding">
                 <ProtectedRoute>
