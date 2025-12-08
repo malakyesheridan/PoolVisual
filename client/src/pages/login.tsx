@@ -108,7 +108,17 @@ export default function Login() {
       );
       
       if (response.ok) {
-        login(response.user);
+        // CRITICAL FIX: Fetch full user profile after registration to get all fields
+        // The registration response only includes basic fields, but we need industryType, etc.
+        try {
+          const fullUserProfile = await apiClient.getUserProfile();
+          login(fullUserProfile || response.user);
+        } catch (profileError) {
+          // If profile fetch fails, use the basic user data from registration
+          // This can happen if session isn't fully established yet
+          console.warn('[Login] Failed to fetch user profile after registration, using basic user data:', profileError);
+          login(response.user);
+        }
         
         // Update org store if org was created
         if (response.org) {

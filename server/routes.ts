@@ -487,9 +487,50 @@ export async function registerRoutes(app: Express): Promise<void> {
         userAgent: req.headers['user-agent'],
       });
 
+      // CRITICAL FIX: Automatically log the user in after registration by setting session
+      // This ensures the user is authenticated on the server for subsequent API calls
+      const fullUser = await storage.getUser(user.id);
+      req.session.user = {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        isAdmin: fullUser?.isAdmin || false,
+        adminPermissions: (fullUser?.adminPermissions as string[]) || [],
+      };
+      await req.session.save();
+
+      // Track session for security management
+      try {
+        const { parseUserAgent } = await import('./lib/deviceParser.js');
+        const deviceInfo = parseUserAgent(req.headers['user-agent'] || '');
+        
+        const sessionId = `session-${user.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+        
+        await storage.createUserSession({
+          userId: user.id,
+          sessionId,
+          deviceInfo,
+          ipAddress: typeof ipAddress === 'string' ? ipAddress : undefined,
+          userAgent: req.headers['user-agent'],
+        });
+        
+        // Store session ID in session for later reference
+        (req.session as any).sessionId = sessionId;
+        await req.session.save();
+      } catch (sessionError) {
+        // Don't fail registration if session tracking fails
+        console.warn('[Auth/Register] Failed to track session:', sessionError);
+      }
+
       res.json({ 
         ok: true,
-        user: { id: user.id, email: user.email, username: user.username },
+        user: { 
+          id: user.id, 
+          email: user.email, 
+          username: user.username,
+          industryType: fullUser?.industryType || null,
+          isAdmin: fullUser?.isAdmin || false
+        },
         org: { id: org.id, name: org.name, industry: org.industry } // Include org in response
       });
     } catch (error) {
