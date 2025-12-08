@@ -1270,6 +1270,65 @@ router.post('/:id/callback', async (req, res) => {
         [jobId]
       );
       
+      // AUTO-UPLOAD: Automatically add each variant to marketing photos
+      if (savedVariants.length > 0 && nextStatus === 'completed' && photoId) {
+        try {
+          // Get the job's jobId from the photo (photo.jobId is the actual job)
+          const photoInfo = await executeQuery(
+            `SELECT job_id FROM photos WHERE id = $1`,
+            [photoId]
+          );
+          
+          if (photoInfo.length > 0 && photoInfo[0].job_id) {
+            const targetJobId = photoInfo[0].job_id;
+            console.log(`[Callback] Auto-uploading ${savedVariants.length} variant(s) to marketing photos for job ${targetJobId}`);
+            
+            // Import services needed for image processing
+            const { ImportService } = await import('../importService.js');
+            const sharp = await import('sharp');
+            
+            for (const variant of savedVariants) {
+              try {
+                // Download the variant image
+                const imageBuffer = await ImportService.downloadImage(variant.url);
+                
+                // Get image dimensions using sharp
+                const metadata = await sharp.default(imageBuffer).metadata();
+                const width = metadata.width || 1920;
+                const height = metadata.height || 1080;
+                
+                // Upload to cloud storage
+                const fileExtension = variant.url.split('.').pop()?.toLowerCase() || 'jpg';
+                const storagePath = `photos/${targetJobId}/variant-${variant.id}-${Date.now()}.${fileExtension}`;
+                const originalUrl = await storageService.put(
+                  storagePath,
+                  imageBuffer,
+                  metadata.format === 'png' ? 'image/png' : 'image/jpeg'
+                );
+                
+                // Create photo record with marketing category
+                await storage.createPhoto({
+                  jobId: targetJobId,
+                  originalUrl,
+                  width,
+                  height,
+                  photoCategory: 'marketing',
+                  exifJson: null
+                });
+                
+                console.log(`[Callback] ✅ Auto-uploaded variant ${variant.id} to marketing photos`);
+              } catch (uploadError: any) {
+                // Log but don't fail the callback if auto-upload fails
+                console.error(`[Callback] ⚠️ Failed to auto-upload variant ${variant.id} to marketing photos:`, uploadError.message);
+              }
+            }
+          }
+        } catch (autoUploadError: any) {
+          // Log but don't fail the callback if auto-upload fails
+          console.error(`[Callback] ⚠️ Error during auto-upload to marketing photos:`, autoUploadError.message);
+        }
+      }
+      
       // Fetch completed_at for SSE payload
       const jobRow = await executeQuery(
         `SELECT completed_at FROM ai_enhancement_jobs WHERE id = $1`,
@@ -1635,6 +1694,60 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
     if (variant.user_id !== user.id) {
       console.warn(`[Variants] Access denied: User ${user.id} attempted to delete variant ${variantId} owned by user ${variant.user_id}`);
       return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    // AUTO-DELETE: Find and delete corresponding photos from marketing photos
+    try {
+      // Get the job's jobId (the actual job, not the enhancement job)
+      // ai_enhancement_jobs.photo_id -> photos.id -> photos.job_id
+      const jobInfo = await executeQuery(
+        `SELECT p.job_id
+         FROM ai_enhancement_jobs j
+         LEFT JOIN photos p ON p.id = j.photo_id
+         WHERE j.id = $1`,
+        [variant.job_id]
+      );
+      
+      if (jobInfo.length > 0 && jobInfo[0].job_id) {
+        const targetJobId = jobInfo[0].job_id;
+        
+        // Find photos in marketing category that match this variant's URL
+        // Match by exact URL first
+        let matchingPhotos = await executeQuery(
+          `SELECT id, original_url FROM photos 
+           WHERE job_id = $1 
+           AND photo_category = 'marketing' 
+           AND original_url = $2`,
+          [targetJobId, variant.output_url]
+        );
+        
+        // Also check if the URL is stored differently (e.g., uploaded variant has different path)
+        // Try matching by variant ID in the path or filename
+        if (matchingPhotos.length === 0) {
+          const flexibleMatch = await executeQuery(
+            `SELECT id, original_url FROM photos 
+             WHERE job_id = $1 
+             AND photo_category = 'marketing' 
+             AND (original_url LIKE $2 OR original_url LIKE $3)`,
+            [targetJobId, `%variant-${variantId}%`, `%${variant.output_url.split('/').pop()}%`]
+          );
+          matchingPhotos.push(...flexibleMatch);
+        }
+        
+        // Delete matching photos
+        for (const photo of matchingPhotos) {
+          try {
+            await storage.deletePhoto(photo.id);
+            console.log(`[Variants] ✅ Deleted marketing photo ${photo.id} for variant ${variantId}`);
+          } catch (photoDeleteError: any) {
+            console.warn(`[Variants] ⚠️ Failed to delete marketing photo ${photo.id}:`, photoDeleteError.message);
+            // Continue with variant deletion even if photo deletion fails
+          }
+        }
+      }
+    } catch (photoDeleteError: any) {
+      // Log but don't fail variant deletion if photo deletion fails
+      console.warn(`[Variants] ⚠️ Error deleting marketing photos for variant ${variantId}:`, photoDeleteError.message);
     }
     
     // Delete the variant

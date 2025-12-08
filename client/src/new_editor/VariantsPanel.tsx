@@ -13,8 +13,7 @@ import {
   AlertCircle,
   Edit2,
   Check,
-  X,
-  Plus
+  X
 } from 'lucide-react';
 import { toast } from '../lib/toast';
 import { apiClient } from '../lib/api-client';
@@ -36,7 +35,6 @@ export function VariantsPanel() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
-  const [addingToMarketing, setAddingToMarketing] = useState<string | null>(null);
   
   // Get jobId and photoId from context or URL params
   const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
@@ -369,107 +367,6 @@ export function VariantsPanel() {
     setEditingVariantId(null);
     setEditingName('');
   };
-
-  // Handle add to marketing photos
-  const handleAddToMarketing = async (variant: Variant) => {
-    if (!effectiveJobId) {
-      toast.error('No job selected', { description: 'Please select a job first.' });
-      return;
-    }
-
-    try {
-      setAddingToMarketing(variant.id);
-      
-      // Check if URL is external and use proxy to avoid CORS issues
-      const isExternalUrl = (url: string): boolean => {
-        try {
-          const urlObj = new URL(url);
-          const currentOrigin = window.location.origin;
-          const isExternal = urlObj.origin !== currentOrigin;
-          return isExternal;
-        } catch (e) {
-          console.warn('[VariantsPanel] Failed to parse URL:', url, e);
-          return false;
-        }
-      };
-      
-      // ALWAYS use proxy for external URLs to avoid CORS errors
-      const isExternal = isExternalUrl(variant.url);
-      const urlToFetch = isExternal
-        ? `/api/texture?url=${encodeURIComponent(variant.url)}`
-        : variant.url;
-      
-      // OPTIMIZATION: Add timeout and use AbortController for better performance
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-      
-      try {
-        // Fetch the variant image (via proxy if external)
-        const response = await fetch(urlToFetch, {
-          credentials: 'include',
-          mode: 'cors',
-          signal: controller.signal
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          const errorText = await response.text().catch(() => 'Unknown error');
-          throw new Error(`Failed to fetch variant image: ${response.status} ${response.statusText}`);
-        }
-        
-        // OPTIMIZATION: Stream the blob instead of waiting for full download
-        const blob = await response.blob();
-        
-        // Validate blob size (should be reasonable for an image)
-        if (blob.size === 0) {
-          throw new Error('Downloaded image is empty');
-        }
-        if (blob.size > 50 * 1024 * 1024) { // 50MB limit
-          throw new Error('Image is too large (max 50MB)');
-        }
-        
-        // Create a File from the blob
-        const fileName = `variant-${variant.id.slice(0, 8)}.jpg`;
-        const file = new File([blob], fileName, { type: 'image/jpeg' });
-        
-        // Upload to marketing photos with timeout
-        const uploadController = new AbortController();
-        const uploadTimeoutId = setTimeout(() => uploadController.abort(), 60000); // 60 second timeout for upload
-        
-        try {
-          await apiClient.uploadPhoto(file, effectiveJobId, 'marketing');
-          clearTimeout(uploadTimeoutId);
-        } catch (uploadError: any) {
-          clearTimeout(uploadTimeoutId);
-          if (uploadError.name === 'AbortError') {
-            throw new Error('Upload timed out. Please try again.');
-          }
-          throw uploadError;
-        }
-        
-        // Trigger refresh of photos on property page
-        window.dispatchEvent(new CustomEvent('refreshJobPhotos', { detail: { jobId: effectiveJobId } }));
-        
-        toast.success('Added to marketing photos', { 
-          description: 'The variant has been added to marketing photos.' 
-        });
-      } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-        if (fetchError.name === 'AbortError') {
-          throw new Error('Request timed out. The image may be too large or the server is slow. Please try again.');
-        }
-        throw fetchError;
-      }
-    } catch (error: any) {
-      console.error('[VariantsPanel] Failed to add variant to marketing photos:', error);
-      toast.error('Failed to add to marketing photos', { 
-        description: error.message || 'An unexpected error occurred. Please try again.' 
-      });
-    } finally {
-      setAddingToMarketing(null);
-    }
-  };
   
   // Format date
   const formatDate = (dateString: string) => {
@@ -631,20 +528,6 @@ export function VariantsPanel() {
                         <span className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-white">
                           Active
                         </span>
-                      )}
-                      {effectiveJobId && (
-                        <button
-                          onClick={() => handleAddToMarketing(variant)}
-                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
-                          disabled={isDeleting || addingToMarketing === variant.id}
-                          title="Add to marketing photos"
-                        >
-                          {addingToMarketing === variant.id ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Plus size={16} />
-                          )}
-                        </button>
                       )}
                       <button
                         onClick={() => handleStartRename(variant)}
