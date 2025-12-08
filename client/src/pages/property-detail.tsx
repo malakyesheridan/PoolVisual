@@ -630,58 +630,6 @@ export default function PropertyDetail() {
                     )}
                   </CardContent>
                 </Card>
-
-                {/* Renovation / Buyer Photos Section (Real Estate) */}
-                <Card>
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <CardTitle className="flex items-center gap-2">
-                      <Camera className="w-5 h-5" />
-                      Renovation / Buyer Photos ({renovationPhotos.length})
-                    </CardTitle>
-                    <Button 
-                      size="sm" 
-                      data-testid="button-upload-renovation-photo"
-                      onClick={() => handleUploadClick('renovation_buyer')}
-                      disabled={uploadPhotoMutation.isPending}
-                      className="h-11 md:h-auto tap-target"
-                    >
-                      <Upload className="w-4 h-4 mr-2" />
-                      <span className="hidden sm:inline">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo'}</span>
-                      <span className="sm:hidden">{uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload'}</span>
-                    </Button>
-                  </CardHeader>
-                  <CardContent>
-                    {renovationPhotosLoading ? (
-                      <PhotoGridSkeleton count={6} />
-                    ) : renovationPhotos.length === 0 ? (
-                      <EmptyState
-                        icon={ImageIcon}
-                        title="No renovation/buyer photos uploaded yet"
-                        description="Upload photos showing renovation work or buyer-specific views. These photos are separate from marketing photos."
-                        primaryAction={{
-                          label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
-                          onClick: () => handleUploadClick('renovation_buyer'),
-                          icon: Upload
-                        }}
-                      />
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {renovationPhotos.map((photo) => (
-                          <PhotoCard 
-                            key={photo.id} 
-                            photo={photo} 
-                            photos={renovationPhotos}
-                            jobId={jobId}
-                            navigate={navigate}
-                            setPreviewPhoto={setPreviewPhoto}
-                            setShowDeletePhotoConfirm={setShowDeletePhotoConfirm}
-                            deletePhotoMutation={deletePhotoMutation}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
               </>
             ) : (
               /* Standard Photos Section (Trades) */

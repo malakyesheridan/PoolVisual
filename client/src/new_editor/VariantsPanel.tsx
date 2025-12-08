@@ -13,9 +13,11 @@ import {
   AlertCircle,
   Edit2,
   Check,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { toast } from '../lib/toast';
+import { apiClient } from '../lib/api-client';
 
 interface Variant {
   id: string;
@@ -34,6 +36,12 @@ export function VariantsPanel() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const [addingToMarketing, setAddingToMarketing] = useState<string | null>(null);
+  
+  // Get jobId from context or URL params
+  const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
+  const [, jobParamsCanvas] = useRoute('/jobs/:jobId/photo/:photoId/edit-canvas');
+  const effectiveJobId = jobParams?.jobId || jobParamsCanvas?.jobId || jobContext?.jobId;
   const [customNames, setCustomNames] = useState<Record<string, string>>(() => {
     // Load custom names from localStorage
     if (typeof window !== 'undefined') {
@@ -254,6 +262,45 @@ export function VariantsPanel() {
     setEditingVariantId(null);
     setEditingName('');
   };
+
+  // Handle add to marketing photos
+  const handleAddToMarketing = async (variant: Variant) => {
+    if (!effectiveJobId) {
+      toast.error('No job selected', { description: 'Please select a job first.' });
+      return;
+    }
+
+    try {
+      setAddingToMarketing(variant.id);
+      
+      // Fetch the variant image
+      const response = await fetch(variant.url);
+      if (!response.ok) {
+        throw new Error('Failed to fetch variant image');
+      }
+      
+      const blob = await response.blob();
+      
+      // Create a File from the blob
+      const fileName = `variant-${variant.id.slice(0, 8)}.jpg`;
+      const file = new File([blob], fileName, { type: 'image/jpeg' });
+      
+      // Upload to marketing photos
+      await apiClient.uploadPhoto(file, effectiveJobId, 'marketing');
+      
+      // Trigger refresh of photos on property page
+      window.dispatchEvent(new CustomEvent('refreshJobPhotos', { detail: { jobId: effectiveJobId } }));
+      
+      toast.success('Added to marketing photos', { 
+        description: 'The variant has been added to marketing photos.' 
+      });
+    } catch (error: any) {
+      console.error('[VariantsPanel] Failed to add variant to marketing photos:', error);
+      toast.error('Failed to add to marketing photos', { description: error.message });
+    } finally {
+      setAddingToMarketing(null);
+    }
+  };
   
   // Format date
   const formatDate = (dateString: string) => {
@@ -415,6 +462,20 @@ export function VariantsPanel() {
                         <span className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-white">
                           Active
                         </span>
+                      )}
+                      {effectiveJobId && (
+                        <button
+                          onClick={() => handleAddToMarketing(variant)}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-md transition-colors"
+                          disabled={isDeleting || addingToMarketing === variant.id}
+                          title="Add to marketing photos"
+                        >
+                          {addingToMarketing === variant.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Plus size={16} />
+                          )}
+                        </button>
                       )}
                       <button
                         onClick={() => handleStartRename(variant)}
