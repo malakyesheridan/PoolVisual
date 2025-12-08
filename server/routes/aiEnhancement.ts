@@ -188,6 +188,47 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       return res.status(400).json({ message: 'tenantId, imageUrl, inputHash are required' });
     }
 
+    // GUARDRAIL: Check for concurrent/queued enhancements for this user/photo
+    // Prevent multiple enhancements from being queued simultaneously
+    if (photoId) {
+      const activeJobs = await executeQuery(
+        `SELECT id, status, created_at 
+         FROM ai_enhancement_jobs 
+         WHERE user_id = $1 
+           AND photo_id = $2 
+           AND status IN ('queued', 'rendering', 'preprocessing', 'downloading', 'postprocessing', 'uploading')
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [user.id, photoId]
+      );
+      
+      if (activeJobs.length > 0) {
+        const activeJob = activeJobs[0];
+        const ageMinutes = Math.floor((Date.now() - new Date(activeJob.created_at).getTime()) / 60000);
+        
+        // If job is stuck in queued for more than 2 minutes, allow new job
+        // Otherwise, reject to prevent concurrent enhancements
+        if (activeJob.status === 'queued' && ageMinutes < 2) {
+          console.warn(`[Create Enhancement] ⚠️ Blocked: Active queued job ${activeJob.id} exists for user ${user.id}, photo ${photoId} (${ageMinutes} min old)`);
+          return res.status(409).json({ 
+            message: 'An enhancement is already queued for this photo. Please wait for it to complete or cancel it first.',
+            existingJobId: activeJob.id,
+            status: activeJob.status
+          });
+        } else if (activeJob.status !== 'queued' && ageMinutes < 10) {
+          // For processing jobs, allow if older than 10 minutes (likely stuck)
+          console.warn(`[Create Enhancement] ⚠️ Blocked: Active processing job ${activeJob.id} exists for user ${user.id}, photo ${photoId} (${ageMinutes} min old)`);
+          return res.status(409).json({ 
+            message: 'An enhancement is already processing for this photo. Please wait for it to complete or cancel it first.',
+            existingJobId: activeJob.id,
+            status: activeJob.status
+          });
+        } else {
+          console.log(`[Create Enhancement] ⚠️ Allowing new job despite active job ${activeJob.id} (status: ${activeJob.status}, age: ${ageMinutes} min - likely stuck)`);
+        }
+      }
+    }
+
     // Get user record to check industry (prefer user.industryType over org.industry)
     const userRecord = await storage.getUser(user.id);
     if (!userRecord) {
@@ -1010,8 +1051,10 @@ router.post('/:id/callback', async (req, res) => {
       console.log(`[Callback] ⚠️ Skipping signature verification (dev mode or SKIP_WEBHOOK_SIGNATURE=1)`);
     }
 
+    // GUARDRAIL: Use database-level locking to prevent concurrent callback processing
+    // This prevents race conditions when multiple callbacks arrive simultaneously
     const cur = await executeQuery(
-      `SELECT status FROM ai_enhancement_jobs WHERE id = $1`,
+      `SELECT status, user_id, photo_id FROM ai_enhancement_jobs WHERE id = $1 FOR UPDATE`,
       [jobId]
     );
     
@@ -1020,10 +1063,38 @@ router.post('/:id/callback', async (req, res) => {
     }
     
     if (['completed', 'failed', 'canceled'].includes(cur[0].status)) {
+      console.log(`[Callback] ⚠️ Job ${jobId} already in terminal state: ${cur[0].status}, ignoring callback`);
       return res.json({ ok: true, ignored: true });
     }
 
     const currentStatus = cur[0].status;
+    const userId = cur[0].user_id;
+    const photoId = cur[0].photo_id;
+    
+    // GUARDRAIL: Check if another callback is already processing this job
+    // This is a secondary check (primary is the FOR UPDATE lock above)
+    const processingCallbacks = await executeQuery(
+      `SELECT COUNT(*) as count FROM ai_enhancement_jobs 
+       WHERE id = $1 AND status IN ('rendering', 'postprocessing', 'uploading')`,
+      [jobId]
+    );
+    
+    if (processingCallbacks[0]?.count > 0 && nextStatus === 'completed') {
+      console.log(`[Callback] ⚠️ Job ${jobId} is already being processed, debouncing callback`);
+      // Small delay to allow current processing to complete
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Re-check status after delay
+      const recheck = await executeQuery(
+        `SELECT status FROM ai_enhancement_jobs WHERE id = $1`,
+        [jobId]
+      );
+      
+      if (recheck[0]?.status === 'completed') {
+        console.log(`[Callback] ✅ Job ${jobId} completed during debounce, ignoring duplicate callback`);
+        return res.json({ ok: true, ignored: true, reason: 'already_completed' });
+      }
+    }
     const nextStatus = req.body.status || 'rendering';
     
     // Handle error messages

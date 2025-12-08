@@ -108,18 +108,22 @@ export async function processOutboxEvents() {
     }
     console.log('[Outbox] ✅ N8N_WEBHOOK_URL is set');
     
-    // First, reset stuck "processing" events that are older than 5 minutes back to "pending"
-    const stuckThreshold = 5 * 60 * 1000; // 5 minutes in milliseconds
+    // First, reset stuck "processing" events that are older than 2 minutes back to "pending"
+    // Reduced from 5 minutes to catch stuck payloads faster
+    const stuckThreshold = 2 * 60 * 1000; // 2 minutes in milliseconds
     const resetStuck = await executeQuery(`
       UPDATE outbox
       SET status = 'pending', next_retry_at = NOW()
       WHERE status = 'processing' 
-        AND created_at < NOW() - INTERVAL '5 minutes'
-      RETURNING id
+        AND created_at < NOW() - INTERVAL '2 minutes'
+      RETURNING id, job_id, event_type
     `);
     
     if (resetStuck.length > 0) {
       console.log(`[Outbox] 🔄 Reset ${resetStuck.length} stuck "processing" events back to "pending"`);
+      for (const stuck of resetStuck) {
+        console.log(`[Outbox]   - Event ${stuck.id} (job: ${stuck.job_id}, type: ${stuck.event_type})`);
+      }
     }
     
     const events = await executeQuery(`
@@ -536,9 +540,12 @@ export async function processOutboxEvents() {
               height: n8nPayload.height
             }));
             
-            // POST to n8n webhook
+            // POST to n8n webhook with improved error handling and logging
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+            
+            console.log(`[Outbox] 📤 Sending POST request to n8n webhook...`);
+            const requestStartTime = Date.now();
             
             // Final verification - ensure mode is at root and not in options
             const finalPayloadToSend = {
@@ -553,27 +560,52 @@ export async function processOutboxEvents() {
             
             console.log(`[Outbox] Final payload verification - mode at root: ${finalPayloadToSend.mode}, mode in options: ${finalPayloadToSend.options.mode}`);
             
-            const response = await fetch(n8nWebhookUrl, {
-              method: 'POST',
-              headers: { 
-                'Content-Type': 'application/json',
-                'User-Agent': 'PoolVisual/1.0'
-              },
-              body: JSON.stringify(finalPayloadToSend),
-              signal: controller.signal
-            }).finally(() => {
+            let response;
+            try {
+              response = await fetch(n8nWebhookUrl, {
+                method: 'POST',
+                headers: { 
+                  'Content-Type': 'application/json',
+                  'User-Agent': 'PoolVisual/1.0'
+                },
+                body: JSON.stringify(finalPayloadToSend),
+                signal: controller.signal
+              });
+              
+              const requestDuration = Date.now() - requestStartTime;
+              console.log(`[Outbox] 📤 POST request completed in ${requestDuration}ms (status: ${response.status})`);
+            } catch (fetchError: any) {
               clearTimeout(timeoutId);
-            });
+              const requestDuration = Date.now() - requestStartTime;
+              console.error(`[Outbox] ❌ Fetch error after ${requestDuration}ms:`, fetchError.message);
+              
+              // Check if it's a timeout
+              if (fetchError.name === 'AbortError' || controller.signal.aborted) {
+                throw new Error(`N8N webhook timeout after 30 seconds - payload may not have been sent`);
+              }
+              
+              // Check if it's a network error
+              if (fetchError.code === 'ECONNREFUSED' || fetchError.code === 'ENOTFOUND') {
+                throw new Error(`N8N webhook connection failed - check URL and network: ${fetchError.message}`);
+              }
+              
+              throw fetchError;
+            } finally {
+              clearTimeout(timeoutId);
+            }
 
             if (!response.ok) {
               const errorText = await response.text().catch(() => 'Unknown error');
-              console.error(`[Outbox] n8n webhook HTTP error: ${response.status} ${response.statusText}`);
-              console.error(`[Outbox] Error response body:`, errorText);
-              throw new Error(`N8N webhook failed: ${response.status} ${response.statusText} - ${errorText}`);
+              const requestDuration = Date.now() - requestStartTime;
+              console.error(`[Outbox] ❌ n8n webhook HTTP error after ${requestDuration}ms: ${response.status} ${response.statusText}`);
+              console.error(`[Outbox] Error response body:`, errorText.substring(0, 500));
+              throw new Error(`N8N webhook failed: ${response.status} ${response.statusText} - ${errorText.substring(0, 200)}`);
             }
 
             const responseData = await response.json().catch(() => ({}));
-            console.log(`[Outbox] ✅ n8n webhook responded successfully:`, responseData);
+            const requestDuration = Date.now() - requestStartTime;
+            console.log(`[Outbox] ✅ n8n webhook responded successfully in ${requestDuration}ms`);
+            console.log(`[Outbox] Response data:`, JSON.stringify(responseData).substring(0, 200));
             
           } catch (webhookError: any) {
             // Check if it's a timeout error
@@ -602,11 +634,13 @@ export async function processOutboxEvents() {
         }
       }
       
+      // Mark event as completed and log success
       await executeQuery(
         `UPDATE outbox SET status = 'completed', processed_at = NOW() WHERE id = $1`,
         [ev.id]
       );
       metrics.outboxProcessedSuccess.inc({ event_type: ev.event_type });
+      console.log(`[Outbox] ✅ Successfully processed event ${ev.id} (job: ${ev.job_id})`);
     } catch (e: any) {
       const attempt = Number(ev.attempts || 0);
       const errorMessage = e?.message || String(e);
