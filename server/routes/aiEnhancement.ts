@@ -1605,9 +1605,19 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
     const variantId = req.params.id;
     const user = req.session.user;
     
+    if (!variantId) {
+      return res.status(400).json({ message: 'Variant ID is required' });
+    }
+    
+    if (!user?.id) {
+      return res.status(401).json({ message: 'Authentication required' });
+    }
+    
+    console.log(`[Variants] Attempting to delete variant ${variantId} for user ${user.id}`);
+    
     // Verify variant belongs to user's job
     const variantCheck = await executeQuery(
-      `SELECT v.id, v.job_id, j.user_id, j.photo_id
+      `SELECT v.id, v.job_id, v.output_url, j.user_id, j.photo_id
        FROM ai_enhancement_variants v
        JOIN ai_enhancement_jobs j ON j.id = v.job_id
        WHERE v.id = $1`,
@@ -1615,26 +1625,43 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
     );
     
     if (!variantCheck.length) {
+      console.log(`[Variants] Variant ${variantId} not found`);
       return res.status(404).json({ message: 'Variant not found' });
     }
     
     const variant = variantCheck[0];
+    
+    // Verify user owns the job
     if (variant.user_id !== user.id) {
+      console.warn(`[Variants] Access denied: User ${user.id} attempted to delete variant ${variantId} owned by user ${variant.user_id}`);
       return res.status(403).json({ message: 'Access denied' });
     }
     
     // Delete the variant
-    await executeQuery(
-      `DELETE FROM ai_enhancement_variants WHERE id = $1`,
+    const deleteResult = await executeQuery(
+      `DELETE FROM ai_enhancement_variants WHERE id = $1 RETURNING id`,
       [variantId]
     );
     
-    console.log(`[Variants] ✅ Deleted variant ${variantId} from job ${variant.job_id}`);
+    if (!deleteResult.length) {
+      console.warn(`[Variants] Failed to delete variant ${variantId} - no rows affected`);
+      return res.status(500).json({ message: 'Failed to delete variant' });
+    }
     
-    return res.json({ ok: true, message: 'Variant deleted successfully' });
+    console.log(`[Variants] ✅ Successfully deleted variant ${variantId} from job ${variant.job_id}`);
+    
+    return res.json({ 
+      ok: true, 
+      message: 'Variant deleted successfully',
+      deletedId: variantId
+    });
   } catch (err: any) {
     console.error('[Variants] Error deleting variant:', err);
-    return res.status(500).json({ message: err?.message || 'Failed to delete variant' });
+    console.error('[Variants] Error stack:', err?.stack);
+    return res.status(500).json({ 
+      message: err?.message || 'Failed to delete variant',
+      error: process.env.NODE_ENV === 'development' ? err?.stack : undefined
+    });
   }
 });
 

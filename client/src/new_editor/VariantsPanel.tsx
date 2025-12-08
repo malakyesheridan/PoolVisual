@@ -158,12 +158,28 @@ export function VariantsPanel() {
       setDeleting(variantId);
       const res = await fetch(`/api/ai/enhancement/variants/${variantId}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        }
       });
       
       if (!res.ok) {
-        throw new Error(await res.text());
+        // Try to parse error as JSON first
+        let errorMessage = 'Failed to delete variant';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch {
+          // If JSON parsing fails, try text
+          const errorText = await res.text();
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
       }
+      
+      // Parse response
+      const data = await res.json().catch(() => ({ ok: true }));
       
       // Remove from local state
       setVariants(prev => prev.filter(v => v.id !== variantId));
@@ -179,7 +195,9 @@ export function VariantsPanel() {
       toast.success('Variant deleted', { description: 'The variant has been removed.' });
     } catch (error: any) {
       console.error('[VariantsPanel] Failed to delete variant:', error);
-      toast.error('Failed to delete variant', { description: error.message });
+      toast.error('Failed to delete variant', { 
+        description: error.message || 'An unexpected error occurred while deleting the variant.' 
+      });
     } finally {
       setDeleting(null);
     }
