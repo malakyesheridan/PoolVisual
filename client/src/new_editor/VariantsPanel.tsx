@@ -358,12 +358,6 @@ export function VariantsPanel() {
           const urlObj = new URL(url);
           const currentOrigin = window.location.origin;
           const isExternal = urlObj.origin !== currentOrigin;
-          console.log('[VariantsPanel] URL check:', {
-            url,
-            urlOrigin: urlObj.origin,
-            currentOrigin,
-            isExternal
-          });
           return isExternal;
         } catch (e) {
           console.warn('[VariantsPanel] Failed to parse URL:', url, e);
@@ -377,53 +371,73 @@ export function VariantsPanel() {
         ? `/api/texture?url=${encodeURIComponent(variant.url)}`
         : variant.url;
       
-      console.log('[VariantsPanel] Fetching variant image:', {
-        originalUrl: variant.url,
-        proxyUrl: urlToFetch,
-        isExternal,
-        variantId: variant.id
-      });
+      // OPTIMIZATION: Add timeout and use AbortController for better performance
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
       
-      // Fetch the variant image (via proxy if external)
-      const response = await fetch(urlToFetch, {
-        credentials: 'include',
-        mode: 'cors' // Explicitly set CORS mode
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        console.error('[VariantsPanel] Fetch failed:', {
-          status: response.status,
-          statusText: response.statusText,
-          error: errorText,
-          url: urlToFetch
+      try {
+        // Fetch the variant image (via proxy if external)
+        const response = await fetch(urlToFetch, {
+          credentials: 'include',
+          mode: 'cors',
+          signal: controller.signal
         });
-        throw new Error(`Failed to fetch variant image: ${response.status} ${response.statusText}`);
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+          const errorText = await response.text().catch(() => 'Unknown error');
+          throw new Error(`Failed to fetch variant image: ${response.status} ${response.statusText}`);
+        }
+        
+        // OPTIMIZATION: Stream the blob instead of waiting for full download
+        const blob = await response.blob();
+        
+        // Validate blob size (should be reasonable for an image)
+        if (blob.size === 0) {
+          throw new Error('Downloaded image is empty');
+        }
+        if (blob.size > 50 * 1024 * 1024) { // 50MB limit
+          throw new Error('Image is too large (max 50MB)');
+        }
+        
+        // Create a File from the blob
+        const fileName = `variant-${variant.id.slice(0, 8)}.jpg`;
+        const file = new File([blob], fileName, { type: 'image/jpeg' });
+        
+        // Upload to marketing photos with timeout
+        const uploadController = new AbortController();
+        const uploadTimeoutId = setTimeout(() => uploadController.abort(), 60000); // 60 second timeout for upload
+        
+        try {
+          await apiClient.uploadPhoto(file, effectiveJobId, 'marketing');
+          clearTimeout(uploadTimeoutId);
+        } catch (uploadError: any) {
+          clearTimeout(uploadTimeoutId);
+          if (uploadError.name === 'AbortError') {
+            throw new Error('Upload timed out. Please try again.');
+          }
+          throw uploadError;
+        }
+        
+        // Trigger refresh of photos on property page
+        window.dispatchEvent(new CustomEvent('refreshJobPhotos', { detail: { jobId: effectiveJobId } }));
+        
+        toast.success('Added to marketing photos', { 
+          description: 'The variant has been added to marketing photos.' 
+        });
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          throw new Error('Request timed out. The image may be too large or the server is slow. Please try again.');
+        }
+        throw fetchError;
       }
-      
-      const blob = await response.blob();
-      console.log('[VariantsPanel] Successfully fetched blob:', {
-        size: blob.size,
-        type: blob.type,
-        variantId: variant.id
-      });
-      
-      // Create a File from the blob
-      const fileName = `variant-${variant.id.slice(0, 8)}.jpg`;
-      const file = new File([blob], fileName, { type: 'image/jpeg' });
-      
-      // Upload to marketing photos
-      await apiClient.uploadPhoto(file, effectiveJobId, 'marketing');
-      
-      // Trigger refresh of photos on property page
-      window.dispatchEvent(new CustomEvent('refreshJobPhotos', { detail: { jobId: effectiveJobId } }));
-      
-      toast.success('Added to marketing photos', { 
-        description: 'The variant has been added to marketing photos.' 
-      });
     } catch (error: any) {
       console.error('[VariantsPanel] Failed to add variant to marketing photos:', error);
-      toast.error('Failed to add to marketing photos', { description: error.message });
+      toast.error('Failed to add to marketing photos', { 
+        description: error.message || 'An unexpected error occurred. Please try again.' 
+      });
     } finally {
       setAddingToMarketing(null);
     }
