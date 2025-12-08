@@ -944,7 +944,6 @@ export default function PropertyDetail() {
                       bedrooms: job.bedrooms,
                       bathrooms: job.bathrooms ? parseFloat(job.bathrooms.toString()) : null,
                       garageSpaces: job.garageSpaces,
-                      estimatedPrice: job.estimatedPrice ? parseFloat(job.estimatedPrice.toString()) : null,
                       propertyType: job.propertyType as any,
                       landSizeM2: job.landSizeM2 ? parseFloat(job.landSizeM2.toString()) : null,
                       interiorSizeM2: job.interiorSizeM2 ? parseFloat(job.interiorSizeM2.toString()) : null,
