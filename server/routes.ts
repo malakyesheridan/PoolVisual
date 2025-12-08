@@ -3356,6 +3356,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(400).json({ error: 'Missing URL parameter' });
       }
 
+      console.log('[Texture Proxy] Proxying request:', { url, referer: req.get('referer') });
+
       // If it's a relative URL, serve it directly
       if (url.startsWith('/')) {
         return res.redirect(url);
@@ -3365,12 +3367,18 @@ export async function registerRoutes(app: Express): Promise<void> {
       const response = await fetch(url, {
         headers: {
           'User-Agent': 'PoolVisual/1.0',
-          'Accept': 'image/*,*/*;q=0.8'
+          'Accept': 'image/*,*/*;q=0.8',
+          'Referer': url // Some servers check referer
         }
       });
 
       if (!response.ok) {
-        return res.status(response.status).json({ error: 'Upstream failed' });
+        console.error('[Texture Proxy] Upstream failed:', {
+          url,
+          status: response.status,
+          statusText: response.statusText
+        });
+        return res.status(response.status).json({ error: 'Upstream failed', status: response.status });
       }
 
       // Set appropriate headers
@@ -3378,7 +3386,9 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.set({
         'Content-Type': contentType,
         'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*'
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET',
+        'Access-Control-Allow-Headers': 'Content-Type'
       });
 
       // Pipe the response

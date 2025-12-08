@@ -302,26 +302,56 @@ export function VariantsPanel() {
         try {
           const urlObj = new URL(url);
           const currentOrigin = window.location.origin;
-          return urlObj.origin !== currentOrigin;
-        } catch {
+          const isExternal = urlObj.origin !== currentOrigin;
+          console.log('[VariantsPanel] URL check:', {
+            url,
+            urlOrigin: urlObj.origin,
+            currentOrigin,
+            isExternal
+          });
+          return isExternal;
+        } catch (e) {
+          console.warn('[VariantsPanel] Failed to parse URL:', url, e);
           return false;
         }
       };
       
-      // Use proxy for external URLs to avoid CORS errors
-      const urlToFetch = isExternalUrl(variant.url)
+      // ALWAYS use proxy for external URLs to avoid CORS errors
+      const isExternal = isExternalUrl(variant.url);
+      const urlToFetch = isExternal
         ? `/api/texture?url=${encodeURIComponent(variant.url)}`
         : variant.url;
       
+      console.log('[VariantsPanel] Fetching variant image:', {
+        originalUrl: variant.url,
+        proxyUrl: urlToFetch,
+        isExternal,
+        variantId: variant.id
+      });
+      
       // Fetch the variant image (via proxy if external)
       const response = await fetch(urlToFetch, {
-        credentials: 'include'
+        credentials: 'include',
+        mode: 'cors' // Explicitly set CORS mode
       });
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch variant image');
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('[VariantsPanel] Fetch failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+          url: urlToFetch
+        });
+        throw new Error(`Failed to fetch variant image: ${response.status} ${response.statusText}`);
       }
       
       const blob = await response.blob();
+      console.log('[VariantsPanel] Successfully fetched blob:', {
+        size: blob.size,
+        type: blob.type,
+        variantId: variant.id
+      });
       
       // Create a File from the blob
       const fileName = `variant-${variant.id.slice(0, 8)}.jpg`;
