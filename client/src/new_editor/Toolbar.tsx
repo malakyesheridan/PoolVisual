@@ -2237,8 +2237,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         />
       )}
       
-      {/* Quote Selection Modal */}
-      {effectiveJobId && job && (
+      {/* Quote Selection Modal - Hidden for real estate */}
+      {!isRealEstate && effectiveJobId && job && (
         <QuoteSelectionModal
           open={showQuoteModal}
           onOpenChange={setShowQuoteModal}
