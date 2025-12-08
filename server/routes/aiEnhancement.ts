@@ -1223,23 +1223,37 @@ router.post('/:id/callback', async (req, res) => {
         console.warn(`[Callback] ⚠️ Full body structure:`, JSON.stringify(req.body, null, 2).substring(0, 500));
       }
 
-      // Save variants to database
+      // Save variants to database with conflict handling
+      // Use ON CONFLICT to prevent duplicate variant errors when multiple callbacks arrive
       if (variantsToSave.length > 0) {
         console.log(`[Callback] About to save ${variantsToSave.length} variant(s) for job ${jobId}`);
+        let savedCount = 0;
+        let skippedCount = 0;
+        
         for (const variant of variantsToSave) {
           try {
+            // Use ON CONFLICT DO UPDATE to handle duplicate callbacks gracefully
+            // This updates the URL if variant already exists (idempotent)
             await executeQuery(
               `INSERT INTO ai_enhancement_variants (job_id, output_url, rank) 
-               VALUES ($1, $2, $3)`,
+               VALUES ($1, $2, $3)
+               ON CONFLICT (job_id, rank) DO UPDATE SET output_url = EXCLUDED.output_url`,
               [jobId, variant.url, variant.rank]
             );
+            savedCount++;
             console.log(`[Callback] ✅ Successfully saved variant: ${variant.url.substring(0, 80)}... (rank: ${variant.rank})`);
           } catch (variantError: any) {
-            console.error(`[Callback] ❌ Failed to save variant for job ${jobId}:`, variantError.message);
-            // Continue with other variants even if one fails
+            // Check if it's a duplicate key error (PostgreSQL error code 23505)
+            if (variantError.code === '23505' || variantError.message?.includes('duplicate')) {
+              skippedCount++;
+              console.log(`[Callback] ⚠️ Variant rank ${variant.rank} already exists for job ${jobId}, skipping (likely duplicate callback)`);
+            } else {
+              console.error(`[Callback] ❌ Failed to save variant for job ${jobId}:`, variantError.message);
+              // Continue with other variants even if one fails
+            }
           }
         }
-        console.log(`[Callback] ✅ Saved ${variantsToSave.length} variant(s) for job ${jobId}`);
+        console.log(`[Callback] ✅ Saved ${savedCount} variant(s), skipped ${skippedCount} duplicate(s) for job ${jobId}`);
       } else {
         console.warn(`[Callback] ⚠️ No variants to save for job ${jobId}! Check request body.`);
       }
