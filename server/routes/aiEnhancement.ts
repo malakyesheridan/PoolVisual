@@ -621,15 +621,41 @@ router.get('/', authenticateSession, async (req, res) => {
     const user = req.session.user;
     const limit = parseInt(req.query.limit as string) || 20;
     
+    // CRITICAL FIX: Reset stuck processing jobs before loading
+    // Jobs stuck in processing states for > 10 minutes should be marked as failed
+    const stuckThresholdMinutes = 10;
+    const stuckThreshold = new Date(Date.now() - stuckThresholdMinutes * 60 * 1000);
+    
+    await executeQuery(
+      `UPDATE ai_enhancement_jobs 
+       SET status = 'failed', 
+           error_message = 'Job timed out - stuck in processing state',
+           error_type = 'timeout',
+           updated_at = NOW()
+       WHERE user_id = $1 
+         AND status IN ('queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading')
+         AND updated_at < $2`,
+      [user.id, stuckThreshold]
+    );
+    
+    // Now load jobs, excluding stuck processing jobs that are still active
+    // Only include jobs that are:
+    // 1. Completed, failed, or canceled (terminal states)
+    // 2. Recently updated processing jobs (within last 10 minutes)
     const rows = await executeQuery(
       `SELECT 
         id, status, progress_stage, progress_percent,
         error_message, created_at, updated_at, completed_at, options
       FROM ai_enhancement_jobs 
       WHERE user_id = $1 
+        AND (
+          status IN ('completed', 'failed', 'canceled')
+          OR (status IN ('queued', 'downloading', 'preprocessing', 'rendering', 'postprocessing', 'uploading') 
+              AND updated_at >= $2)
+        )
       ORDER BY created_at DESC 
-      LIMIT $2`,
-      [user.id, limit]
+      LIMIT $3`,
+      [user.id, stuckThreshold, limit]
     );
     
     // Fetch variants for completed jobs and extract mode from options

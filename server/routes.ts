@@ -93,7 +93,16 @@ interface AuthenticatedRequest extends Request {
 
 // Middleware to verify session authentication
 const authenticateSession = async (req: AuthenticatedRequest, res: any, next: any) => {
+  // Debug logging for session issues
   if (!req.session?.user) {
+    console.warn('[Auth] Session check failed:', {
+      hasSession: !!req.session,
+      hasUser: !!req.session?.user,
+      sessionKeys: req.session ? Object.keys(req.session) : [],
+      path: req.path,
+      method: req.method,
+      cookies: req.headers.cookie ? 'present' : 'missing'
+    });
     return res.status(401).json({ message: 'Authentication required' });
   }
   
@@ -643,6 +652,21 @@ export async function registerRoutes(app: Express): Promise<void> {
   // GET /api/onboarding/status - Get onboarding status for current user
   app.get("/api/onboarding/status", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      // Additional check: if user is not set, try to get from session directly
+      if (!req.user && req.session?.user) {
+        req.user = req.session.user;
+        console.log('[onboarding/status] Recovered user from session:', req.user.id);
+      }
+      
+      if (!req.user?.id) {
+        console.error('[onboarding/status] No user ID available:', {
+          hasUser: !!req.user,
+          hasSession: !!req.session,
+          sessionUser: req.session?.user
+        });
+        return res.status(401).json({ message: 'Authentication required' });
+      }
+      
       const onboarding = await storage.getUserOnboarding(req.user.id);
       // Return default if no onboarding record exists (for existing users or if table doesn't exist)
       res.json(onboarding || { 
