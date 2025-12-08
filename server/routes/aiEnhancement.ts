@@ -204,13 +204,25 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       }
     }
 
+    // Log industry detection for debugging
+    console.log('[Create Enhancement] Industry detection:', {
+      userId: user.id,
+      userIndustryType: userRecord.industryType,
+      orgIndustry: industry,
+      tenantId,
+      mode,
+      validModes: getValidEnhancementModes(industry)
+    });
+
     // Validate mode based on industry
     const validModes = getValidEnhancementModes(industry);
     if (mode && !validModes.includes(mode)) {
       return res.status(400).json({ 
         message: `Invalid enhancement mode for ${industry || 'unknown'} industry`,
         validModes,
-        providedMode: mode
+        providedMode: mode,
+        userIndustryType: userRecord.industryType,
+        detectedIndustry: industry
       });
     }
 

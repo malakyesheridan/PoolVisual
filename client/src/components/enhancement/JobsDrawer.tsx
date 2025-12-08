@@ -13,6 +13,7 @@ import { useMaskStore } from '../../maskcore/store';
 import { toast } from '../../lib/toast';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useAuthStore } from '../../stores/auth-store';
+import { useOrgStore } from '../../stores/orgStore';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Sunset, Home, Eraser, Hammer, Trash2, Wand2 } from 'lucide-react';
@@ -29,6 +30,7 @@ interface JobsDrawerProps {
 export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const { industry } = useOnboarding();
   const { user } = useAuthStore();
+  const { selectedOrgId } = useOrgStore();
   const [, setLocation] = useLocation();
   const { 
     setInitial, 
@@ -1001,9 +1003,24 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       const masksRequiredForPayload = effectiveIndustryForPayload !== 'real_estate' && 
         (previewData.mode === 'add_decoration' || previewData.mode === 'blend_materials');
       
+      // Get tenantId from selected org, or use a default if none selected
+      // The server will use the authenticated user's industryType, but tenantId is still required
+      const tenantId = selectedOrgId || '123e4567-e89b-12d3-a456-426614174000';
+      
+      // Log industry detection for debugging
+      const effectiveIndustry = user?.industryType || industry;
+      console.log('[JobsDrawer] Industry detection:', {
+        userIndustryType: user?.industryType,
+        onboardingIndustry: industry,
+        effectiveIndustry,
+        tenantId,
+        mode: previewData.mode,
+        validModes: getValidModes()
+      });
+      
       // Create payload - mode must be at top level for n8n workflow routing
       const payload: any = {
-        tenantId: '123e4567-e89b-12d3-a456-426614174000',
+        tenantId,
         photoId: previewData.effectivePhotoId,
         imageUrl: previewData.currentImageUrl, // Original image (for reference)
         inputHash: `enhancement-${Date.now()}`,
