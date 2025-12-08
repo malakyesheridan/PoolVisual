@@ -289,6 +289,7 @@ export type EditorAction =
   | { type: 'SET_KONVA_STAGE_REF'; payload: any | null } // Konva.Stage | null
   // NEW: Canvas variant actions
   | { type: 'ADD_VARIANT'; payload: CanvasVariant }
+  | { type: 'UPDATE_VARIANT'; payload: { id: string; label: string } }
   | { type: 'SET_ACTIVE_VARIANT'; payload: string | null }
   | { type: 'SET_VARIANTS'; payload: { variants: CanvasVariant[]; activeVariantId: string | null } }
   | { type: 'REMOVE_VARIANT'; payload: string }

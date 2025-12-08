@@ -1,7 +1,7 @@
 // Variants Panel for Canvas Editor
 // Displays all AI enhancement variants for the current photo and allows deletion
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useEditorStore } from './store';
 import { useRoute } from 'wouter';
 import { 
@@ -10,7 +10,10 @@ import {
   Loader2,
   Sparkles,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react';
 import { toast } from '../lib/toast';
 
@@ -29,6 +32,16 @@ export function VariantsPanel() {
   const [variants, setVariants] = useState<Variant[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>('');
+  const [customNames, setCustomNames] = useState<Record<string, string>>(() => {
+    // Load custom names from localStorage
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('poolVisual-variantNames');
+      return saved ? JSON.parse(saved) : {};
+    }
+    return {};
+  });
   
   // Get photoId from URL params or context
   const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
@@ -54,7 +67,15 @@ export function VariantsPanel() {
         }
         
         const data = await res.json();
-        setVariants(data.variants || []);
+        // Sort variants by creation date (oldest first) to ensure consistent numbering
+        const sortedVariants = (data.variants || []).sort((a: Variant, b: Variant) => {
+          const dateA = new Date(a.created_at || a.job_created_at || 0).getTime();
+          const dateB = new Date(b.created_at || b.job_created_at || 0).getTime();
+          if (dateA !== dateB) return dateA - dateB;
+          // If same date, sort by rank
+          return (a.rank || 0) - (b.rank || 0);
+        });
+        setVariants(sortedVariants);
       } catch (error: any) {
         console.error('[VariantsPanel] Failed to load variants:', error);
         toast.error('Failed to load variants', { description: error.message });
@@ -112,6 +133,23 @@ export function VariantsPanel() {
     }
   };
   
+  // Get sequential number for variant (1-based index in sorted list)
+  const getVariantNumber = (variant: Variant) => {
+    return variants.findIndex(v => v.id === variant.id) + 1;
+  };
+
+  // Get display name for variant (custom name or default)
+  const getVariantDisplayName = (variant: Variant) => {
+    if (customNames[variant.id]) {
+      return customNames[variant.id];
+    }
+    const number = getVariantNumber(variant);
+    if (variant.mode) {
+      return `${getModeLabel(variant.mode)} ${number}`;
+    }
+    return `Enhanced ${number}`;
+  };
+
   // Handle variant selection (apply to canvas)
   const handleSelectVariant = (variant: Variant) => {
     // Check if variant already exists in store
@@ -126,9 +164,7 @@ export function VariantsPanel() {
         type: 'ADD_VARIANT',
         payload: {
           id: variant.id,
-          label: variant.mode 
-            ? `${variant.mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())} ${variant.rank + 1}`
-            : `AI Enhanced ${variant.rank + 1}`,
+          label: getVariantDisplayName(variant),
           imageUrl: variant.url
         }
       });
@@ -136,6 +172,43 @@ export function VariantsPanel() {
     }
     
     toast.success('Variant applied', { description: 'The variant is now active on the canvas.' });
+  };
+
+  // Handle rename start
+  const handleStartRename = (variant: Variant) => {
+    setEditingVariantId(variant.id);
+    setEditingName(getVariantDisplayName(variant));
+  };
+
+  // Handle rename save
+  const handleSaveRename = (variantId: string) => {
+    if (editingName.trim()) {
+      const newCustomNames = { ...customNames, [variantId]: editingName.trim() };
+      setCustomNames(newCustomNames);
+      localStorage.setItem('poolVisual-variantNames', JSON.stringify(newCustomNames));
+      
+      // Update store variant label if it exists
+      const storeVariant = storeVariants.find(v => v.id === variantId);
+      if (storeVariant) {
+        dispatch({
+          type: 'UPDATE_VARIANT',
+          payload: {
+            id: variantId,
+            label: editingName.trim()
+          }
+        });
+      }
+      
+      toast.success('Variant renamed', { description: 'The variant name has been updated.' });
+    }
+    setEditingVariantId(null);
+    setEditingName('');
+  };
+
+  // Handle rename cancel
+  const handleCancelRename = () => {
+    setEditingVariantId(null);
+    setEditingName('');
   };
   
   // Format date
@@ -212,6 +285,8 @@ export function VariantsPanel() {
         {variants.map((variant) => {
           const isActive = activeVariantId === variant.id;
           const isDeleting = deleting === variant.id;
+          const isEditing = editingVariantId === variant.id;
+          const displayName = getVariantDisplayName(variant);
           
           return (
             <div
@@ -227,7 +302,7 @@ export function VariantsPanel() {
               <div className="relative aspect-video bg-gray-100 rounded-t-lg overflow-hidden">
                 <img
                   src={variant.url}
-                  alt={`Variant ${variant.rank + 1}`}
+                  alt={displayName}
                   className="w-full h-full object-cover"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%23f3f4f6" width="400" height="300"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%239ca3af" font-family="sans-serif" font-size="14"%3EFailed to load%3C/text%3E%3C/svg%3E';
@@ -246,9 +321,42 @@ export function VariantsPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <Sparkles size={14} className="text-primary flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900 truncate">
-                        {getModeLabel(variant.mode)} {variant.rank + 1}
-                      </span>
+                      {isEditing ? (
+                        <div className="flex items-center gap-1 flex-1">
+                          <input
+                            type="text"
+                            value={editingName}
+                            onChange={(e) => setEditingName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveRename(variant.id);
+                              } else if (e.key === 'Escape') {
+                                handleCancelRename();
+                              }
+                            }}
+                            className="flex-1 text-sm font-medium text-gray-900 border border-primary rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleSaveRename(variant.id)}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded"
+                            title="Save"
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            onClick={handleCancelRename}
+                            className="p-1 text-gray-400 hover:bg-gray-50 rounded"
+                            title="Cancel"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-sm font-medium text-gray-900 truncate">
+                          {displayName}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-xs text-gray-500">
                       <Calendar size={12} />
@@ -257,31 +365,41 @@ export function VariantsPanel() {
                   </div>
                   
                   {/* Actions */}
-                  <div className="flex items-center gap-1 ml-2">
-                    <button
-                      onClick={() => handleSelectVariant(variant)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                        isActive
-                          ? 'bg-primary text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
-                      disabled={isDeleting}
-                    >
-                      {isActive ? 'Active' : 'Apply'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(variant.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                      disabled={isDeleting}
-                      title="Delete variant"
-                    >
-                      {isDeleting ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 size={16} />
-                      )}
-                    </button>
-                  </div>
+                  {!isEditing && (
+                    <div className="flex items-center gap-1 ml-2">
+                      <button
+                        onClick={() => handleSelectVariant(variant)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                          isActive
+                            ? 'bg-primary text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                        disabled={isDeleting}
+                      >
+                        {isActive ? 'Active' : 'Apply'}
+                      </button>
+                      <button
+                        onClick={() => handleStartRename(variant)}
+                        className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                        disabled={isDeleting}
+                        title="Rename variant"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(variant.id)}
+                        className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        disabled={isDeleting}
+                        title="Delete variant"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 size={16} />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

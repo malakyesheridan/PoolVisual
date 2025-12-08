@@ -44,12 +44,12 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   });
   
   // Sidebar collapsed/expanded state with localStorage persistence
-  // Default to CLOSED on mobile, OPEN on desktop
+  // Default to OPEN (user requested sidebar open by default)
   const [isSidebarOpen, setIsSidebarOpen] = React.useState(() => {
     const saved = localStorage.getItem('poolVisual-sidebarOpen');
     if (saved !== null) return saved === 'true';
-    // Default: closed on mobile, open on desktop
-    return typeof window !== 'undefined' && window.innerWidth >= 768;
+    // Default: always open (user requested)
+    return true;
   });
   
   // Track window size for responsive behavior
@@ -61,11 +61,9 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      // Auto-close sidebar on mobile, auto-open on desktop
+      // On mobile, auto-close sidebar if open (but don't auto-open on desktop - respect user preference)
       if (mobile && isSidebarOpen) {
         setIsSidebarOpen(false);
-      } else if (!mobile && !isSidebarOpen) {
-        setIsSidebarOpen(true);
       }
     };
     

@@ -18,6 +18,7 @@ import {
 import { useEditorStore } from '@/stores/editorSlice';
 import { Material } from '@shared/schema';
 import { cn } from '@/lib/utils';
+import { useIsRealEstate } from '@/hooks/useIsRealEstate';
 
 interface MetricsBarProps {
   materials: Material[];
@@ -26,6 +27,7 @@ interface MetricsBarProps {
 }
 
 export function MetricsBar({ materials, onGenerateQuote, className }: MetricsBarProps) {
+  const isRealEstate = useIsRealEstate();
   const {
     masks,
     editorState,
@@ -217,24 +219,27 @@ export function MetricsBar({ materials, onGenerateQuote, className }: MetricsBar
             )}
           </div>
 
-          <Separator orientation="vertical" className="h-6" />
-
-          {/* Quote generation */}
-          <Button
-            onClick={onGenerateQuote || generateQuote}
-            disabled={
-              isLoading || 
-              !summary.isCalibrated || 
-              summary.totalMasks === 0 || 
-              summary.masksWithMaterials === 0
-            }
-            size="sm"
-            className="h-8"
-            data-testid="button-generate-quote"
-          >
-            <FileText className="w-4 h-4 mr-2" />
-            Generate Quote
-          </Button>
+          {/* Quote generation - Hidden for real estate */}
+          {!isRealEstate && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <Button
+                onClick={onGenerateQuote || generateQuote}
+                disabled={
+                  isLoading || 
+                  !summary.isCalibrated || 
+                  summary.totalMasks === 0 || 
+                  summary.masksWithMaterials === 0
+                }
+                size="sm"
+                className="h-8"
+                data-testid="button-generate-quote"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Generate Quote
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

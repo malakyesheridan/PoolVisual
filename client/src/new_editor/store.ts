@@ -1003,6 +1003,20 @@ export const useEditorStore = create<EditorState & {
         break;
       }
       
+      case 'UPDATE_VARIANT': {
+        const { id, label } = action.payload;
+        set(state => {
+          const updatedVariants = state.variants.map(v => 
+            v.id === id ? { ...v, label } : v
+          );
+          return {
+            ...state,
+            variants: updatedVariants
+          };
+        });
+        break;
+      }
+      
       case 'SET_VARIANTS': {
         const { variants, activeVariantId } = action.payload;
         set(state => {
