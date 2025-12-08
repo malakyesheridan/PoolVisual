@@ -138,36 +138,52 @@ export function VariantsPanel() {
   
   // Handle variant deletion
   const handleDelete = async (variantId: string) => {
+    console.log('[VariantsPanel] Delete requested for variant:', variantId);
+    
     // Check if variant exists in the panel (already loaded from API)
     const variant = variants.find(v => v.id === variantId);
     if (!variant) {
+      console.warn('[VariantsPanel] Variant not found in panel:', variantId);
       toast.error('Variant not found', {
         description: 'This variant may have already been deleted.'
       });
       return;
     }
     
-    // Only prevent deletion if it's actively being loaded in the canvas right now
-    // Check both loadingState and if it's the currently loading variant
-    const storeVariant = storeVariants.find(v => v.id === variantId);
+    // Get current store state
     const currentState = useEditorStore.getState();
-    const isCurrentlyLoading = currentState.loadingVariantId === variantId;
-    const hasLoadingState = storeVariant?.loadingState === 'loading';
+    const storeVariant = storeVariants.find(v => v.id === variantId);
     
-    // Only block if it's actively loading right now (not just has a stale loading state)
-    if (isCurrentlyLoading || (hasLoadingState && !storeVariant?.loadedAt)) {
+    console.log('[VariantsPanel] Deletion check:', {
+      variantId,
+      loadingVariantId: currentState.loadingVariantId,
+      isCurrentlyLoading: currentState.loadingVariantId === variantId,
+      storeVariantLoadingState: storeVariant?.loadingState,
+      storeVariantLoadedAt: storeVariant?.loadedAt,
+      isActive: activeVariantId === variantId
+    });
+    
+    // ONLY block deletion if the variant is actively being loaded RIGHT NOW
+    // This is the only reliable check - if loadingVariantId matches, it's currently loading
+    if (currentState.loadingVariantId === variantId) {
+      console.warn('[VariantsPanel] Blocking deletion - variant is currently loading');
       toast.warning('Cannot delete loading variant', {
         description: 'Please wait for the variant to finish loading on the canvas before deleting it.'
       });
       return;
     }
     
+    // Confirm deletion
     if (!confirm('Are you sure you want to delete this variant? This action cannot be undone.')) {
+      console.log('[VariantsPanel] Deletion cancelled by user');
       return;
     }
     
     try {
+      console.log('[VariantsPanel] Starting deletion for variant:', variantId);
       setDeleting(variantId);
+      
+      // Call delete endpoint
       const res = await fetch(`/api/ai/enhancement/variants/${variantId}`, {
         method: 'DELETE',
         credentials: 'include',
@@ -176,37 +192,59 @@ export function VariantsPanel() {
         }
       });
       
+      console.log('[VariantsPanel] Delete response:', {
+        status: res.status,
+        ok: res.ok,
+        statusText: res.statusText
+      });
+      
       if (!res.ok) {
         // Try to parse error as JSON first
         let errorMessage = 'Failed to delete variant';
         try {
           const errorData = await res.json();
           errorMessage = errorData.message || errorMessage;
+          console.error('[VariantsPanel] Delete error (JSON):', errorData);
         } catch {
           // If JSON parsing fails, try text
           const errorText = await res.text();
           errorMessage = errorText || errorMessage;
+          console.error('[VariantsPanel] Delete error (text):', errorText);
         }
         throw new Error(errorMessage);
       }
       
       // Parse response
       const data = await res.json().catch(() => ({ ok: true }));
+      console.log('[VariantsPanel] Delete successful, response:', data);
       
-      // Remove from local state
-      setVariants(prev => prev.filter(v => v.id !== variantId));
+      // Update UI state BEFORE removing from store to avoid race conditions
+      // Remove from local panel state first
+      setVariants(prev => {
+        const filtered = prev.filter(v => v.id !== variantId);
+        console.log('[VariantsPanel] Removed from local state. Remaining variants:', filtered.length);
+        return filtered;
+      });
       
-      // If this variant is active, switch to original
+      // If this variant is active, switch to original BEFORE removing from store
       if (activeVariantId === variantId) {
+        console.log('[VariantsPanel] Switching to original variant (deleted variant was active)');
         dispatch({ type: 'SET_ACTIVE_VARIANT', payload: 'original' });
       }
       
-      // Remove from store variants
+      // Remove from store variants (this will also update persistence)
+      console.log('[VariantsPanel] Removing from store');
       dispatch({ type: 'REMOVE_VARIANT', payload: variantId });
       
+      console.log('[VariantsPanel] Variant deletion complete');
       toast.success('Variant deleted', { description: 'The variant has been removed.' });
     } catch (error: any) {
       console.error('[VariantsPanel] Failed to delete variant:', error);
+      console.error('[VariantsPanel] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        variantId
+      });
       toast.error('Failed to delete variant', { 
         description: error.message || 'An unexpected error occurred while deleting the variant.' 
       });
