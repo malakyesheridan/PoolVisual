@@ -345,46 +345,13 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       });
     }
 
-    // Calculate enhancements required for this enhancement job
-    // All enhancements cost 1 (simplified system)
+    // DISABLED: Enhancement limits removed - no deduction or balance checks
+    // All enhancements are now unlimited
     const hasMask = masks && masks.length > 0;
     const enhancementType = mode || options?.mode || 'basic';
-    const requiredEnhancements = enhancementService.calculateEnhancements(enhancementType, hasMask);
-
-    // CRITICAL FIX: Deduct enhancements BEFORE creating job to prevent race conditions
-    // This ensures enhancements are deducted atomically with job creation
-    let deductionResult;
-    try {
-      deductionResult = await enhancementService.deductEnhancements(
-        user.id,
-        enhancementType,
-        hasMask
-      );
-
-      if (!deductionResult.success) {
-        const balance = await enhancementService.getEnhancementBalance(user.id);
-        return res.status(402).json({
-          message: 'Insufficient enhancements',
-          required: requiredEnhancements,
-          balance: balance.total,
-          error: 'INSUFFICIENT_ENHANCEMENTS'
-        });
-      }
-    } catch (enhancementError: any) {
-      logger.error({
-        msg: 'Failed to deduct enhancements before job creation',
-        err: enhancementError,
-        userId: user.id,
-        requiredEnhancements,
-      });
-      return res.status(500).json({
-        message: 'Failed to process enhancement deduction',
-        error: 'ENHANCEMENT_DEDUCTION_FAILED'
-      });
-    }
 
     // Create job + outbox atomically
-    // Enhancements are already deducted, so if job creation fails, we'll refund
+    // No enhancement deduction - unlimited enhancements
     let result;
     let jobId: string | null = null;
     try {
@@ -562,43 +529,6 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       });
     } catch (txErr: any) {
       console.error('[Create Enhancement] Transaction failed:', txErr.message);
-      
-      // CRITICAL: If job creation fails after enhancements were deducted, refund the enhancements
-      if (deductionResult.success) {
-        try {
-          // Refund based on whether it was from trial or paid
-          if (deductionResult.fromTrial) {
-            // Refund trial enhancement
-            const { storage } = await import('../storage.js');
-            const user = await storage.getUser(user.id);
-            if (user) {
-              await storage.updateUser(user.id, {
-                trialEnhancements: (user.trialEnhancements || 0) + deductionResult.enhancementsDeducted,
-              });
-            }
-          } else {
-            await enhancementService.refundEnhancements(
-              user.id,
-              deductionResult.enhancementsDeducted,
-              'temp-job-id', // Job wasn't created, so no real job ID
-              `Job creation failed: ${txErr.message}`
-            );
-          }
-          logger.info({
-            msg: 'Enhancements refunded due to job creation failure',
-            userId: user.id,
-            enhancementsRefunded: deductionResult.enhancementsDeducted,
-          });
-        } catch (refundError) {
-          logger.error({
-            msg: 'CRITICAL: Failed to refund enhancements after job creation failure',
-            err: refundError,
-            userId: user.id,
-            enhancementsDeducted: deductionResult.enhancementsDeducted,
-          });
-        }
-      }
-      
       throw txErr;
     }
     
@@ -606,29 +536,10 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     
     if (!jobId) {
       console.error('[Create Enhancement] Job creation returned no ID');
-      
-      // Refund enhancements if job wasn't created
-      if (deductionResult.success) {
-        try {
-          await enhancementService.refundEnhancements(
-            user.id,
-            deductionResult.enhancementsDeducted,
-            'temp-job-id',
-            'Job creation returned no ID'
-          );
-        } catch (refundError) {
-          logger.error({
-            msg: 'CRITICAL: Failed to refund enhancements after job creation returned no ID',
-            err: refundError,
-            userId: user.id,
-          });
-        }
-      }
-      
       return res.status(500).json({ message: 'Failed to create job' });
     }
 
-    // Enhancements were already deducted before job creation
+    // No enhancement deduction - unlimited enhancements
     // Update the deduction record with the actual job ID (if needed for tracking)
     logger.info({
       msg: 'Enhancements deducted and job created successfully',
@@ -826,32 +737,7 @@ router.post('/:id/cancel', authenticateSession, async (req, res) => {
       // Ignore
     }
 
-    // Refund enhancements
-    // Get enhancement type and mask info from job options
-    const jobOptions = rows[0].options ? (typeof rows[0].options === 'string' ? JSON.parse(rows[0].options) : rows[0].options) : {};
-    const enhancementType = jobOptions.mode || 'basic';
-    const hasMask = rows[0].masks && (typeof rows[0].masks === 'string' ? JSON.parse(rows[0].masks) : rows[0].masks).length > 0;
-    const enhancementsToRefund = enhancementService.calculateEnhancements(enhancementType, hasMask);
-    
-    if (enhancementsToRefund > 0) {
-      try {
-        await enhancementService.refundEnhancements(
-          user.id,
-          enhancementsToRefund,
-          jobId,
-          'Job canceled by user'
-        );
-      } catch (refundError) {
-        logger.error({
-          msg: 'Failed to refund enhancements on cancel',
-          err: refundError,
-          userId: user.id,
-          jobId,
-          enhancementsToRefund,
-        });
-        // Continue - don't fail the cancel operation
-      }
-    }
+    // DISABLED: No enhancement refunds - unlimited enhancements
 
     SSEManager.emit(jobId, { 
       id: `event-${jobId}-${Date.now()}-${Math.random()}`,
@@ -1385,47 +1271,7 @@ router.post('/:id/callback', async (req, res) => {
       [jobId, nextStatus, nextProgress, errorMessage, errorCode]
     );
 
-    // If status is 'failed', refund enhancements
-    if (nextStatus === 'failed') {
-      try {
-        // Get job details to determine enhancements to refund
-        const jobRows = await executeQuery(
-          `SELECT user_id, options, masks FROM ai_enhancement_jobs WHERE id = $1`,
-          [jobId]
-        );
-        
-        if (jobRows.length > 0) {
-          const job = jobRows[0];
-          const jobOptions = job.options ? (typeof job.options === 'string' ? JSON.parse(job.options) : job.options) : {};
-          const enhancementType = jobOptions.mode || 'basic';
-          const hasMask = job.masks && (typeof job.masks === 'string' ? JSON.parse(job.masks) : job.masks).length > 0;
-          const enhancementsToRefund = enhancementService.calculateEnhancements(enhancementType, hasMask);
-          
-          if (enhancementsToRefund > 0 && job.user_id) {
-            await enhancementService.refundEnhancements(
-              job.user_id,
-              enhancementsToRefund,
-              jobId,
-              errorMessage || 'Enhancement job failed'
-            );
-            logger.info({
-              msg: 'Enhancements refunded for failed enhancement',
-              userId: job.user_id,
-              jobId,
-              enhancementsRefunded: enhancementsToRefund,
-              errorMessage,
-            });
-          }
-        }
-      } catch (refundError) {
-        logger.error({
-          msg: 'Failed to refund enhancements on enhancement failure',
-          err: refundError,
-          jobId,
-        });
-        // Don't fail the callback - continue processing
-      }
-    }
+    // DISABLED: No enhancement refunds on failure - unlimited enhancements
 
     // Save variants if provided and status is completed
     // Handle both formats: variants array OR urls array (from n8n workflow)

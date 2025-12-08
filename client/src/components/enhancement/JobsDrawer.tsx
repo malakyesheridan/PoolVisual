@@ -287,7 +287,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
 
   // Load credit balance on mount
   useEffect(() => {
-    loadEnhancementBalance();
+    // DISABLED: No balance loading - unlimited enhancements
   }, []);
 
   const loadEnhancementBalance = async () => {
@@ -1067,21 +1067,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       
       console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify(logPayload, null, 2));
       
-      // Calculate enhancements needed for optimistic update
-      const { updateEnhancements } = useAuthStore.getState();
-      try {
-        const enhancementResponse = await apiClient.calculateEnhancements(previewData.mode, previewData.masks.length > 0);
-        enhancementsToDeduct = enhancementResponse.enhancements;
-        
-        // Optimistically deduct enhancements immediately
-        updateEnhancements(-enhancementsToDeduct);
-        if (enhancementBalance !== null) {
-          setEnhancementBalance(enhancementBalance - enhancementsToDeduct);
-        }
-      } catch (enhancementError) {
-        console.warn('[JobsDrawer] Failed to calculate enhancements for optimistic update:', enhancementError);
-        // Continue anyway - server will handle it
-      }
+      // DISABLED: No enhancement deduction - unlimited enhancements
       
       // Capture active variant ID before creating job
       const currentState = useEditorStore.getState();
@@ -1126,38 +1112,14 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // function now handles timezone issues and invalid dates properly
       getRecentJobs(100).then(d => setInitial(d.jobs)).catch(() => {});
       
-      // Reconcile credit balance with server (refresh from API)
-      loadEnhancementBalance();
+      // DISABLED: No balance tracking - unlimited enhancements
     } catch (error: any) {
       console.error('Failed to create enhancement:', error);
       
-      // Revert optimistic credit update on error
-      if (enhancementsToDeduct > 0) {
-        const { updateEnhancements } = useAuthStore.getState();
-        updateEnhancements(enhancementsToDeduct); // Add back the enhancements we optimistically deducted
-        if (enhancementBalance !== null) {
-          setEnhancementBalance(enhancementBalance + enhancementsToDeduct);
-        }
-      }
+      // DISABLED: No enhancement deduction to revert - unlimited enhancements
       
-      // Handle insufficient enhancements (402)
-      // HIDDEN: Purchase requirement is disabled, so we just show a generic error
-      if (error.status === 402 || error.statusCode === 402 || error.error === 'INSUFFICIENT_ENHANCEMENTS' || error.error === 'INSUFFICIENT_CREDITS') {
-        const required = error.required || 0;
-        const balance = error.balance || 0;
-        toast.error('Insufficient Enhancements', {
-          description: `You need ${required} enhancement${required !== 1 ? 's' : ''} but only have ${balance}. Please contact support.`,
-          duration: 10000
-        });
-      } 
-      // Handle usage limit exceeded (402)
-      else if (error.code === 'USAGE_LIMIT_EXCEEDED' || error.details) {
-        const details = error.details || {};
-        toast.error('Usage Limit Exceeded', {
-          description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining. Please contact support.`,
-          duration: 10000
-        });
-      }
+      // DISABLED: No limit error handling - unlimited enhancements
+      // These errors should not occur anymore, but kept for backward compatibility
       // Handle invalid mode error (400)
       else if (error.message && (error.message.includes('Invalid enhancement mode') || error.message.includes('Invalid enhancement'))) {
         let errorData: any = {};
