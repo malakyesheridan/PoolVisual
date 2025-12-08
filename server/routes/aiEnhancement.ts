@@ -204,19 +204,36 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
       }
     }
 
-    // CRITICAL FIX: If industry is still not set, infer from mode
-    // Real estate modes: stage_room, item_removal, renovation, day_to_dusk
-    // Trades modes: add_decoration, blend_materials, clutter_removal, before_after
-    if (!industry && mode) {
-      const realEstateModes = ['stage_room', 'item_removal', 'renovation', 'day_to_dusk'];
-      const tradesModes = ['add_decoration', 'blend_materials', 'clutter_removal', 'before_after'];
-      
-      if (realEstateModes.includes(mode)) {
+    // CRITICAL FIX: Override industry based on mode if mode is industry-exclusive
+    // Real estate exclusive modes: stage_room, item_removal, renovation, day_to_dusk
+    // Trades exclusive modes: add_decoration, blend_materials, clutter_removal, before_after
+    // Shared modes: image_enhancement (available for both)
+    const realEstateExclusiveModes = ['stage_room', 'item_removal', 'renovation', 'day_to_dusk'];
+    const tradesExclusiveModes = ['add_decoration', 'blend_materials', 'clutter_removal', 'before_after'];
+    
+    if (mode) {
+      // If mode is real estate exclusive, override industry to real_estate
+      if (realEstateExclusiveModes.includes(mode)) {
+        const originalIndustry = industry;
         industry = 'real_estate';
-        console.log('[Create Enhancement] ⚠️ Industry not set, inferring "real_estate" from mode:', mode);
-      } else if (tradesModes.includes(mode)) {
-        industry = 'pool'; // Default trades industry
-        console.log('[Create Enhancement] ⚠️ Industry not set, inferring "pool" from mode:', mode);
+        if (originalIndustry !== 'real_estate') {
+          console.log(`[Create Enhancement] 🔄 Overriding industry to "real_estate" for exclusive mode "${mode}" (was: ${originalIndustry || 'null'})`);
+        }
+      }
+      // If mode is trades exclusive, ensure industry is not real_estate
+      else if (tradesExclusiveModes.includes(mode)) {
+        if (industry === 'real_estate') {
+          industry = 'pool'; // Default trades industry
+          console.log(`[Create Enhancement] 🔄 Overriding industry to "pool" for exclusive mode "${mode}" (was: real_estate)`);
+        } else if (!industry) {
+          industry = 'pool';
+          console.log(`[Create Enhancement] ⚠️ Industry not set, inferring "pool" from exclusive mode: ${mode}`);
+        }
+      }
+      // If industry is still not set and mode is image_enhancement, default to real_estate
+      else if (mode === 'image_enhancement' && !industry) {
+        industry = 'real_estate';
+        console.log('[Create Enhancement] ⚠️ Industry not set, defaulting to "real_estate" for image_enhancement mode');
       }
     }
 
@@ -224,11 +241,12 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
     console.log('[Create Enhancement] Industry detection:', {
       userId: user.id,
       userIndustryType: userRecord.industryType,
-      orgIndustry: industry,
+      finalIndustry: industry,
       tenantId,
       mode,
       validModes: getValidEnhancementModes(industry),
-      inferred: !userRecord.industryType && industry ? 'yes' : 'no'
+      isRealEstateExclusive: mode ? realEstateExclusiveModes.includes(mode) : false,
+      isTradesExclusive: mode ? tradesExclusiveModes.includes(mode) : false
     });
 
     // Validate mode based on industry
@@ -240,9 +258,7 @@ router.post('/', authenticateSession, rateLimiters.enhancement, async (req, res)
         providedMode: mode,
         userIndustryType: userRecord.industryType,
         detectedIndustry: industry,
-        suggestion: userRecord.industryType ? 
-          `User's industryType is "${userRecord.industryType}" but detected industry is "${industry}". Please update user's industryType in database.` :
-          `User's industryType is not set. Please set it to "real_estate" for real estate users.`
+        suggestion: `Mode "${mode}" is not available for ${industry || 'unknown'} industry. Available modes: ${validModes.join(', ')}.`
       });
     }
 
@@ -1697,15 +1713,41 @@ router.delete('/variants/:id', authenticateSession, async (req, res) => {
 
 /**
  * Get valid enhancement modes for an industry
- * Maps to credit types: basic, sky, staging, brush, material, decorate, custom
+ * 
+ * Real Estate modes:
+ * - image_enhancement: General image quality improvements
+ * - stage_room: Virtual staging (add furniture/decor)
+ * - item_removal: Remove unwanted objects
+ * - renovation: Transform spaces with renovation enhancements
+ * - day_to_dusk: Convert daytime to twilight
+ * 
+ * Trades modes:
+ * - image_enhancement: General image quality improvements (shared)
+ * - add_decoration: Add decorative elements (requires masks)
+ * - blend_materials: Blend materials in masked areas (requires masks)
+ * - clutter_removal: Remove clutter/objects
+ * - before_after: Before/after transformation (requires user prompt)
  */
 function getValidEnhancementModes(industry: string | null): string[] {
   if (industry === 'real_estate') {
     // Real Estate enhancement types
-    return ['image_enhancement', 'stage_room', 'item_removal', 'renovation', 'day_to_dusk'];
+    return [
+      'image_enhancement',
+      'stage_room',
+      'item_removal',
+      'renovation',
+      'day_to_dusk'
+    ];
   }
-  // Trades enhancement types
-  return ['image_enhancement', 'add_decoration', 'blend_materials', 'clutter_removal', 'before_after'];
+  
+  // Trades enhancement types (default for pool, landscaping, building, etc.)
+  return [
+    'image_enhancement',
+    'add_decoration',
+    'blend_materials',
+    'clutter_removal',
+    'before_after'
+  ];
 }
 
 /**
