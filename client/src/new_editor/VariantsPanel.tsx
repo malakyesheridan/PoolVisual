@@ -141,11 +141,20 @@ export function VariantsPanel() {
   
   // Handle variant deletion
   const handleDelete = async (variantId: string) => {
-    // CRITICAL FIX: Prevent deletion of loading variants
-    const variant = storeVariants.find(v => v.id === variantId);
-    if (variant?.loadingState === 'loading') {
+    // Check if variant exists in the panel (already loaded from API)
+    const variant = variants.find(v => v.id === variantId);
+    if (!variant) {
+      toast.error('Variant not found', {
+        description: 'This variant may have already been deleted.'
+      });
+      return;
+    }
+    
+    // Only prevent deletion if it's actively being loaded in the canvas (not just in the panel)
+    const storeVariant = storeVariants.find(v => v.id === variantId);
+    if (storeVariant?.loadingState === 'loading') {
       toast.warning('Cannot delete loading variant', {
-        description: 'Please wait for the variant to finish loading before deleting it.'
+        description: 'Please wait for the variant to finish loading on the canvas before deleting it.'
       });
       return;
     }
