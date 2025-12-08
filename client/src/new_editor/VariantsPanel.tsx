@@ -54,7 +54,20 @@ export function VariantsPanel() {
   });
   
   // Track if we've already loaded variants for this photo to prevent resetting active variant
-  const loadedPhotoIdRef = React.useRef<string | null>(null);
+  // Use localStorage to persist across component remounts (e.g., when sidebar opens/closes)
+  const getLoadedPhotoId = () => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('poolVisual-loadedPhotoId');
+  };
+  
+  const setLoadedPhotoId = (photoId: string | null) => {
+    if (typeof window === 'undefined') return;
+    if (photoId) {
+      localStorage.setItem('poolVisual-loadedPhotoId', photoId);
+    } else {
+      localStorage.removeItem('poolVisual-loadedPhotoId');
+    }
+  };
   
   // Load variants for the current photo
   useEffect(() => {
@@ -64,8 +77,9 @@ export function VariantsPanel() {
     }
     
     // CRITICAL FIX: Only auto-set most recent variant on FIRST load for this photo
-    // If we've already loaded variants for this photo, don't change the active variant
-    const isFirstLoad = loadedPhotoIdRef.current !== effectivePhotoId;
+    // Use localStorage to persist across component remounts (sidebar open/close)
+    const previouslyLoadedPhotoId = getLoadedPhotoId();
+    const isFirstLoad = previouslyLoadedPhotoId !== effectivePhotoId;
     
     const loadVariants = async () => {
       try {
@@ -125,17 +139,31 @@ export function VariantsPanel() {
         
         // CRITICAL FIX: Only set the most recent variant as active on FIRST load
         // This prevents resetting the active variant when sidebar opens/closes
+        // Also check that we're not overwriting an existing non-original variant
         if (isFirstLoad && sortedVariants.length > 0) {
-          const mostRecentVariant = sortedVariants[sortedVariants.length - 1];
-          const currentActiveId = useEditorStore.getState().activeVariantId;
-          // Only change active variant if it's not already set or if it's the original
-          if (!currentActiveId || currentActiveId === 'original') {
+          const currentState = useEditorStore.getState();
+          const currentActiveId = currentState.activeVariantId;
+          
+          // Only change active variant if:
+          // 1. No variant is currently active, OR
+          // 2. The original is active, OR
+          // 3. The currently active variant doesn't exist in the loaded variants (was deleted)
+          const activeVariantExists = currentActiveId && 
+            (currentActiveId === 'original' || sortedVariants.some(v => v.id === currentActiveId));
+          
+          if (!currentActiveId || currentActiveId === 'original' || !activeVariantExists) {
+            const mostRecentVariant = sortedVariants[sortedVariants.length - 1];
+            console.log('[VariantsPanel] Setting most recent variant as active on first load:', mostRecentVariant.id);
             dispatch({ type: 'SET_ACTIVE_VARIANT', payload: mostRecentVariant.id });
+          } else {
+            console.log('[VariantsPanel] Preserving existing active variant:', currentActiveId);
           }
+        } else {
+          console.log('[VariantsPanel] Skipping variant activation (not first load)');
         }
         
-        // Mark this photo as loaded
-        loadedPhotoIdRef.current = effectivePhotoId;
+        // Mark this photo as loaded (persist to localStorage)
+        setLoadedPhotoId(effectivePhotoId);
       } catch (error: any) {
         console.error('[VariantsPanel] Failed to load variants:', error);
         toast.error('Failed to load variants', { description: error.message });
@@ -145,7 +173,7 @@ export function VariantsPanel() {
     };
     
     loadVariants();
-  }, [effectivePhotoId]);
+  }, [effectivePhotoId, dispatch, customNames]);
   
   // Handle variant deletion
   const handleDelete = async (variantId: string) => {
