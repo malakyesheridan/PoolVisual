@@ -76,6 +76,45 @@ export function VariantsPanel() {
           return (a.rank || 0) - (b.rank || 0);
         });
         setVariants(sortedVariants);
+        
+        // Auto-apply all variants to canvas when loaded
+        // Apply them in order (oldest first) so the newest is active
+        const currentStoreVariants = useEditorStore.getState().variants;
+        for (const variant of sortedVariants) {
+          const existingVariant = currentStoreVariants.find(v => v.id === variant.id);
+          if (!existingVariant) {
+            // Calculate display name using sorted list
+            const number = sortedVariants.findIndex(v => v.id === variant.id) + 1;
+            let displayName: string;
+            if (customNames[variant.id]) {
+              displayName = customNames[variant.id];
+            } else if (variant.mode) {
+              displayName = `${getModeLabel(variant.mode)} ${number}`;
+            } else {
+              displayName = `Enhanced ${number}`;
+            }
+            
+            // Add to store
+            dispatch({
+              type: 'ADD_VARIANT',
+              payload: {
+                id: variant.id,
+                label: displayName,
+                imageUrl: variant.url
+              }
+            });
+          }
+        }
+        
+        // Set the most recent variant as active (last in sorted array)
+        if (sortedVariants.length > 0) {
+          const mostRecentVariant = sortedVariants[sortedVariants.length - 1];
+          const currentActiveId = useEditorStore.getState().activeVariantId;
+          // Only change active variant if it's not already set or if it's the original
+          if (!currentActiveId || currentActiveId === 'original') {
+            dispatch({ type: 'SET_ACTIVE_VARIANT', payload: mostRecentVariant.id });
+          }
+        }
       } catch (error: any) {
         console.error('[VariantsPanel] Failed to load variants:', error);
         toast.error('Failed to load variants', { description: error.message });
@@ -139,11 +178,11 @@ export function VariantsPanel() {
   };
 
   // Get display name for variant (custom name or default)
-  const getVariantDisplayName = (variant: Variant) => {
+  const getVariantDisplayName = (variant: Variant, variantsList: Variant[] = variants) => {
     if (customNames[variant.id]) {
       return customNames[variant.id];
     }
-    const number = getVariantNumber(variant);
+    const number = variantsList.findIndex(v => v.id === variant.id) + 1;
     if (variant.mode) {
       return `${getModeLabel(variant.mode)} ${number}`;
     }
@@ -367,17 +406,11 @@ export function VariantsPanel() {
                   {/* Actions */}
                   {!isEditing && (
                     <div className="flex items-center gap-1 ml-2">
-                      <button
-                        onClick={() => handleSelectVariant(variant)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                          isActive
-                            ? 'bg-primary text-white'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                        disabled={isDeleting}
-                      >
-                        {isActive ? 'Active' : 'Apply'}
-                      </button>
+                      {isActive && (
+                        <span className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-white">
+                          Active
+                        </span>
+                      )}
                       <button
                         onClick={() => handleStartRename(variant)}
                         className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"

@@ -60,12 +60,22 @@ export function JobSelector({ onJobSelect, onCancel }: JobSelectorProps) {
         })
       );
       
-      // Flatten and sort by creation date (newest first)
-      const flattenedJobs = allJobs.flat().sort((a, b) => 
+      // Flatten, deduplicate by ID, and sort by creation date (newest first)
+      const flattenedJobs = allJobs.flat();
+      
+      // Deduplicate by job ID (in case same job appears in multiple orgs)
+      const uniqueJobsMap = new Map<string, Job>();
+      for (const job of flattenedJobs) {
+        if (!uniqueJobsMap.has(job.id)) {
+          uniqueJobsMap.set(job.id, job);
+        }
+      }
+      
+      const uniqueJobs = Array.from(uniqueJobsMap.values()).sort((a, b) => 
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
       
-      setJobs(flattenedJobs);
+      setJobs(uniqueJobs);
     } catch (error) {
       console.error('Failed to load jobs:', error);
       toast.error('Failed to load jobs');
@@ -105,7 +115,7 @@ export function JobSelector({ onJobSelect, onCancel }: JobSelectorProps) {
             <FileText size={16} />
           )}
           <span className="font-medium">
-            {loading ? 'Loading...' : 'Select Job'}
+            {loading ? 'Loading...' : isRealEstate ? 'Select Property' : 'Select Job'}
           </span>
         </Button>
       </DropdownMenuTrigger>
