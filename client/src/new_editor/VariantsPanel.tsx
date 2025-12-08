@@ -38,10 +38,12 @@ export function VariantsPanel() {
   const [editingName, setEditingName] = useState<string>('');
   const [addingToMarketing, setAddingToMarketing] = useState<string | null>(null);
   
-  // Get jobId from context or URL params
+  // Get jobId and photoId from context or URL params
   const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
   const [, jobParamsCanvas] = useRoute('/jobs/:jobId/photo/:photoId/edit-canvas');
   const effectiveJobId = jobParams?.jobId || jobParamsCanvas?.jobId || jobContext?.jobId;
+  const effectivePhotoId = jobParams?.photoId || jobParamsCanvas?.photoId || jobContext?.photoId;
+  
   const [customNames, setCustomNames] = useState<Record<string, string>>(() => {
     // Load custom names from localStorage
     if (typeof window !== 'undefined') {
@@ -50,11 +52,6 @@ export function VariantsPanel() {
     }
     return {};
   });
-  
-  // Get photoId from URL params or context
-  const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
-  const [, jobParamsCanvas] = useRoute('/jobs/:jobId/photo/:photoId/edit-canvas');
-  const effectivePhotoId = jobParams?.photoId || jobParamsCanvas?.photoId || jobContext?.photoId;
   
   // Load variants for the current photo
   useEffect(() => {
