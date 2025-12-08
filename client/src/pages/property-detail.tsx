@@ -104,7 +104,7 @@ export default function PropertyDetail() {
     staleTime: 1 * 60 * 1000, // 1 minute
   });
 
-  // For real estate: separate queries for marketing and renovation photos
+  // For real estate: separate query for marketing photos
   // For trades: single query for all photos
   const { data: allPhotos = [], isLoading: photosLoading } = useQuery({
     queryKey: ['/api/jobs', jobId, 'photos'],
@@ -120,16 +120,8 @@ export default function PropertyDetail() {
     staleTime: 1 * 60 * 1000,
   });
 
-  const { data: renovationPhotos = [], isLoading: renovationPhotosLoading } = useQuery({
-    queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'],
-    queryFn: () => jobId ? apiClient.getJobPhotos(jobId, 'renovation_buyer') : Promise.resolve([]),
-    enabled: !!jobId && isRealEstate,
-    staleTime: 1 * 60 * 1000,
-  });
-
   // Use appropriate photos based on industry
   const photos = isRealEstate ? marketingPhotos : allPhotos;
-  const renovationBuyerPhotos = isRealEstate ? renovationPhotos : [];
 
   // Listen for photo refresh events from the editor
   useEffect(() => {
