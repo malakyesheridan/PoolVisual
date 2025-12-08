@@ -389,6 +389,17 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   }, [onClose, showFilters]);
 
   const handleCreateEnhancement = async (mode: 'add_decoration' | 'blend_materials' | 'clutter_removal' | 'before_after' | 'image_enhancement' | 'day_to_dusk' | 'stage_room' | 'item_removal' | 'renovation') => {
+    // Validate mode is allowed for current industry
+    const validModes = getValidModes();
+    if (!validModes.includes(mode)) {
+      const effectiveIndustry = user?.industryType || industry;
+      toast.error('Invalid Enhancement Type', {
+        description: `"${mode}" is not available for ${effectiveIndustry === 'real_estate' ? 'real estate' : 'trades'} industry. Please select a valid enhancement type.`,
+        duration: 10000
+      });
+      return;
+    }
+    
     const currentState = useEditorStore.getState();
     const currentImageUrl = currentState.imageUrl;
     const photoSpace = currentState.photoSpace;
@@ -1025,6 +1036,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify(logPayload, null, 2));
       
       // Calculate enhancements needed for optimistic update
+      // Declare outside try block so it's accessible in catch block
       const { updateEnhancements } = useAuthStore.getState();
       let enhancementsToDeduct = 0;
       try {
@@ -1040,6 +1052,10 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
         console.warn('[JobsDrawer] Failed to calculate enhancements for optimistic update:', enhancementError);
         // Continue anyway - server will handle it
       }
+      
+      // Capture active variant ID before creating job
+      const currentState = useEditorStore.getState();
+      const activeVariantIdAtStart = currentState.activeVariantId;
       
       const { jobId } = await createJob(payload);
       
@@ -1111,8 +1127,29 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           description: `You've used ${details.used || 0} of ${details.limit || 0} enhancements. ${details.remaining || 0} remaining. Please contact support.`,
           duration: 10000
         });
+      }
+      // Handle invalid mode error (400)
+      else if (error.message && (error.message.includes('Invalid enhancement mode') || error.message.includes('Invalid enhancement'))) {
+        let errorData: any = {};
+        try {
+          // Try to parse as JSON if it's a string
+          if (typeof error.message === 'string') {
+            errorData = JSON.parse(error.message);
+          } else {
+            errorData = error.message;
+          }
+        } catch {
+          // If parsing fails, try to extract from error object directly
+          errorData = error;
+        }
+        const validModes = errorData.validModes || [];
+        const providedMode = errorData.providedMode || previewData?.mode || 'unknown';
+        toast.error('Invalid Enhancement Type', {
+          description: `"${providedMode}" is not available for your industry. Available types: ${validModes.join(', ')}.`,
+          duration: 10000
+        });
       } else {
-        toast.error('Failed to create enhancement', { description: error.message });
+        toast.error('Failed to create enhancement', { description: error.message || 'An unexpected error occurred' });
       }
     } finally {
       setIsCreating(false);
