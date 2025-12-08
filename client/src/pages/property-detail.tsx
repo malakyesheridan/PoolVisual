@@ -164,7 +164,6 @@ export default function PropertyDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos'] });
       if (isRealEstate) {
         queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'marketing'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'] });
       }
       toast({
         title: "Photo uploaded",
@@ -186,7 +185,6 @@ export default function PropertyDetail() {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos'] });
       if (isRealEstate) {
         queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'marketing'] });
-        queryClient.invalidateQueries({ queryKey: ['/api/jobs', jobId, 'photos', 'renovation_buyer'] });
       }
       toast({
         title: "Photo deleted",
@@ -347,23 +345,18 @@ export default function PropertyDetail() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const renovationFileInputRef = useRef<HTMLInputElement>(null);
 
-  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>, category: 'marketing' | 'renovation_buyer' = 'marketing') => {
+  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && jobId) {
-      uploadPhotoMutation.mutate({ file, jobId, category });
+      uploadPhotoMutation.mutate({ file, jobId, category: 'marketing' });
     }
     // Reset input
     event.target.value = '';
   };
 
-  const handleUploadClick = (category: 'marketing' | 'renovation_buyer' = 'marketing') => {
-    if (category === 'renovation_buyer') {
-      renovationFileInputRef.current?.click();
-    } else {
-      fileInputRef.current?.click();
-    }
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   if (isLoading) {
@@ -581,7 +574,7 @@ export default function PropertyDetail() {
                     <Button 
                       size="sm" 
                       data-testid="button-upload-marketing-photo"
-                      onClick={() => handleUploadClick('marketing')}
+                      onClick={handleUploadClick}
                       disabled={uploadPhotoMutation.isPending}
                       className="h-11 md:h-auto tap-target"
                     >
@@ -600,7 +593,7 @@ export default function PropertyDetail() {
                         description="Upload marketing photos for property listings. These photos will be used for marketing and showcasing the property."
                         primaryAction={{
                           label: uploadPhotoMutation.isPending ? 'Uploading...' : 'Upload Photo',
-                          onClick: () => handleUploadClick('marketing'),
+                          onClick: handleUploadClick,
                           icon: Upload
                         }}
                       />
@@ -1332,18 +1325,9 @@ export default function PropertyDetail() {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        onChange={(e) => handlePhotoUpload(e, 'marketing')}
+          onChange={handlePhotoUpload}
         className="hidden"
       />
-      {isRealEstate && (
-        <input
-          ref={renovationFileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={(e) => handlePhotoUpload(e, 'renovation_buyer')}
-          className="hidden"
-        />
-      )}
 
       {/* Edit Client Info Modal */}
       <Modal
