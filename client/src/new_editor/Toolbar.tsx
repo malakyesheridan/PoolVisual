@@ -1726,14 +1726,17 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                   Fit to View
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  onClick={() => setShowCalibrationTool(true)}
-                  disabled={state !== 'ready'}
-                >
-                  <Ruler className="mr-2 h-4 w-4" />
-                  Calibrate Measurements
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
+                {/* Calibrate Measurements - Hidden for real estate */}
+                {!isRealEstate && (
+                  <DropdownMenuItem 
+                    onClick={() => setShowCalibrationTool(true)}
+                    disabled={state !== 'ready'}
+                  >
+                    <Ruler className="mr-2 h-4 w-4" />
+                    Calibrate Measurements
+                  </DropdownMenuItem>
+                )}
+                {!isRealEstate && <DropdownMenuSeparator />}
                 <DropdownMenuItem 
                   onClick={handleSaveAsTemplate}
                   disabled={state !== 'ready'}
@@ -1899,32 +1902,34 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
                 </Tooltip>
               </div>
               
-              {/* Calibration Button */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setShowCalibrationTool(true)}
-                    disabled={state !== 'ready'}
-                    className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 h-11 md:h-auto tap-target ${
-                      calibration.isCalibrated
-                        ? 'bg-primary/5 text-primary border border-blue-300 hover:bg-primary/10'
-                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    aria-label="Calibrate Measurements"
-                  >
-                    <Ruler size={14} />
-                    <span className="hidden md:inline">
-                      {calibration.isCalibrated 
-                        ? `${calibration.pixelsPerMeter.toFixed(0)} px/m` 
-                        : 'Calibrate'}
-                    </span>
-                    <span className="md:hidden">Cal</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <span>Calibrate Measurements (C)</span>
-                </TooltipContent>
-              </Tooltip>
+              {/* Calibration Button - Hidden for real estate */}
+              {!isRealEstate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setShowCalibrationTool(true)}
+                      disabled={state !== 'ready'}
+                      className={`flex items-center gap-1 md:gap-1.5 px-2 md:px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 h-11 md:h-auto tap-target ${
+                        calibration.isCalibrated
+                          ? 'bg-primary/5 text-primary border border-blue-300 hover:bg-primary/10'
+                          : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      aria-label="Calibrate Measurements"
+                    >
+                      <Ruler size={14} />
+                      <span className="hidden md:inline">
+                        {calibration.isCalibrated 
+                          ? `${calibration.pixelsPerMeter.toFixed(0)} px/m` 
+                          : 'Calibrate'}
+                      </span>
+                      <span className="md:hidden">Cal</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <span>Calibrate Measurements (C)</span>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           </div>
         
@@ -2026,8 +2031,8 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
               </Tooltip>
             )}
             
-            {/* Quote Button - Only show when job is selected */}
-            {effectiveJobId && job && (
+            {/* Quote Button - Only show when job is selected, hidden for real estate */}
+            {!isRealEstate && effectiveJobId && job && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
