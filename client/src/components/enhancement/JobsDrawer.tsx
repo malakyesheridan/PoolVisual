@@ -895,8 +895,24 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const handleConfirmPreview = async () => {
     if (!previewData) return;
     
+    // Validate mode before proceeding
+    const validModes = getValidModes();
+    if (!validModes.includes(previewData.mode)) {
+      const effectiveIndustry = user?.industryType || industry;
+      toast.error('Invalid Enhancement Type', {
+        description: `"${previewData.mode}" is not available for ${effectiveIndustry === 'real_estate' ? 'real estate' : 'trades'} industry. Please select a valid enhancement type.`,
+        duration: 10000
+      });
+      setIsCreating(false);
+      setShowPreview(false);
+      return;
+    }
+    
     setIsCreating(true);
     setShowPreview(false);
+    
+    // Declare at function level so it's accessible in catch block
+    let enhancementsToDeduct = 0;
     
     try {
       // Upload composite blob on confirm (if available)
@@ -1021,7 +1037,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
           materialSettings: m.materialSettings
         })),
         imageUrl: payload.imageUrl.substring(0, 80) + '...',
-        mode: payload.options.mode
+        mode: payload.mode // Mode is at top level, not in options
       };
       
       if (payload.compositeImageUrl) {
@@ -1036,9 +1052,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       console.log(`[JobsDrawer] 🔍 FULL PAYLOAD (with materialSettings):`, JSON.stringify(logPayload, null, 2));
       
       // Calculate enhancements needed for optimistic update
-      // Declare outside try block so it's accessible in catch block
       const { updateEnhancements } = useAuthStore.getState();
-      let enhancementsToDeduct = 0;
       try {
         const enhancementResponse = await apiClient.calculateEnhancements(previewData.mode, previewData.masks.length > 0);
         enhancementsToDeduct = enhancementResponse.enhancements;
@@ -1132,24 +1146,31 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       else if (error.message && (error.message.includes('Invalid enhancement mode') || error.message.includes('Invalid enhancement'))) {
         let errorData: any = {};
         try {
-          // Try to parse as JSON if it's a string
-          if (typeof error.message === 'string') {
+          // Error message might be a JSON string, try to parse it
+          if (typeof error.message === 'string' && error.message.startsWith('{')) {
             errorData = JSON.parse(error.message);
+          } else if (typeof error.message === 'string') {
+            // If it's a string but not JSON, check if error object has the data
+            errorData = error;
           } else {
-            errorData = error.message;
+            errorData = error.message || error;
           }
         } catch {
-          // If parsing fails, try to extract from error object directly
+          // If parsing fails, use error object directly
           errorData = error;
         }
         const validModes = errorData.validModes || [];
         const providedMode = errorData.providedMode || previewData?.mode || 'unknown';
+        const modeLabel = providedMode.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         toast.error('Invalid Enhancement Type', {
-          description: `"${providedMode}" is not available for your industry. Available types: ${validModes.join(', ')}.`,
+          description: `"${modeLabel}" is not available for your industry. Available types: ${validModes.map((m: string) => m.replace(/_/g, ' ')).join(', ')}.`,
           duration: 10000
         });
       } else {
-        toast.error('Failed to create enhancement', { description: error.message || 'An unexpected error occurred' });
+        const errorMsg = typeof error.message === 'string' 
+          ? (error.message.startsWith('{') ? JSON.parse(error.message).message || error.message : error.message)
+          : (error.message || 'An unexpected error occurred');
+        toast.error('Failed to create enhancement', { description: errorMsg });
       }
     } finally {
       setIsCreating(false);

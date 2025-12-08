@@ -44,7 +44,21 @@ export async function createJob(payload: CreateJobPayload) {
       (error as any).details = errorData.details;
       throw error;
     }
-    throw new Error(await res.text());
+    // Try to parse JSON error response
+    const errorText = await res.text();
+    let errorData: any = {};
+    try {
+      errorData = JSON.parse(errorText);
+    } catch {
+      // If not JSON, use text as message
+      errorData = { message: errorText };
+    }
+    const error = new Error(errorData.message || errorText);
+    (error as any).status = res.status;
+    (error as any).statusCode = res.status;
+    // Preserve error data for better error handling
+    Object.assign(error, errorData);
+    throw error;
   }
   
   return res.json() as Promise<{ jobId: string; status: string }>;
