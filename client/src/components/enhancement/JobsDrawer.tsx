@@ -1007,8 +1007,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       // The server will use the authenticated user's industryType, but tenantId is still required
       const tenantId = selectedOrgId || '123e4567-e89b-12d3-a456-426614174000';
       
-      // Log industry detection for debugging
-      const effectiveIndustry = user?.industryType || industry;
+      // Log industry detection for debugging (reuse effectiveIndustry from above)
       console.log('[JobsDrawer] Industry detection:', {
         userIndustryType: user?.industryType,
         onboardingIndustry: industry,
