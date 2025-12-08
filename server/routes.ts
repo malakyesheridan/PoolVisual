@@ -3348,73 +3348,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   const httpServer = createServer(app);
-  // Simple texture proxy route - Phase A minimal implementation
-  app.get('/api/texture', async (req, res) => {
-    try {
-      const url = req.query.url as string;
-      if (!url) {
-        return res.status(400).json({ error: 'Missing URL parameter' });
-      }
-
-      console.log('[Texture Proxy] Proxying request:', { url, referer: req.get('referer') });
-
-      // If it's a relative URL, serve it directly
-      if (url.startsWith('/')) {
-        return res.redirect(url);
-      }
-
-      // For external URLs, proxy them
-      const response = await fetch(url, {
-        headers: {
-          'User-Agent': 'PoolVisual/1.0',
-          'Accept': 'image/*,*/*;q=0.8',
-          'Referer': url // Some servers check referer
-        }
-      });
-
-      if (!response.ok) {
-        console.error('[Texture Proxy] Upstream failed:', {
-          url,
-          status: response.status,
-          statusText: response.statusText
-        });
-        return res.status(response.status).json({ error: 'Upstream failed', status: response.status });
-      }
-
-      // Set appropriate headers
-      const contentType = response.headers.get('content-type') || 'image/jpeg';
-      res.set({
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      });
-
-      // Pipe the response
-      if (response.body) {
-        const reader = response.body.getReader();
-        const pump = async () => {
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              res.write(value);
-            }
-            res.end();
-          } catch (error) {
-            res.end();
-          }
-        };
-        pump();
-      } else {
-        res.end();
-      }
-    } catch (error: any) {
-      console.error('[texture-proxy]', error);
-      res.status(500).json({ error: 'Proxy error', message: error.message });
-    }
-  });
+  // NOTE: Texture proxy route is registered earlier via registerTextureProxyRoutes(app) at line 289
+  // This duplicate endpoint has been removed to avoid conflicts
 
   // Stripe webhook endpoint
   app.post("/api/webhooks/stripe", async (req: any, res: any) => {
