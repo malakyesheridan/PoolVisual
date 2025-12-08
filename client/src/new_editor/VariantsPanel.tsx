@@ -80,6 +80,11 @@ export function VariantsPanel() {
         // Auto-apply all variants to canvas when loaded
         // Apply them in order (oldest first) so the newest is active
         const currentStoreVariants = useEditorStore.getState().variants;
+        const getModeLabel = (mode?: string) => {
+          if (!mode) return 'Enhanced';
+          return mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        };
+        
         for (const variant of sortedVariants) {
           const existingVariant = currentStoreVariants.find(v => v.id === variant.id);
           if (!existingVariant) {
