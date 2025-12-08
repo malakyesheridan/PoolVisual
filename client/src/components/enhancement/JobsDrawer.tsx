@@ -1120,8 +1120,9 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       
       // DISABLED: No limit error handling - unlimited enhancements
       // These errors should not occur anymore, but kept for backward compatibility
+      
       // Handle invalid mode error (400)
-      else if (error.message && (error.message.includes('Invalid enhancement mode') || error.message.includes('Invalid enhancement'))) {
+      if (error.message && (error.message.includes('Invalid enhancement mode') || error.message.includes('Invalid enhancement'))) {
         let errorData: any = {};
         try {
           // Error message might be a JSON string, try to parse it
