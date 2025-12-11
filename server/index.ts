@@ -16,6 +16,7 @@ import { SSEManager } from './lib/sseManager.js';
 import { initSSEBus } from './lib/sseBus.js';
 import { router as aiEnhancementRouter } from './routes/aiEnhancement.js';
 import { processOutboxEvents } from './jobs/outboxProcessor.js';
+import { getSql } from './db.js';
 
 // SAFE_MODE configuration
 const SAFE_MODE = process.env.SAFE_MODE === '1';
@@ -87,6 +88,39 @@ app.set('trust proxy', true);
 
 // Add CORS middleware
 app.use(cors({ origin: true, credentials: true }));
+
+// Health check endpoint - no auth required (must be before auth middleware)
+app.get('/api/health', async (req, res) => {
+  try {
+    const sqlClient = getSql();
+    
+    if (!sqlClient) {
+      return res.status(503).json({ 
+        status: 'unhealthy', 
+        database: 'not initialized',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Quick database ping - test with a simple query
+    await sqlClient`SELECT 1`;
+    
+    return res.json({ 
+      status: 'healthy',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime()
+    });
+  } catch (error) {
+    console.error('Health check failed:', error);
+    return res.status(503).json({ 
+      status: 'unhealthy', 
+      database: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Add request ID middleware first
 app.use(requestIdMiddleware);
@@ -373,8 +407,8 @@ async function initializeServer() {
     throw error;
   }
 
-  // Health check endpoint
-  app.get('/api/health', (_req, res) => {
+  // Legacy health check endpoint (kept for backward compatibility)
+  app.get('/api/health/legacy', (_req, res) => {
     const mode = process.env.NO_DB_MODE === 'true' ? 'no-db' : 'db';
     res.json({
       ok: true,
@@ -449,11 +483,30 @@ async function initializeServer() {
     serveStatic(app);
   }
 
-  // Add 404 handler after all routes and static serving
-  app.use(notFoundHandler);
+  // Global error handler - catches all unhandled errors
+  // Must be registered AFTER routes (Express requirement)
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Unhandled error:', {
+      error: err.message,
+      stack: err.stack,
+      path: req.path,
+      method: req.method,
+      userId: req.user?.id,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Don't leak error details to client in production
+    res.status(500).json({ 
+      error: process.env.NODE_ENV === 'production' 
+        ? 'Internal server error' 
+        : err.message 
+    });
+  });
 
-  // Add error handler AFTER all routes (Express requirement)
-  app.use(errorHandler);
+  // Catch 404s
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Route not found' });
+  });
 
   // Wrap heavy pieces in SAFE_MODE guard
   if (!SAFE_MODE) {

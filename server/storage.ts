@@ -370,145 +370,172 @@ export class PostgresStorage implements IStorage {
   
   async getUser(id: string): Promise<User | undefined> {
     try {
-      const [user] = await ensureDb().select().from(users).where(eq(users.id, id));
-      return user;
-    } catch (error: any) {
-      // If query fails due to missing columns (migration hasn't run), try selecting only base columns
-      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
-        console.warn('[Storage] Migration may not have run, selecting base columns only for getUser');
-        try {
-          const [user] = await ensureDb()
-            .select({
-              id: users.id,
-              email: users.email,
-              username: users.username,
-              password: users.password,
-              createdAt: users.createdAt,
-            })
-            .from(users)
-            .where(eq(users.id, id));
-          // Return user with undefined for missing fields
-          return user ? {
-            ...user,
-            lockedUntil: undefined,
-            failedLoginAttempts: undefined,
-            lastLoginAt: undefined,
-            loginCount: undefined,
-            isActive: undefined,
-            emailVerifiedAt: undefined,
-            emailVerified: undefined,
-            passwordResetToken: undefined,
-            passwordResetExpires: undefined,
-            displayName: undefined,
-            avatarUrl: undefined,
-            timezone: undefined,
-            isAdmin: false, // Default to false if column doesn't exist
-            adminPermissions: undefined,
-          } as User : undefined;
-        } catch (fallbackError) {
-          console.error('[Storage] Fallback query also failed for getUser:', fallbackError);
-          throw error; // Throw original error
+      try {
+        const [user] = await ensureDb().select().from(users).where(eq(users.id, id));
+        return user;
+      } catch (error: any) {
+        // If query fails due to missing columns (migration hasn't run), try selecting only base columns
+        if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+          console.warn('[Storage] Migration may not have run, selecting base columns only for getUser');
+          try {
+            const [user] = await ensureDb()
+              .select({
+                id: users.id,
+                email: users.email,
+                username: users.username,
+                password: users.password,
+                createdAt: users.createdAt,
+              })
+              .from(users)
+              .where(eq(users.id, id));
+            // Return user with undefined for missing fields
+            return user ? {
+              ...user,
+              lockedUntil: undefined,
+              failedLoginAttempts: undefined,
+              lastLoginAt: undefined,
+              loginCount: undefined,
+              isActive: undefined,
+              emailVerifiedAt: undefined,
+              emailVerified: undefined,
+              passwordResetToken: undefined,
+              passwordResetExpires: undefined,
+              displayName: undefined,
+              avatarUrl: undefined,
+              timezone: undefined,
+              isAdmin: false, // Default to false if column doesn't exist
+              adminPermissions: undefined,
+            } as User : undefined;
+          } catch (fallbackError) {
+            console.error('[Storage] Fallback query also failed for getUser:', fallbackError);
+            throw error; // Throw original error
+          }
         }
+        throw error;
       }
-      throw error;
+    } catch (error) {
+      console.error('Storage error in getUser:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
     try {
-      // Try to select all columns (including new security fields if migration has run)
-      const [user] = await ensureDb().select().from(users).where(eq(users.email, email));
-      return user;
-    } catch (error: any) {
-      // If query fails due to missing columns (migration hasn't run), try selecting only base columns
-      if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
-        console.warn('[Storage] Migration may not have run, selecting base columns only');
-        try {
-          const [user] = await ensureDb()
-            .select({
-              id: users.id,
-              email: users.email,
-              username: users.username,
-              password: users.password,
-              createdAt: users.createdAt,
-            })
-            .from(users)
-            .where(eq(users.email, email));
-          // Return user with undefined for missing security fields
-          return user ? {
-            ...user,
-            lockedUntil: undefined,
-            failedLoginAttempts: undefined,
-            lastLoginAt: undefined,
-            loginCount: undefined,
-            isActive: undefined,
-            emailVerifiedAt: undefined,
-            emailVerified: undefined,
-            passwordResetToken: undefined,
-            passwordResetExpires: undefined,
-          } as User : undefined;
-        } catch (fallbackError) {
-          console.error('[Storage] Fallback query also failed:', fallbackError);
-          throw error; // Throw original error
+      try {
+        // Try to select all columns (including new security fields if migration has run)
+        const [user] = await ensureDb().select().from(users).where(eq(users.email, email));
+        return user;
+      } catch (error: any) {
+        // If query fails due to missing columns (migration hasn't run), try selecting only base columns
+        if (error?.message?.includes('does not exist') || error?.message?.includes('column')) {
+          console.warn('[Storage] Migration may not have run, selecting base columns only');
+          try {
+            const [user] = await ensureDb()
+              .select({
+                id: users.id,
+                email: users.email,
+                username: users.username,
+                password: users.password,
+                createdAt: users.createdAt,
+              })
+              .from(users)
+              .where(eq(users.email, email));
+            // Return user with undefined for missing security fields
+            return user ? {
+              ...user,
+              lockedUntil: undefined,
+              failedLoginAttempts: undefined,
+              lastLoginAt: undefined,
+              loginCount: undefined,
+              isActive: undefined,
+              emailVerifiedAt: undefined,
+              emailVerified: undefined,
+              passwordResetToken: undefined,
+              passwordResetExpires: undefined,
+            } as User : undefined;
+          } catch (fallbackError) {
+            console.error('[Storage] Fallback query also failed:', fallbackError);
+            throw error; // Throw original error
+          }
         }
+        throw error;
       }
-      throw error;
+    } catch (error) {
+      console.error('Storage error in getUserByEmail:', {
+        error: error instanceof Error ? error.message : error,
+        email: email,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     try {
-      // Ensure isAdmin is set to false if not provided (for databases without migration)
-      const userData = {
-        ...insertUser,
-        isAdmin: insertUser.isAdmin ?? false,
-      };
-      const [user] = await ensureDb().insert(users).values(userData).returning();
-      if (!user) throw new Error("Failed to create user");
-      return user;
-    } catch (error: any) {
-      // If query fails due to missing columns (migration hasn't run), try inserting only base columns
-      if (error?.message?.includes('does not exist') || error?.message?.includes('column') || error?.message?.includes('is_admin')) {
-        console.warn('[Storage] Migration may not have run for createUser, inserting base columns only');
-        try {
-          // Insert only base columns that should always exist
-          const baseUserData: any = {
-            id: insertUser.id,
-            email: insertUser.email,
-            username: insertUser.username,
-            password: insertUser.password,
-            createdAt: insertUser.createdAt,
-          };
-          
-          // Add optional base fields if they exist in insertUser
-          if ('isActive' in insertUser) baseUserData.isActive = insertUser.isActive;
-          if ('failedLoginAttempts' in insertUser) baseUserData.failedLoginAttempts = insertUser.failedLoginAttempts;
-          if ('loginCount' in insertUser) baseUserData.loginCount = insertUser.loginCount;
-          if ('emailVerified' in insertUser) baseUserData.emailVerified = insertUser.emailVerified;
-          if ('timezone' in insertUser) baseUserData.timezone = insertUser.timezone;
-          
-          const [user] = await ensureDb().insert(users).values(baseUserData).returning();
-          if (!user) throw new Error("Failed to create user");
-          
-          // Return user with missing fields set to defaults
-          return {
-            ...user,
-            isAdmin: false,
-            adminPermissions: undefined,
-            lockedUntil: undefined,
-            lastLoginAt: undefined,
-            emailVerifiedAt: undefined,
-            passwordResetToken: undefined,
-            passwordResetExpires: undefined,
-            displayName: undefined,
-            avatarUrl: undefined,
-          } as User;
-        } catch (fallbackError) {
-          console.error('[Storage] Fallback createUser also failed:', fallbackError);
-          throw error; // Throw original error
+      try {
+        // Ensure isAdmin is set to false if not provided (for databases without migration)
+        const userData = {
+          ...insertUser,
+          isAdmin: insertUser.isAdmin ?? false,
+        };
+        const [user] = await ensureDb().insert(users).values(userData).returning();
+        if (!user) throw new Error("Failed to create user");
+        return user;
+      } catch (error: any) {
+        // If query fails due to missing columns (migration hasn't run), try inserting only base columns
+        if (error?.message?.includes('does not exist') || error?.message?.includes('column') || error?.message?.includes('is_admin')) {
+          console.warn('[Storage] Migration may not have run for createUser, inserting base columns only');
+          try {
+            // Insert only base columns that should always exist
+            const baseUserData: any = {
+              id: insertUser.id,
+              email: insertUser.email,
+              username: insertUser.username,
+              password: insertUser.password,
+              createdAt: insertUser.createdAt,
+            };
+            
+            // Add optional base fields if they exist in insertUser
+            if ('isActive' in insertUser) baseUserData.isActive = insertUser.isActive;
+            if ('failedLoginAttempts' in insertUser) baseUserData.failedLoginAttempts = insertUser.failedLoginAttempts;
+            if ('loginCount' in insertUser) baseUserData.loginCount = insertUser.loginCount;
+            if ('emailVerified' in insertUser) baseUserData.emailVerified = insertUser.emailVerified;
+            if ('timezone' in insertUser) baseUserData.timezone = insertUser.timezone;
+            
+            const [user] = await ensureDb().insert(users).values(baseUserData).returning();
+            if (!user) throw new Error("Failed to create user");
+            
+            // Return user with missing fields set to defaults
+            return {
+              ...user,
+              isAdmin: false,
+              adminPermissions: undefined,
+              lockedUntil: undefined,
+              lastLoginAt: undefined,
+              emailVerifiedAt: undefined,
+              passwordResetToken: undefined,
+              passwordResetExpires: undefined,
+              displayName: undefined,
+              avatarUrl: undefined,
+            } as User;
+          } catch (fallbackError) {
+            console.error('[Storage] Fallback createUser also failed:', fallbackError);
+            throw error; // Throw original error
+          }
         }
+        throw error;
       }
-      throw error;
+    } catch (error) {
+      console.error('Storage error in createUser:', {
+        error: error instanceof Error ? error.message : error,
+        email: insertUser.email,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -722,45 +749,63 @@ export class PostgresStorage implements IStorage {
   }
 
   async createJob(insertJob: InsertJob, userId: string): Promise<Job> {
-    const [job] = await ensureDb().insert(jobs).values({
-      ...insertJob,
-      userId // Set user_id from parameter
-    }).returning();
-    if (!job) throw new Error("Failed to create job");
-    return job;
+    try {
+      const [job] = await ensureDb().insert(jobs).values({
+        ...insertJob,
+        userId // Set user_id from parameter
+      }).returning();
+      if (!job) throw new Error("Failed to create job");
+      return job;
+    } catch (error) {
+      console.error('Storage error in createJob:', {
+        error: error instanceof Error ? error.message : error,
+        userId: userId,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
+    }
   }
 
   async getJob(id: string): Promise<Job | undefined> {
     try {
-      const [job] = await ensureDb().select().from(jobs).where(eq(jobs.id, id));
-      return job;
-    } catch (error: any) {
-      // If query fails due to missing columns (migration not run), try selecting only base columns
-      if (error?.message?.includes('does not exist') || error?.code === '42703') {
-        console.warn('[getJob] Some columns may not exist, trying with base columns only');
-        try {
-          const [job] = await ensureDb()
-            .select({
-              id: jobs.id,
-              orgId: jobs.orgId,
-              userId: jobs.userId,
-              clientName: jobs.clientName,
-              clientPhone: jobs.clientPhone,
-              clientEmail: jobs.clientEmail,
-              address: jobs.address,
-              status: jobs.status,
-              createdBy: jobs.createdBy,
-              createdAt: jobs.createdAt,
-            })
-            .from(jobs)
-            .where(eq(jobs.id, id));
-          return job as Job;
-        } catch (fallbackError) {
-          // If even base columns fail, rethrow original error
-          throw error;
+      try {
+        const [job] = await ensureDb().select().from(jobs).where(eq(jobs.id, id));
+        return job;
+      } catch (error: any) {
+        // If query fails due to missing columns (migration not run), try selecting only base columns
+        if (error?.message?.includes('does not exist') || error?.code === '42703') {
+          console.warn('[getJob] Some columns may not exist, trying with base columns only');
+          try {
+            const [job] = await ensureDb()
+              .select({
+                id: jobs.id,
+                orgId: jobs.orgId,
+                userId: jobs.userId,
+                clientName: jobs.clientName,
+                clientPhone: jobs.clientPhone,
+                clientEmail: jobs.clientEmail,
+                address: jobs.address,
+                status: jobs.status,
+                createdBy: jobs.createdBy,
+                createdAt: jobs.createdAt,
+              })
+              .from(jobs)
+              .where(eq(jobs.id, id));
+            return job as Job;
+          } catch (fallbackError) {
+            // If even base columns fail, rethrow original error
+            throw error;
+          }
         }
+        throw error;
       }
-      throw error;
+    } catch (error) {
+      console.error('Storage error in getJob:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -799,15 +844,16 @@ export class PostgresStorage implements IStorage {
 
   async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
     try {
-      // Include all fields from updates (both base and property detail fields)
-      const [job] = await ensureDb()
-        .update(jobs)
-        .set(updates)
-        .where(eq(jobs.id, id))
-        .returning();
-      if (!job) throw new Error("Failed to update job");
-      return job;
-    } catch (error: any) {
+      try {
+        // Include all fields from updates (both base and property detail fields)
+        const [job] = await ensureDb()
+          .update(jobs)
+          .set(updates)
+          .where(eq(jobs.id, id))
+          .returning();
+        if (!job) throw new Error("Failed to update job");
+        return job;
+      } catch (error: any) {
       // If update fails due to missing columns, filter out new columns and retry
       if (error?.message?.includes('does not exist') || error?.code === '42703') {
         console.warn('[updateJob] Some columns may not exist, filtering out new columns');
@@ -874,6 +920,14 @@ export class PostgresStorage implements IStorage {
         }
       }
       throw error;
+      }
+    } catch (error) {
+      console.error('Storage error in updateJob:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -1076,11 +1130,20 @@ export class PostgresStorage implements IStorage {
 
   async getMaterial(id: string): Promise<Material | null> {
     try {
-      const result = await ensureDb().select().from(materials).where(eq(materials.id, id)).limit(1);
-      return result[0] || null;
+      try {
+        const result = await ensureDb().select().from(materials).where(eq(materials.id, id)).limit(1);
+        return result[0] || null;
+      } catch (error) {
+        console.error('[Storage] Failed to get material:', error);
+        throw new Error(`Failed to get material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     } catch (error) {
-      console.error('[Storage] Failed to get material:', error);
-      throw new Error(`Failed to get material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Storage error in getMaterial:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -1127,39 +1190,40 @@ export class PostgresStorage implements IStorage {
 
   async getMaterials(userId?: string, category?: string, industry?: string): Promise<Material[]> {
     try {
-      // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
-      // Note: system function may still use orgId, but we'll filter by userId in fallback
-      let allMaterials = await this.getMaterialsSystem(undefined, category);
-      
-      // Filter by user: show global materials (userId IS NULL) OR user's own materials
-      if (userId) {
-        allMaterials = allMaterials.filter(m => 
-          !m.userId || m.userId === userId // Global materials OR user's materials
-        );
-      } else {
-        // If no userId provided, only show global materials
-        allMaterials = allMaterials.filter(m => !m.userId);
-      }
-      
-      // Filter by industry if provided (client-side filter since system function doesn't support it yet)
-      if (industry) {
-        const tradeCategories = await this.getTradeCategories(industry);
-        const categoryKeys = tradeCategories.map(c => c.categoryKey);
-        if (categoryKeys.length > 0) {
+      try {
+        // Use SECURITY DEFINER function to bypass RLS (Neon HTTP doesn't support session variables)
+        // Note: system function may still use orgId, but we'll filter by userId in fallback
+        let allMaterials = await this.getMaterialsSystem(undefined, category);
+        
+        // Filter by user: show global materials (userId IS NULL) OR user's own materials
+        if (userId) {
           allMaterials = allMaterials.filter(m => 
-            m.category && categoryKeys.includes(m.category as any)
+            !m.userId || m.userId === userId // Global materials OR user's materials
           );
         } else {
-          // If no categories found for industry, return empty array
-          return [];
+          // If no userId provided, only show global materials
+          allMaterials = allMaterials.filter(m => !m.userId);
         }
-      }
-      
-      // Sort by creation date (descending)
-      return allMaterials.sort((a, b) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
-    } catch (error: any) {
+        
+        // Filter by industry if provided (client-side filter since system function doesn't support it yet)
+        if (industry) {
+          const tradeCategories = await this.getTradeCategories(industry);
+          const categoryKeys = tradeCategories.map(c => c.categoryKey);
+          if (categoryKeys.length > 0) {
+            allMaterials = allMaterials.filter(m => 
+              m.category && categoryKeys.includes(m.category as any)
+            );
+          } else {
+            // If no categories found for industry, return empty array
+            return [];
+          }
+        }
+        
+        // Sort by creation date (descending)
+        return allMaterials.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      } catch (error: any) {
       // Fallback to direct query if system function fails
       console.warn('[getMaterials] System function failed, using direct query:', error?.message);
       let conditions = [eq(materials.isActive, true)];
@@ -1194,27 +1258,45 @@ export class PostgresStorage implements IStorage {
 
   async createMaterial(insertMaterial: InsertMaterial, userId?: string): Promise<Material> {
     try {
-      const [material] = await ensureDb().insert(materials).values({
-        ...insertMaterial,
-        userId: userId || null // Set userId if provided, otherwise NULL (global material)
-      }).returning();
-      if (!material) throw new Error("Failed to create material");
-      console.log('[materials] created id=' + material.id + ' name=' + material.name + ' userId=' + (userId || 'global'));
-      return material;
+      try {
+        const [material] = await ensureDb().insert(materials).values({
+          ...insertMaterial,
+          userId: userId || null // Set userId if provided, otherwise NULL (global material)
+        }).returning();
+        if (!material) throw new Error("Failed to create material");
+        console.log('[materials] created id=' + material.id + ' name=' + material.name + ' userId=' + (userId || 'global'));
+        return material;
+      } catch (error) {
+        console.error('[Storage] Failed to create material:', error);
+        throw new Error(`Failed to create material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
     } catch (error) {
-      console.error('[Storage] Failed to create material:', error);
-      throw new Error(`Failed to create material: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Storage error in createMaterial:', {
+        error: error instanceof Error ? error.message : error,
+        userId: userId,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
   async updateMaterial(id: string, updates: Partial<Material>): Promise<Material> {
-    const [material] = await ensureDb()
-      .update(materials)
-      .set(updates)
-      .where(eq(materials.id, id))
-      .returning();
-    if (!material) throw new Error('Failed to update material');
-    return material;
+    try {
+      const [material] = await ensureDb()
+        .update(materials)
+        .set(updates)
+        .where(eq(materials.id, id))
+        .returning();
+      if (!material) throw new Error('Failed to update material');
+      return material;
+    } catch (error) {
+      console.error('Storage error in updateMaterial:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
+    }
   }
 
   async deleteMaterial(id: string): Promise<void> {
@@ -1246,17 +1328,35 @@ export class PostgresStorage implements IStorage {
   }
 
   async createQuote(insertQuote: InsertQuote): Promise<Quote> {
-    const [quote] = await ensureDb().insert(quotes).values({
-      ...insertQuote,
-      publicToken: randomUUID()
-    }).returning();
-    if (!quote) throw new Error("Failed to create quote");
-    return quote;
+    try {
+      const [quote] = await ensureDb().insert(quotes).values({
+        ...insertQuote,
+        publicToken: randomUUID()
+      }).returning();
+      if (!quote) throw new Error("Failed to create quote");
+      return quote;
+    } catch (error) {
+      console.error('Storage error in createQuote:', {
+        error: error instanceof Error ? error.message : error,
+        jobId: insertQuote.jobId,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
+    }
   }
 
   async getQuote(id: string): Promise<Quote | undefined> {
-    const [quote] = await ensureDb().select().from(quotes).where(eq(quotes.id, id));
-    return quote;
+    try {
+      const [quote] = await ensureDb().select().from(quotes).where(eq(quotes.id, id));
+      return quote;
+    } catch (error) {
+      console.error('Storage error in getQuote:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
+    }
   }
 
   async getQuoteByToken(token: string): Promise<Quote | undefined> {
@@ -1325,6 +1425,15 @@ export class PostgresStorage implements IStorage {
         }
       }
       throw error;
+      }
+    } catch (error) {
+      console.error('Storage error in getMaterials:', {
+        error: error instanceof Error ? error.message : error,
+        userId: userId,
+        category: category,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -1355,19 +1464,28 @@ export class PostgresStorage implements IStorage {
   }
 
   async updateQuote(id: string, updates: Partial<Quote>): Promise<Quote> {
-    console.log('[Storage] updateQuote called with:', { id, updates });
     try {
-      const [quote] = await ensureDb()
-        .update(quotes)
-        .set({ ...updates, updatedAt: new Date() })
-        .where(eq(quotes.id, id))
-        .returning();
-      if (!quote) throw new Error("Failed to update quote");
-      console.log('[Storage] Quote updated successfully:', quote);
-      return quote;
+      console.log('[Storage] updateQuote called with:', { id, updates });
+      try {
+        const [quote] = await ensureDb()
+          .update(quotes)
+          .set({ ...updates, updatedAt: new Date() })
+          .where(eq(quotes.id, id))
+          .returning();
+        if (!quote) throw new Error("Failed to update quote");
+        console.log('[Storage] Quote updated successfully:', quote);
+        return quote;
+      } catch (error) {
+        console.error('[Storage] Error in updateQuote:', error);
+        throw error;
+      }
     } catch (error) {
-      console.error('[Storage] Error in updateQuote:', error);
-      throw error;
+      console.error('Storage error in updateQuote:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -1617,15 +1735,24 @@ export class PostgresStorage implements IStorage {
 
   // Authentication & Security methods
   async updateUser(id: string, updates: Partial<User>): Promise<User> {
-    const [updated] = await ensureDb()
-      .update(users)
-      .set(updates)
-      .where(eq(users.id, id))
-      .returning();
-    if (!updated) {
-      throw new Error('Failed to update user');
+    try {
+      const [updated] = await ensureDb()
+        .update(users)
+        .set(updates)
+        .where(eq(users.id, id))
+        .returning();
+      if (!updated) {
+        throw new Error('Failed to update user');
+      }
+      return updated;
+    } catch (error) {
+      console.error('Storage error in updateUser:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
-    return updated;
   }
 
   async createLoginAttempt(data: { email: string; ipAddress?: string; userAgent?: string; success: boolean; reason?: string }): Promise<void> {

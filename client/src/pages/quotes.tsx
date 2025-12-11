@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import React from 'react';
 import { useRoute, useLocation, Redirect } from 'wouter';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -665,7 +666,8 @@ export default function Quotes() {
 
   // Quotes list view
   return (
-    <div className="bg-slate-50 pb-20 md:pb-0">      
+    <ErrorBoundary name="Quotes Page">
+      <div className="bg-slate-50 pb-20 md:pb-0">      
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-8">
         {/* Mobile Header */}
         <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
@@ -1080,5 +1082,6 @@ export default function Quotes() {
         </div>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

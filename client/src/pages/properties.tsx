@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import React from 'react';
 import { useRoute, useLocation } from 'wouter';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -223,7 +224,8 @@ export default function Properties() {
 
   // Jobs list view
   return (
-    <div className="min-h-screen bg-[#F6F7F9] px-4 md:px-8 py-4 md:py-6 pb-20 md:pb-6">
+    <ErrorBoundary name="Properties Page">
+      <div className="min-h-screen bg-[#F6F7F9] px-4 md:px-8 py-4 md:py-6 pb-20 md:pb-6">
       {/* Mobile Header */}
       <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
         <div className="flex items-center justify-between">
@@ -598,6 +600,7 @@ export default function Properties() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }
 

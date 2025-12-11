@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useRoute } from 'wouter';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { Canvas } from './Canvas';
 import { Toolbar } from './Toolbar';
 import { MaterialsPanel } from './MaterialsPanel';
@@ -1047,7 +1048,8 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   // }, []);
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 relative">
+    <ErrorBoundary name="New Editor">
+      <div className="h-full flex flex-col bg-gray-50 relative">
           <Toolbar 
             {...(effectiveJobId && { jobId: effectiveJobId })}
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
@@ -1310,5 +1312,6 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
       
       {/* DEV Build Chip - Phase 0 */}
     </div>
+    </ErrorBoundary>
   );
 }
