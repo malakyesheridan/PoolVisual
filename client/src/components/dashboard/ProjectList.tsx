@@ -9,12 +9,13 @@ import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 
 interface ProjectListProps {
   jobs: any[];
+  quotes?: any[]; // Quotes to pass to ProjectCard for urgency badges
   onView: (id: string) => void;
   onCreateNew: () => void;
   limit?: number; // Limit number of projects shown (for dashboard view)
 }
 
-export function ProjectList({ jobs, onView, onCreateNew, limit }: ProjectListProps) {
+export function ProjectList({ jobs, quotes = [], onView, onCreateNew, limit }: ProjectListProps) {
   const { projects } = useIndustryTerm();
   const displayJobs = limit ? jobs.slice(0, limit) : jobs;
   const hasMore = limit ? jobs.length > limit : false;
@@ -25,7 +26,8 @@ export function ProjectList({ jobs, onView, onCreateNew, limit }: ProjectListPro
         {displayJobs.map((job) => (
           <ProjectCard 
             key={job.id} 
-            job={job} 
+            job={job}
+            quotes={quotes}
             onView={onView}
           />
         ))}

@@ -13,6 +13,7 @@ import { MetricCards } from './MetricCards';
 import { ProjectList } from './ProjectList';
 import { QuickInsights } from './QuickInsights';
 import { RecentActivityCompact } from './RecentActivityCompact';
+import { ActionTiles } from './ActionTiles';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, Plus, Eye } from 'lucide-react';
@@ -117,6 +118,11 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
           />
         </div>
 
+        {/* Action Tiles - Trades Only */}
+        <div className="mt-8">
+          <ActionTiles jobs={jobs} quotes={quotes} />
+        </div>
+
         {/* Dashboard Insights Section */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
           <div className="lg:col-span-2">
@@ -210,6 +216,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
               <div className="p-6">
         <ProjectList 
           jobs={filteredJobs}
+          quotes={quotes}
           onView={(id) => navigate(`/jobs/${id}`)}
           onCreateNew={() => navigate('/jobs/new')}
           limit={6}

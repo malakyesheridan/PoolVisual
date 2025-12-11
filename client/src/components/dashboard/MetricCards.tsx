@@ -20,6 +20,7 @@ import {
 import { formatCurrency } from '../../lib/measurement-utils';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
 import { useIsRealEstate } from '../../hooks/useIsRealEstate';
+import { useIsTrades } from '../../hooks/useIsTrades';
 
 interface MetricCardsProps {
   jobs: any[];
@@ -38,6 +39,7 @@ export function MetricCards({
 }: MetricCardsProps) {
   const { projects, quote } = useIndustryTerm();
   const isRealEstate = useIsRealEstate();
+  const isTrades = useIsTrades();
   
   // Calculate metrics from real job data (same logic as Jobs page)
   const totalProjects = jobs.length;
@@ -63,8 +65,55 @@ export function MetricCards({
     return sum + (isNaN(value) ? 0 : value);
   }, 0);
 
-  // Use real estate-specific icons for real estate industry
-  const metrics = [
+  // Trades-specific metrics
+  const quotesThisMonth = quotes.filter(quote => {
+    if (!quote.createdAt) return false;
+    const createdAt = new Date(quote.createdAt);
+    return !isNaN(createdAt.getTime()) && createdAt >= thisMonth;
+  }).length;
+
+  const totalQuotedValueThisMonth = quotes
+    .filter(quote => {
+      if (!quote.createdAt) return false;
+      const createdAt = new Date(quote.createdAt);
+      return !isNaN(createdAt.getTime()) && createdAt >= thisMonth;
+    })
+    .reduce((sum, quote) => {
+      const value = parseFloat(quote.total || '0');
+      return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+
+  // Use trades-specific metrics for trades, real estate-specific for real estate
+  const metrics = isTrades ? [
+    {
+      title: "Total Jobs",
+      value: totalProjects,
+      icon: Briefcase,
+      color: "text-primary",
+      bgColor: "bg-primary/5"
+    },
+    {
+      title: "Active Jobs", 
+      value: activeProjects,
+      icon: Activity,
+      color: "text-green-600",
+      bgColor: "bg-green-50"
+    },
+    {
+      title: "Quotes This Month",
+      value: quotesThisMonth,
+      icon: Calendar,
+      color: "text-orange-600",
+      bgColor: "bg-orange-50"
+    },
+    {
+      title: "Total Quoted Value This Month",
+      value: formatCurrency(totalQuotedValueThisMonth),
+      icon: DollarSign,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50"
+    }
+  ] : [
     {
       title: `Total ${projects}`,
       value: totalProjects,
@@ -97,17 +146,32 @@ export function MetricCards({
 
   // Get microtext descriptions
   const getMicrotext = (metric: typeof metrics[0]) => {
-    if (metric.title === `Total ${projects}`) {
-      return `All time ${projects.toLowerCase()}`;
-    }
-    if (metric.title === `Active ${projects}`) {
-      return "In progress";
-    }
-    if (metric.title === "This Month") {
-      return "New this month";
-    }
-    if (metric.title === "Total Value") {
-      return `${quote} value`;
+    if (isTrades) {
+      if (metric.title === "Total Jobs") {
+        return "All time jobs";
+      }
+      if (metric.title === "Active Jobs") {
+        return "In progress";
+      }
+      if (metric.title === "Quotes This Month") {
+        return "Created or sent";
+      }
+      if (metric.title === "Total Quoted Value This Month") {
+        return "This month's value";
+      }
+    } else {
+      if (metric.title === `Total ${projects}`) {
+        return `All time ${projects.toLowerCase()}`;
+      }
+      if (metric.title === `Active ${projects}`) {
+        return "In progress";
+      }
+      if (metric.title === "This Month") {
+        return "New this month";
+      }
+      if (metric.title === "Total Value") {
+        return `${quote} value`;
+      }
     }
     return "";
   };
