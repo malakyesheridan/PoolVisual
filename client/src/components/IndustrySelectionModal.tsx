@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/auth-store';
 import { apiClient } from '@/lib/api-client';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 
 export function IndustrySelectionModal() {
@@ -14,9 +14,26 @@ export function IndustrySelectionModal() {
   const setUser = useAuthStore((state) => state.setUser);
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [selectedIndustry, setSelectedIndustry] = useState<string | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+
+  // Check onboarding completion status
+  const { data: onboardingStatus, isLoading: isLoadingOnboarding } = useQuery({
+    queryKey: ['onboarding-status'],
+    queryFn: async () => {
+      try {
+        return await apiClient.getOnboardingStatus();
+      } catch (error) {
+        console.warn('[IndustrySelectionModal] Failed to fetch onboarding status:', error);
+        // Return default if API fails
+        return { completed: false, step: 'welcome', responses: {} };
+      }
+    },
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
 
   // CRITICAL FIX: Delay mount until after initial render to decouple from other components
   // This ensures modal doesn't render during the same render cycle as Onboarding
@@ -32,19 +49,20 @@ export function IndustrySelectionModal() {
   const pendingToastRef = useRef<{ title: string; description: string; variant?: 'default' | 'destructive' } | null>(null);
   const isProcessingUpdatesRef = useRef(false);
 
-  // Check if industry is missing (only after mount delay)
+  // Determine if modal should show based on onboarding status AND industry
   useEffect(() => {
-    if (!isMounted || !user) return;
+    if (!isMounted || !user || isLoadingOnboarding) return;
     
-    // If user already has industry, don't show
-    if (user.industryType) {
-      setIsOpen(false);
-      return;
-    }
-
-    // Show modal if industry is missing (non-dismissible)
-    setIsOpen(true);
-  }, [user, isMounted]);
+    const onboardingCompleted = onboardingStatus?.completed || false;
+    const hasIndustry = !!user.industryType;
+    
+    // Only show modal if:
+    // 1. Onboarding is NOT completed, AND
+    // 2. Industry is not set
+    const shouldShow = !onboardingCompleted && !hasIndustry;
+    
+    setIsOpen(shouldShow);
+  }, [user, isMounted, onboardingStatus, isLoadingOnboarding]);
 
   // CRITICAL FIX: Update store in useLayoutEffect (synchronous, before paint)
   // This ensures store updates happen after render but before browser paint
@@ -83,17 +101,43 @@ export function IndustrySelectionModal() {
     }
   }, [setLocation, toast]);
 
+  // Invalidate onboarding status query when user changes to ensure modal state updates
+  useEffect(() => {
+    if (user?.industryType) {
+      // User has industry, ensure onboarding status is fresh
+      queryClient.invalidateQueries({ queryKey: ['onboarding-status'] });
+    }
+  }, [user?.industryType, queryClient]);
+
   const updateIndustryMutation = useMutation({
     mutationFn: async (industryValue: string) => {
-      // API call only - no localStorage fallback
+      // Update user industry
       const updatedUser = await apiClient.updateUserProfile({ industryType: industryValue });
+      
+      // Also complete onboarding if not already completed
+      try {
+        await apiClient.completeOnboarding();
+        // Update localStorage cache
+        localStorage.setItem('onboarding_completed', 'true');
+      } catch (error) {
+        console.warn('[IndustrySelectionModal] Failed to complete onboarding:', error);
+        // Don't fail the whole flow if onboarding completion fails
+      }
+      
       return updatedUser;
     },
     onSuccess: (updatedUser) => {
       // CRITICAL FIX: Store results in refs, update in useLayoutEffect/useEffect
       pendingUserUpdateRef.current = updatedUser;
       pendingModalCloseRef.current = true;
-      pendingNavigationRef.current = '/dashboard';
+      
+      // Invalidate queries to refresh state
+      queryClient.invalidateQueries({ queryKey: ['onboarding-status'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/user/profile'] });
+      
+      // Update localStorage cache
+      localStorage.setItem('onboarding_completed', 'true');
+      
       pendingToastRef.current = {
         title: 'Industry selected',
         description: 'Your industry preference has been saved.',
@@ -122,19 +166,45 @@ export function IndustrySelectionModal() {
     return null;
   }
 
-  // Don't render if user has industry or modal shouldn't be shown
-  if (!user || user.industryType || !isOpen) {
+  // Don't render if:
+  // 1. No user
+  // 2. Onboarding is completed AND industry is set
+  // 3. Modal shouldn't be shown
+  const onboardingCompleted = onboardingStatus?.completed || false;
+  const hasIndustry = !!user?.industryType;
+  const shouldNotShow = !user || (onboardingCompleted && hasIndustry) || !isOpen || isLoadingOnboarding;
+
+  if (shouldNotShow) {
     return null;
   }
 
+  // Allow closing only if user already has industry set (for edge cases)
+  const canClose = hasIndustry;
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      // Prevent closing without selection - this modal is mandatory
-      if (!open && !user?.industryType) {
+      // Only allow closing if user already has industry set
+      // Otherwise, this modal is mandatory
+      if (!open && !canClose) {
         return; // Block closing
       }
+      setIsOpen(open);
     }}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent 
+        className={`sm:max-w-[500px] ${!canClose ? '[&>button]:hidden' : ''}`}
+        onPointerDownOutside={(e) => {
+          // Prevent closing by clicking outside when modal is mandatory
+          if (!canClose) {
+            e.preventDefault();
+          }
+        }}
+        onEscapeKeyDown={(e) => {
+          // Prevent closing with Escape key when modal is mandatory
+          if (!canClose) {
+            e.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle className="text-2xl text-center">Select Your Industry</DialogTitle>
           <DialogDescription className="text-center mt-2">

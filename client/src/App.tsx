@@ -203,11 +203,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // - Only render modal on non-onboarding routes
   // - Modal has its own mount delay to prevent render conflicts
   // - Modal processes all updates in effects, never during render
+  // - Modal will check onboarding status internally and only show if needed
   const isOnboardingRoute = currentPath === '/onboarding';
+  
+  // Only render modal if:
+  // 1. Not on onboarding route
+  // 2. Onboarding is not completed OR industry is missing (for backward compatibility)
+  // The modal itself will do the final check, but we can optimize by not rendering at all if onboarding is complete
+  const shouldRenderModal = !isOnboardingRoute && (!onboardingCompleted || !hasIndustryType);
   
   return (
     <>
-      {!isOnboardingRoute && <IndustrySelectionModal />}
+      {shouldRenderModal && <IndustrySelectionModal />}
       {children}
     </>
   );
