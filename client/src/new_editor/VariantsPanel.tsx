@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useEditorStore } from './store';
 import { useRoute } from 'wouter';
+import { useIsTrades } from '../hooks/useIsTrades';
 import { 
   Trash2, 
   Image as ImageIcon, 
@@ -35,6 +36,7 @@ export function VariantsPanel() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState<string>('');
+  const isTrades = useIsTrades();
   
   // Get jobId and photoId from context or URL params
   const [, jobParams] = useRoute('/jobs/:jobId/photo/:photoId/edit');
@@ -104,24 +106,12 @@ export function VariantsPanel() {
         // Auto-apply all variants to canvas when loaded
         // Apply them in order (oldest first) so the newest is active
         const currentStoreVariants = useEditorStore.getState().variants;
-        const getModeLabel = (mode?: string) => {
-          if (!mode) return 'Enhanced';
-          return mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        };
         
         for (const variant of sortedVariants) {
           const existingVariant = currentStoreVariants.find(v => v.id === variant.id);
           if (!existingVariant) {
-            // Calculate display name using sorted list
-            const number = sortedVariants.findIndex(v => v.id === variant.id) + 1;
-            let displayName: string;
-            if (customNames[variant.id]) {
-              displayName = customNames[variant.id];
-            } else if (variant.mode) {
-              displayName = `${getModeLabel(variant.mode)} ${number}`;
-            } else {
-              displayName = `Enhanced ${number}`;
-            }
+            // Use the same naming function for consistency
+            const displayName = getVariantDisplayName(variant, sortedVariants);
             
             // Add to store
             dispatch({
@@ -300,11 +290,31 @@ export function VariantsPanel() {
     if (customNames[variant.id]) {
       return customNames[variant.id];
     }
-    const number = variantsList.findIndex(v => v.id === variant.id) + 1;
+    // Count variants of the same type for sequential numbering
+    // Sort by creation date to ensure consistent numbering
+    const sameTypeVariants = variantsList
+      .filter(v => v.mode === variant.mode && v.mode)
+      .sort((a, b) => {
+        const dateA = new Date(a.created_at || a.job_created_at || 0).getTime();
+        const dateB = new Date(b.created_at || b.job_created_at || 0).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return (a.rank || 0) - (b.rank || 0);
+      });
+    const number = sameTypeVariants.findIndex(v => v.id === variant.id) + 1;
     if (variant.mode) {
-      return `${getModeLabel(variant.mode)} ${number}`;
+      return `AI – ${getModeLabel(variant.mode)} ${number}`;
     }
-    return `Enhanced ${number}`;
+    // For variants without mode, count all variants without mode
+    const noModeVariants = variantsList
+      .filter(v => !v.mode)
+      .sort((a, b) => {
+        const dateA = new Date(a.created_at || a.job_created_at || 0).getTime();
+        const dateB = new Date(b.created_at || b.job_created_at || 0).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return (a.rank || 0) - (b.rank || 0);
+      });
+    const noModeNumber = noModeVariants.findIndex(v => v.id === variant.id) + 1;
+    return `AI – Enhanced ${noModeNumber}`;
   };
 
   // Handle variant selection (apply to canvas)
@@ -384,12 +394,21 @@ export function VariantsPanel() {
     }
   };
   
-  // Get mode label
+  // Get mode label for display
   const getModeLabel = (mode?: string) => {
     if (!mode) return 'Enhanced';
-    return mode
-      .replace('_', ' ')
-      .replace(/\b\w/g, l => l.toUpperCase());
+    const labels: Record<string, string> = {
+      'image_enhancement': 'Image Enhancement',
+      'add_decoration': 'Add Decoration',
+      'blend_materials': 'Blend Material',
+      'clutter_removal': 'Clutter & Debris Removal',
+      'before_after': 'Before & After',
+      'stage_room': 'Virtual Staging',
+      'item_removal': 'Item Removal',
+      'renovation': 'Renovation',
+      'day_to_dusk': 'Day to Dusk',
+    };
+    return labels[mode] || mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
   
   if (!effectivePhotoId) {
@@ -557,6 +576,15 @@ export function VariantsPanel() {
           );
         })}
       </div>
+      
+      {/* Helper text for trades mode */}
+      {isTrades && variants.length > 0 && (
+        <div className="px-6 py-3 border-t border-gray-100 bg-gray-50 flex-shrink-0">
+          <p className="text-xs text-gray-600">
+            Use your selected variant when exporting images for quotes and reports.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

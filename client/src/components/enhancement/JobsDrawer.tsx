@@ -14,6 +14,7 @@ import { toast } from '../../lib/toast';
 import { useOnboarding } from '../../hooks/useOnboarding';
 import { useAuthStore } from '../../stores/auth-store';
 import { useOrgStore } from '../../stores/orgStore';
+import { useIsTrades } from '../../hooks/useIsTrades';
 import { Textarea } from '../ui/textarea';
 import { Label } from '../ui/label';
 import { Sunset, Home, Eraser, Hammer, Trash2, Wand2 } from 'lucide-react';
@@ -32,6 +33,7 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
   const { user } = useAuthStore();
   const { selectedOrgId } = useOrgStore();
   const [, setLocation] = useLocation();
+  const isTrades = useIsTrades();
   const { 
     setInitial, 
     upsertJob, 
@@ -1534,6 +1536,11 @@ export function JobsDrawer({ onClose, onApplyEnhancedImage }: JobsDrawerProps) {
       {/* Create New Enhancement Form */}
       <div className="px-6 py-4 border-b border-gray-100 bg-white">
         <div className="space-y-4">
+          {isTrades && (
+            <p className="text-sm text-gray-600 mb-2">
+              Enhance runs on your current design and saves the result as a new Variant. Your original stays untouched.
+            </p>
+          )}
           <div>
             <label className="text-sm font-semibold text-gray-900 mb-3 block">
               Select Enhancement Type
