@@ -457,7 +457,7 @@ export default function JobDetail() {
     if (quotes.length === 0) {
       return {
         type: 'create_first',
-        message: 'Create a quote for this job after you've uploaded and marked up photos.',
+        message: "Create a quote for this job after you've uploaded and marked up photos.",
         buttonLabel: 'Create First Quote',
         buttonAction: handleCreateQuote
       };
