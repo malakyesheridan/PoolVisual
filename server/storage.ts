@@ -1253,6 +1253,15 @@ export class PostgresStorage implements IStorage {
       }
       
       return await ensureDb().select().from(materials).where(and(...conditions)).orderBy(desc(materials.createdAt));
+      }
+    } catch (error) {
+      console.error('Storage error in getMaterials:', {
+        error: error instanceof Error ? error.message : error,
+        userId: userId,
+        category: category,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
     }
   }
 
@@ -1366,27 +1375,28 @@ export class PostgresStorage implements IStorage {
 
   async getQuotes(userId: string, filters?: { status?: string; jobId?: string }): Promise<Quote[]> {
     try {
-      let conditions = [eq(jobs.userId, userId)];
-      
-      if (filters?.status) {
-        conditions.push(eq(quotes.status, filters.status as any));
-      }
-      
-      if (filters?.jobId) {
-        conditions.push(eq(quotes.jobId, filters.jobId));
-      }
-      
-      // Explicitly select only quotes columns to avoid issues with missing job columns
-      const results = await ensureDb()
-        .select({
-          quotes: quotes,
-        })
-        .from(quotes)
-        .innerJoin(jobs, eq(quotes.jobId, jobs.id))
-        .where(and(...conditions));
-      
-      return results.map(r => r.quotes);
-    } catch (error: any) {
+      try {
+        let conditions = [eq(jobs.userId, userId)];
+        
+        if (filters?.status) {
+          conditions.push(eq(quotes.status, filters.status as any));
+        }
+        
+        if (filters?.jobId) {
+          conditions.push(eq(quotes.jobId, filters.jobId));
+        }
+        
+        // Explicitly select only quotes columns to avoid issues with missing job columns
+        const results = await ensureDb()
+          .select({
+            quotes: quotes,
+          })
+          .from(quotes)
+          .innerJoin(jobs, eq(quotes.jobId, jobs.id))
+          .where(and(...conditions));
+        
+        return results.map(r => r.quotes);
+      } catch (error: any) {
       // If error is due to missing columns in jobs table, try selecting only quotes columns
       if (error?.message?.includes('does not exist') || error?.code === '42703') {
         console.warn('[getQuotes] Some columns may not exist, trying with quotes only');
@@ -1427,10 +1437,9 @@ export class PostgresStorage implements IStorage {
       throw error;
       }
     } catch (error) {
-      console.error('Storage error in getMaterials:', {
+      console.error('Storage error in getQuotes:', {
         error: error instanceof Error ? error.message : error,
         userId: userId,
-        category: category,
         timestamp: new Date().toISOString()
       });
       throw error; // Re-throw so caller can handle
