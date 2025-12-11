@@ -26,7 +26,9 @@ import {
   Send,
   X,
   ImageIcon,
-  DollarSign
+  DollarSign,
+  CheckCircle2,
+  Clock
 } from "lucide-react";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PhotoGridSkeleton } from "@/components/ui/skeleton-variants";
@@ -43,6 +45,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { editClientSchema, type EditClientFormData } from "@/lib/form-validation";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { useIsTrades } from "@/hooks/useIsTrades";
 import { useAuthStore } from "@/stores/auth-store";
 import { PhotoCard } from "@/components/photos/PhotoCard";
 import { PropertyDetailsForm } from "@/components/properties/PropertyDetailsForm";
@@ -59,6 +62,7 @@ export default function JobDetail() {
   const [editingQuoteId, setEditingQuoteId] = useState<string | null>(null);
   const [showQuoteEditor, setShowQuoteEditor] = useState(false);
   const isRealEstate = useIsRealEstate();
+  const isTrades = useIsTrades();
   const { user } = useAuthStore();
 
   // Redirect real estate users to /properties route
@@ -424,6 +428,68 @@ export default function JobDetail() {
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  // Calculate quote summary for trades
+  const quoteSummary = isTrades ? (() => {
+    const totalQuotedValue = quotes.reduce((sum, quote) => {
+      const value = parseFloat(quote.total || '0');
+      return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+
+    let primaryStatus: string;
+    if (quotes.length === 0) {
+      primaryStatus = 'No quote';
+    } else if (quotes.every(q => q.status === 'draft')) {
+      primaryStatus = 'Draft quote';
+    } else if (quotes.some(q => q.status === 'accepted')) {
+      primaryStatus = 'Accepted';
+    } else if (quotes.some(q => q.status === 'sent')) {
+      primaryStatus = 'Quote sent';
+    } else {
+      primaryStatus = 'Draft quote';
+    }
+
+    return { totalQuotedValue, primaryStatus };
+  })() : null;
+
+  // Determine next step for trades quotes
+  const quotesNextStep = isTrades ? (() => {
+    if (quotes.length === 0) {
+      return {
+        type: 'create_first',
+        message: 'Create a quote for this job after you've uploaded and marked up photos.',
+        buttonLabel: 'Create First Quote',
+        buttonAction: handleCreateQuote
+      };
+    }
+    
+    const draftQuotes = quotes.filter(q => q.status === 'draft');
+    const sentQuotes = quotes.filter(q => q.status === 'sent');
+    const acceptedQuotes = quotes.filter(q => q.status === 'accepted');
+    
+    if (draftQuotes.length > 0 && sentQuotes.length === 0) {
+      const mostRecentDraft = draftQuotes.sort((a, b) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )[0];
+      return {
+        type: 'review_send',
+        message: 'You have draft quotes waiting to be sent.',
+        buttonLabel: 'Review & Send Quote',
+        buttonAction: () => navigate(`/quotes/${mostRecentDraft.id}`)
+      };
+    }
+    
+    if (sentQuotes.length > 0 && acceptedQuotes.length === 0) {
+      return {
+        type: 'awaiting_response',
+        message: 'Quote sent – awaiting client response.',
+        buttonLabel: null,
+        buttonAction: null
+      };
+    }
+    
+    return null;
+  })() : null;
 
   const handleCreateQuote = () => {
     if (!job) return;
@@ -860,15 +926,17 @@ export default function JobDetail() {
                   <FileText className="w-5 h-5" />
                   Quotes ({quotes.length})
                 </CardTitle>
-                <Button 
-                  size="sm" 
-                  onClick={handleCreateQuote}
-                  disabled={createQuoteMutation.isPending}
-                  data-testid="button-create-new-quote"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  New Quote
-                </Button>
+                {!isTrades && (
+                  <Button 
+                    size="sm" 
+                    onClick={handleCreateQuote}
+                    disabled={createQuoteMutation.isPending}
+                    data-testid="button-create-new-quote"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Quote
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {quotesLoading ? (
@@ -880,19 +948,66 @@ export default function JobDetail() {
                   <div className="text-center p-8">
                     <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes created yet</h3>
-                    <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
-                      Create quotes after uploading photos and marking areas for renovation
-                    </p>
-                    <Button 
-                      onClick={handleCreateQuote}
-                      disabled={createQuoteMutation.isPending}
-                      data-testid="button-create-first-quote"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Quote
-                    </Button>
+                    {isTrades ? (
+                      <>
+                        <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
+                          {quotesNextStep?.message || 'Create quotes after uploading photos and marking areas for renovation'}
+                        </p>
+                        <Button 
+                          onClick={handleCreateQuote}
+                          disabled={createQuoteMutation.isPending}
+                          data-testid="button-create-first-quote"
+                          className="bg-primary hover:bg-primary/90 text-white"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          {quotesNextStep?.buttonLabel || 'Create First Quote'}
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-slate-500 mb-4" data-testid="text-no-quotes">
+                          Create quotes after uploading photos and marking areas for renovation
+                        </p>
+                        <Button 
+                          onClick={handleCreateQuote}
+                          disabled={createQuoteMutation.isPending}
+                          data-testid="button-create-first-quote"
+                        >
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create Your First Quote
+                        </Button>
+                      </>
+                    )}
                   </div>
                 ) : (
+                  <>
+                    {/* Trades: Show next step guidance at top */}
+                    {isTrades && quotesNextStep && (
+                      <div className={`mb-4 p-4 rounded-lg ${
+                        quotesNextStep.type === 'awaiting_response' 
+                          ? 'bg-blue-50 border border-blue-200' 
+                          : 'bg-primary/5 border border-primary/20'
+                      }`}>
+                        <p className={`text-sm mb-3 ${
+                          quotesNextStep.type === 'awaiting_response' 
+                            ? 'text-blue-800' 
+                            : 'text-slate-700'
+                        }`}>
+                          {quotesNextStep.message}
+                        </p>
+                        {quotesNextStep.buttonLabel && quotesNextStep.buttonAction && (
+                          <Button 
+                            onClick={quotesNextStep.buttonAction}
+                            className="bg-primary hover:bg-primary/90 text-white"
+                            size="sm"
+                          >
+                            {quotesNextStep.buttonLabel}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className="space-y-4">
                   <div className="space-y-4">
                     {quotes.map((quote) => (
                       <div 
@@ -972,7 +1087,8 @@ export default function JobDetail() {
                         </div>
                       </div>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1104,6 +1220,28 @@ export default function JobDetail() {
               </>
             )}
 
+            {/* Quote Summary - Trades Only */}
+            {isTrades && quoteSummary && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <DollarSign className="w-5 h-5" />
+                    Job Quote Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div>
+                    <p className="text-sm text-slate-600 mb-1">Status</p>
+                    <p className="text-base font-semibold text-slate-900">{quoteSummary.primaryStatus}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-slate-600 mb-1">Total Quoted</p>
+                    <p className="text-lg font-bold text-primary">{formatCurrency(quoteSummary.totalQuotedValue)}</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Client Information - Only for Trades */}
             {!isRealEstate && (
               <Card>
@@ -1197,45 +1335,204 @@ export default function JobDetail() {
                   <CardTitle>Project Timeline</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-3 h-3 bg-primary rounded-full"></div>
-                      <div>
-                        <p className="text-sm font-medium">Job Created</p>
-                        <p className="text-xs text-slate-500">
-                          {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
-                        </p>
+                  {isTrades ? (
+                    // Trades: Pipeline-style timeline with done/pending states
+                    (() => {
+                      const hasPhotos = photos.length > 0;
+                      const hasQuotes = quotes.length > 0;
+                      const hasSentQuotes = quotes.some(q => q.status === 'sent' || q.status === 'accepted');
+                      
+                      // Get earliest photo date
+                      const firstPhotoDate = hasPhotos 
+                        ? new Date(Math.min(...photos.map(p => new Date(p.createdAt || 0).getTime())))
+                        : null;
+                      
+                      // Get earliest quote date
+                      const firstQuoteDate = hasQuotes 
+                        ? new Date(Math.min(...quotes.map(q => new Date(q.createdAt || 0).getTime())))
+                        : null;
+                      
+                      // Get earliest sent quote date
+                      const sentQuotes = quotes.filter(q => q.status === 'sent' || q.status === 'accepted');
+                      const firstSentQuoteDate = sentQuotes.length > 0
+                        ? new Date(Math.min(...sentQuotes.map(q => new Date(q.createdAt || 0).getTime())))
+                        : null;
+                      
+                      // Determine current step
+                      let currentStep: 'photos' | 'quote' | 'sent' | 'complete' = 'photos';
+                      if (hasPhotos && !hasQuotes) {
+                        currentStep = 'quote';
+                      } else if (hasQuotes && !hasSentQuotes) {
+                        currentStep = 'sent';
+                      } else if (hasSentQuotes) {
+                        currentStep = 'complete';
+                      }
+                      
+                      const formatDate = (date: Date) => {
+                        return new Intl.DateTimeFormat('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit'
+                        }).format(date);
+                      };
+                      
+                      return (
+                        <div className="space-y-4">
+                          {/* Job Created - Always done */}
+                          <div className="flex items-start gap-3">
+                            <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <CheckCircle2 className="w-4 h-4 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-slate-900">Job Created</p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {formatDate(new Date(job.createdAt))}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Photos Uploaded */}
+                          <div className={`flex items-start gap-3 ${hasPhotos ? '' : 'opacity-60'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              hasPhotos 
+                                ? 'bg-green-500' 
+                                : currentStep === 'photos' 
+                                  ? 'bg-primary ring-2 ring-primary ring-offset-2' 
+                                  : 'bg-slate-300'
+                            }`}>
+                              {hasPhotos ? (
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              ) : currentStep === 'photos' ? (
+                                <Clock className="w-4 h-4 text-white" />
+                              ) : null}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                hasPhotos ? 'text-slate-900' : currentStep === 'photos' ? 'text-primary font-semibold' : 'text-slate-600'
+                              }`}>
+                                Photos Uploaded
+                                {currentStep === 'photos' && !hasPhotos && (
+                                  <span className="ml-2 text-xs text-primary">(Current step)</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {hasPhotos && firstPhotoDate 
+                                  ? formatDate(firstPhotoDate)
+                                  : 'Pending'}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Quote Created */}
+                          <div className={`flex items-start gap-3 ${hasQuotes ? '' : 'opacity-60'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              hasQuotes 
+                                ? 'bg-green-500' 
+                                : currentStep === 'quote' 
+                                  ? 'bg-primary ring-2 ring-primary ring-offset-2' 
+                                  : 'bg-slate-300'
+                            }`}>
+                              {hasQuotes ? (
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              ) : currentStep === 'quote' ? (
+                                <Clock className="w-4 h-4 text-white" />
+                              ) : null}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                hasQuotes ? 'text-slate-900' : currentStep === 'quote' ? 'text-primary font-semibold' : 'text-slate-600'
+                              }`}>
+                                Quote Created
+                                {currentStep === 'quote' && !hasQuotes && (
+                                  <span className="ml-2 text-xs text-primary">(Current step)</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {hasQuotes && firstQuoteDate 
+                                  ? formatDate(firstQuoteDate)
+                                  : 'Pending'}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* Quote Sent */}
+                          <div className={`flex items-start gap-3 ${hasSentQuotes ? '' : 'opacity-60'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              hasSentQuotes 
+                                ? 'bg-green-500' 
+                                : currentStep === 'sent' 
+                                  ? 'bg-primary ring-2 ring-primary ring-offset-2' 
+                                  : 'bg-slate-300'
+                            }`}>
+                              {hasSentQuotes ? (
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              ) : currentStep === 'sent' ? (
+                                <Clock className="w-4 h-4 text-white" />
+                              ) : null}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                hasSentQuotes ? 'text-slate-900' : currentStep === 'sent' ? 'text-primary font-semibold' : 'text-slate-600'
+                              }`}>
+                                Quote Sent
+                                {currentStep === 'sent' && !hasSentQuotes && (
+                                  <span className="ml-2 text-xs text-primary">(Current step)</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {hasSentQuotes && firstSentQuoteDate 
+                                  ? formatDate(firstSentQuoteDate)
+                                  : 'Pending'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()
+                  ) : (
+                    // Real Estate: Original timeline (unchanged)
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-primary rounded-full"></div>
+                        <div>
+                          <p className="text-sm font-medium">Job Created</p>
+                          <p className="text-xs text-slate-500">
+                            {formatDistanceToNow(new Date(job.createdAt), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className={`flex items-center gap-3 ${photos.length > 0 ? '' : 'opacity-50'}`}>
+                        <div className={`w-3 h-3 rounded-full ${photos.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                        <div>
+                          <p className="text-sm font-medium">Photos Uploaded</p>
+                          <p className="text-xs text-slate-500">
+                            {photos.length > 0 ? `${photos.length} photo${photos.length === 1 ? '' : 's'}` : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className={`flex items-center gap-3 ${quotes.length > 0 ? '' : 'opacity-50'}`}>
+                        <div className={`w-3 h-3 rounded-full ${quotes.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
+                        <div>
+                          <p className="text-sm font-medium">Quote Created</p>
+                          <p className="text-xs text-slate-500">
+                            {quotes.length > 0 ? `${quotes.length} quote${quotes.length === 1 ? '' : 's'}` : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="flex items-center gap-3 opacity-50">
+                        <div className="w-3 h-3 bg-slate-300 rounded-full"></div>
+                        <div>
+                          <p className="text-sm font-medium">Quote Sent</p>
+                          <p className="text-xs text-slate-500">Pending</p>
+                        </div>
                       </div>
                     </div>
-                    
-                    <div className={`flex items-center gap-3 ${photos.length > 0 ? '' : 'opacity-50'}`}>
-                      <div className={`w-3 h-3 rounded-full ${photos.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                      <div>
-                        <p className="text-sm font-medium">Photos Uploaded</p>
-                        <p className="text-xs text-slate-500">
-                          {photos.length > 0 ? `${photos.length} photo${photos.length === 1 ? '' : 's'}` : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className={`flex items-center gap-3 ${quotes.length > 0 ? '' : 'opacity-50'}`}>
-                      <div className={`w-3 h-3 rounded-full ${quotes.length > 0 ? 'bg-green-500' : 'bg-slate-300'}`}></div>
-                      <div>
-                        <p className="text-sm font-medium">Quote Created</p>
-                        <p className="text-xs text-slate-500">
-                          {quotes.length > 0 ? `${quotes.length} quote${quotes.length === 1 ? '' : 's'}` : 'Pending'}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 opacity-50">
-                      <div className="w-3 h-3 bg-slate-300 rounded-full"></div>
-                      <div>
-                        <p className="text-sm font-medium">Quote Sent</p>
-                        <p className="text-xs text-slate-500">Pending</p>
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             )}
