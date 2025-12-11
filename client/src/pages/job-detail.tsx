@@ -1008,8 +1008,7 @@ export default function JobDetail() {
                     )}
                     
                     <div className="space-y-4">
-                  <div className="space-y-4">
-                    {quotes.map((quote) => (
+                      {quotes.map((quote) => (
                       <div 
                         key={quote.id}
                         className="flex items-center justify-between p-4 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
@@ -1086,7 +1085,7 @@ export default function JobDetail() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                      ))}
                     </div>
                   </>
                 )}
