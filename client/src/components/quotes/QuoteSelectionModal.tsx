@@ -13,10 +13,11 @@ import { useLocation } from 'wouter';
 interface QuoteSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectQuote: (quoteId: string) => void;
+  onSelectQuote: (quoteId: string, quoteInfo?: { label: string; status: string }) => void;
   jobId: string;
   jobOrgId: string;
   allowCreateNew?: boolean;
+  isTrades?: boolean;
 }
 
 export function QuoteSelectionModal({
@@ -26,6 +27,7 @@ export function QuoteSelectionModal({
   jobId,
   jobOrgId,
   allowCreateNew = true,
+  isTrades = false,
 }: QuoteSelectionModalProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -57,7 +59,12 @@ export function QuoteSelectionModal({
   });
 
   const handleSelectQuote = (quoteId: string) => {
-    onSelectQuote(quoteId);
+    const quote = quotes.find(q => q.id === quoteId);
+    const quoteInfo = quote ? {
+      label: quote.clientName || `Quote #${quoteId.substring(0, 8)}`,
+      status: quote.status || 'draft'
+    } : undefined;
+    onSelectQuote(quoteId, quoteInfo);
     onOpenChange(false);
     setSearchTerm('');
     setStatusFilter('all');
@@ -80,7 +87,9 @@ export function QuoteSelectionModal({
       open={open}
       onOpenChange={onOpenChange}
       title="Select a Quote"
-      description="Choose a quote to add measurements to, or create a new one"
+      description={isTrades 
+        ? "Choose a quote to add these measurements to, or create a new quote from this photo."
+        : "Choose a quote to add measurements to, or create a new one"}
       size="lg"
       variant="default"
     >
@@ -120,7 +129,7 @@ export function QuoteSelectionModal({
             className="w-full bg-primary hover:bg-primary/90 text-white"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Create New Quote
+            {isTrades ? 'Create Quote From Measurements' : 'Create New Quote'}
           </Button>
         )}
 
@@ -134,16 +143,36 @@ export function QuoteSelectionModal({
           ) : filteredQuotes.length === 0 ? (
             <div className="p-8 text-center">
               <FileText className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes found</h3>
-              <p className="text-slate-500">
-                {searchTerm || statusFilter !== 'all' 
-                  ? 'Try adjusting your search or filters.' 
-                  : 'Create a quote first to add measurements.'}
-              </p>
+              {isTrades ? (
+                <>
+                  <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes for this job yet</h3>
+                  <p className="text-slate-500">
+                    {searchTerm || statusFilter !== 'all' 
+                      ? 'Try adjusting your search or filters.' 
+                      : "Click 'Create Quote From Measurements' to build a quote using the calibrated areas from this photo."}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-lg font-medium text-slate-900 mb-2">No quotes found</h3>
+                  <p className="text-slate-500">
+                    {searchTerm || statusFilter !== 'all' 
+                      ? 'Try adjusting your search or filters.' 
+                      : 'Create a quote first to add measurements.'}
+                  </p>
+                </>
+              )}
             </div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredQuotes.map((quote, index) => (
+            <>
+              {/* Helper text above list (Trades only) */}
+              {isTrades && (
+                <p className="text-sm text-slate-600 mb-3">
+                  Select a quote below to add the current measurements as line items.
+                </p>
+              )}
+              <div className="divide-y divide-slate-100">
+                {filteredQuotes.map((quote, index) => (
                 <button
                   key={quote.id}
                   onClick={() => handleSelectQuote(quote.id)}
@@ -189,7 +218,8 @@ export function QuoteSelectionModal({
                   </div>
                 </button>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

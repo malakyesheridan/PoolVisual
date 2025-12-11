@@ -9,6 +9,7 @@ import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api-client";
 import { useToast } from "@/hooks/use-toast";
 import { PlusCircle, X, ChevronDown, ChevronUp, Calculator } from "lucide-react";
+import { useIsTrades } from "@/hooks/useIsTrades";
 
 interface MeasurementOverlayProps {
   className?: string;
@@ -22,6 +23,8 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
   const [isAddingToQuote, setIsAddingToQuote] = useState(false);
   const [showQuoteSelectionModal, setShowQuoteSelectionModal] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
+  const [selectedQuoteInfo, setSelectedQuoteInfo] = useState<{ label: string; status: string } | null>(null);
+  const isTrades = useIsTrades();
   const [isMinimized, setIsMinimized] = useState(() => {
     // Check localStorage for minimized state
     if (typeof window !== 'undefined') {
@@ -69,10 +72,27 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
     mutationFn: async (data: { jobId: string; measurements: any[]; quoteId?: string }) => {
       return apiClient.addMeasurementsToQuote(data.jobId, data.measurements, data.quoteId);
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      // Build toast message with details
+      const maskCount = variables.measurements.length;
+      let toastMessage = '';
+      
+      if (isTrades) {
+        if (maskCount === 1) {
+          const mask = variables.measurements[0];
+          const quoteName = selectedQuoteInfo?.label || job?.clientName || 'quote';
+          toastMessage = `${mask.maskName} – ${mask.areaSquareMeters.toFixed(1)} m² added to quote '${quoteName}'.`;
+        } else {
+          const quoteName = selectedQuoteInfo?.label || job?.clientName || 'quote';
+          toastMessage = `${maskCount} measurement items added to quote '${quoteName}'.`;
+        }
+      } else {
+        toastMessage = "Measurements have been added to the quote.";
+      }
+      
       toast({
         title: "Added to Quote",
-        description: "Measurements have been added to the quote.",
+        description: toastMessage,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
       setLastSyncTime(new Date());
@@ -140,6 +160,15 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
     } finally {
       setIsAddingToQuote(false);
     }
+  };
+  
+  // Handle quote selection from modal
+  const handleSelectQuoteFromModal = (quoteId: string, quoteInfo?: { label: string; status: string }) => {
+    setSelectedQuoteId(quoteId);
+    if (quoteInfo) {
+      setSelectedQuoteInfo(quoteInfo);
+    }
+    handleAddToQuote(quoteId);
   };
   
   // Don't render if measurements are disabled
@@ -242,10 +271,19 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900">Measurements</h3>
         <div className="flex items-center gap-2">
-          <div className="flex items-center">
-            <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
-            <span className="text-xs text-gray-600">Calibrated</span>
-          </div>
+          {isTrades ? (
+            <div className="flex items-center">
+              <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+              <span className="text-xs text-gray-600">
+                Calibrated · {calibration.pixelsPerMeter.toFixed(0)} px/m
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center">
+              <div className="w-2 h-2 rounded-full bg-green-500 mr-2" />
+              <span className="text-xs text-gray-600">Calibrated</span>
+            </div>
+          )}
           <button
             onClick={handleToggleMinimize}
             className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded p-1 transition-colors"
@@ -257,58 +295,91 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
         </div>
       </div>
       
+      {/* Helper text under calibration (Trades only) */}
+      {isTrades && calibration.isCalibrated && (
+        <div className="mb-3">
+          <p className="text-xs text-gray-500">
+            All mask areas are now in m² based on this calibration.
+          </p>
+        </div>
+      )}
+      
       {/* Individual Mask Measurements */}
       {maskMeasurements.length > 0 && (
         <div className="space-y-3 mb-4">
           {maskMeasurements.map((measurement, index) => (
             <div key={measurement.maskId} className="border-b border-gray-100 pb-2 last:border-b-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-gray-700">
-                  {measurement.maskName}
-                </span>
-                <span className="text-xs text-gray-500">
-                  {measurement.materialName}
-                </span>
-              </div>
-              
-              {measurements.showMeasurements && (
-                <div className="text-xs text-gray-600">
-                  Area: {measurement.areaSquareMeters.toFixed(2)} m²
-                  <span className={`ml-2 px-1 py-0.5 rounded text-xs ${
-                    measurement.calibrationMethod === 'edge-based'
-                      ? 'bg-purple-100 text-purple-700'
-                      : measurement.calibrationMethod === 'mask-specific' 
-                      ? 'bg-primary/10 text-primary' 
-                      : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {measurement.calibrationMethod === 'edge-based' 
-                      ? 'Edge-Based' 
-                      : measurement.calibrationMethod === 'mask-specific' 
-                      ? 'Custom' 
-                      : 'Global'}
-                  </span>
-                  <span className={`ml-1 px-1 py-0.5 rounded text-xs ${
-                    measurement.confidence === 'high' 
-                      ? 'bg-green-100 text-green-700'
-                      : measurement.confidence === 'medium'
-                      ? 'bg-yellow-100 text-yellow-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}>
-                    {measurement.confidence}
-                  </span>
-                </div>
-              )}
-              
-              {measurements.showCosts && measurement.hasCostData && (
-                <div className="text-xs text-green-600 font-medium">
-                  Cost: {measurements.currency} {measurement.cost.toFixed(2)}
-                </div>
-              )}
-              
-              {measurements.showCosts && !measurement.hasCostData && (
-                <div className="text-xs text-gray-400">
-                  No cost data
-                </div>
+              {isTrades ? (
+                <>
+                  {/* Trades: Enhanced display with mask name, area, and material */}
+                  <div className="mb-1">
+                    <div className="text-xs font-medium text-gray-900 mb-0.5">
+                      {measurement.maskName} · {measurement.areaSquareMeters.toFixed(1)} m²
+                    </div>
+                    {measurement.materialName && measurement.hasCostData && (
+                      <div className="text-xs text-gray-600">
+                        Material: {measurement.materialName} · {measurements.currency} {(measurement.cost / measurement.areaSquareMeters).toFixed(2)} / m²
+                      </div>
+                    )}
+                    {measurement.materialName && !measurement.hasCostData && (
+                      <div className="text-xs text-gray-600">
+                        Material: {measurement.materialName}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Real Estate: Original display */}
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-gray-700">
+                      {measurement.maskName}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {measurement.materialName}
+                    </span>
+                  </div>
+                  
+                  {measurements.showMeasurements && (
+                    <div className="text-xs text-gray-600">
+                      Area: {measurement.areaSquareMeters.toFixed(2)} m²
+                      <span className={`ml-2 px-1 py-0.5 rounded text-xs ${
+                        measurement.calibrationMethod === 'edge-based'
+                          ? 'bg-purple-100 text-purple-700'
+                          : measurement.calibrationMethod === 'mask-specific' 
+                          ? 'bg-primary/10 text-primary' 
+                          : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {measurement.calibrationMethod === 'edge-based' 
+                          ? 'Edge-Based' 
+                          : measurement.calibrationMethod === 'mask-specific' 
+                          ? 'Custom' 
+                          : 'Global'}
+                      </span>
+                      <span className={`ml-1 px-1 py-0.5 rounded text-xs ${
+                        measurement.confidence === 'high' 
+                          ? 'bg-green-100 text-green-700'
+                          : measurement.confidence === 'medium'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {measurement.confidence}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {measurements.showCosts && measurement.hasCostData && (
+                    <div className="text-xs text-green-600 font-medium">
+                      Cost: {measurements.currency} {measurement.cost.toFixed(2)}
+                    </div>
+                  )}
+                  
+                  {measurements.showCosts && !measurement.hasCostData && (
+                    <div className="text-xs text-gray-400">
+                      No cost data
+                    </div>
+                  )}
+                </>
               )}
               
               <button
@@ -349,6 +420,23 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
             {/* Add to Quote Button */}
             {!!(maskMeasurements.length > 0 && jobId) && (
               <div className="mt-4 pt-3 border-t border-gray-200">
+                {/* Helper text above button (Trades only) */}
+                {isTrades && (
+                  <p className="text-xs text-gray-600 mb-2">
+                    This will add each calibrated mask as a line item to a quote.
+                  </p>
+                )}
+                
+                {/* Target quote info (Trades only, when quote is selected) */}
+                {isTrades && selectedQuoteInfo && (
+                  <div className="mb-2 p-2 bg-primary/5 border border-primary/20 rounded text-xs">
+                    <span className="text-gray-600">Target quote: </span>
+                    <span className="font-medium text-gray-900">
+                      {selectedQuoteInfo.label} – {selectedQuoteInfo.status}
+                    </span>
+                  </div>
+                )}
+                
                 <button
                   onClick={handleAddToQuoteClick}
                   disabled={isAddingToQuote}
@@ -411,10 +499,16 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
       <QuoteSelectionModal
         open={showQuoteSelectionModal}
         onOpenChange={setShowQuoteSelectionModal}
-        onSelectQuote={handleAddToQuote}
+        onSelectQuote={(quoteId, quoteInfo) => {
+          if (quoteInfo) {
+            setSelectedQuoteInfo(quoteInfo);
+          }
+          handleAddToQuote(quoteId);
+        }}
         jobId={jobId}
         jobOrgId={job.orgId}
         allowCreateNew={true}
+        isTrades={isTrades}
       />
     )}
     </>
