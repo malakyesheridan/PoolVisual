@@ -429,6 +429,27 @@ export default function JobDetail() {
     }
   };
 
+  const handleCreateQuote = () => {
+    if (!job) return;
+    
+    const quoteData = {
+      jobId: job.id,
+      orgId: job.orgId,
+      clientName: job.clientName,
+      clientEmail: job.clientEmail,
+      clientPhone: job.clientPhone,
+      address: job.address,
+      status: 'draft',
+      items: [],
+      subtotal: '0',
+      gst: '0',
+      total: '0',
+      depositPct: '0.3'
+    };
+
+    createQuoteMutation.mutate(quoteData);
+  };
+
   // Calculate quote summary for trades
   const quoteSummary = isTrades ? (() => {
     const totalQuotedValue = quotes.reduce((sum, quote) => {
@@ -490,27 +511,6 @@ export default function JobDetail() {
     
     return null;
   })() : null;
-
-  const handleCreateQuote = () => {
-    if (!job) return;
-    
-    const quoteData = {
-      jobId: job.id,
-      orgId: job.orgId,
-      clientName: job.clientName,
-      clientEmail: job.clientEmail,
-      clientPhone: job.clientPhone,
-      address: job.address,
-      status: 'draft',
-      items: [],
-      subtotal: '0',
-      gst: '0',
-      total: '0',
-      depositPct: '0.3'
-    };
-
-    createQuoteMutation.mutate(quoteData);
-  };
 
   const handleDuplicateJob = () => {
     if (!job) return;
