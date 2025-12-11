@@ -621,6 +621,28 @@ export default function JobDetail() {
               <Edit className="w-4 h-4 mr-2" />
               Edit Job
             </Button>
+            {!isRealEstate && (
+              <>
+                <Button 
+                  variant="outline" 
+                  onClick={handleDuplicateJob}
+                  disabled={duplicateJobMutation.isPending}
+                  data-testid="button-duplicate-job"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Duplicate
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={handleDeleteJob}
+                  data-testid="button-delete-job"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -1244,11 +1266,20 @@ export default function JobDetail() {
             {/* Client Information - Only for Trades */}
             {!isRealEstate && (
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <User className="w-5 h-5" />
                     Client Information
                   </CardTitle>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={handleEditClientInfo}
+                    data-testid="button-edit-client-info"
+                  >
+                    <Edit className="w-4 h-4 mr-2" />
+                    Edit
+                  </Button>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
@@ -1286,46 +1317,6 @@ export default function JobDetail() {
               </Card>
             )}
 
-            {/* Job Actions - Only for Trades */}
-            {!isRealEstate && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={handleEditClientInfo}
-                    data-testid="button-edit-client-info"
-                  >
-                    <Edit className="w-4 h-4 mr-2" />
-                    Edit Client Info
-                  </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={handleDuplicateJob}
-                    disabled={duplicateJobMutation.isPending}
-                    data-testid="button-duplicate-job"
-                  >
-                    <FileText className="w-4 h-4 mr-2" />
-                    Duplicate Job
-                  </Button>
-                  
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
-                    onClick={handleDeleteJob}
-                    data-testid="button-delete-job"
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete Job
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
 
             {/* Status Timeline - Only for Trades */}
             {!isRealEstate && (
