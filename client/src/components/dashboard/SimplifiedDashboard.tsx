@@ -18,6 +18,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Search, Plus, Eye } from 'lucide-react';
 import { useIndustryTerm } from '../../hooks/useIndustryTerm';
+import { useIsTrades } from '../../hooks/useIsTrades';
 
 interface SimplifiedDashboardProps {
   className?: string;
@@ -28,6 +29,7 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'draft'>('all');
   const { projects, createJob } = useIndustryTerm();
+  const isTrades = useIsTrades();
 
   // Fetch jobs for current user (user-centric architecture)
   const { data: jobs = [], isLoading: jobsLoading, error: jobsError } = useQuery({
@@ -123,15 +125,24 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
           <ActionTiles jobs={jobs} quotes={quotes} />
         </div>
 
-        {/* Dashboard Insights Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-          <div className="lg:col-span-2">
-            <QuickInsights jobs={jobs} quotes={quotes} />
+        {/* Dashboard Insights Section - Quick Insights only for Real Estate */}
+        {!isTrades && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
+            <div className="lg:col-span-2">
+              <QuickInsights jobs={jobs} quotes={quotes} />
+            </div>
+            <div className="space-y-6">
+              <RecentActivityCompact jobs={jobs} />
+            </div>
           </div>
-          <div className="space-y-6">
+        )}
+        
+        {/* Recent Activity - Full width for Trades */}
+        {isTrades && (
+          <div className="mt-8">
             <RecentActivityCompact jobs={jobs} />
           </div>
-        </div>
+        )}
 
         {/* Recent Projects Section */}
         <div className="mt-8">
