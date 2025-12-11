@@ -62,9 +62,12 @@ export default function Onboarding() {
   const completeOnboardingMutation = useMutation({
     mutationFn: () => apiClient.completeOnboarding(),
     onSuccess: () => {
+      // Save to localStorage as failsafe
+      localStorage.setItem('onboarding_completed', 'true');
+      
       // Store in refs - will be processed in effects
       pendingQueryUpdateRef.current = {
-        queryKey: ['/api/onboarding/status'],
+        queryKey: ['/api/onboarding/status', 'onboarding-status'],
         invalidate: true,
       };
     },

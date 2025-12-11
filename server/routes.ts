@@ -668,6 +668,17 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       const onboarding = await storage.getUserOnboarding(req.user.id);
+      
+      // Log status check for debugging
+      logger.info({
+        msg: '[ONBOARDING] Status check',
+        userId: req.user.id,
+        completed: onboarding?.completed || false,
+        completedAt: onboarding?.completedAt || null,
+        step: onboarding?.step || 'welcome',
+        timestamp: new Date().toISOString()
+      });
+      
       // Return default if no onboarding record exists (for existing users or if table doesn't exist)
       res.json(onboarding || { 
         step: 'welcome', 
@@ -738,11 +749,27 @@ export async function registerRoutes(app: Express): Promise<void> {
   // NOTE: No requireIndustryType middleware - users need to access this to complete onboarding
   app.post("/api/onboarding/complete", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
+      // Log user completing onboarding
+      logger.info({
+        msg: '[ONBOARDING] User completing',
+        userId: req.user.id,
+        timestamp: new Date().toISOString()
+      });
+      
       // Validate request body with Zod
       const { OnboardingCompleteSchema } = await import('../shared/schemas.js');
       OnboardingCompleteSchema.parse(req.body || {});
       
       await storage.completeUserOnboarding(req.user.id);
+      
+      // Log completion saved to DB
+      logger.info({
+        msg: '[ONBOARDING] Marked complete in DB',
+        userId: req.user.id,
+        field: 'user_onboarding.completed',
+        value: true,
+        timestamp: new Date().toISOString()
+      });
       
       // Complete referral and award rewards if user was referred
       try {

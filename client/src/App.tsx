@@ -1,7 +1,8 @@
 import React, { Suspense } from "react";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { apiClient } from "./lib/api-client";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuthStore } from "@/stores/auth-store";
@@ -144,6 +145,36 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const user = useAuthStore((state) => state.user);
   const currentPath = window.location.pathname;
   
+  // Check onboarding completion status (with localStorage cache as failsafe)
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = React.useState(() => {
+    // Check localStorage for cached status
+    return localStorage.getItem('onboarding_completed') === 'true';
+  });
+  
+  const { data: onboardingStatus } = useQuery({
+    queryKey: ['onboarding-status'],
+    queryFn: async () => {
+      try {
+        const status = await apiClient.getOnboardingStatus();
+        // Update localStorage cache
+        if (status.completed) {
+          localStorage.setItem('onboarding_completed', 'true');
+          setHasCompletedOnboarding(true);
+        } else {
+          localStorage.removeItem('onboarding_completed');
+          setHasCompletedOnboarding(false);
+        }
+        return status;
+      } catch (error) {
+        // If API fails, fall back to localStorage cache
+        console.warn('[ProtectedRoute] Failed to fetch onboarding status, using cache:', error);
+        return { completed: hasCompletedOnboarding, step: 'welcome', responses: {} };
+      }
+    },
+    enabled: isAuthenticated,
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+  });
+  
   // Dev bypass for canvas-editor-v2 and new-editor
   if (process.env.NODE_ENV === 'development' && (currentPath === '/canvas-editor-v2' || currentPath === '/new-editor')) {
     return <>{children}</>;
@@ -153,9 +184,18 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/login" />;
   }
 
-  // CRITICAL: Block access if industryType is missing (except onboarding page)
-  // This ensures all users must select their industry before accessing the app
-  if (!user?.industryType && currentPath !== '/onboarding') {
+  // CRITICAL: Block access if onboarding is not completed (except onboarding page)
+  // Check both API status and localStorage cache as failsafe
+  const onboardingCompleted = onboardingStatus?.completed || hasCompletedOnboarding;
+  const hasIndustryType = !!user?.industryType;
+  
+  // Show onboarding if not completed OR if industryType is missing (for backward compatibility)
+  if (!onboardingCompleted && currentPath !== '/onboarding') {
+    return <Redirect to="/onboarding" />;
+  }
+  
+  // Also check industryType for backward compatibility (users who completed onboarding before this change)
+  if (!hasIndustryType && currentPath !== '/onboarding' && !onboardingCompleted) {
     return <Redirect to="/onboarding" />;
   }
 
