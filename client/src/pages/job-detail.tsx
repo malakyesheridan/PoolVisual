@@ -1326,11 +1326,12 @@ export default function JobDetail() {
                 </CardHeader>
                 <CardContent>
                   {isTrades ? (
-                    // Trades: Pipeline-style timeline with done/pending states
+                    // PART C: Trades timeline aligned with status model
                     (() => {
                       const hasPhotos = photos.length > 0;
                       const hasQuotes = quotes.length > 0;
-                      const hasSentQuotes = quotes.some(q => q.status === 'sent' || q.status === 'accepted');
+                      const hasSentQuotes = quotes.some(q => q.status === 'sent');
+                      const hasAcceptedQuotes = quotes.some(q => q.status === 'accepted');
                       
                       // Get earliest photo date
                       const firstPhotoDate = hasPhotos 
@@ -1343,19 +1344,27 @@ export default function JobDetail() {
                         : null;
                       
                       // Get earliest sent quote date
-                      const sentQuotes = quotes.filter(q => q.status === 'sent' || q.status === 'accepted');
+                      const sentQuotes = quotes.filter(q => q.status === 'sent');
                       const firstSentQuoteDate = sentQuotes.length > 0
                         ? new Date(Math.min(...sentQuotes.map(q => new Date(q.createdAt || 0).getTime())))
                         : null;
                       
-                      // Determine current step
-                      let currentStep: 'photos' | 'quote' | 'sent' | 'complete' = 'photos';
+                      // Get earliest accepted quote date
+                      const acceptedQuotes = quotes.filter(q => q.status === 'accepted');
+                      const firstAcceptedQuoteDate = acceptedQuotes.length > 0
+                        ? new Date(Math.min(...acceptedQuotes.map(q => new Date(q.createdAt || 0).getTime())))
+                        : null;
+                      
+                      // Determine current step based on status model
+                      let currentStep: 'photos' | 'quote' | 'sent' | 'accepted' = 'photos';
                       if (hasPhotos && !hasQuotes) {
                         currentStep = 'quote';
-                      } else if (hasQuotes && !hasSentQuotes) {
+                      } else if (hasQuotes && !hasSentQuotes && !hasAcceptedQuotes) {
                         currentStep = 'sent';
-                      } else if (hasSentQuotes) {
-                        currentStep = 'complete';
+                      } else if (hasSentQuotes && !hasAcceptedQuotes) {
+                        currentStep = 'accepted';
+                      } else if (hasAcceptedQuotes) {
+                        currentStep = 'accepted';
                       }
                       
                       const formatDate = (date: Date) => {
@@ -1370,20 +1379,20 @@ export default function JobDetail() {
                       
                       return (
                         <div className="space-y-4">
-                          {/* Job Created - Always done */}
+                          {/* PART C: Job created - Always done */}
                           <div className="flex items-start gap-3">
-                            <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                               <CheckCircle2 className="w-4 h-4 text-white" />
                             </div>
                             <div className="flex-1">
-                              <p className="text-sm font-semibold text-slate-900">Job Created</p>
+                              <p className="text-sm font-semibold text-slate-900">Job created</p>
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {formatDate(new Date(job.createdAt))}
                               </p>
                             </div>
                           </div>
                           
-                          {/* Photos Uploaded */}
+                          {/* PART C: Photos uploaded */}
                           <div className={`flex items-start gap-3 ${hasPhotos ? '' : 'opacity-60'}`}>
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
                               hasPhotos 
@@ -1402,7 +1411,7 @@ export default function JobDetail() {
                               <p className={`text-sm font-medium ${
                                 hasPhotos ? 'text-slate-900' : currentStep === 'photos' ? 'text-primary font-semibold' : 'text-slate-600'
                               }`}>
-                                Photos Uploaded
+                                Photos uploaded
                                 {currentStep === 'photos' && !hasPhotos && (
                                   <span className="ml-2 text-xs text-primary">(Current step)</span>
                                 )}
@@ -1415,7 +1424,7 @@ export default function JobDetail() {
                             </div>
                           </div>
                           
-                          {/* Quote Created */}
+                          {/* PART C: Quote created */}
                           <div className={`flex items-start gap-3 ${hasQuotes ? '' : 'opacity-60'}`}>
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
                               hasQuotes 
@@ -1434,7 +1443,7 @@ export default function JobDetail() {
                               <p className={`text-sm font-medium ${
                                 hasQuotes ? 'text-slate-900' : currentStep === 'quote' ? 'text-primary font-semibold' : 'text-slate-600'
                               }`}>
-                                Quote Created
+                                Quote created
                                 {currentStep === 'quote' && !hasQuotes && (
                                   <span className="ml-2 text-xs text-primary">(Current step)</span>
                                 )}
@@ -1447,7 +1456,7 @@ export default function JobDetail() {
                             </div>
                           </div>
                           
-                          {/* Quote Sent */}
+                          {/* PART C: Quote sent */}
                           <div className={`flex items-start gap-3 ${hasSentQuotes ? '' : 'opacity-60'}`}>
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
                               hasSentQuotes 
@@ -1466,7 +1475,7 @@ export default function JobDetail() {
                               <p className={`text-sm font-medium ${
                                 hasSentQuotes ? 'text-slate-900' : currentStep === 'sent' ? 'text-primary font-semibold' : 'text-slate-600'
                               }`}>
-                                Quote Sent
+                                Quote sent
                                 {currentStep === 'sent' && !hasSentQuotes && (
                                   <span className="ml-2 text-xs text-primary">(Current step)</span>
                                 )}
@@ -1474,6 +1483,38 @@ export default function JobDetail() {
                               <p className="text-xs text-slate-500 mt-0.5">
                                 {hasSentQuotes && firstSentQuoteDate 
                                   ? formatDate(firstSentQuoteDate)
+                                  : 'Pending'}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {/* PART C: Quote accepted */}
+                          <div className={`flex items-start gap-3 ${hasAcceptedQuotes ? '' : 'opacity-60'}`}>
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${
+                              hasAcceptedQuotes 
+                                ? 'bg-green-500' 
+                                : currentStep === 'accepted' 
+                                  ? 'bg-primary ring-2 ring-primary ring-offset-2' 
+                                  : 'bg-slate-300'
+                            }`}>
+                              {hasAcceptedQuotes ? (
+                                <CheckCircle2 className="w-4 h-4 text-white" />
+                              ) : currentStep === 'accepted' ? (
+                                <Clock className="w-4 h-4 text-white" />
+                              ) : null}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-sm font-medium ${
+                                hasAcceptedQuotes ? 'text-slate-900' : currentStep === 'accepted' ? 'text-primary font-semibold' : 'text-slate-600'
+                              }`}>
+                                Quote accepted
+                                {currentStep === 'accepted' && !hasAcceptedQuotes && (
+                                  <span className="ml-2 text-xs text-primary">(Current step)</span>
+                                )}
+                              </p>
+                              <p className="text-xs text-slate-500 mt-0.5">
+                                {hasAcceptedQuotes && firstAcceptedQuoteDate 
+                                  ? formatDate(firstAcceptedQuoteDate)
                                   : 'Pending'}
                               </p>
                             </div>

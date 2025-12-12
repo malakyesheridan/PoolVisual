@@ -45,7 +45,9 @@ import { JobCardSkeleton } from "@/components/ui/skeleton-variants";
 import { formatDistanceToNow } from "date-fns";
 import { getIndustryTerm } from "@/lib/industry-terminology";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { useIsTrades } from "@/hooks/useIsTrades";
 import { formatCurrency } from "@/lib/measurement-utils";
+import { getTradesJobStatus, getQuoteSummary } from "@/lib/job-status-utils";
 
 export default function Jobs() {
   const [, params] = useRoute('/jobs/:id');
@@ -65,6 +67,7 @@ export default function Jobs() {
   const jobsTerm = getIndustryTerm(userIndustry, 'jobs');
   const createJobText = getIndustryTerm(userIndustry, 'createJob');
   const isRealEstate = useIsRealEstate();
+  const isTrades = useIsTrades();
 
   // Redirect real estate users to /properties route
   useEffect(() => {
@@ -105,6 +108,28 @@ export default function Jobs() {
     enabled: jobs.length > 0,
     staleTime: 2 * 60 * 1000, // 2 minutes - canvas status doesn't change frequently
   });
+
+  // Fetch quotes for all jobs (Trades only, for status computation)
+  const { data: allQuotes = [] } = useQuery({
+    queryKey: ['/api/quotes'],
+    queryFn: () => apiClient.getQuotes(),
+    enabled: isTrades && jobs.length > 0,
+    staleTime: 30 * 1000, // 30 seconds
+  });
+  
+  // Group quotes by jobId for efficient lookup
+  const quotesByJobId = useMemo(() => {
+    const map = new Map<string, any[]>();
+    allQuotes.forEach(quote => {
+      if (quote.jobId) {
+        if (!map.has(quote.jobId)) {
+          map.set(quote.jobId, []);
+        }
+        map.get(quote.jobId)!.push(quote);
+      }
+    });
+    return map;
+  }, [allQuotes]);
 
   // Merge jobs with canvas status (memoized for performance)
   const jobsWithCanvasStatus = useMemo(() => {
@@ -425,12 +450,20 @@ export default function Jobs() {
                   const canvasStatus = getCanvasWorkStatus(job);
                   const StatusIcon = canvasStatus.icon;
                   
+                  // PART B: Compute trades job status (Trades only)
+                  const jobQuotes = quotesByJobId.get(job.id) || [];
+                  const photoCount = job.canvasWorkProgress.totalPhotos || 0;
+                  // Create a mock photos array for status computation (we only need the count)
+                  const mockPhotos = photoCount > 0 ? Array(photoCount).fill({}) : [];
+                  const tradesStatus = isTrades ? getTradesJobStatus(job, mockPhotos, jobQuotes) : null;
+                  const quoteSummary = isTrades ? getQuoteSummary(jobQuotes) : null;
+                  
                   // Determine which badges to show
                   const hasPhotos = job.canvasWorkProgress.totalPhotos > 0;
                   const canvasWorkActive = canvasStatus.status === 'in-progress' || canvasStatus.status === 'complete' || canvasStatus.status === 'started';
-                  const shouldShowCanvasBadge = hasPhotos && canvasStatus.status !== 'no-photos';
-                  // Don't show job status badge if canvas work is active (started, in-progress, or complete)
-                  const shouldShowJobStatus = !canvasWorkActive;
+                  const shouldShowCanvasBadge = hasPhotos && canvasStatus.status !== 'no-photos' && !isTrades; // Hide canvas badge for trades (we show status chip instead)
+                  // Don't show job status badge if canvas work is active (started, in-progress, or complete) OR if trades (we show trades status chip)
+                  const shouldShowJobStatus = !canvasWorkActive && !isTrades;
                   
                   return (
                     <div 
@@ -453,6 +486,15 @@ export default function Jobs() {
                             <h3 className="text-sm md:text-sm mobile-text-base font-medium text-slate-900 truncate" data-testid={`text-client-name-${job.id}`}>
                               {job.clientName}
                             </h3>
+                            {/* PART B: Trades Status Chip */}
+                            {isTrades && tradesStatus && (
+                              <Badge 
+                                className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5 ${tradesStatus.bgColor} ${tradesStatus.color} ${tradesStatus.borderColor} border`}
+                                data-testid={`badge-trades-status-${job.id}`}
+                              >
+                                {tradesStatus.label}
+                              </Badge>
+                            )}
                             {shouldShowJobStatus && (
                               <Badge 
                                 className={`inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5 ${job.status === 'estimating' ? getStatusColor(job.status).replace('text-yellow-700', 'text-orange-600/90') : getStatusColor(job.status)}`}
@@ -472,6 +514,21 @@ export default function Jobs() {
                               </Badge>
                             )}
                           </div>
+                          {/* PART B: Key Metrics (Trades only) */}
+                          {isTrades && (
+                            <div className="flex items-center gap-3 mb-1 text-xs text-slate-600">
+                              {photoCount > 0 && (
+                                <span>
+                                  {photoCount} photo{photoCount !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                              {quoteSummary && (
+                                <span className="font-medium text-slate-700">
+                                  {quoteSummary}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {/* Property Details for Real Estate */}
                           {isRealEstate && (job.bedrooms || job.bathrooms || job.estimatedPrice) && (
                             <div className="flex items-center gap-3 mb-1 text-xs text-slate-600">
