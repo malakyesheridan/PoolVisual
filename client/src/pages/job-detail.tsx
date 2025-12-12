@@ -72,11 +72,6 @@ export default function JobDetail() {
     }
   }, [isRealEstate, jobId, navigate]);
 
-  // Don't render anything for real estate users (they'll be redirected)
-  if (isRealEstate) {
-    return null;
-  }
-
   const editForm = useForm<EditClientFormData>({
     resolver: zodResolver(editClientSchema),
     defaultValues: {
@@ -579,6 +574,12 @@ export default function JobDetail() {
     
     deleteJobMutation.mutate(jobId);
   };
+
+  // Don't render anything for real estate users (they'll be redirected)
+  // This check must be AFTER all hooks are declared to avoid hook order violations
+  if (isRealEstate) {
+    return null;
+  }
 
   return (
     <div className="bg-slate-50 pb-20 md:pb-0">      
