@@ -1160,56 +1160,62 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
         }
         
         // Get the user's organization membership for this specific job's org
+        // Only if orgId exists (user-centric model may not have orgId)
         // If membership doesn't exist, automatically create it
-        try {
-          orgMember = await apiClient.getOrgMember(authUser.id, job.orgId);
-          if (!orgMember) {
-            console.log('[SaveToJob] User not a member of organization, automatically joining...');
-            // Automatically join the organization with "estimator" role
-            // Note: joinOrg checks for existing membership, so it's safe to call
-            const existingMembership = await apiClient.joinOrg(job.orgId, 'estimator');
-            orgMember = existingMembership;
-            
-            // Only show toast if this is a NEW membership (check if it was just created)
-            // The server returns existing membership if it exists, so we can't tell easily
-            // Instead, we'll only show toast on first 404, not on subsequent saves
-            const membershipKey = `org_member_${job.orgId}_${authUser.id}`;
-            const wasJustCreated = !localStorage.getItem(membershipKey);
-            if (wasJustCreated) {
-              localStorage.setItem(membershipKey, 'true');
-              toast.success('You have been automatically added to this organization');
-            }
-            console.log('[SaveToJob] Organization membership obtained:', orgMember);
-          }
-        } catch (error) {
-          console.error('[SaveToJob] Error with org membership:', error);
-          // If it's a 404, try to join
-          if ((error as any)?.status === 404 || (error as any)?.statusCode === 404) {
-            try {
-              console.log('[SaveToJob] Attempting to join organization...');
-              const newMembership = await apiClient.joinOrg(job.orgId, 'estimator');
-              orgMember = newMembership;
+        if (job.orgId) {
+          try {
+            orgMember = await apiClient.getOrgMember(authUser.id, job.orgId);
+            if (!orgMember) {
+              console.log('[SaveToJob] User not a member of organization, automatically joining...');
+              // Automatically join the organization with "estimator" role
+              // Note: joinOrg checks for existing membership, so it's safe to call
+              const existingMembership = await apiClient.joinOrg(job.orgId, 'estimator');
+              orgMember = existingMembership;
               
-              // Only show toast if this is actually a new membership
+              // Only show toast if this is a NEW membership (check if it was just created)
+              // The server returns existing membership if it exists, so we can't tell easily
+              // Instead, we'll only show toast on first 404, not on subsequent saves
               const membershipKey = `org_member_${job.orgId}_${authUser.id}`;
               const wasJustCreated = !localStorage.getItem(membershipKey);
               if (wasJustCreated) {
                 localStorage.setItem(membershipKey, 'true');
                 toast.success('You have been automatically added to this organization');
               }
-              
-              console.log('[SaveToJob] Successfully obtained organization membership:', orgMember);
-            } catch (joinError) {
-              console.error('[SaveToJob] Error joining organization:', joinError);
-              toast.error('Cannot save: unable to join organization. Please contact an administrator.');
+              console.log('[SaveToJob] Organization membership obtained:', orgMember);
+            }
+          } catch (error) {
+            console.error('[SaveToJob] Error with org membership:', error);
+            // If it's a 404, try to join
+            if ((error as any)?.status === 404 || (error as any)?.statusCode === 404) {
+              try {
+                console.log('[SaveToJob] Attempting to join organization...');
+                const newMembership = await apiClient.joinOrg(job.orgId, 'estimator');
+                orgMember = newMembership;
+                
+                // Only show toast if this is actually a new membership
+                const membershipKey = `org_member_${job.orgId}_${authUser.id}`;
+                const wasJustCreated = !localStorage.getItem(membershipKey);
+                if (wasJustCreated) {
+                  localStorage.setItem(membershipKey, 'true');
+                  toast.success('You have been automatically added to this organization');
+                }
+                
+                console.log('[SaveToJob] Successfully obtained organization membership:', orgMember);
+              } catch (joinError) {
+                console.error('[SaveToJob] Error joining organization:', joinError);
+                toast.error('Cannot save: unable to join organization. Please contact an administrator.');
+                setIsSavingToJob(false);
+                return;
+              }
+            } else {
+              toast.error('Cannot save: organization membership error. Masks will not be saved.');
               setIsSavingToJob(false);
               return;
             }
-          } else {
-            toast.error('Cannot save: organization membership error. Masks will not be saved.');
-            setIsSavingToJob(false);
-            return;
           }
+        } else {
+          // No orgId - user-centric model, skip org membership check
+          console.log('[SaveToJob] Job has no orgId, skipping org membership check (user-centric model)');
         }
       }
       
