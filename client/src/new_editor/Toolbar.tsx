@@ -1288,12 +1288,11 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           wasClamped
         });
         
-        const maskData = {
+        const maskData: any = {
           photoId: targetPhotoId,
           type: 'area' as const,
           pathJson: JSON.stringify(clampedPts), // Use clamped coordinates
           materialId: mask.materialId,
-          createdBy: orgMember!.id, // We know orgMember exists here
           calcMetaJson: mask.materialSettings || null,
           depthLevel: mask.depthLevel || 0,
           // elevationM is a numeric type in the database, which Zod expects as a string
@@ -1301,6 +1300,12 @@ export function Toolbar({ jobId, photoId }: ToolbarProps = {}) {
           zIndex: mask.zIndex || 0,
           isStepped: mask.isStepped || false
         };
+        
+        // Only include createdBy if orgMember exists (for backward compatibility)
+        // The backend will use userId from the session, so this is optional
+        if (orgMember?.id) {
+          maskData.createdBy = orgMember.id;
+        }
 
         console.log('[SaveToJob] Creating mask in database:', maskData);
         
