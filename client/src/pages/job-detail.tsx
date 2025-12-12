@@ -356,6 +356,25 @@ export default function JobDetail() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const renovationFileInputRef = useRef<HTMLInputElement>(null);
 
+  const deleteJobMutation = useMutation({
+    mutationFn: (jobId: string) => apiClient.deleteJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      toast({
+        title: "Job deleted",
+        description: "The job has been deleted successfully.",
+      });
+      navigate('/jobs');
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting job",
+        description: error.message || "Failed to delete job",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>, category: 'marketing' | 'renovation_buyer' = 'marketing') => {
     const file = event.target.files?.[0];
     if (file && jobId) {
@@ -545,25 +564,6 @@ export default function JobDetail() {
       description: "Job editing functionality will be available soon.",
     });
   };
-
-  const deleteJobMutation = useMutation({
-    mutationFn: (jobId: string) => apiClient.deleteJob(jobId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
-      toast({
-        title: "Job deleted",
-        description: "The job has been deleted successfully.",
-      });
-      navigate('/jobs');
-    },
-    onError: (error: any) => {
-      toast({
-        title: "Error deleting job",
-        description: error.message || "Failed to delete job",
-        variant: "destructive",
-      });
-    },
-  });
 
   const handleDeleteJob = () => {
     if (!jobId || !job) return;
