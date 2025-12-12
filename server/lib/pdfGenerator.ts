@@ -28,6 +28,9 @@ export interface PDFData {
   items: QuoteItem[];
   organization: Org;
   settings: Settings;
+  job?: any; // Job data for trades-specific features
+  user?: any; // User data for industry type
+  primaryPhotoUrl?: string; // Hero image for trades PDFs
   totals: {
     subtotal: number;
     gst: number;
@@ -272,6 +275,25 @@ export class PDFGenerator {
       throw new Error('Organization settings not found');
     }
 
+    // Get user to check industry type (for trades-specific PDF features)
+    const user = job.userId ? await storage.getUser(job.userId) : null;
+    const isTrades = user?.industryType !== 'real_estate';
+
+    // Get primary photo for hero image (Trades only)
+    let primaryPhotoUrl: string | undefined;
+    if (isTrades) {
+      try {
+        const photos = await storage.getJobPhotos(quote.jobId);
+        // Use the first photo's originalUrl or compositeUrl as hero image
+        if (photos.length > 0) {
+          primaryPhotoUrl = photos[0].compositeUrl || photos[0].originalUrl;
+        }
+      } catch (error) {
+        // If photo fetch fails, continue without hero image
+        console.warn('[PDFGenerator] Failed to fetch photos for hero image:', error);
+      }
+    }
+
     // Calculate totals
     const subtotal = parseFloat(quote.subtotal);
     const gst = parseFloat(quote.gst);
@@ -284,12 +306,16 @@ export class PDFGenerator {
       items,
       organization,
       settings,
+      job,
+      user,
+      primaryPhotoUrl,
       totals: { subtotal, gst, total, depositAmount }
     };
   }
 
   private generateHTML(data: PDFData, options: PDFGenerationOptions): string {
-    const { quote, items, organization, settings, totals } = data;
+    const { quote, items, organization, settings, job, user, primaryPhotoUrl, totals } = data;
+    const isTrades = user?.industryType !== 'real_estate';
     
     // Extract branding colors from organization (with defaults)
     const brandColors = organization.brandColors as { primary?: string; secondary?: string; accent?: string } | null || {};
@@ -510,6 +536,33 @@ export class PDFGenerator {
             pointer-events: none;
         }
         
+        .hero-image {
+            width: 100%;
+            max-height: 300px;
+            object-fit: cover;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .client-info {
+            background-color: #f9fafb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        
+        .client-info h3 {
+            font-size: 16px;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+        
+        .client-info p {
+            margin: 4px 0;
+            color: #6b7280;
+            font-size: 14px;
+        }
+        
         @media print {
             .container {
                 padding: 0;
@@ -529,12 +582,23 @@ export class PDFGenerator {
                 <p>${organization.phone || ''} ${organization.email || ''}</p>
             </div>
             <div class="quote-info">
-                <h2>Quote #${quote.id.substring(0, 8)}</h2>
+                <h2>${quote.name || `Quote #${quote.id.substring(0, 8)}`}</h2>
                 <p>Date: ${new Date(quote.createdAt).toLocaleDateString()}</p>
+                <p>Status: ${quote.status.toUpperCase()}</p>
                 <p>Valid for: ${quote.validityDays} days</p>
             </div>
         </div>
         
+        ${isTrades && job ? `
+        <div class="client-info">
+            <h3>Client Information</h3>
+            <p><strong>Client:</strong> ${job.clientName || 'N/A'}</p>
+            ${job.address ? `<p><strong>Address:</strong> ${job.address}</p>` : ''}
+            ${job.clientPhone ? `<p><strong>Phone:</strong> ${job.clientPhone}</p>` : ''}
+            ${job.clientEmail ? `<p><strong>Email:</strong> ${job.clientEmail}</p>` : ''}
+            ${job.name ? `<p><strong>Job:</strong> ${job.name}</p>` : ''}
+        </div>
+        ` : `
         <div class="quote-details">
             <h3>Project Details</h3>
             <div class="details-grid">
@@ -556,6 +620,13 @@ export class PDFGenerator {
                 </div>
             </div>
         </div>
+        `}
+        
+        ${isTrades && primaryPhotoUrl ? `
+        <div class="hero-image-container">
+            <img src="${primaryPhotoUrl}" alt="Project Image" class="hero-image" />
+        </div>
+        ` : ''}
         
         <table class="items-table">
             <thead>
@@ -597,10 +668,13 @@ export class PDFGenerator {
             </table>
         </div>
         
+        ${parseFloat(quote.depositPct) > 0 ? `
         <div class="deposit-section">
             <h4>Deposit Required</h4>
             <p>A deposit of ${this.formatCurrency(totals.depositAmount, settings.currencyCode)} (${(parseFloat(quote.depositPct) * 100).toFixed(0)}%) is required to secure this quote.</p>
+            ${isTrades ? `<p><strong>Balance after deposit:</strong> ${this.formatCurrency(totals.total - totals.depositAmount, settings.currencyCode)}</p>` : ''}
         </div>
+        ` : ''}
         
         ${options.customMessage ? `
             <div class="terms-section">
@@ -613,6 +687,13 @@ export class PDFGenerator {
             <div class="terms-section">
                 <h4>Terms & Conditions</h4>
                 <p>${settings.pdfTerms}</p>
+            </div>
+        ` : ''}
+        
+        ${isTrades && options.customMessage ? `
+            <div class="terms-section">
+                <h4>Terms & Notes</h4>
+                <p>${options.customMessage}</p>
             </div>
         ` : ''}
         

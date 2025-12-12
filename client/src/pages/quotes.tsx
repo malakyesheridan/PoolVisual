@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { QuoteBuilder } from "@/components/quotes/quote-builder";
 import { JobSelectionModal } from "@/components/quotes/JobSelectionModal";
 import { PDFPreview } from "@/components/quotes/PDFPreview";
@@ -21,6 +22,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
+import { useIsTrades } from "@/hooks/useIsTrades";
 import { 
   ArrowLeft, 
   Search, 
@@ -39,7 +41,11 @@ import {
   Trash2,
   Copy,
   Download,
-  Send
+  Send,
+  CheckCircle,
+  Phone,
+  Mail,
+  MapPin
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { formatCurrency } from "@/lib/measurement-utils";
@@ -50,6 +56,7 @@ export default function Quotes() {
   const [, navigate] = useLocation();
   const quoteId = params?.id;
   const isRealEstate = useIsRealEstate();
+  const isTrades = useIsTrades();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showJobSelectionModal, setShowJobSelectionModal] = useState(false);
@@ -76,6 +83,14 @@ export default function Quotes() {
     queryFn: () => quoteId ? apiClient.getQuote(quoteId) : Promise.resolve(null),
     enabled: !!quoteId,
     staleTime: 30 * 1000, // 30 seconds
+  });
+  
+  // Fetch job data for quote detail (Trades only)
+  const { data: job } = useQuery({
+    queryKey: ['/api/jobs', quote?.jobId],
+    queryFn: () => quote?.jobId ? apiClient.getJob(quote.jobId) : Promise.resolve(null),
+    enabled: !!quote?.jobId && isTrades,
+    staleTime: 1 * 60 * 1000, // 1 minute
   });
 
   // Fetch quotes for current user (user-centric architecture)
@@ -463,6 +478,46 @@ export default function Quotes() {
       });
     },
   });
+  
+  // Update quote status mutation (for Trades status actions)
+  const updateQuoteStatusMutation = useMutation({
+    mutationFn: ({ quoteId, status }: { quoteId: string; status: string }) => 
+      apiClient.updateQuote(quoteId, { status }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
+      if (variables.status === 'sent') {
+        toast({
+          title: "Quote status updated",
+          description: "Quote status updated to Sent. Remember to email the PDF to your client.",
+        });
+      } else if (variables.status === 'accepted') {
+        toast({
+          title: "Quote marked as Accepted",
+          description: "The quote has been marked as accepted.",
+        });
+      }
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error updating quote status",
+        description: error.message || "Failed to update quote status.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleSendToClient = () => {
+    if (!quote) return;
+    updateQuoteStatusMutation.mutate({ quoteId: quote.id, status: 'sent' });
+  };
+  
+  const handleMarkAsAccepted = () => {
+    if (!quote) return;
+    if (window.confirm('Mark this quote as accepted?')) {
+      updateQuoteStatusMutation.mutate({ quoteId: quote.id, status: 'accepted' });
+    }
+  };
 
   const handleSendQuote = () => {
     if (!quote) return;
@@ -609,6 +664,32 @@ export default function Quotes() {
               </div>
               
               <div className="flex items-center gap-2">
+                {/* PART B: Status Actions (Trades only) */}
+                {isTrades && quote && (quote.status === 'draft' || quote.status === 'sent') && (
+                  <>
+                    <Button 
+                      variant="default" 
+                      size="sm"
+                      onClick={handleSendToClient}
+                      disabled={updateQuoteStatusMutation.isPending}
+                      className="h-9 text-sm bg-primary hover:bg-primary/90"
+                    >
+                      <Send className="w-4 h-4 mr-1.5" />
+                      Send to Client
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleMarkAsAccepted}
+                      disabled={updateQuoteStatusMutation.isPending}
+                      className="h-9 text-sm"
+                    >
+                      <CheckCircle className="w-4 h-4 mr-1.5" />
+                      Mark as Accepted
+                    </Button>
+                  </>
+                )}
+                
                 <Button 
                   variant="outline" 
                   size="sm"
@@ -633,6 +714,90 @@ export default function Quotes() {
               </div>
             </div>
           </div>
+
+          {/* PART A: Header Summary Bar (Trades only) */}
+          {isTrades && quote && (
+            <Card className="mb-6">
+              <CardContent className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {/* Left: Identity */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-slate-500" />
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {quote.name || `Quote #${quote.id.slice(-8).toUpperCase()}`}
+                      </h3>
+                    </div>
+                    {quote.id && (
+                      <p className="text-xs text-slate-500">
+                        #{quote.id.substring(0, 8)}
+                      </p>
+                    )}
+                    <Badge className={`${getStatusColor(quote.status)} text-xs font-medium px-2.5 py-0.5 w-fit`}>
+                      {quote.status}
+                    </Badge>
+                  </div>
+                  
+                  {/* Middle: Job & Client */}
+                  <div className="space-y-2">
+                    {job && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-slate-500" />
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">
+                              {job.clientName}
+                              {job.address && ` – ${job.address.split(',')[0]}`}
+                            </p>
+                            {job.clientPhone && (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                <Phone className="w-3 h-3" />
+                                <span>{job.clientPhone}</span>
+                              </div>
+                            )}
+                            {job.clientEmail && (
+                              <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
+                                <Mail className="w-3 h-3" />
+                                <span>{job.clientEmail}</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Right: Money */}
+                  <div className="space-y-2">
+                    <div>
+                      <p className="text-xs text-slate-500 mb-1">Total</p>
+                      <p className="text-2xl font-bold text-slate-900">
+                        {formatCurrency(parseFloat(quote.total || '0'))}
+                      </p>
+                    </div>
+                    {quote.depositPct && parseFloat(quote.depositPct) > 0 && (
+                      <div className="pt-2 border-t border-slate-200">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-slate-600">
+                            Deposit ({(parseFloat(quote.depositPct) * 100).toFixed(0)}%):
+                          </span>
+                          <span className="text-sm font-semibold text-primary">
+                            {formatCurrency(parseFloat(quote.total || '0') * parseFloat(quote.depositPct))}
+                          </span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-slate-600">Balance after deposit:</span>
+                          <span className="text-sm font-medium text-slate-900">
+                            {formatCurrency(parseFloat(quote.total || '0') * (1 - parseFloat(quote.depositPct)))}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Quote Builder */}
           <QuoteBuilder

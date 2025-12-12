@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { FileText, Plus, Edit, X, Save } from "lucide-react";
 import { formatCurrency } from "@/lib/measurement-utils";
+import { useIsTrades } from "@/hooks/useIsTrades";
 
 interface QuoteItem {
   id: string;
@@ -56,6 +57,7 @@ export function QuoteBuilder({
   onPreviewPDF,
   isRecalculating = false
 }: QuoteBuilderProps) {
+  const isTrades = useIsTrades();
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItem, setNewItem] = useState({
@@ -447,24 +449,38 @@ export function QuoteBuilder({
             <Separator />
             
             <div className="flex justify-between items-center">
-              <span className="text-lg font-semibold text-slate-900">Total:</span>
+              <span className={isTrades ? "text-xl font-bold text-slate-900" : "text-lg font-semibold text-slate-900"}>Total:</span>
               <span 
-                className="text-lg font-semibold text-slate-900"
+                className={isTrades ? "text-xl font-bold text-slate-900" : "text-lg font-semibold text-slate-900"}
                 data-testid="text-quote-total"
               >
                 {formatCurrency(total)}
               </span>
             </div>
             
-            <div className="flex justify-between items-center pt-3 border-t border-slate-200">
-              <span className="text-sm text-slate-600">Deposit Required ({(depositPct * 100).toFixed(0)}%):</span>
-              <span 
-                className="text-sm font-semibold text-primary"
-                data-testid="text-deposit-amount"
-              >
-                {formatCurrency(depositAmount)}
-              </span>
-            </div>
+            {depositPct > 0 && (
+              <div className={`flex justify-between items-center ${isTrades ? 'pt-3' : 'pt-3'} border-t border-slate-200`}>
+                <span className="text-sm text-slate-600">
+                  {isTrades ? `Deposit (${(depositPct * 100).toFixed(0)}%):` : `Deposit Required (${(depositPct * 100).toFixed(0)}%):`}
+                </span>
+                <span 
+                  className="text-sm font-semibold text-primary"
+                  data-testid="text-deposit-amount"
+                >
+                  {formatCurrency(depositAmount)}
+                </span>
+              </div>
+            )}
+            
+            {/* PART C: Balance after deposit (Trades only) */}
+            {isTrades && depositPct > 0 && (
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-sm text-slate-600">Balance after deposit:</span>
+                <span className="text-sm font-medium text-slate-900">
+                  {formatCurrency(total - depositAmount)}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
