@@ -91,7 +91,7 @@ export default function JobDetail() {
 
   const { data: quotes = [], isLoading: quotesLoading } = useQuery({
     queryKey: ['/api/quotes', jobId],
-    queryFn: () => jobId ? apiClient.getQuotes(job?.orgId || '', { jobId }) : Promise.resolve([]),
+    queryFn: () => jobId ? apiClient.getQuotes({ jobId }) : Promise.resolve([]),
     enabled: !!jobId && !!job?.orgId,
     staleTime: 30 * 1000, // 30 seconds - quotes can change more frequently
   });

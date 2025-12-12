@@ -72,10 +72,13 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
     mutationFn: async (data: { jobId: string; measurements: any[]; quoteId?: string }) => {
       return apiClient.addMeasurementsToQuote(data.jobId, data.measurements, data.quoteId);
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (response, variables) => {
       // Build toast message with details
       const maskCount = variables.measurements.length;
       let toastMessage = '';
+      
+      // Get the quote ID from the response
+      const quoteId = response?.quote?.id || variables.quoteId;
       
       if (isTrades) {
         if (maskCount === 1) {
@@ -94,9 +97,21 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
         title: "Added to Quote",
         description: toastMessage,
       });
+      
+      // Invalidate queries to refresh quote data
       queryClient.invalidateQueries({ queryKey: ['/api/quotes'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/quotes', quoteId] });
+      
       setLastSyncTime(new Date());
       setShowQuoteSelectionModal(false);
+      
+      // If a new quote was created, navigate to it
+      if (quoteId && !variables.quoteId) {
+        // Small delay to ensure query invalidation completes
+        setTimeout(() => {
+          window.location.href = `/quotes/${quoteId}`;
+        }, 500);
+      }
     },
     onError: (error: any) => {
       toast({
@@ -506,7 +521,6 @@ export function MeasurementOverlay({ className = '', jobId }: MeasurementOverlay
           handleAddToQuote(quoteId);
         }}
         jobId={jobId}
-        jobOrgId={job.orgId}
         allowCreateNew={true}
         isTrades={isTrades}
       />

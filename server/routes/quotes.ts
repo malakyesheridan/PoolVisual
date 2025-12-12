@@ -83,8 +83,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -114,8 +114,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -155,8 +155,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -190,8 +190,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -243,8 +243,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -286,8 +286,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -329,8 +329,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -367,8 +367,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -412,8 +412,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -482,8 +482,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -523,8 +523,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -568,8 +568,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -611,14 +611,14 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(400).json({ message: "Measurements array is required" });
       }
 
-      // Verify job access
+      // Verify job access (user-centric)
       const job = await storage.getJob(jobId);
       if (!job) {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -636,20 +636,28 @@ export function registerQuoteRoutes(app: Express): void {
         if (quote.jobId !== jobId) {
           return res.status(400).json({ message: "Quote does not belong to this job" });
         }
+        
+        // Verify user has access to this quote through the job
+        const quoteJob = await storage.getJob(quote.jobId);
+        if (!quoteJob || (quoteJob.userId !== req.user.id && !req.user.isAdmin)) {
+          return res.status(403).json({ message: "Access denied to this quote" });
+        }
       } else {
-        // Find or create a draft quote for this job
-        let quotes = await storage.getQuotes(job.orgId, { jobId, status: 'draft' });
+        // Find or create a draft quote for this job (user-centric)
+        let quotes = await storage.getQuotes(req.user.id, { jobId, status: 'draft' });
         
         if (!quotes || quotes.length === 0) {
-          // Create new draft quote
+          // Create new draft quote with job details
           quote = await storage.createQuote({
             jobId: jobId,
+            orgId: job.orgId,
             status: 'draft',
             subtotal: '0',
             gst: '0',
             total: '0',
             depositPct: '0.30',
-            validityDays: 30
+            validityDays: 30,
+            name: job.clientName ? `${job.clientName} - Quote` : 'New Quote'
           });
         } else {
           quote = quotes[0];
@@ -934,8 +942,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });
@@ -997,8 +1005,8 @@ export function registerQuoteRoutes(app: Express): void {
         return res.status(404).json({ message: "Job not found" });
       }
 
-      const userOrgs = await storage.getUserOrgs(req.user.id);
-      const hasAccess = userOrgs.some(org => org.id === job.orgId);
+      // Verify user-centric access - user must own the job
+      const hasAccess = job.userId === req.user.id || req.user.isAdmin;
       
       if (!hasAccess) {
         return res.status(403).json({ message: "Access denied" });

@@ -15,7 +15,6 @@ interface QuoteSelectionModalProps {
   onOpenChange: (open: boolean) => void;
   onSelectQuote: (quoteId: string, quoteInfo?: { label: string; status: string }) => void;
   jobId: string;
-  jobOrgId: string;
   allowCreateNew?: boolean;
   isTrades?: boolean;
 }
@@ -25,7 +24,6 @@ export function QuoteSelectionModal({
   onOpenChange,
   onSelectQuote,
   jobId,
-  jobOrgId,
   allowCreateNew = true,
   isTrades = false,
 }: QuoteSelectionModalProps) {
@@ -34,9 +32,9 @@ export function QuoteSelectionModal({
   const [, navigate] = useLocation();
 
   const { data: quotes = [], isLoading } = useQuery({
-    queryKey: ['/api/quotes', jobOrgId, jobId],
-    queryFn: () => apiClient.getQuotes(jobOrgId, { jobId }),
-    enabled: !!jobOrgId && !!jobId && open,
+    queryKey: ['/api/quotes', jobId],
+    queryFn: () => apiClient.getQuotes({ jobId }),
+    enabled: !!jobId && open,
   });
 
   const getStatusColor = (status: string) => {
