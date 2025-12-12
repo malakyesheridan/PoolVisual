@@ -105,7 +105,6 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   }, [masks.length]);
   
   // Track image URL changes (no auto sidebar behavior)
-  const imageUrl = useEditorStore(state => state.imageUrl);
   useEffect(() => {
     prevImageUrlRef.current = imageUrl;
   }, [imageUrl]);
