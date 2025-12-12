@@ -243,9 +243,14 @@ export default function Jobs() {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs/canvas-status'] });
     },
     onError: (error: any) => {
+      const errorMessage = error?.response?.data?.message || error?.message || "Failed to delete job";
+      const isConflict = error?.response?.status === 409 || errorMessage.includes('referenced');
+      
       toast({
-        title: "Error deleting job",
-        description: error.message || "Failed to delete job",
+        title: isConflict ? "Cannot delete job" : "Error deleting job",
+        description: isConflict 
+          ? "This job is still referenced by other records. Please try again or contact support if the issue persists."
+          : errorMessage,
         variant: "destructive",
       });
     },

@@ -13,8 +13,10 @@ import {
   insertMaskSchema,
   insertQuoteSchema,
   insertQuoteItemSchema,
-  CalibrationSchema
+  CalibrationSchema,
+  propertyNotes
 } from "../shared/schema.js";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 // JWT removed - using session-based authentication
@@ -2185,7 +2187,43 @@ export async function registerRoutes(app: Express): Promise<void> {
         return res.status(403).json({ message: "Access denied" });
       }
       
-      // Delete associated photos first (which will cascade to masks)
+      // Delete associated quotes first (quotes reference jobs via jobId)
+      try {
+        const jobQuotes = await storage.getQuotes(req.user.id, { jobId: jobId });
+        console.log(`[DeleteJob] Found ${jobQuotes.length} quotes to delete`);
+        for (const quote of jobQuotes) {
+          try {
+            await storage.deleteQuote(quote.id);
+            console.log(`[DeleteJob] Deleted quote: ${quote.id}`);
+          } catch (quoteError) {
+            console.warn(`[DeleteJob] Failed to delete quote ${quote.id}:`, quoteError);
+            // Continue with job deletion even if quote deletion fails
+          }
+        }
+      } catch (quoteQueryError) {
+        console.error('[DeleteJob] Error querying quotes:', quoteQueryError);
+        // Continue with job deletion even if quote query fails
+      }
+
+      // Delete associated opportunities (opportunities reference jobs via propertyJobId)
+      try {
+        const jobOpportunities = await storage.getOpportunities(req.user.id, { propertyJobId: jobId });
+        console.log(`[DeleteJob] Found ${jobOpportunities.length} opportunities to delete`);
+        for (const opportunity of jobOpportunities) {
+          try {
+            await storage.deleteOpportunity(opportunity.id);
+            console.log(`[DeleteJob] Deleted opportunity: ${opportunity.id}`);
+          } catch (oppError) {
+            console.warn(`[DeleteJob] Failed to delete opportunity ${opportunity.id}:`, oppError);
+            // Continue with job deletion even if opportunity deletion fails
+          }
+        }
+      } catch (oppQueryError) {
+        console.error('[DeleteJob] Error querying opportunities:', oppQueryError);
+        // Continue with job deletion even if opportunity query fails
+      }
+      
+      // Delete associated photos (which will cascade to masks)
       try {
         const jobPhotos = await storage.getJobPhotos(jobId);
         console.log(`[DeleteJob] Found ${jobPhotos.length} photos to delete`);
@@ -2208,6 +2246,19 @@ export async function registerRoutes(app: Express): Promise<void> {
         console.error('[DeleteJob] Error querying photos:', photoQueryError);
         // Continue with job deletion even if photo query fails
       }
+
+      // Delete property notes (if any)
+      try {
+        const { getDatabase } = await import('./db.js');
+        const db = getDatabase();
+        if (db) {
+          await db.delete(propertyNotes).where(eq(propertyNotes.jobId, jobId));
+          console.log(`[DeleteJob] Deleted property notes for job: ${jobId}`);
+        }
+      } catch (notesError) {
+        console.warn(`[DeleteJob] Failed to delete property notes:`, notesError);
+        // Continue with job deletion even if notes deletion fails
+      }
       
       // Delete the job
       try {
@@ -2219,7 +2270,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
         if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
           return res.status(409).json({ 
-            message: "Cannot delete job: it is referenced by other records. Please delete associated records first." 
+            message: "Cannot delete job: it is still referenced by other records. Please try again or contact support if the issue persists." 
           });
         }
         throw deleteError; // Re-throw if it's not a constraint error
