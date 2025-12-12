@@ -46,6 +46,8 @@ import { formatDistanceToNow } from "date-fns";
 import { getIndustryTerm } from "@/lib/industry-terminology";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 import { useIsTrades } from "@/hooks/useIsTrades";
+import { useTradesOnboardingHint } from "@/hooks/useTradesOnboardingHints";
+import { TradesOnboardingHint } from "@/components/onboarding/TradesOnboardingHint";
 import { formatCurrency } from "@/lib/measurement-utils";
 import { getTradesJobStatus, getQuoteSummary } from "@/lib/job-status-utils";
 
@@ -68,6 +70,9 @@ export default function Jobs() {
   const createJobText = getIndustryTerm(userIndustry, 'createJob');
   const isRealEstate = useIsRealEstate();
   const isTrades = useIsTrades();
+  
+  // PART B: Jobs page onboarding hint (Trades only)
+  const jobsHint = useTradesOnboardingHint('jobs');
 
   // Redirect real estate users to /properties route
   useEffect(() => {
@@ -330,6 +335,14 @@ export default function Jobs() {
       </div>
 
       <div className="max-w-6xl mx-auto w-full px-0 md:px-6">
+        {/* PART B: Jobs Page Onboarding Hint (Trades only) */}
+        {isTrades && jobsHint.isVisible && (
+          <TradesOnboardingHint
+            message="Start by creating a job, then upload photos so you can mock up and quote from the canvas."
+            onDismiss={jobsHint.dismiss}
+          />
+        )}
+        
         {/* Search + Filters Strip */}
         <div className="mb-6 rounded-2xl bg-white shadow-sm border border-slate-100 px-4 py-3 flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[200px]">

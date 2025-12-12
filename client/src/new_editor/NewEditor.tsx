@@ -11,6 +11,9 @@ import { useEditorStore } from './store';
 import { useMaskStore } from '../maskcore/store';
 import { apiClient } from '../lib/api-client';
 import { shouldIgnoreShortcut } from '../editor/keyboard/shortcuts';
+import { useIsTrades } from '../hooks/useIsTrades';
+import { useTradesOnboardingHint } from '../hooks/useTradesOnboardingHints';
+import { TradesOnboardingHint } from '../components/onboarding/TradesOnboardingHint';
 import { Package, Square, Sparkles, ChevronLeft, ChevronRight, PanelLeft, PanelRight } from 'lucide-react';
 import { 
   Tooltip, 
@@ -37,6 +40,12 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
   const justSavedRef = useRef<{ photoId: string; timestamp: number } | null>(null);
   const { dispatch, getState, jobContext, variants, activeVariantId, masks } = useEditorStore();
   const [activeTab, setActiveTab] = React.useState<'materials' | 'variants' | 'masks'>('materials');
+  const isTrades = useIsTrades();
+  
+  // PART C: Canvas Editor onboarding hint (Trades only)
+  const canvasHint = useTradesOnboardingHint('canvas');
+  const imageUrl = useEditorStore(state => state.imageUrl);
+  const hasImageLoaded = !!imageUrl && imageUrl !== '';
   
   // Sidebar width state with localStorage persistence
   const [sidebarWidth, setSidebarWidth] = React.useState(() => {
@@ -1054,6 +1063,16 @@ export function NewEditor({ jobId, photoId }: NewEditorProps = {}) {
             {...(effectiveJobId && { jobId: effectiveJobId })}
             {...(effectivePhotoId && { photoId: effectivePhotoId })}
           />
+      
+      {/* PART C: Canvas Editor Onboarding Hint (Trades only, when photo is loaded) */}
+      {isTrades && canvasHint.isVisible && hasImageLoaded && (
+        <div className="px-2 md:px-4 pt-2">
+          <TradesOnboardingHint
+            message="Draw your areas, apply materials, then use Enhance and Export to turn this into a priced quote."
+            onDismiss={canvasHint.dismiss}
+          />
+        </div>
+      )}
       
       <div className="flex-1 flex overflow-hidden min-h-0 gap-0 md:gap-4 p-0 md:p-2 lg:p-4 relative">
         {/* Canvas viewport container - full width on mobile, adjusted for sidebar on desktop */}

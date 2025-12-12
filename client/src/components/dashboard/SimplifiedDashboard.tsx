@@ -61,21 +61,8 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
     });
   }, [jobs, searchTerm, filterStatus]);
 
-  if (jobsLoading) {
-    return (
-      <div className={`min-h-screen bg-gray-50 ${className}`}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-6"></div>
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">Loading Projects</h3>
-              <p className="text-gray-600">Fetching your project data...</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Show skeletons instead of full-page spinner for better UX
+  const isLoading = jobsLoading || quotesLoading;
 
   return (
     <div className={`min-h-screen bg-gray-50 pb-20 md:pb-0 ${className}`}>
@@ -121,9 +108,11 @@ export function SimplifiedDashboard({ className = '' }: SimplifiedDashboardProps
         </div>
 
         {/* Action Tiles - Trades Only */}
-        <div className="mt-8">
-          <ActionTiles jobs={jobs} quotes={quotes} />
-        </div>
+        {isTrades && (
+          <div className="mt-8">
+            <ActionTiles jobs={jobs} quotes={quotes} isLoading={isLoading} />
+          </div>
+        )}
 
         {/* Dashboard Insights Section - Quick Insights only for Real Estate */}
         {!isTrades && (

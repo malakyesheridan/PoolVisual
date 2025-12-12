@@ -23,6 +23,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuthStore } from "@/stores/auth-store";
 import { useIsRealEstate } from "@/hooks/useIsRealEstate";
 import { useIsTrades } from "@/hooks/useIsTrades";
+import { useTradesOnboardingHint } from "@/hooks/useTradesOnboardingHints";
+import { TradesOnboardingHint } from "@/components/onboarding/TradesOnboardingHint";
 import { 
   ArrowLeft, 
   Search, 
@@ -57,6 +59,9 @@ export default function Quotes() {
   const quoteId = params?.id;
   const isRealEstate = useIsRealEstate();
   const isTrades = useIsTrades();
+  
+  // PART D: Quotes page onboarding hint (Trades only)
+  const quotesHint = useTradesOnboardingHint('quotes');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [showJobSelectionModal, setShowJobSelectionModal] = useState(false);
@@ -834,6 +839,13 @@ export default function Quotes() {
     <ErrorBoundary name="Quotes Page">
       <div className="bg-slate-50 pb-20 md:pb-0">      
       <div className="max-w-6xl mx-auto px-4 md:px-6 py-4 md:py-8">
+        {/* PART D: Quotes Page Onboarding Hint (Trades only) */}
+        {isTrades && !quoteId && quotesHint.isVisible && (
+          <TradesOnboardingHint
+            message="Quotes are built from calibrated measurements inside each job. Use 'Add Changes to Quote' from the canvas to populate them."
+            onDismiss={quotesHint.dismiss}
+          />
+        )}
         {/* Mobile Header */}
         <div className="md:hidden safe-top bg-white border-b border-gray-200 px-4 py-3 -mx-4 md:mx-0 mb-4">
           <div className="flex items-center justify-between">

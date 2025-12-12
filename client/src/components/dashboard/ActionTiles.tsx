@@ -9,19 +9,49 @@ import { Card, CardContent } from '../ui/card';
 import { FileText, Send, Clock, ArrowRight } from 'lucide-react';
 import { useIsTrades } from '../../hooks/useIsTrades';
 
+import { Skeleton } from '../ui/skeleton';
+import { Card, CardContent } from '../ui/card';
+
 interface ActionTilesProps {
   jobs: any[];
   quotes: any[];
+  isLoading?: boolean;
   className?: string;
 }
 
-export function ActionTiles({ jobs, quotes, className = '' }: ActionTilesProps) {
+export function ActionTiles({ jobs, quotes, isLoading = false, className = '' }: ActionTilesProps) {
   const isTrades = useIsTrades();
   const [, navigate] = useLocation();
 
   // Only render for trades
   if (!isTrades) {
     return null;
+  }
+
+  // Show loading skeletons while data is loading
+  if (isLoading) {
+    return (
+      <div className={`grid grid-cols-1 sm:grid-cols-3 gap-4 ${className}`}>
+        {[1, 2, 3].map((index) => (
+          <Card
+            key={index}
+            className="bg-white border border-gray-100 rounded-xl shadow-sm"
+          >
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between mb-3">
+                <Skeleton className="w-12 h-12 rounded-lg" />
+                <Skeleton className="w-4 h-4" />
+              </div>
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-16" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
   }
 
   // Group quotes by jobId for quick lookup
