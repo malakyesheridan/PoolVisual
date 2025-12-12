@@ -228,6 +228,37 @@ export default function Jobs() {
     },
   });
 
+  // Mutation to delete job
+  const deleteJobMutation = useMutation({
+    mutationFn: async (jobId: string) => {
+      return apiClient.deleteJob(jobId);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Job deleted",
+        description: "The job has been deleted successfully.",
+      });
+      // Invalidate queries to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs/canvas-status'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting job",
+        description: error.message || "Failed to delete job",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteJob = (e: React.MouseEvent, job: any) => {
+    e.stopPropagation(); // Prevent navigation to job detail
+    if (!confirm(`Are you sure you want to delete the job for ${job.clientName}? This action cannot be undone and will delete all associated photos, quotes, and other data.`)) {
+      return;
+    }
+    deleteJobMutation.mutate(job.id);
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'new': return 'bg-primary/5 text-primary border border-primary/20';
@@ -636,6 +667,17 @@ export default function Jobs() {
                           title="View job"
                           >
                           <Eye className="w-5 h-5 md:w-4 md:h-4" />
+                        </button>
+                          
+                        <button 
+                          onClick={(e) => handleDeleteJob(e, job)}
+                          disabled={deleteJobMutation.isPending}
+                          data-testid={`button-delete-job-${job.id}`}
+                          className="p-2.5 md:p-1.5 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 flex items-center justify-center text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-all duration-150 tap-target disabled:opacity-50"
+                          aria-label="Delete job"
+                          title="Delete job"
+                        >
+                          <Trash2 className="w-5 h-5 md:w-4 md:h-4" />
                         </button>
                           
                         <DropdownMenu>

@@ -328,6 +328,12 @@ class ApiClient {
     });
   }
 
+  async deleteJob(id: string) {
+    return this.request<{ message: string }>(`/jobs/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Photos
   async createPhoto(data: any) {
     return this.request<any>('/photos', {

@@ -551,13 +551,33 @@ export default function JobDetail() {
     });
   };
 
+  const deleteJobMutation = useMutation({
+    mutationFn: (jobId: string) => apiClient.deleteJob(jobId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+      toast({
+        title: "Job deleted",
+        description: "The job has been deleted successfully.",
+      });
+      navigate('/jobs');
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error deleting job",
+        description: error.message || "Failed to delete job",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleDeleteJob = () => {
-    // For now, just show a toast message since we don't have delete functionality
-    toast({
-      title: "Delete Job",
-      description: "Job deletion functionality will be available soon.",
-      variant: "destructive",
-    });
+    if (!jobId || !job) return;
+    
+    if (!confirm(`Are you sure you want to delete the job for ${job.clientName}? This action cannot be undone and will delete all associated photos, quotes, and other data.`)) {
+      return;
+    }
+    
+    deleteJobMutation.mutate(jobId);
   };
 
   return (
@@ -635,11 +655,12 @@ export default function JobDetail() {
                 <Button 
                   variant="outline" 
                   onClick={handleDeleteJob}
+                  disabled={deleteJobMutation.isPending}
                   data-testid="button-delete-job"
                   className="text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
+                  {deleteJobMutation.isPending ? 'Deleting...' : 'Delete'}
                 </Button>
               </>
             )}

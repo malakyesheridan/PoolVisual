@@ -931,6 +931,21 @@ export class PostgresStorage implements IStorage {
     }
   }
 
+  async deleteJob(id: string): Promise<void> {
+    try {
+      const db = ensureDb();
+      // Delete the job (cascade should handle related records)
+      await db.delete(jobs).where(eq(jobs.id, id));
+    } catch (error) {
+      console.error('Storage error in deleteJob:', {
+        error: error instanceof Error ? error.message : error,
+        id: id,
+        timestamp: new Date().toISOString()
+      });
+      throw error; // Re-throw so caller can handle
+    }
+  }
+
   async createPhoto(insertPhoto: InsertPhoto): Promise<Photo> {
     const [photo] = await ensureDb().insert(photos).values(insertPhoto).returning();
     if (!photo) throw new Error("Failed to create photo");

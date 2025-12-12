@@ -2164,6 +2164,83 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Delete job
+  app.delete("/api/jobs/:id", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
+    try {
+      const jobId = req.params.id;
+      if (!jobId) {
+        return res.status(400).json({ message: "Job ID is required" });
+      }
+      
+      // Verify access through existing job
+      const existingJob = await storage.getJob(jobId);
+      if (!existingJob) {
+        return res.status(404).json({ message: "Job not found" });
+      }
+
+      // Verify user-centric access
+      const hasAccess = existingJob.userId === req.user.id || req.user.isAdmin;
+      
+      if (!hasAccess) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Delete associated photos first (which will cascade to masks)
+      try {
+        const jobPhotos = await storage.getJobPhotos(jobId);
+        console.log(`[DeleteJob] Found ${jobPhotos.length} photos to delete`);
+        for (const photo of jobPhotos) {
+          try {
+            // Delete masks first
+            const associatedMasks = await storage.getMasksByPhoto(photo.id);
+            for (const mask of associatedMasks) {
+              await storage.deleteMask(mask.id);
+            }
+            // Then delete photo
+            await storage.deletePhoto(photo.id);
+            console.log(`[DeleteJob] Deleted photo: ${photo.id}`);
+          } catch (photoError) {
+            console.warn(`[DeleteJob] Failed to delete photo ${photo.id}:`, photoError);
+            // Continue with job deletion even if photo deletion fails
+          }
+        }
+      } catch (photoQueryError) {
+        console.error('[DeleteJob] Error querying photos:', photoQueryError);
+        // Continue with job deletion even if photo query fails
+      }
+      
+      // Delete the job
+      try {
+        await storage.deleteJob(jobId);
+        console.log(`[DeleteJob] Successfully deleted job: ${jobId}`);
+      } catch (deleteError) {
+        console.error('[DeleteJob] Error deleting job from database:', deleteError);
+        // Check if it's a foreign key constraint error
+        const errorMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+        if (errorMessage.includes('foreign key') || errorMessage.includes('constraint')) {
+          return res.status(409).json({ 
+            message: "Cannot delete job: it is referenced by other records. Please delete associated records first." 
+          });
+        }
+        throw deleteError; // Re-throw if it's not a constraint error
+      }
+      
+      res.json({ message: "Job deleted successfully" });
+    } catch (error) {
+      console.error('[DeleteJob] Unexpected error deleting job:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[DeleteJob] Error details:', {
+        message: errorMessage,
+        stack: error instanceof Error ? error.stack : undefined,
+        jobId: req.params.id
+      });
+      res.status(500).json({ 
+        message: "Failed to delete job",
+        error: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+      });
+    }
+  });
+
   // Get photos for a specific job
   app.get("/api/jobs/:id/photos", authenticateSession, async (req: AuthenticatedRequest, res: any) => {
     try {
