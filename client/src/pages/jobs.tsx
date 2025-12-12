@@ -117,6 +117,33 @@ export default function Jobs() {
     staleTime: 30 * 1000, // 30 seconds
   });
   
+  // Fetch photos for all jobs (Trades only, for accurate photo count)
+  const { data: allPhotosByJob = {} } = useQuery({
+    queryKey: ['/api/jobs/photos', jobs.map(j => j.id).sort().join(',')],
+    queryFn: async () => {
+      if (jobs.length === 0) return {};
+      
+      // Fetch photos for all jobs in parallel
+      const photoPromises = jobs.map(async (job) => {
+        try {
+          const photos = await apiClient.getJobPhotos(job.id);
+          return { jobId: job.id, photos };
+        } catch (error) {
+          console.error(`Failed to fetch photos for job ${job.id}:`, error);
+          return { jobId: job.id, photos: [] };
+        }
+      });
+      
+      const results = await Promise.all(photoPromises);
+      return results.reduce((acc, { jobId, photos }) => {
+        acc[jobId] = photos;
+        return acc;
+      }, {} as Record<string, any[]>);
+    },
+    enabled: isTrades && jobs.length > 0,
+    staleTime: 1 * 60 * 1000, // 1 minute
+  });
+  
   // Group quotes by jobId for efficient lookup
   const quotesByJobId = useMemo(() => {
     const map = new Map<string, any[]>();
@@ -452,10 +479,12 @@ export default function Jobs() {
                   
                   // PART B: Compute trades job status (Trades only)
                   const jobQuotes = quotesByJobId.get(job.id) || [];
-                  const photoCount = job.canvasWorkProgress.totalPhotos || 0;
-                  // Create a mock photos array for status computation (we only need the count)
-                  const mockPhotos = photoCount > 0 ? Array(photoCount).fill({}) : [];
-                  const tradesStatus = isTrades ? getTradesJobStatus(job, mockPhotos, jobQuotes) : null;
+                  // Use actual photos array for trades, fallback to canvasWorkProgress for real estate
+                  const jobPhotos = isTrades ? (allPhotosByJob[job.id] || []) : [];
+                  const photoCount = isTrades 
+                    ? jobPhotos.length 
+                    : (job.canvasWorkProgress.totalPhotos || 0);
+                  const tradesStatus = isTrades ? getTradesJobStatus(job, jobPhotos, jobQuotes) : null;
                   const quoteSummary = isTrades ? getQuoteSummary(jobQuotes) : null;
                   
                   // Determine which badges to show
